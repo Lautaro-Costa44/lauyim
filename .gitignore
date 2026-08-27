@@ -4,9 +4,17 @@ media/gif/
 
 # Runtime data — users, passkeys, per-user state, session secret
 data/
-
+!data/db_espanol.json
 # Local config
 .env
+.env.local
+*.pem
+
+# Cloudflare Tunnels credentials
+/etc/cloudflared/
+*.json
+!package.json
+!package-lock.json
 
 # Build output / deps
 frontend/dist/
