@@ -1,6 +1,7 @@
 import { EXDB } from './exercises-data.js'
 import { USER_EXERCISE_MUSCLE_OVERRIDES, exerciseMuscleMetadataFor } from './exercise-muscle-batch-1.js'
 import { t, getVersion, exerciseNameSearchText } from './i18n-core.js'
+import { BODY_PARTS_ES } from '../locales/body-parts-es.js'
 
 export { EXDB }
 
@@ -174,15 +175,22 @@ function corpusOf(e) {
   const v = getVersion()
   const hit = corpusCache.get(e)
   if (hit && hit.v === v) return hit.s
+  
   const sm = Array.isArray(e?.sm) ? e.sm : []
+
+  // Obtener alias musculares en español si existen para el target o bodypart
+  const tgAliases = BODY_PARTS_ES[e?.tg?.toLowerCase()] || []
+  const bpAliases = BODY_PARTS_ES[e?.bp?.toLowerCase()] || []
+
   const s = normalizeStr([
     exerciseNameSearchText(e),
-    e?.tg || '', t(e?.tg || ''),
+    e?.tg || '', t(e?.tg || ''), ...tgAliases,
     e?.eq || '', t(e?.eq || ''),
-    e?.bp || '', t(e?.bp || ''),
+    e?.bp || '', t(e?.bp || ''), ...bpAliases,
     ...sm, ...sm.map(m => t(m)),
     e?.desc || ''
   ].join(' '))
+  
   corpusCache.set(e, { v, s })
   return s
 }

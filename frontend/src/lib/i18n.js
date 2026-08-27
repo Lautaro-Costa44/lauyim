@@ -31,10 +31,16 @@ export async function setLang(l) {
 
   try { instr = l === 'en' || !INSTR_LANGS.includes(l) ? null : (await instrPacks['../instr/' + l + '.js']()).default } catch (e) { instr = null }
   try {
-    exerciseNames = l === 'en' || !EXERCISE_NAME_LANGS.includes(l)
-      ? null
-      : (await exerciseNamePacks['../exercise-names/' + l + '.js']()).default
-  } catch (e) { exerciseNames = null }
+    if (l === 'es') {
+      exerciseNames = (await import('../locales/exercise-names-es.js')).default
+    } else if (l !== 'en' && EXERCISE_NAME_LANGS.includes(l)) {
+      exerciseNames = (await exerciseNamePacks['../exercise-names/' + l + '.js']()).default
+    } else {
+      exerciseNames = null
+    }
+  } catch (e) { 
+    exerciseNames = null 
+  }
 
   _setLangState(l, dict, instr, exerciseNames)
   notify()

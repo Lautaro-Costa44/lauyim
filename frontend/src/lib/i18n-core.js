@@ -10,11 +10,12 @@ export const LANGS = {
   ko: '한국어', hi: 'हिन्दी'
 }
 export const INSTR_LANGS = ['en', 'es', 'fr', 'it', 'tr', 'ru', 'zh', 'hi', 'pl', 'ko', 'pt-BR']
-export const EXERCISE_NAME_LANGS = ['pt-BR']
+export const EXERCISE_NAME_LANGS = ['pt-BR', 'es']
 export const DATE_LOCALES = {
   en: 'en-GB', de: 'de-DE', es: 'es-ES', fr: 'fr-FR', it: 'it-IT', pt: 'pt-PT', 'pt-BR': 'pt-BR',
   pl: 'pl-PL', tr: 'tr-TR', ru: 'ru-RU', zh: 'zh-CN', ko: 'ko-KR', hi: 'hi-IN'
 }
+
 
 let lang = 'es'                 // set only by _setLangState, called from i18n.js setLang
 let dict = {}                   // current locale pack (empty = English fallback)
