@@ -6,9 +6,11 @@ import { api } from '../lib/api.js'
 import { fmtDate, fmtNum, fmtVol, fmtDur } from '../lib/format.js'
 import { auditCat, auditLine, fmtWhen } from '../lib/audit.js'
 import { workoutVolume, setsDone } from '../lib/history.js'
-import { confirmSheet } from '../sheets.jsx'
+import { confirmSheet, exercisePicker, exConfigSheet } from '../sheets.jsx'
+import { exOr } from '../lib/exercises.js'
+import { exLine } from '../lib/history.js'
 import Icon from '../components/Icon.jsx'
-import { Button } from '../components/ui.jsx'
+import { Button, TextField } from '../components/ui.jsx'
 
 // Admin-only operator dashboard (owner passkey + admin flag; guarded again server-side).
 // Deliberately English-only — it isn't part of the translated end-user surface, so it stays
@@ -89,6 +91,59 @@ function InvitesCard({ invites, reload }) {
   </div>
 }
 
+function PresetEditor({ existing, close, reload }) {
+  const [name, setName] = useState(existing?.name || '')
+  const [emoji, setEmoji] = useState(existing?.emoji || 'dumbbell')
+  const [ex, setEx] = useState(() => (existing?.ex || []).map(item => ({ ...item })))
+  const toast = useUI(s => s.toast)
+  const add = exercise => exConfigSheet(exercise, null, cfg => setEx(current => [...current, { id: exercise.id, ...cfg }]), null, { ex })
+  const save = () => {
+    if (!name.trim()) return toast('Give the routine a name')
+    const body = JSON.stringify({ id: existing?.id, name: name.trim(), emoji: emoji.trim() || 'dumbbell', ex })
+    api(existing ? '/api/admin/presets' : '/api/admin/presets', { method: existing ? 'PUT' : 'POST', body })
+      .then(() => { toast(existing ? 'Preset updated' : 'Preset created'); close(); reload() })
+      .catch(e => toast(e.message))
+  }
+  return <>
+    <h3>{existing ? 'Edit preset' : 'New preset'}</h3>
+    <TextField value={name} onChange={e => setName(e.target.value)} placeholder="Routine name" maxLength={80} />
+    <div style={{ height: 8 }} />
+    <TextField value={emoji} onChange={e => setEmoji(e.target.value)} placeholder="Icon name" maxLength={40} />
+    <div className="list" style={{ margin: '12px 0' }}>
+      {ex.map((item, index) => <div className="item" key={index}>
+        <div className="grow"><div className="tt">{exOr(item.id).n}</div><div className="ss">{exLine(item, 'kg')}</div></div>
+        <button className="iconbtn" aria-label="Remove exercise" onClick={() => setEx(current => current.filter((_, i) => i !== index))}><Icon name="trash" /></button>
+      </div>)}
+    </div>
+    <Button icon="plus" onClick={() => exercisePicker(add)}>Add exercise</Button>
+    <div style={{ height: 8 }} />
+    <Button variant="primary" onClick={save}>Save preset</Button>
+  </>
+}
+
+function PresetsCard({ presets, openSheet, reload }) {
+  const toast = useUI(s => s.toast)
+  const remove = preset => confirmSheet({
+    title: 'Delete ' + preset.name + '?', message: 'This removes it from the preset catalog. Existing user routines are unchanged.',
+    confirmText: 'Delete', danger: true,
+    onConfirm: () => api('/api/admin/presets/delete', { method: 'POST', body: JSON.stringify({ id: preset.id }) })
+      .then(() => { toast('Preset deleted'); reload() }).catch(e => toast(e.message))
+  })
+  return <div className="card">
+    <div className="row between"><h2 style={{ margin: 0 }}>Preset routines</h2>
+      <Button variant="primary" size="sm" icon="plus" onClick={() => openSheet(close => <PresetEditor close={close} reload={reload} />)}>New</Button></div>
+    <div className="small muted" style={{ margin: '6px 0 10px' }}>Templates available from the starter plan action.</div>
+    {(presets || []).map(preset => <div key={preset.id} className="row between" style={{ padding: '8px 2px', borderBottom: '1px solid var(--sep)' }}>
+      <div><div className="small" style={{ fontWeight: 600 }}>{preset.name}</div><div className="dim" style={{ fontSize: '.72rem' }}>{preset.ex.length} exercises</div></div>
+      <div className="row" style={{ gap: 4 }}>
+        <button className="iconbtn" aria-label="Edit preset" onClick={() => openSheet(close => <PresetEditor existing={preset} close={close} reload={reload} />)}><Icon name="pencil" /></button>
+        <button className="iconbtn" aria-label="Delete preset" style={{ color: 'var(--red)' }} onClick={() => remove(preset)}><Icon name="trash" /></button>
+      </div>
+    </div>)}
+    {!presets?.length && <div className="dim small">No presets yet.</div>}
+  </div>
+}
+
 // Who signed in, who tried and failed, what an admin changed. A card rather than its own route:
 // the dashboard is deliberately one page of cards, and the 95 % use of this is a glance at the
 // last twenty events. Paging follows Library.jsx's house style — "Show more", not page numbers.
@@ -154,13 +209,15 @@ export default function Admin() {
   const openSheet = useUI(s => s.openSheet)
   const [users, setUsers] = useState(null)
   const [invites, setInvites] = useState(null)
+  const [presets, setPresets] = useState(null)
   const [inviteOnly, setInviteOnly] = useState(false)
   const [tick, setTick] = useState(0)          // the ↻ button; the activity log listens to it
 
   const loadUsers = () => api('/api/admin/users').then(d => { setUsers(d.users); setInviteOnly(d.invite_only) }).catch(e => toast(e.message || 'Failed to load'))
   const loadInvites = () => api('/api/admin/invites').then(d => setInvites(d.invites)).catch(() => {})
+  const loadPresets = () => api('/api/presets').then(d => setPresets(d.presets)).catch(e => toast(e.message || 'Failed to load presets'))
   // poll every 15s so the "training now" section stays live without a manual refresh
-  useEffect(() => { if (!user?.admin) return; loadUsers(); loadInvites(); const iv = setInterval(loadUsers, 15000); return () => clearInterval(iv) }, [])
+  useEffect(() => { if (!user?.admin) return; loadUsers(); loadInvites(); loadPresets(); const iv = setInterval(loadUsers, 15000); return () => clearInterval(iv) }, [])
   if (!user?.admin) return null
 
   const openUser = id => openSheet(close => <UserDetail id={id} onChanged={loadUsers} close={close} />)
@@ -173,7 +230,7 @@ export default function Admin() {
       <button className="iconbtn" onClick={() => nav('/settings')} aria-label="Back"><Icon name="chevronLeft" /></button>
       <div style={{ flex: 1, marginLeft: 8 }}><h1 style={{ margin: 0 }}>Admin</h1>
         <div className="sub">{users ? users.length + ' users · ' + activeCount + ' active this week' : 'Loading…'}</div></div>
-      <button className="iconbtn" onClick={() => { loadUsers(); loadInvites(); setTick(n => n + 1) }} aria-label="refresh">↻</button>
+      <button className="iconbtn" onClick={() => { loadUsers(); loadInvites(); loadPresets(); setTick(n => n + 1) }} aria-label="refresh">↻</button>
     </div>
 
     <div className="tiles" style={{ marginBottom: 12 }}>
@@ -193,6 +250,7 @@ export default function Admin() {
     </div>}
 
     <InvitesCard invites={invites} reload={loadInvites} />
+    <PresetsCard presets={presets} openSheet={openSheet} reload={loadPresets} />
 
     <h4 className="sec">Users</h4>
     <div className="list">

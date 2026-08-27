@@ -6,14 +6,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 openGym is a self-hosted gym & body-weight tracker PWA. Two containers (`api` + `web`) plus a
 `./data` folder the user owns — no third-party account, no telemetry. Passkey (WebAuthn) login,
-installable as a home-screen app, optional Capacitor shells for standalone Android/iOS builds.
+installable as a home-screen app.
 License: AGPL-3.0-or-later.
 
 ## Project layout
 
 ```
 frontend/  React 19 + Vite app (src/views, src/components, src/store, src/lib). Builds to static files.
-           android/ + ios/ are the Capacitor shells for the standalone mobile app (docs/MOBILE.md).
 api/       backend — server.js (Node, no framework), deps: @simplewebauthn/server, web-push.
 web/       multi-stage Dockerfile (builds frontend → nginx) + nginx.conf.template (serves app, proxies /api).
 mcp/       optional MCP server — read-only stdio bridge exposing a user's workouts/1RM/muscle
@@ -21,7 +20,7 @@ mcp/       optional MCP server — read-only stdio bridge exposing a user's work
            runs when an LLM client spawns it.
 media/     exercise img/gif, gitignored, fetched at runtime by the `media` compose service.
 website/   static marketing site (plain HTML/CSS/JS), deployed separately by .gitlab-ci.yml.
-docs/      SELF_HOSTING.md, MOBILE.md.
+docs/      SELF_HOSTING.md.
 ```
 
 ## Commands
@@ -45,7 +44,6 @@ cd mcp && npm test
 
 # Production build
 cd frontend && npm run build
-cd frontend && npm run build:mobile   # + cap sync, points media at the CDN dataset
 ```
 
 There is no linter/formatter configured (no ESLint/Prettier config in the repo) and no
@@ -54,7 +52,7 @@ TypeScript — match the existing style by hand.
 The CI gate is `.gitlab-ci.yml` on GitLab, the canonical remote (see README): it runs the
 `frontend/` tests on Node 22 — the same version as `web/Dockerfile` / `api/Dockerfile`
 (`node:22-alpine`) — and additionally builds and publishes the Docker images, packages the
-signed Android APK, and deploys the demo/docs site. The Gitea and GitHub workflow copies
+and deploys the demo/docs site. The Gitea and GitHub workflow copies
 (`.gitea/workflows/`, `.github/workflows/`) are dormant mirrors; neither host runs them.
 
 ## Architecture
@@ -63,8 +61,7 @@ signed Android APK, and deploys the demo/docs site. The Gitea and GitHub workflo
 
 - **`store/useStore.js`** — single Zustand store holding the entire client-side app state (`S`),
   persisted to `localStorage` (`gym_state_v1`) and debounce-pushed to the server when signed in
-  (`pushState`, see `lib/api.js`). On the Capacitor mobile build it's also mirrored to a file via
-  `lib/mobile.js` (`nativeSave`), since WebView storage can be evicted. `store/useUI.js` holds
+  (`pushState`, see `lib/api.js`). `store/useUI.js` holds
   ephemeral UI state (modals, active sheet, etc.) separately from persisted data.
 - **`lib/`** — pure, framework-free helpers, each paired with a same-directory `*.test.js`. This
   is where the domain logic lives, most importantly:
@@ -83,9 +80,8 @@ signed Android APK, and deploys the demo/docs site. The Gitea and GitHub workflo
   Admin, Login, RoutineEdit), routed by `react-router-dom` from `App.jsx`.
 - **`components/`** — shared UI (charts, modals, timers); `instr/` holds per-language exercise
   instruction text; `locales/` is the i18n string catalogue (`lib/i18n.js` / `i18n-core.js`).
-- Mobile: `@capacitor/*` wraps the same web build into native shells under `frontend/android` and
-  `frontend/ios` (see `docs/MOBILE.md`); `mobile.js` in `lib/` gates native-only behavior (file
-  persistence, local notifications, wake lock) behind a `MOBILE` flag.
+- Distribution: the app is a browser PWA; `manifest.json` and `sw.js` provide installation and
+  offline shell behavior on supported browsers.
 
 ### API (`api/server.js`)
 

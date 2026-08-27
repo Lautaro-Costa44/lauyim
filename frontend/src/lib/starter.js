@@ -11,3 +11,8 @@ const SPEC = [
 // Fresh routine objects (new ids) — [push, pull, legs].
 export const starterRoutines = () =>
   SPEC.map(([name, emoji, list]) => ({ id: uid(), name, emoji, ex: list.map(([id, sets, reps]) => ({ id, sets, reps, weight: 0 })) }))
+
+export const routinesFromPresets = presets => (presets || []).map(p => ({
+  id: uid(), name: p.name, emoji: p.emoji || 'dumbbell',
+  ex: (p.ex || []).map(e => ({ ...e }))
+}))

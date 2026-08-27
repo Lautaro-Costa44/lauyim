@@ -213,6 +213,8 @@ build:images:
 # install them over an existing copy.
 build:apk:
   stage: package
+  # Retained temporarily as a migration marker; native packaging is no longer part of CI.
+  when: never
   image: cimg/android:2026.08-node
   needs: ["test:frontend"]
   variables:
@@ -344,8 +346,6 @@ release:
   image: registry.gitlab.com/gitlab-org/release-cli:latest
   needs:
     - job: build:images
-    - job: build:apk
-      artifacts: true
   rules:
     - if: $CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+$/
   script:
@@ -368,12 +368,6 @@ release:
     description: release-notes.md
     assets:
       links:
-        - name: "openGym-$APK_VERSION.apk (Android, sideload)"
-          url: "$CI_API_V4_URL/projects/$CI_PROJECT_ID/packages/generic/opengym-android/$APK_VERSION/openGym-$APK_VERSION.apk"
-          link_type: package
-        - name: "openGym-$APK_VERSION.apk.sha256 (checksum)"
-          url: "$CI_API_V4_URL/projects/$CI_PROJECT_ID/packages/generic/opengym-android/$APK_VERSION/openGym-$APK_VERSION.apk.sha256"
-          link_type: other
         - name: "Container images (api + web)"
           url: "$CI_PROJECT_URL/container_registry"
           link_type: image

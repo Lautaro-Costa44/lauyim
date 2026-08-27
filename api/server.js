@@ -45,10 +45,11 @@ if (!fs.existsSync(secretFile)) fs.writeFileSync(secretFile, crypto.randomBytes(
 const SECRET = fs.readFileSync(secretFile, 'utf8').trim();
 
 const dbFile = path.join(DATA, 'db.json');
-let db = { users: [], creds: [], subs: [], invites: [] };
+let db = { users: [], creds: [], subs: [], invites: [], presets: [] };
 try { db = JSON.parse(fs.readFileSync(dbFile, 'utf8')); } catch {}
 db.subs = db.subs || [];
 db.invites = db.invites || [];
+db.presets = Array.isArray(db.presets) ? db.presets : [];
 const isAdmin = user => !!user && (user.admin === true || ADMIN_UIDS.includes(user.id));
 function saveDb() { atomicWrite(dbFile, JSON.stringify(db, null, 2)); }
 function atomicWrite(file, content) {
@@ -59,6 +60,43 @@ function atomicWrite(file, content) {
 const stateFile = uid => path.join(DATA, 'state-' + uid.replace(/[^a-zA-Z0-9_-]/g, '') + '.json');
 function readState(uid) {
   try { return JSON.parse(fs.readFileSync(stateFile(uid), 'utf8')); } catch { return null; }
+}
+
+function cleanPreset(body, existingId) {
+  const name = String(body.name || '').trim().slice(0, 80);
+  if (!name) return { error: 'name required' };
+  const exercises = Array.isArray(body.ex) ? body.ex : [];
+  if (exercises.length > 100) return { error: 'too many exercises' };
+  const ex = exercises.map(item => {
+    const id = String(item?.id || '').trim().slice(0, 80);
+    const sets = Math.max(1, Math.min(20, Math.round(+item?.sets || 0)));
+    const mode = item?.mode === 'time' ? 'time' : item?.mode === 'cardio' ? 'cardio' : 'reps';
+    const out = { id, sets };
+    if (mode === 'cardio') {
+      out.min = Math.max(1, Math.min(1440, Math.round(+item?.min || 20)));
+      out.speed = Math.max(0, Math.min(500, +item?.speed || 8));
+    } else if (mode === 'time') {
+      out.mode = 'time';
+      out.sec = Math.max(1, Math.min(86400, Math.round(+item?.sec || 45)));
+      out.weight = Math.max(0, Math.min(10000, +item?.weight || 0));
+    } else {
+      out.reps = Math.max(1, Math.min(100, Math.round(+item?.reps || 0)));
+      out.weight = Math.max(0, Math.min(10000, +item?.weight || 0));
+    }
+    for (const key of ['bodyweight', 'side']) if (item?.[key]) out[key] = true;
+    return out;
+  });
+  if (ex.some(item => !item.id || !item.sets || (item.mode === 'time' ? !item.sec : item.mode === 'cardio' ? !item.min : !item.reps))) return { error: 'invalid exercise' };
+  return { value: { id: existingId || 'p' + crypto.randomBytes(8).toString('hex'), name, emoji: String(body.emoji || 'dumbbell').slice(0, 40), ex } };
+}
+const DEFAULT_PRESETS = [
+  { id: 'starter-push', name: 'Push Day', emoji: 'barbell', ex: [['0025', 4, 8], ['0047', 3, 10], ['0426', 3, 10], ['0334', 3, 12], ['0241', 3, 12], ['0251', 3, 10]] },
+  { id: 'starter-pull', name: 'Pull Day', emoji: 'pullup', ex: [['2330', 4, 10], ['0027', 4, 8], ['1323', 3, 10], ['0031', 3, 10], ['0313', 3, 12]] },
+  { id: 'starter-legs', name: 'Leg Day', emoji: 'legs', ex: [['0043', 4, 8], ['0085', 3, 10], ['0739', 3, 12], ['0585', 3, 12], ['0586', 3, 12], ['0605', 4, 15]] }
+].map(r => ({ ...r, ex: r.ex.map(([id, sets, reps]) => ({ id, sets, reps, weight: 0 })) }));
+if (!db.presets.length) {
+  db.presets = DEFAULT_PRESETS.map(r => ({ ...r, ex: r.ex.map(e => ({ ...e })) }));
+  saveDb();
 }
 
 /* ---------- push notifications (Web Push / VAPID) ---------- */
@@ -283,10 +321,7 @@ function cookieToken(req) {
   return null;
 }
 function readSession(req) {
-  // The paired mobile app has no cookie jar shared with the API's origin, so it carries the same
-  // signed token in an Authorization header instead — same payload, same verification below.
-  const auth = req.headers.authorization || '';
-  const tok = cookieToken(req) || (auth.startsWith('Bearer ') ? auth.slice(7).trim() : null);
+  const tok = cookieToken(req);
   if (!tok) return null;
   const payload = verifySig(tok);
   if (!payload) return null;
@@ -330,21 +365,16 @@ const clearCookie = COOKIE === LEGACY_COOKIE
 // POST that needs no CORS preflight at all.
 //
 // So a state-changing request that came from a browser has to come from ORIGIN. The exemptions
-// below are not holes: each of those routes carries its own credential in the body (a WebAuthn
-// challenge id, a one-shot pairing code), none of them acts on the caller's existing session, and
-// they have to keep working from the mobile WebView, whose origin is never ORIGIN.
+// below are not holes: each of those routes carries its own WebAuthn challenge credential and
+// none of them acts on the caller's existing session.
 const CSRF_EXEMPT = new Set([
   'POST /api/register/options', 'POST /api/register/verify',
-  'POST /api/login/options', 'POST /api/login/verify',
-  'POST /api/pair/redeem'
+  'POST /api/login/options', 'POST /api/login/verify'
 ]);
 const originsMatch = (a, b) => a.replace(/\/+$/, '') === b.replace(/\/+$/, '');
 function csrfOk(req, key) {
   if (req.method === 'GET' || req.method === 'HEAD' || req.method === 'OPTIONS') return true;
   if (CSRF_EXEMPT.has(key)) return true;
-  // The paired mobile app authenticates with a Bearer token. A browser never attaches one on its
-  // own, so there is no ambient authority for a hostile page to borrow and no origin to check.
-  if ((req.headers.authorization || '').startsWith('Bearer ')) return true;
   // Sec-Fetch-Site is set by the browser itself and no page can forge it, and it states exactly
   // the property wanted here — more precisely than comparing origins can. 'same-origin' is the
   // app talking to its own backend; a hostile page reports 'cross-site'; a sibling subdomain,
@@ -375,21 +405,6 @@ function takeChallenge(cid) {
   return c;
 }
 setInterval(() => { for (const [k, v] of challenges) if (v.exp < Date.now()) challenges.delete(k); }, 60000).unref();
-
-// ---------- device pairing (mobile app "connect to my server", no WebAuthn ceremony) ----------
-// A passkey ceremony can't run inside the app's WebView (its origin never matches RP_ID), so the
-// app authenticates by redeeming a short code minted from an already signed-in browser tab —
-// same 5-min-TTL/one-shot shape as the WebAuthn challenge store above.
-const pairings = new Map(); // code -> {uid, exp}
-const PAIR_CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no 0/O/1/I — read off a screen
-function makePairCode() {
-  let code;
-  do {
-    code = Array.from(crypto.randomBytes(8)).map(b => PAIR_CODE_ALPHABET[b % PAIR_CODE_ALPHABET.length]).join('');
-  } while (pairings.has(code));
-  return code;
-}
-setInterval(() => { for (const [k, v] of pairings) if (v.exp < Date.now()) pairings.delete(k); }, 60000).unref();
 
 /* ---------- helpers ---------- */
 function json(res, code, obj, extraHeaders) {
@@ -691,37 +706,6 @@ const routes = {
     json(res, 200, { ok: true }, { 'Set-Cookie': clearCookie });
   },
 
-  // Mobile app pairing: called from an already signed-in browser tab (Settings → "Pair the
-  // mobile app") to mint a short code the phone can redeem below.
-  'POST /api/pair/create': async (req, res) => {
-    const user = readSession(req);
-    if (!user) return json(res, 401, { error: 'not signed in' });
-    const code = makePairCode();
-    pairings.set(code, { uid: user.id, exp: Date.now() + 5 * 60000 });
-    audit(req, 'auth.pair.create', { user });
-    json(res, 200, { code });
-  },
-
-  // Called from the mobile app itself with the code shown in the browser. No session required —
-  // the code IS the credential, one-shot and 5-minute-lived like a WebAuthn challenge.
-  'POST /api/pair/redeem': async (req, res) => {
-    const body = await readBody(req);
-    const code = String(body.code || '').trim().toUpperCase();
-    const p = pairings.get(code);
-    if (p) pairings.delete(code);
-    if (!p || p.exp < Date.now()) {
-      audit(req, 'auth.pair.fail', { ok: false, msg: 'code-invalid' });
-      return json(res, 400, { error: 'invalid or expired code' });
-    }
-    const user = db.users.find(u => u.id === p.uid);
-    if (!user || user.disabled) {
-      audit(req, 'auth.pair.fail', { ok: false, uid: p.uid, msg: 'user-unavailable' });
-      return json(res, 400, { error: 'invalid or expired code' });
-    }
-    audit(req, 'auth.pair.ok', { user });
-    json(res, 200, { token: makeSession(user), user: { id: user.id, name: user.name, admin: isAdmin(user) } });
-  },
-
   'GET /api/data': async (req, res) => {
     const user = readSession(req);
     if (!user) return json(res, 401, { error: 'not signed in' });
@@ -819,6 +803,42 @@ const routes = {
   },
 
   /* ---------- admin dashboard ---------- */
+  'GET /api/presets': async (req, res) => {
+    if (!readSession(req)) return json(res, 401, { error: 'not signed in' });
+    json(res, 200, { presets: db.presets });
+  },
+
+  'POST /api/admin/presets': async (req, res) => {
+    const admin = requireAdmin(req, res); if (!admin) return;
+    const result = cleanPreset(await readBody(req));
+    if (result.error) return json(res, 400, { error: result.error });
+    db.presets.push(result.value); saveDb();
+    audit(req, 'admin.preset.create', { user: admin, msg: result.value.name });
+    json(res, 200, { preset: result.value });
+  },
+
+  'PUT /api/admin/presets': async (req, res) => {
+    const admin = requireAdmin(req, res); if (!admin) return;
+    const body = await readBody(req);
+    const index = db.presets.findIndex(p => p.id === body.id);
+    if (index < 0) return json(res, 404, { error: 'no such preset' });
+    const result = cleanPreset(body, db.presets[index].id);
+    if (result.error) return json(res, 400, { error: result.error });
+    db.presets[index] = result.value; saveDb();
+    audit(req, 'admin.preset.update', { user: admin, msg: result.value.name });
+    json(res, 200, { preset: result.value });
+  },
+
+  'POST /api/admin/presets/delete': async (req, res) => {
+    const admin = requireAdmin(req, res); if (!admin) return;
+    const body = await readBody(req);
+    const preset = db.presets.find(p => p.id === body.id);
+    if (!preset) return json(res, 404, { error: 'no such preset' });
+    db.presets = db.presets.filter(p => p.id !== preset.id); saveDb();
+    audit(req, 'admin.preset.delete', { user: admin, msg: preset.name });
+    json(res, 200, { ok: true });
+  },
+
   // One row per user, cheap enough for a personal instance (reads each state file once).
   'GET /api/admin/users': async (req, res) => {
     if (!requireAdmin(req, res)) return;
@@ -944,16 +964,14 @@ const routes = {
 };
 
 http.createServer(async (req, res) => {
-  // Same-origin (the deployed nginx-proxied web app) never triggers CORS, so this only matters
-  // for the paired mobile app calling in from its own WebView origin. It carries no cookie
-  // (auth is the Authorization header instead), so Allow-Credentials is deliberately never set —
-  // reflecting the origin here can't expose the cookie session to anyone.
+  // The dev server and native clients may send an Origin header; reflect it without enabling
+  // credentialed cross-origin cookie access.
   const origin = req.headers.origin;
   if (origin) { res.setHeader('Access-Control-Allow-Origin', origin); res.setHeader('Vary', 'Origin'); }
   if (req.method === 'OPTIONS') {
     res.writeHead(204, {
       'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+      'Access-Control-Allow-Headers': 'Content-Type',
       'Access-Control-Max-Age': '86400'
     });
     return res.end();
