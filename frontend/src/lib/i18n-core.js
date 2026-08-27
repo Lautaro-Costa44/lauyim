@@ -16,7 +16,7 @@ export const DATE_LOCALES = {
   pl: 'pl-PL', tr: 'tr-TR', ru: 'ru-RU', zh: 'zh-CN', ko: 'ko-KR', hi: 'hi-IN'
 }
 
-let lang = 'en'                 // set only by _setLangState, called from i18n.js setLang
+let lang = 'es'                 // set only by _setLangState, called from i18n.js setLang
 let dict = {}                   // current locale pack (empty = English fallback)
 let instr = null                // { exId: [steps] } for the current language, null = English
 let exerciseNames = null        // { exId: translated name }, null = original catalogue name
@@ -58,7 +58,7 @@ export const exerciseNameSearchText = ex => {
 // exported as setLang because loading packs requires import.meta.glob, which is Vite-only.
 // `dict`, `instr` and `exerciseNames` may be null to reset to their English fallbacks.
 export function _setLangState(newLang, newDict, newInstr, newExerciseNames) {
-  lang = LANGS[newLang] ? newLang : 'en'
+  lang = LANGS[newLang] ? newLang : 'es'
   dict = lang === 'en' ? {} : (newDict || {})
   instr = lang === 'en' || !INSTR_LANGS.includes(lang) ? null : (newInstr || null)
   exerciseNames = lang === 'en' || !EXERCISE_NAME_LANGS.includes(lang) ? null : (newExerciseNames || null)

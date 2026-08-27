@@ -14,7 +14,7 @@ import { todayISO } from './format.js'
 
 export const MOBILE = import.meta.env.VITE_MOBILE === '1'
 
-const FILE = 'opengym-state.json'
+const FILE = 'lauyim-state.json'
 
 export async function nativeLoad() {
   try {
@@ -32,10 +32,10 @@ export async function nativeSave(state) {
 }
 
 // "Connect to my server" mode (lib/remote.js): which of local-only / a paired remote account this
-// device chose, kept in its own file — never inside opengym-state.json, since that file's content
+// device chose, kept in its own file — never inside lauyim-state.json, since that file's content
 // is exactly what pushState() PUTs to a server, and a device's own connection secret must never
 // travel as if it were training data.
-const REMOTE_FILE = 'opengym-remote.json'
+const REMOTE_FILE = 'lauyim-remote.json'
 
 export async function loadRemoteFile() {
   try {
@@ -97,7 +97,7 @@ export async function writeAutoBackup(state) {
   try {
     const { Filesystem, Directory, Encoding } = await import('@capacitor/filesystem')
     await Filesystem.writeFile({
-      path: `opengym-backup-${todayISO()}.json`,
+      path: `lauyim-backup-${todayISO()}.json`,
       directory: Directory.Documents,
       data: JSON.stringify(state),
       encoding: Encoding.UTF8,

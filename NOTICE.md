@@ -123,3 +123,16 @@ English source produced with OpenAI Codex and Anthropic Claude Code
 language-model assistance. They are not copied from a separate Portuguese
 dataset. Their review status and translation policy are documented alongside
 the source files.
+
+### Commercial deployment notice (added 2026-08-27)
+
+If you deploy, distribute, or sell an instance of this project (or a fork of it) commercially —
+to gyms, individual users, or any paying customer — be aware that the exercise thumbnails and
+animations described above are third-party content whose ownership is currently disputed between
+Gym Visual and ExerciseDB/AscendAPI. Neither this project nor its maintainer holds, or can grant,
+a commercial license to that media.
+
+Anyone operating a commercial instance is solely responsible for independently verifying their
+own right to display that content, or for replacing it with properly licensed or original media
+before commercial use. This notice does not constitute legal advice; it exists to make the
+unresolved status explicit for anyone building on this codebase.
