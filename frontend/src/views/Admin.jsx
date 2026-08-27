@@ -6,23 +6,23 @@ import { api } from '../lib/api.js'
 import { fmtDate, fmtNum, fmtVol, fmtDur } from '../lib/format.js'
 import { auditCat, auditLine, fmtWhen } from '../lib/audit.js'
 import { workoutVolume, setsDone } from '../lib/history.js'
-import { confirmSheet, exercisePicker, exConfigSheet } from '../sheets.jsx'
+import { confirmSheet, exercisePicker, exConfigSheet, glyphPicker } from '../sheets.jsx'
 import { exOr } from '../lib/exercises.js'
 import { exLine } from '../lib/history.js'
+import { glyphOf } from '../lib/glyphs.js'
+import { t, exerciseNameFor } from '../lib/i18n.js'
 import Icon from '../components/Icon.jsx'
 import { Button, TextField } from '../components/ui.jsx'
 
 // Admin-only operator dashboard (owner passkey + admin flag; guarded again server-side).
-// Deliberately English-only — it isn't part of the translated end-user surface, so it stays
-// out of the per-language string packs.
 
 const rel = ts => {
-  if (!ts) return 'never'
+  if (!ts) return t('never')
   const s = Math.max(0, (Date.now() - ts) / 1000)
-  if (s < 60) return 'just now'
-  if (s < 3600) return Math.floor(s / 60) + 'm ago'
-  if (s < 86400) return Math.floor(s / 3600) + 'h ago'
-  return Math.floor(s / 86400) + 'd ago'
+  if (s < 60) return t('just now')
+  if (s < 3600) return t('{0}m ago', Math.floor(s / 60))
+  if (s < 86400) return t('{0}h ago', Math.floor(s / 3600))
+  return t('{0}d ago', Math.floor(s / 86400))
 }
 const dur = ms => { const m = Math.max(0, Math.floor(ms / 60000)); return m < 60 ? m + 'm' : Math.floor(m / 60) + 'h' + (m % 60) + 'm' }
 
@@ -30,64 +30,64 @@ function UserDetail({ id, onChanged, close }) {
   const [d, setD] = useState(null)
   const toast = useUI(s => s.toast)
   useEffect(() => { api('/api/admin/user?id=' + encodeURIComponent(id)).then(setD).catch(e => toast(e.message)) }, [id])
-  if (!d) return <div className="muted small">Loading…</div>
+  if (!d) return <div className="muted small">{t('Loading…')}</div>
   const u = d.user
   const setDisabled = disabled => {
     api('/api/admin/user/disable', { method: 'POST', body: JSON.stringify({ id: u.id, disabled }) })
-      .then(() => { toast(disabled ? 'User disabled' : 'User enabled'); onChanged(); close() })
+      .then(() => { toast(disabled ? t('User disabled') : t('User enabled')); onChanged(); close() })
       .catch(e => toast(e.message))
   }
   return <>
     <h3 className="capitalize">{u.name}</h3>
     <div className="row" style={{ gap: 6, flexWrap: 'wrap', margin: '8px 0 12px' }}>
-      {u.admin && <span className="tag acc">admin</span>}
-      {u.disabled && <span className="tag" style={{ color: 'var(--red)' }}>disabled</span>}
-      {u.invitedBy && <span className="tag">invite {u.invitedBy}</span>}
-      <span className="tag">joined {u.created ? fmtDate(u.created.slice(0, 10)) : '—'}</span>
+      {u.admin && <span className="tag acc">{t('admin')}</span>}
+      {u.disabled && <span className="tag" style={{ color: 'var(--red)' }}>{t('disabled')}</span>}
+      {u.invitedBy && <span className="tag">{t('invite')} {u.invitedBy}</span>}
+      <span className="tag">{t('joined')} {u.created ? fmtDate(u.created.slice(0, 10)) : '—'}</span>
     </div>
     <div className="tiles" style={{ textAlign: 'left' }}>
-      <div className="tile"><div className="l">Workouts</div><div className="v" style={{ fontSize: '1.1rem' }}>{d.workouts.length}</div></div>
-      <div className="tile"><div className="l">Weigh-ins</div><div className="v" style={{ fontSize: '1.1rem' }}>{d.bodyweight.length}</div></div>
-      <div className="tile"><div className="l">Routines</div><div className="v" style={{ fontSize: '1.1rem' }}>{d.routines.length}</div></div>
-      <div className="tile"><div className="l">Last sync</div><div className="v" style={{ fontSize: '.95rem' }}>{rel(d.lastSync)}</div></div>
+      <div className="tile"><div className="l">{t('Workouts')}</div><div className="v" style={{ fontSize: '1.1rem' }}>{d.workouts.length}</div></div>
+      <div className="tile"><div className="l">{t('Weigh-ins')}</div><div className="v" style={{ fontSize: '1.1rem' }}>{d.bodyweight.length}</div></div>
+      <div className="tile"><div className="l">{t('Routines')}</div><div className="v" style={{ fontSize: '1.1rem' }}>{d.routines.length}</div></div>
+      <div className="tile"><div className="l">{t('Last sync')}</div><div className="v" style={{ fontSize: '.95rem' }}>{rel(d.lastSync)}</div></div>
     </div>
     {!u.admin && <button className={'btn ' + (u.disabled ? 'primary' : 'danger')} style={{ margin: '12px 0 4px' }}
       onClick={() => u.disabled ? setDisabled(false)
-        : confirmSheet({ title: 'Disable ' + u.name + '?', message: 'They are signed out everywhere and can no longer sync or log in until re-enabled.', confirmText: 'Disable', danger: true, onConfirm: () => setDisabled(true) })}>
-      {u.disabled ? 'Enable account' : 'Disable account'}</button>}
-    <h4 className="sec">Workout history</h4>
+        : confirmSheet({ title: t('Disable {0}?', u.name), message: t('They are signed out everywhere and can no longer sync or log in until re-enabled.'), confirmText: t('Disable'), danger: true, onConfirm: () => setDisabled(true) })}>
+      {u.disabled ? t('Enable account') : t('Disable account')}</button>}
+    <h4 className="sec">{t('Workout history')}</h4>
     {d.workouts.length ? <div className="list" style={{ gap: 0 }}>
       {d.workouts.slice(0, 60).map(w => <div key={w.id} className="row between" style={{ padding: '9px 2px', borderBottom: '1px solid var(--sep)' }}>
         <div><div className="small" style={{ fontWeight: 600 }}>{w.name}</div>
-          <div className="dim" style={{ fontSize: '.72rem' }}>{fmtDate(w.d, true)} · {fmtDur((w.end || w.start) - w.start)} · {setsDone(w)} sets{w.prs?.length ? ' · ' + w.prs.length + ' PR' : ''}</div></div>
+          <div className="dim" style={{ fontSize: '.72rem' }}>{fmtDate(w.d, true)} · {fmtDur((w.end || w.start) - w.start)} · {setsDone(w)} {t('sets')}{w.prs?.length ? ' · ' + w.prs.length + ' PR' : ''}</div></div>
         <span className="small muted">{fmtVol(w.vol ?? workoutVolume(w), d.unit)}</span>
       </div>)}
-    </div> : <div className="empty small">No workouts logged.</div>}
+    </div> : <div className="empty small">{t('No workouts logged.')}</div>}
   </>
 }
 
 function InvitesCard({ invites, reload }) {
   const toast = useUI(s => s.toast)
   const gen = () => api('/api/admin/invites/new', { method: 'POST', body: '{}' })
-    .then(({ invite }) => { navigator.clipboard?.writeText(invite.code).catch(() => {}); toast('Code ' + invite.code + ' created & copied'); reload() })
+    .then(({ invite }) => { navigator.clipboard?.writeText(invite.code).catch(() => {}); toast(t('Code {0} created & copied', invite.code)); reload() })
     .catch(e => toast(e.message))
   const revoke = code => api('/api/admin/invites/revoke', { method: 'POST', body: JSON.stringify({ code }) })
-    .then(() => { toast('Code revoked'); reload() }).catch(e => toast(e.message))
+    .then(() => { toast(t('Code revoked')); reload() }).catch(e => toast(e.message))
   const open = (invites || []).filter(i => !i.usedBy)
   const used = (invites || []).filter(i => i.usedBy)
   return <div className="card">
-    <div className="row between"><h2 style={{ margin: 0 }}>Invite codes</h2>
-      <Button variant="primary" size="sm" onClick={gen} icon="plus">Generate</Button></div>
-    <div className="small muted" style={{ margin: '6px 0 10px' }}>{open.length} unused · {used.length} redeemed</div>
+    <div className="row between"><h2 style={{ margin: 0 }}>{t('Invite codes')}</h2>
+      <Button variant="primary" size="sm" onClick={gen} icon="plus">{t('Generate')}</Button></div>
+    <div className="small muted" style={{ margin: '6px 0 10px' }}>{open.length} {t('unused')} · {used.length} {t('redeemed')}</div>
     {open.map(i => <div key={i.code} className="row between" style={{ padding: '7px 2px', borderBottom: '1px solid var(--sep)' }}>
       <span style={{ fontFamily: 'ui-monospace,SFMono-Regular,Menlo,monospace', fontWeight: 500, letterSpacing: '.06em' }}
-        onClick={() => { navigator.clipboard?.writeText(i.code).catch(() => {}); toast('Copied ' + i.code) }}>{i.code}</span>
+        onClick={() => { navigator.clipboard?.writeText(i.code).catch(() => {}); toast(t('Copied {0}', i.code)) }}>{i.code}</span>
       <button className="iconbtn" style={{ width: 32, height: 30, borderRadius: 8, fontSize: 15, color: 'var(--red)' }} onClick={() => revoke(i.code)} aria-label="revoke"><Icon name="trash" /></button>
     </div>)}
     {used.map(i => <div key={i.code} className="row between dim" style={{ padding: '7px 2px', fontSize: '.8rem' }}>
-      <span style={{ fontFamily: 'monospace' }}>{i.code}</span><span>→ {i.usedByName || 'used'}</span>
+      <span style={{ fontFamily: 'monospace' }}>{i.code}</span><span>→ {i.usedByName || t('used')}</span>
     </div>)}
-    {!open.length && !used.length && <div className="dim small">No codes yet — generate one to invite someone.</div>}
+    {!open.length && !used.length && <div className="dim small">{t('No codes yet — generate one to invite someone.')}</div>}
   </div>
 }
 
@@ -98,49 +98,52 @@ function PresetEditor({ existing, close, reload }) {
   const toast = useUI(s => s.toast)
   const add = exercise => exConfigSheet(exercise, null, cfg => setEx(current => [...current, { id: exercise.id, ...cfg }]), null, { ex })
   const save = () => {
-    if (!name.trim()) return toast('Give the routine a name')
+    if (!name.trim()) return toast(t('Give the routine a name'))
     const body = JSON.stringify({ id: existing?.id, name: name.trim(), emoji: emoji.trim() || 'dumbbell', ex })
     api(existing ? '/api/admin/presets' : '/api/admin/presets', { method: existing ? 'PUT' : 'POST', body })
-      .then(() => { toast(existing ? 'Preset updated' : 'Preset created'); close(); reload() })
+      .then(() => { toast(existing ? t('Preset updated') : t('Preset created')); close(); reload() })
       .catch(e => toast(e.message))
   }
   return <>
-    <h3>{existing ? 'Edit preset' : 'New preset'}</h3>
-    <TextField value={name} onChange={e => setName(e.target.value)} placeholder="Routine name" maxLength={80} />
+    <h3>{existing ? t('Edit preset') : t('New preset')}</h3>
+    <TextField value={name} onChange={e => setName(e.target.value)} placeholder={t('Routine name')} maxLength={80} />
     <div style={{ height: 8 }} />
-    <TextField value={emoji} onChange={e => setEmoji(e.target.value)} placeholder="Icon name" maxLength={40} />
+    <button className="glyph-cell on" style={{ marginBottom: 10 }} title={t('Pick an icon')}
+      onClick={() => glyphPicker(emoji, setEmoji)} aria-label={t('Pick an icon')}>
+      <Icon name={glyphOf(emoji)} />
+    </button>
     <div className="list" style={{ margin: '12px 0' }}>
       {ex.map((item, index) => <div className="item" key={index}>
-        <div className="grow"><div className="tt">{exOr(item.id).n}</div><div className="ss">{exLine(item, 'kg')}</div></div>
-        <button className="iconbtn" aria-label="Remove exercise" onClick={() => setEx(current => current.filter((_, i) => i !== index))}><Icon name="trash" /></button>
+        <div className="grow"><div className="tt">{exerciseNameFor(exOr(item.id))}</div><div className="ss">{exLine(item, 'kg')}</div></div>
+        <button className="iconbtn" aria-label={t('Remove exercise')} onClick={() => setEx(current => current.filter((_, i) => i !== index))}><Icon name="trash" /></button>
       </div>)}
     </div>
-    <Button icon="plus" onClick={() => exercisePicker(add)}>Add exercise</Button>
+    <Button icon="plus" onClick={() => exercisePicker(add)}>{t('Add exercise')}</Button>
     <div style={{ height: 8 }} />
-    <Button variant="primary" onClick={save}>Save preset</Button>
+    <Button variant="primary" onClick={save}>{t('Save preset')}</Button>
   </>
 }
 
 function PresetsCard({ presets, openSheet, reload }) {
   const toast = useUI(s => s.toast)
   const remove = preset => confirmSheet({
-    title: 'Delete ' + preset.name + '?', message: 'This removes it from the preset catalog. Existing user routines are unchanged.',
-    confirmText: 'Delete', danger: true,
+    title: t('Delete {0}?', preset.name), message: t('This removes it from the preset catalog. Existing user routines are unchanged.'),
+    confirmText: t('Delete'), danger: true,
     onConfirm: () => api('/api/admin/presets/delete', { method: 'POST', body: JSON.stringify({ id: preset.id }) })
-      .then(() => { toast('Preset deleted'); reload() }).catch(e => toast(e.message))
+      .then(() => { toast(t('Preset deleted')); reload() }).catch(e => toast(e.message))
   })
   return <div className="card">
-    <div className="row between"><h2 style={{ margin: 0 }}>Preset routines</h2>
-      <Button variant="primary" size="sm" icon="plus" onClick={() => openSheet(close => <PresetEditor close={close} reload={reload} />)}>New</Button></div>
-    <div className="small muted" style={{ margin: '6px 0 10px' }}>Templates available from the starter plan action.</div>
+    <div className="row between"><h2 style={{ margin: 0 }}>{t('Preset routines')}</h2>
+      <Button variant="primary" size="sm" icon="plus" onClick={() => openSheet(close => <PresetEditor close={close} reload={reload} />)}>{t('New')}</Button></div>
+    <div className="small muted" style={{ margin: '6px 0 10px' }}>{t('Templates available from the starter plan action.')}</div>
     {(presets || []).map(preset => <div key={preset.id} className="row between" style={{ padding: '8px 2px', borderBottom: '1px solid var(--sep)' }}>
-      <div><div className="small" style={{ fontWeight: 600 }}>{preset.name}</div><div className="dim" style={{ fontSize: '.72rem' }}>{preset.ex.length} exercises</div></div>
+      <div><div className="small" style={{ fontWeight: 600 }}>{preset.name}</div><div className="dim" style={{ fontSize: '.72rem' }}>{preset.ex.length} {t('exercises')}</div></div>
       <div className="row" style={{ gap: 4 }}>
-        <button className="iconbtn" aria-label="Edit preset" onClick={() => openSheet(close => <PresetEditor existing={preset} close={close} reload={reload} />)}><Icon name="pencil" /></button>
-        <button className="iconbtn" aria-label="Delete preset" style={{ color: 'var(--red)' }} onClick={() => remove(preset)}><Icon name="trash" /></button>
+        <button className="iconbtn" aria-label={t('Edit preset')} onClick={() => openSheet(close => <PresetEditor existing={preset} close={close} reload={reload} />)}><Icon name="pencil" /></button>
+        <button className="iconbtn" aria-label={t('Delete')} style={{ color: 'var(--red)' }} onClick={() => remove(preset)}><Icon name="trash" /></button>
       </div>
     </div>)}
-    {!presets?.length && <div className="dim small">No presets yet.</div>}
+    {!presets?.length && <div className="dim small">{t('No presets yet.')}</div>}
   </div>
 }
 
@@ -162,26 +165,26 @@ function AuditCard({ tick }) {
   useEffect(() => { load(cat) }, [tick])
 
   const clear = () => confirmSheet({
-    title: 'Clear the activity log?',
-    message: 'Every recorded event is deleted. The clear itself is logged, so the gap stays visible.',
-    confirmText: 'Clear', danger: true,
+    title: t('Clear the activity log?'),
+    message: t('Every recorded event is deleted. The clear itself is logged, so the gap stays visible.'),
+    confirmText: t('Clear'), danger: true,
     onConfirm: () => api('/api/admin/audit/clear', { method: 'POST', body: '{}' })
-      .then(() => { toast('Activity log cleared'); pick(cat) }).catch(e => toast(e.message))
+      .then(() => { toast(t('Activity log cleared')); pick(cat) }).catch(e => toast(e.message))
   })
 
   if (meta && !meta.enabled) return null      // AUDIT_LOG=0 — the card isn't there at all
 
   return <div className="card">
-    <div className="row between"><h2 style={{ margin: 0 }}>Activity log</h2>
+    <div className="row between"><h2 style={{ margin: 0 }}>{t('Activity log')}</h2>
       <button className="iconbtn" style={{ width: 32, height: 30, borderRadius: 8, fontSize: 15, color: 'var(--red)' }}
         onClick={clear} aria-label="clear log"><Icon name="trash" /></button></div>
     <div className="small muted" style={{ margin: '6px 0 10px' }}>
-      {meta ? fmtNum(meta.total) + ' events'
-        + (meta.retention.days ? ' · last ' + meta.retention.days + ' days' : '')
-        + (meta.ip_mode === 'off' ? ' · no IP addresses' : '') : 'Loading…'}</div>
+      {meta ? fmtNum(meta.total) + ' ' + t('events')
+        + (meta.retention.days ? ' · ' + t('last {0} days', meta.retention.days) : '')
+        + (meta.ip_mode === 'off' ? ' · ' + t('no IP addresses') : '') : t('Loading…')}</div>
     <div className="chips" style={{ marginBottom: 10 }}>
       {[['', 'All'], ['auth', 'Sign-ins'], ['admin', 'Admin'], ['fail', 'Failed']].map(([v, l]) =>
-        <button key={v} className={'chip' + (cat === v ? ' on' : '')} onClick={() => pick(v)}>{l}</button>)}
+        <button key={v} className={'chip' + (cat === v ? ' on' : '')} onClick={() => pick(v)}>{t(l)}</button>)}
     </div>
     {rows.map(e => {
       const line = auditLine(e)
@@ -189,16 +192,16 @@ function AuditCard({ tick }) {
         <div className="grow">
           <div className="small" style={{ fontWeight: 600 }}>{line.title}
             {/* a red pill, not a red row: twenty fumbled Face IDs in a row shouldn't read as an incident */}
-            {!e.ok && <span className="tag" style={{ marginLeft: 6, color: 'var(--red)' }}>failed</span>}
-            {auditCat(e.ev) === 'admin' && <span className="tag acc" style={{ marginLeft: 6 }}>admin</span>}</div>
+            {!e.ok && <span className="tag" style={{ marginLeft: 6, color: 'var(--red)' }}>{t('failed')}</span>}
+            {auditCat(e.ev) === 'admin' && <span className="tag acc" style={{ marginLeft: 6 }}>{t('admin')}</span>}</div>
           {line.sub && <div className="dim" style={{ fontSize: '.72rem' }}>{line.sub}</div>}
         </div>
         <span className="small muted" style={{ flex: 'none', marginLeft: 8 }}>{fmtWhen(e.ts, meta?.now)}</span>
       </div>
     })}
-    {meta && !rows.length && <div className="dim small">Nothing logged yet.</div>}
+    {meta && !rows.length && <div className="dim small">{t('Nothing logged yet.')}</div>}
     {meta?.nextBefore && <div style={{ marginTop: 10 }}>
-      <Button size="sm" onClick={() => load(cat, meta.nextBefore)}>Show more</Button></div>}
+      <Button size="sm" onClick={() => load(cat, meta.nextBefore)}>{t('Show more')}</Button></div>}
   </div>
 }
 
@@ -213,9 +216,9 @@ export default function Admin() {
   const [inviteOnly, setInviteOnly] = useState(false)
   const [tick, setTick] = useState(0)          // the ↻ button; the activity log listens to it
 
-  const loadUsers = () => api('/api/admin/users').then(d => { setUsers(d.users); setInviteOnly(d.invite_only) }).catch(e => toast(e.message || 'Failed to load'))
+  const loadUsers = () => api('/api/admin/users').then(d => { setUsers(d.users); setInviteOnly(d.invite_only) }).catch(e => toast(e.message || t('Failed to load')))
   const loadInvites = () => api('/api/admin/invites').then(d => setInvites(d.invites)).catch(() => {})
-  const loadPresets = () => api('/api/presets').then(d => setPresets(d.presets)).catch(e => toast(e.message || 'Failed to load presets'))
+  const loadPresets = () => api('/api/presets').then(d => setPresets(d.presets)).catch(e => toast(e.message || t('Failed to load presets')))
   // poll every 15s so the "training now" section stays live without a manual refresh
   useEffect(() => { if (!user?.admin) return; loadUsers(); loadInvites(); loadPresets(); const iv = setInterval(loadUsers, 15000); return () => clearInterval(iv) }, [])
   if (!user?.admin) return null
@@ -227,24 +230,24 @@ export default function Admin() {
 
   return <div className="narrow">
     <div className="hdr">
-      <button className="iconbtn" onClick={() => nav('/settings')} aria-label="Back"><Icon name="chevronLeft" /></button>
-      <div style={{ flex: 1, marginLeft: 8 }}><h1 style={{ margin: 0 }}>Admin</h1>
-        <div className="sub">{users ? users.length + ' users · ' + activeCount + ' active this week' : 'Loading…'}</div></div>
-      <button className="iconbtn" onClick={() => { loadUsers(); loadInvites(); loadPresets(); setTick(n => n + 1) }} aria-label="refresh">↻</button>
+      <button className="iconbtn" onClick={() => nav('/settings')} aria-label={t('Back')}><Icon name="chevronLeft" /></button>
+      <div style={{ flex: 1, marginLeft: 8 }}><h1 style={{ margin: 0 }}>{t('Admin')}</h1>
+        <div className="sub">{users ? users.length + ' ' + t('users') + ' · ' + activeCount + ' ' + t('active this week') : t('Loading…')}</div></div>
+      <button className="iconbtn" onClick={() => { loadUsers(); loadInvites(); loadPresets(); setTick(n => n + 1) }} aria-label={t('Refresh')}>↻</button>
     </div>
 
     <div className="tiles" style={{ marginBottom: 12 }}>
-      <div className="tile"><div className="l">Users</div><div className="v">{users ? users.length : '—'}</div></div>
-      <div className="tile"><div className="l">Training now</div><div className="v" style={{ color: liveUsers.length ? 'var(--acc)' : undefined }}>{users ? liveUsers.length : '—'}</div></div>
-      <div className="tile"><div className="l">Active 7d</div><div className="v">{users ? activeCount : '—'}</div></div>
-      <div className="tile"><div className="l">Disabled</div><div className="v">{users ? disabledCount : '—'}</div></div>
+      <div className="tile"><div className="l">{t('Users')}</div><div className="v">{users ? users.length : '—'}</div></div>
+      <div className="tile"><div className="l">{t('Training now')}</div><div className="v" style={{ color: liveUsers.length ? 'var(--acc)' : undefined }}>{users ? liveUsers.length : '—'}</div></div>
+      <div className="tile"><div className="l">{t('Active 7d')}</div><div className="v">{users ? activeCount : '—'}</div></div>
+      <div className="tile"><div className="l">{t('Disabled')}</div><div className="v">{users ? disabledCount : '—'}</div></div>
     </div>
 
     {liveUsers.length > 0 && <div className="card" style={{ borderColor: 'var(--acc)' }}>
-      <h2 className="row" style={{ margin: '0 0 8px', gap: 6 }}><Icon name="dot" style={{ fontSize: 10, color: 'var(--green)' }} />Training now</h2>
+      <h2 className="row" style={{ margin: '0 0 8px', gap: 6 }}><Icon name="dot" style={{ fontSize: 10, color: 'var(--green)' }} />{t('Training now')}</h2>
       {liveUsers.map(u => <div key={u.id} className="row between" style={{ padding: '8px 2px', borderBottom: '1px solid var(--sep)' }} onClick={() => openUser(u.id)}>
         <div><div className="small" style={{ fontWeight: 600 }}>{u.name}</div>
-          <div className="dim" style={{ fontSize: '.72rem' }}>{u.live.name} · ex {u.live.exIdx}/{u.live.exTotal} · {u.live.setsDone}/{u.live.setsTotal} sets</div></div>
+          <div className="dim" style={{ fontSize: '.72rem' }}>{u.live.name} · ex {u.live.exIdx}/{u.live.exTotal} · {u.live.setsDone}/{u.live.setsTotal} {t('sets')}</div></div>
         <span className="tag acc">{dur(Date.now() - u.live.startedAt)}</span>
       </div>)}
     </div>}
@@ -252,14 +255,14 @@ export default function Admin() {
     <InvitesCard invites={invites} reload={loadInvites} />
     <PresetsCard presets={presets} openSheet={openSheet} reload={loadPresets} />
 
-    <h4 className="sec">Users</h4>
+    <h4 className="sec">{t('Users')}</h4>
     <div className="list">
       {(users || []).map(u => <div key={u.id} className="item" onClick={() => openUser(u.id)} style={u.disabled ? { opacity: .55 } : null}>
-        <div className="grow"><div className="tt">{u.live && <Icon name="dot" style={{ fontSize: 9, color: 'var(--green)', display: 'inline-block', marginRight: 5 }} />}{u.name} {u.admin && <span className="tag acc" style={{ marginLeft: 4 }}>admin</span>}{u.disabled && <span className="tag" style={{ marginLeft: 4, color: 'var(--red)' }}>off</span>}</div>
-          <div className="ss">{u.live ? 'training now · ' + u.live.name : u.workouts + ' workouts' + (u.lastWorkout ? ' · last ' + fmtDate(u.lastWorkout) : '') + ' · synced ' + rel(u.lastSync)}</div></div>
+        <div className="grow"><div className="tt">{u.live && <Icon name="dot" style={{ fontSize: 9, color: 'var(--green)', display: 'inline-block', marginRight: 5 }} />}{u.name} {u.admin && <span className="tag acc" style={{ marginLeft: 4 }}>{t('admin')}</span>}{u.disabled && <span className="tag" style={{ marginLeft: 4, color: 'var(--red)' }}>{t('off')}</span>}</div>
+          <div className="ss">{u.live ? t('training now') + ' · ' + u.live.name : u.workouts + ' ' + t('workouts') + (u.lastWorkout ? ' · ' + t('last') + ' ' + fmtDate(u.lastWorkout) : '') + ' · ' + t('synced') + ' ' + rel(u.lastSync)}</div></div>
         {u.hasPush && <Icon name="bell" title="push enabled" style={{ fontSize: 15, color: 'var(--label-3)' }} />}<Icon name="chevronRight" className="chev" />
       </div>)}
-      {users && !users.length && <div className="empty">No users yet.</div>}
+      {users && !users.length && <div className="empty">{t('No users yet.')}</div>}
     </div>
 
     <div style={{ marginTop: 14 }}><AuditCard tick={tick} /></div>

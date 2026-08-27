@@ -7,7 +7,7 @@ import { guestAllowed } from '../lib/guest.js'
 
 const KEY = 'gym_state_v1'
 export const DEF = {
-  unit: 'kg', restSec: 90, restPauseSec: 15, sound: true, keepAwake: true, lang: 'en',
+  unit: 'kg', restSec: 90, restPauseSec: 15, sound: true, keepAwake: true, lang: 'es',
   theme: 'dark', accent: 'lime', body: 'male', targetW: null,
   bodyweight: [], routines: [], week: {}, dayPlan: {},
   exWeights: {}, workouts: [], active: null, customEx: [], gifSize: 'full',
@@ -15,7 +15,7 @@ export const DEF = {
   // that a profile which never chose (loaded state is overlaid on DEF, on every path: local,
   // server pull, backup import) still falls back to the `showRir` boolean this replaced and
   // keeps the column it had. See effortOf.
-  reminder: { on: false, time: '08:00', tz: null }, effort: null, autoBackup: false,
+  reminder: { on: false, time: '08:00', tz: null, feeOn: false, feeInterval: 'monthly', feeDate: '' }, effort: null, autoBackup: false,
   // Equipment profiles (issue: filter Library/picker/routines by what you actually own —
   // e.g. "Home" vs "Gym" — building on the session-only equipment filter from issue #6).
   equipProfiles: [], activeEquipId: null, equipFilterOn: false,

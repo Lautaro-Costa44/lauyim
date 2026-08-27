@@ -14,7 +14,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
 const localesDir = join(dirname(fileURLToPath(import.meta.url)), '..', 'src', 'locales')
-const files = readdirSync(localesDir).filter(f => f.endsWith('.js')).sort()
+const files = readdirSync(localesDir).filter(f => /^(?:[a-z]{2}(?:-[A-Z]{2})?)\.js$/.test(f)).sort()
 
 if (!files.length) {
   console.error(`No locale files found in ${localesDir}`)
@@ -29,6 +29,11 @@ for (const file of files) {
     process.exit(1)
   }
   locales.set(file.replace(/\.js$/, ''), new Set(Object.keys(dict)))
+}
+
+if (locales.size === 1) {
+  console.log(`${locales.size} locale, ${[...locales.values()][0].size} keys — valid.`)
+  process.exit(0)
 }
 
 // How many locales carry each key — 1 means the key was added to a single file only,

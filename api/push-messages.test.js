@@ -1,27 +1,40 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { dayReminderPush, restTimerPush, testPush } from './push-messages.js';
+import { dayReminderPush, gymFeePush, restTimerPush, testPush } from './push-messages.js';
 
-test('localizes every server-generated notification in pt-BR', () => {
-  assert.deepEqual(restTimerPush('pt-BR'), {
+test('localizes every server-generated notification in Spanish', () => {
+  assert.deepEqual(restTimerPush('es'), {
     title: 'Descanso terminado 💪',
-    body: 'Hora da próxima série.',
+    body: 'Es hora de tu siguiente serie.',
     tag: 'rest-timer',
   });
-  assert.deepEqual(testPush('pt-BR'), {
+  assert.deepEqual(testPush('es'), {
     title: 'openGym',
-    body: 'Notificação de teste ✅ — é assim que os alertas aparecem.',
+    body: 'Notificación de prueba ✅ — así se muestran las alertas.',
     tag: 'test',
   });
-  assert.deepEqual(dayReminderPush('pt-BR', { name: 'Treino A', emoji: '💪' }), {
-    title: '💪 Treino A hoje',
-    body: 'Está no seu plano — vamos treinar 💪',
+  assert.deepEqual(dayReminderPush('es', { name: 'Rutina A', emoji: '💪' }), {
+    title: '💪 Rutina A hoy',
+    body: 'Está en tu plan — vamos 💪',
     tag: 'day-reminder',
   });
 });
 
 test('keeps the existing English copy as the fallback', () => {
-  assert.deepEqual(restTimerPush('fr'), restTimerPush('en'));
-  assert.equal(dayReminderPush('unknown', null).title, 'Workout planned today');
-  assert.equal(testPush(undefined).body, 'Test notification ✅ — this is what alerts look like.');
+  assert.equal(dayReminderPush('en', null).title, 'Workout planned today');
+  assert.equal(restTimerPush('unknown').title, 'Descanso terminado 💪');
+  assert.equal(testPush(undefined).body, 'Notificación de prueba ✅ — así se muestran las alertas.');
+});
+
+test('localizes gym-fee reminders and preserves their frequency', () => {
+  assert.deepEqual(gymFeePush('es', 'bimonthly'), {
+    title: 'Cuota del gimnasio',
+    body: 'Recuerda pagar tu cuota bimensual.',
+    tag: 'gym-fee',
+  });
+  assert.deepEqual(gymFeePush('en', 'annual'), {
+    title: 'Gym membership fee',
+    body: 'Remember to pay your annual gym membership fee.',
+    tag: 'gym-fee',
+  });
 });

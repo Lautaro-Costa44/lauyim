@@ -58,8 +58,8 @@ function Shell() {
     mql.addEventListener('change', onChange)
     return () => mql.removeEventListener('change', onChange)
   }, [S.theme, S.accent])
-  useEffect(() => { setLang(S.lang || 'en') }, [S.lang])
-  useEffect(() => { document.documentElement.lang = S.lang || 'en' }, [langV, S.lang])
+  useEffect(() => { setLang(S.lang || 'es') }, [S.lang])
+  useEffect(() => { document.documentElement.lang = S.lang === 'en' ? 'en' : 'es' }, [langV, S.lang])
   // every tab/route change starts at the top of the page
   useEffect(() => { window.scrollTo(0, 0) }, [loc.pathname])
   // bound to the workout, not to the route — checking Stats mid-session keeps the screen on

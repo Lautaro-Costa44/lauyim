@@ -7,17 +7,17 @@ const COPY = {
     dayRoutineSuffix: 'today',
     dayBody: "It's on your plan — let's go 💪",
   },
-  'pt-BR': {
+  es: {
     restTitle: 'Descanso terminado 💪',
-    restBody: 'Hora da próxima série.',
-    testBody: 'Notificação de teste ✅ — é assim que os alertas aparecem.',
-    dayFallbackTitle: 'Treino planejado para hoje',
-    dayRoutineSuffix: 'hoje',
-    dayBody: 'Está no seu plano — vamos treinar 💪',
+    restBody: 'Es hora de tu siguiente serie.',
+    testBody: 'Notificación de prueba ✅ — así se muestran las alertas.',
+    dayFallbackTitle: 'Entrenamiento planificado para hoy',
+    dayRoutineSuffix: 'hoy',
+    dayBody: 'Está en tu plan — vamos 💪',
   },
 };
 
-const copyFor = lang => COPY[lang] || COPY.en;
+const copyFor = lang => lang === 'en' ? COPY.en : COPY.es;
 
 export function restTimerPush(lang) {
   const copy = copyFor(lang);
@@ -37,4 +37,16 @@ export function dayReminderPush(lang, routine) {
     body: copy.dayBody,
     tag: 'day-reminder',
   };
+}
+
+export function gymFeePush(lang, interval) {
+  const spanish = lang !== 'en'
+  const labels = spanish
+    ? { monthly: 'mensual', bimonthly: 'bimensual', annual: 'anual' }
+    : { monthly: 'monthly', bimonthly: 'every two months', annual: 'annual' }
+  return {
+    title: spanish ? 'Cuota del gimnasio' : 'Gym membership fee',
+    body: spanish ? `Recuerda pagar tu cuota ${labels[interval] || labels.monthly}.` : `Remember to pay your ${labels[interval] || labels.monthly} gym membership fee.`,
+    tag: 'gym-fee'
+  }
 }

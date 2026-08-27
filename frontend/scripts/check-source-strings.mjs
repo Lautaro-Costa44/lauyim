@@ -48,7 +48,7 @@ for (const file of walk(srcDir)) {
 }
 
 const defined = new Set()
-for (const file of readdirSync(localesDir).filter(f => f.endsWith('.js'))) {
+for (const file of readdirSync(localesDir).filter(f => /^(?:[a-z]{2}(?:-[A-Z]{2})?)\.js$/.test(f))) {
   const pack = (await import(pathToFileURL(join(localesDir, file)).href)).default
   for (const key of Object.keys(pack)) defined.add(key)
 }
@@ -65,5 +65,5 @@ for (const key of missing) {
   console.log(`  ${JSON.stringify(key)}`)
   for (const f of [...used.get(key)].sort()) console.log(`      ${f}`)
 }
-console.log(`\nThese render English in all ${readdirSync(localesDir).filter(f => f.endsWith('.js')).length} translated languages.`)
+  console.log(`\nThese render English in all ${readdirSync(localesDir).filter(f => /^(?:[a-z]{2}(?:-[A-Z]{2})?)\.js$/.test(f)).length} translated languages.`)
 process.exit(strict ? 1 : 0)

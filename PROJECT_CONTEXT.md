@@ -177,7 +177,8 @@ them, so its reported volume/1RM figures pick up the fix automatically too.
 
 ## i18n
 
-All new strings are translated in `locales/es.js` (the other ten locales fall back to English via
+All new strings are translated in `locales/es.js` (English is the source language and Spanish is the
+default locale; untranslated strings fall back to English via
 `t()`, which is safe but not localized — nobody's asked for those yet).
 
 ## Out of scope for this pass

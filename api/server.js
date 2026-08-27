@@ -10,7 +10,7 @@ import {
   generateRegistrationOptions, verifyRegistrationResponse,
   generateAuthenticationOptions, verifyAuthenticationResponse
 } from '@simplewebauthn/server';
-import webpush from 'web-push';
+import { dayReminderPush, gymFeePush, restTimerPush, testPush } from './push-messages.js';
 import { dayReminderPush, restTimerPush, testPush } from './push-messages.js';
 import { verifyError } from './verify-error.js';
 
@@ -38,6 +38,21 @@ const MAX_BODY = 5 * 1024 * 1024;
 const SECURE = /^https:/i.test(ORIGIN) ? ' Secure;' : '';
 
 fs.mkdirSync(DATA, { recursive: true });
+function feeDueDate(reminder, today) {
+  if (!reminder?.feeOn || !/^\d{4}-\d{2}-\d{2}$/.test(reminder.feeDate || '')) return null;
+  const interval = reminder.feeInterval === 'annual' ? 12 : reminder.feeInterval === 'bimonthly' ? 2 : 1;
+  const anchor = new Date(reminder.feeDate + 'T12:00:00');
+  if (Number.isNaN(anchor.getTime())) return null;
+  if (reminder.feeDate > today) return null;
+  let due = new Date(anchor);
+  while (due.toISOString().slice(0, 10) <= today) {
+    const next = new Date(due);
+    next.setMonth(next.getMonth() + interval);
+    due = next;
+  }
+  due.setMonth(due.getMonth() - interval);
+  return due.toISOString().slice(0, 10);
+}
 
 /* ---------- secret + db ---------- */
 const secretFile = path.join(DATA, 'secret');
@@ -245,18 +260,25 @@ setInterval(() => {
   for (const user of db.users) {
     if (!db.subs.some(s => s.userId === user.id)) continue;
     const S = readState(user.id);
-    if (!S?.reminder?.on) continue;
+    if (!S?.reminder || (!S.reminder.on && !S.reminder.feeOn)) continue;
     const now = userNow(S.reminder.tz || 'UTC');
     if (!now || S.reminder.time !== now.hhmm) continue;
-    if (user.lastReminder === now.date) continue;
-    if ((S.workouts || []).some(w => w.d === now.date)) continue;
-    const rid = effectiveRoutineId(S, now.date);
-    if (!rid) continue; // rest day — nothing planned
-    const routine = (S.routines || []).find(r => r.id === rid);
-    console.log('reminder firing', user.id, rid);
-    user.lastReminder = now.date;
-    saveDb();
-    sendPush(user.id, dayReminderPush(S.lang, routine));
+    if (S.reminder.on && user.lastReminder !== now.date && !(S.workouts || []).some(w => w.d === now.date)) {
+      const rid = effectiveRoutineId(S, now.date);
+      if (rid) {
+        const routine = (S.routines || []).find(r => r.id === rid);
+        console.log('reminder firing', user.id, rid);
+        user.lastReminder = now.date;
+        saveDb();
+        sendPush(user.id, dayReminderPush(S.lang, routine));
+      }
+    }
+    const feeDate = feeDueDate(S.reminder, now.date);
+    if (feeDate && user.lastFeeReminder !== feeDate) {
+      user.lastFeeReminder = feeDate;
+      saveDb();
+      sendPush(user.id, gymFeePush(S.lang, S.reminder.feeInterval));
+    }
   }
 // Checked every 10s (not 60s) — ticks aren't aligned to the top of the minute, so a 60s
 // interval could sit on your target minute for up to 59s before noticing. 10s caps that at ~9s.

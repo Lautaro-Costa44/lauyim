@@ -198,7 +198,7 @@ export default function Settings() {
       <Row icon="lightbulb" iconTint="var(--yellow)"
         title={IS_ANDROID ? t('In Chrome: ⋮ menu → Add to Home screen') : t('In Safari: Share → Add to Home Screen')}
         subtitle={t('to install lauyim as a full-screen app.') + ' ' + (user ? t('Your data syncs with your profile — sign in anywhere to see it.') : t('Guest data stays on this device — export a backup now and then!'))} />
-    </Section>}
+    </Section>
 
     {/* The version, at the bottom of Settings — which is where the support template has been
         telling people to look for it, and where it was not. On the phone build there is no
@@ -303,6 +303,18 @@ function PushCard({ S, update, toast }) {
             onChange={e => update(s => { s.reminder = { ...(s.reminder || DEF.reminder), time: e.target.value, tz: localTZ() } })} />
         </Row>
       )}
+      {on && <Row icon="calendar" iconTint="var(--teal)" title={t('Gym membership fee')} subtitle={t('Receive a reminder when your membership fee is due.')}>
+        <Switch checked={!!S.reminder?.feeOn} onChange={v => update(s => { s.reminder = { ...(s.reminder || DEF.reminder), feeOn: v, tz: localTZ() } })} />
+      </Row>}
+      {on && S.reminder?.feeOn && <>
+        <SelectRow icon="timer" iconTint="var(--teal)" title={t('Payment frequency')}
+          value={S.reminder?.feeInterval || 'monthly'} onChange={v => update(s => { s.reminder = { ...(s.reminder || DEF.reminder), feeInterval: v } })}
+          options={[['monthly', 'Monthly'], ['bimonthly', 'Every two months'], ['annual', 'Annual']].map(([value, label]) => ({ value, label: t(label) }))} />
+        <Row icon="calendar" iconTint="var(--teal)" title={t('Next payment date')}>
+          <input type="date" className="timef" value={S.reminder?.feeDate || ''}
+            onChange={e => update(s => { s.reminder = { ...(s.reminder || DEF.reminder), feeDate: e.target.value } })} />
+        </Row>
+      </>}
     </Section>
     {on && <div style={{ marginTop: -12, marginBottom: 22 }}><Button size="sm" icon="bell" onClick={test}>{t('Send test notification')}</Button></div>}
   </>
