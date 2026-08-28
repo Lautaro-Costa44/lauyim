@@ -9,7 +9,7 @@ test('localizes every server-generated notification in Spanish', () => {
     tag: 'rest-timer',
   });
   assert.deepEqual(testPush('es'), {
-    title: 'openGym',
+    title: 'lauyim',
     body: 'Notificación de prueba ✅ — así se muestran las alertas.',
     tag: 'test',
   });

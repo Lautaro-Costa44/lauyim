@@ -1,7 +1,7 @@
 {
-  "name": "openGym",
-  "short_name": "openGym",
-  "description": "Personal gym & body weight tracker",
+  "name": "lauyim",
+  "short_name": "lauyim",
+  "description": "Tu gimnasio y seguimiento de peso",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
