@@ -6,12 +6,12 @@ import fs from 'node:fs';
 import path from 'node:path';
 import https from 'node:https';
 import dns from 'node:dns';
+import webpush from 'web-push';
 import {
   generateRegistrationOptions, verifyRegistrationResponse,
   generateAuthenticationOptions, verifyAuthenticationResponse
 } from '@simplewebauthn/server';
 import { dayReminderPush, gymFeePush, restTimerPush, testPush } from './push-messages.js';
-import { dayReminderPush, restTimerPush, testPush } from './push-messages.js';
 import { verifyError } from './verify-error.js';
 
 const PORT = +(process.env.PORT || 3000);
