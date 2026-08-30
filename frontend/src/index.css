@@ -983,3 +983,215 @@ h4.sec{
   .exmedia img{height:380px}
   .hm-wrap{display:flex;flex-direction:column;align-items:center}
 }
+
+/* --------------------------------------------------- survey wizard --- */
+.survey-wizard{
+  padding-bottom:calc(var(--sab) + 80px);
+  min-height:100vh;
+  display:flex;
+  flex-direction:column;
+}
+.survey-header{
+  display:flex;
+  align-items:center;
+  gap:12px;
+  padding:12px 0 16px;
+}
+.survey-progress-wrap{
+  flex:1;
+  height:6px;
+  background:var(--surface-3);
+  border-radius:3px;
+  overflow:hidden;
+}
+.survey-progress-bar{
+  height:100%;
+  background:var(--acc);
+  border-radius:3px;
+  transition:width var(--med) var(--ease);
+}
+.survey-body{
+  flex:1;
+  padding-top:8px;
+}
+.survey-step-title{
+  font-size:22px;
+  font-weight:600;
+  letter-spacing:-.02em;
+  margin:0 0 4px;
+}
+.survey-step-sub{
+  font-size:14px;
+  line-height:1.4;
+  margin:0 0 16px;
+}
+.survey-grid{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:10px;
+}
+@media (max-width:480px){
+  .survey-grid{grid-template-columns:1fr}
+}
+.survey-option{
+  display:flex;
+  flex-direction:column;
+  align-items:flex-start;
+  text-align:left;
+  padding:14px 16px;
+  border-radius:var(--r-card);
+  background:var(--surface);
+  border:1.5px solid transparent;
+  cursor:pointer;
+  transition:border-color var(--fast), background var(--fast), transform var(--fast);
+  width:100%;
+}
+.survey-option:active{
+  transform:scale(.98);
+}
+.survey-option.on{
+  border-color:var(--acc);
+  background:var(--acc-soft);
+}
+.survey-opt-label{
+  font-size:16px;
+  font-weight:600;
+  color:var(--label);
+  margin-bottom:3px;
+}
+.survey-option.on .survey-opt-label{
+  color:var(--acc);
+}
+.survey-opt-sub{
+  font-size:13px;
+  color:var(--label-2);
+  line-height:1.3;
+}
+.survey-stepper{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:20px;
+  padding:20px 0;
+  background:var(--surface);
+  border-radius:var(--r-card);
+}
+.survey-stepper-val{
+  font-size:36px;
+  font-weight:700;
+  min-width:40px;
+  text-align:center;
+  color:var(--label);
+}
+.survey-pills{
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+  margin-top:10px;
+}
+.survey-pill{
+  display:inline-flex;
+  align-items:center;
+  padding:8px 16px;
+  border-radius:var(--r-xl);
+  background:var(--surface);
+  color:var(--label-2);
+  font-size:14px;
+  font-weight:500;
+  border:1.5px solid transparent;
+  cursor:pointer;
+  transition:all var(--fast);
+}
+.survey-pill.on{
+  background:var(--acc-soft);
+  color:var(--acc);
+  border-color:var(--acc);
+  font-weight:600;
+}
+.survey-footer{
+  position:sticky;
+  bottom:calc(var(--sab) + 12px);
+  margin-top:auto;
+  padding-top:20px;
+}
+
+.survey-days-bar{
+  display:grid;
+  grid-template-columns:repeat(7, 1fr);
+  gap:6px;
+  margin:12px 0 16px;
+}
+.survey-day-btn{
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  padding:12px 2px;
+  border-radius:var(--r);
+  background:var(--surface);
+  border:1.5px solid transparent;
+  color:var(--label-2);
+  cursor:pointer;
+  transition:all var(--fast);
+  font-weight:600;
+  font-size:14px;
+}
+.survey-day-btn:active{
+  transform:scale(.95);
+}
+.survey-day-btn.on{
+  background:var(--acc-soft);
+  color:var(--acc);
+  border-color:var(--acc);
+}
+
+.survey-banner{
+  background:color-mix(in srgb, var(--yellow) 14%, transparent);
+  border:1px solid color-mix(in srgb, var(--yellow) 35%, transparent);
+  border-radius:var(--r);
+  padding:12px 14px;
+  font-size:13.5px;
+  line-height:1.45;
+  color:var(--yellow);
+  margin:14px 0 6px;
+  display:flex;
+  align-items:flex-start;
+  gap:10px;
+}
+
+.survey-inputs-row{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:12px;
+  margin-top:8px;
+}
+@media (max-width:480px){
+  .survey-inputs-row{grid-template-columns:1fr}
+}
+.survey-input-card{
+  background:var(--surface);
+  border-radius:var(--r-card);
+  padding:14px;
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+}
+.survey-input-card .lbl{
+  font-size:13px;
+  font-weight:600;
+  color:var(--label-2);
+}
+.survey-input-card input{
+  background:var(--surface-2);
+  border:1px solid var(--sep-op);
+  border-radius:var(--r-sm);
+  color:var(--label);
+  font-size:18px;
+  font-weight:600;
+  padding:8px 12px;
+  outline:none;
+}
+.survey-input-card input:focus{
+  border-color:var(--acc);
+}
+

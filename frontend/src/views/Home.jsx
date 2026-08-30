@@ -10,11 +10,13 @@ import Icon from '../components/Icon.jsx'
 import { Button } from '../components/ui.jsx'
 import { glyphOf } from '../lib/glyphs.js'
 
+
 // Home = what to do now + a quick glance. Deep charts & history live in Stats.
 export default function Home() {
   const nav = useNavigate()
   const S = useStore(s => s.S)
   const user = useStore(s => s.user)
+  const config = useStore(s => s.config)
   const [weekOffset, setWeekOffset] = useState(0)
 
   const today = new Date()
@@ -47,6 +49,20 @@ export default function Home() {
 
   // today's session shown right under the week strip
   const onToday = () => { if (S.active) nav('/workout'); else if (routine) startFlow(routine.id); else dayOverrideSheet(todayISO()) }
+
+  // Welcome card: se muestra si el usuario no tiene rutinas todavía.
+  // Migración implícita: si estadoInicial es 'pendiente' pero ya tiene routines (usuario anterior),
+  // tratarlo como si hubiera elegido un plan manual — no mostrar la card.
+  const surveyEnabled = config?.survey_enabled !== false   // default true si config aún no cargó
+  const estadoEfectivo = S.routines.length > 0
+    ? (S.estadoInicial !== 'pendiente' ? S.estadoInicial : 'plan_manual')
+    : (S.estadoInicial || 'pendiente')
+  const mostrarBienvenida = !S.active && estadoEfectivo === 'pendiente'
+
+  const irAlPlan = () => {
+    useStore.getState().update(st => { st.estadoInicial = 'plan_manual' })
+    nav('/plan')
+  }
 
   return <div className="narrow">
     <div className="hdr">
@@ -86,15 +102,33 @@ export default function Home() {
       </div>
     </div>
 
-    {!S.routines.length && !S.active && (
+    {mostrarBienvenida && (
       <div className="card">
         <div className="row" style={{ gap: 10, marginBottom: 6 }}>
           <span className="lrow-i"><Icon name="sparkles" /></span>
           <div className="big" style={{ fontSize: 22 }}>{t('Welcome!')}</div>
         </div>
-        <div className="muted small" style={{ marginBottom: 12 }}>{t('Set up your weekly routine to get going — or load a ready-made Push / Pull / Legs plan.')}</div>
-        <Button variant="primary" icon="sparkles" onClick={loadStarterPlan}>{t('Load starter plan (PPL)')}</Button>
-        <div style={{ height: 8 }} /><Button onClick={() => nav('/plan')}>{t('Build my own plan')}</Button>
+        <div className="muted small" style={{ marginBottom: 16, lineHeight: 1.5 }}>
+          {t('Configurá tu rutina semanal para empezar.')}
+        </div>
+        {surveyEnabled && (
+          <>
+            <Button variant="primary" icon="sparkles" onClick={() => nav('/onboarding/encuesta')} style={{ width: '100%' }}>
+              {t('Recomendarme una rutina')}
+            </Button>
+            <div style={{ height: 10 }} />
+          </>
+        )}
+        <Button onClick={loadStarterPlan} style={{ width: '100%' }}>
+          {t('Cargar plan predeterminado (PPL)')}
+        </Button>
+        <div style={{ height: 10 }} />
+        <button
+          style={{ background: 'none', border: 'none', color: 'var(--acc)', fontSize: '0.93rem', cursor: 'pointer', width: '100%', padding: '6px 0', textAlign: 'center' }}
+          onClick={irAlPlan}
+        >
+          {t('Crear rutina manualmente')}
+        </button>
       </div>
     )}
 

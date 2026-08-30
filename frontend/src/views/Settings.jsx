@@ -17,6 +17,7 @@ export default function Settings() {
   const nav = useNavigate()
   const S = useStore(s => s.S)
   const user = useStore(s => s.user)
+  const config = useStore(s => s.config)
   const { update, replaceState, setUser, pullState, pushState, signOut, signOutAll, resetDemo } = useStore()
   const toast = useUI(s => s.toast)
   const fileRef = useRef(null)
@@ -181,6 +182,18 @@ export default function Settings() {
 
     {/* ---------- data: fill it, bring things over, back it up, wipe it ---------- */}
     <Section title={t('Data')}>
+      {config?.survey_enabled !== false && (
+        <Row icon="sparkles" iconTint="var(--acc)" title={t('Volver a hacer la encuesta')}
+          subtitle={t('Regenera tu rutina con respuestas actualizadas.')}
+          accessory="chevron"
+          onClick={() => confirmSheet({
+            title: t('¿Reemplazar tu rutina actual?'),
+            message: t('La nueva encuesta va a reemplazar tu rutina recomendada. Tus entrenamientos registrados no se modifican.'),
+            confirmText: t('Continuar'),
+            onConfirm: () => nav('/onboarding/encuesta'),
+          })}
+        />
+      )}
       <Row icon="sparkles" iconTint="var(--acc)" title={t('Load starter plan (PPL)')} accessory="chevron" onClick={loadStarterPlan} />
       <Row icon="shuffle" iconTint="var(--teal)" title={t('Import from another app')}
         subtitle={t('FitNotes, Strong, Hevy — or body weight from Apple Health')}

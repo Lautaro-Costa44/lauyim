@@ -61,6 +61,7 @@ export async function loadStarterPlan() {
     if (push) st.week[1] = push.id
     if (pull) st.week[3] = pull.id
     if (legs) st.week[5] = legs.id
+    st.estadoInicial = 'plan_predeterminado'
   })
   toast(t('Starter plan loaded'))
 }

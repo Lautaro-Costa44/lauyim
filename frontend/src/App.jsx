@@ -24,6 +24,7 @@ import History from './views/History.jsx'
 import Library from './views/Library.jsx'
 import Settings from './views/Settings.jsx'
 import Admin from './views/Admin.jsx'
+import SurveyWizard from './views/SurveyWizard.jsx'
 
 bindUI(useUI)   // lets the shared controls open sheets without importing the store at module scope
 
@@ -65,8 +66,12 @@ function Shell() {
   // bound to the workout, not to the route — checking Stats mid-session keeps the screen on
   useWakeLock(!!S.active && S.keepAwake !== false)
 
-  const authed = user || isGuest
-  if (!ready && !authed) return (
+  // Leemos si el backend/configuracion permite invitados
+  const allowGuest = S.allowGuest !== false && S.allowGuest !== 0
+  
+  // Si no se permiten invitados, estar en modo invitado NO cuenta como estar autenticado
+  const authed = !!user || (allowGuest && isGuest)
+  if (!ready) return (
     <div id="app">
       <div style={{ paddingTop: '44vh', display: 'flex', justifyContent: 'center', fontSize: 34, color: 'var(--label-3)' }}>
         <Icon name="dumbbell" />
@@ -90,6 +95,7 @@ function Shell() {
               <Route path="/history" element={<History />} />
               <Route path="/library" element={<Library />} />
               <Route path="/settings" element={<Settings />} />
+              <Route path="/onboarding/encuesta" element={<SurveyWizard />} />
               <Route path="/admin" element={user?.admin ? <Admin /> : <Navigate to="/home" replace />} />
               <Route path="*" element={<Navigate to="/home" replace />} />
             </Routes>

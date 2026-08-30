@@ -23,6 +23,13 @@ export const DEF = {
   // every time you do the movement ("seat 4, pin 7"). Distinct from a routine's `note`, which
   // belongs to one exercise in one plan, and from a session note, which belongs to one day.
   exNotes: {},
+  // Onboarding survey + routine generation (spec: motor-rutinas).
+  // estadoInicial: 'pendiente' until the user picks one of the three paths in the Welcome card.
+  // Null fields until the user completes the survey.
+  estadoInicial: 'pendiente',
+  respuestasEncuesta: null,
+  rutinaGenerada: null,
+  fechaUltimaEncuesta: null,
 }
 const clone = o => JSON.parse(JSON.stringify(o))
 

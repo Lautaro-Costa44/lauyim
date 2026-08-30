@@ -28,6 +28,9 @@ const INVITE_ONLY = /^(1|true|yes|on)$/i.test(process.env.INVITE_ONLY || '');
 // out of is still the wrong front door (#42). Default ON, so existing instances are unchanged;
 // the polarity is inverted from INVITE_ONLY because the safe default here is the permissive one.
 const ALLOW_GUEST = !/^(0|false|no|off)$/i.test(process.env.ALLOW_GUEST || '');
+// Motor de encuesta de onboarding y generación de rutinas. Default true; poner SURVEY_ENABLED=false
+// para ocultar completamente la opción en el frontend sin afectar rutinas ya generadas.
+const SURVEY_ENABLED = !/^(0|false|no|off)$/i.test(process.env.SURVEY_ENABLED || 'true');
 // 90 days keeps someone who trains a few times a week permanently signed in without a stolen
 // cookie staying good for a year. Overridable because a family instance and one on the open
 // internet don't want the same number. Only affects cookies minted from now on — the expiry is
@@ -563,7 +566,7 @@ const routes = {
   'GET /api/health': async (req, res) => json(res, 200, { ok: true, users: db.users.length }),
 
   // Public config the login screen needs before anyone is signed in.
-  'GET /api/config': async (req, res) => json(res, 200, { invite_only: INVITE_ONLY, allow_guest: ALLOW_GUEST }),
+  'GET /api/config': async (req, res) => json(res, 200, { invite_only: INVITE_ONLY, allow_guest: ALLOW_GUEST, survey_enabled: SURVEY_ENABLED }),
 
   'GET /api/me': async (req, res) => {
     const user = readSession(req);
