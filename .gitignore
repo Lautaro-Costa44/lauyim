@@ -3,8 +3,8 @@ media/img/
 media/gif/
 
 # Runtime data — users, passkeys, per-user state, session secret
-data/
-!data/db_espanol.json
+# data/
+# !data/db_espanol.json
 # Local config
 .env
 .env.local
