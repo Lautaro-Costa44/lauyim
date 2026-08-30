@@ -23,7 +23,14 @@ const catalogueExercise = ex => {
   return out
 }
 
-export const CATALOGUE = EXDB.map(catalogueExercise)
+export const CUSTOM_CARDIO_EXERCISES = [
+  { id: 'cardio_treadmill', n: 'treadmill running / walking', bp: 'cardio', eq: 'treadmill', tg: 'cardiovascular system', mg: 'quadriceps', sm: ['calves', 'hamstrings'], st: ['Walk or run on the treadmill at a steady or interval pace.'] },
+  { id: 'cardio_bike', n: 'stationary bike cycling', bp: 'cardio', eq: 'stationary bike', tg: 'cardiovascular system', mg: 'quadriceps', sm: ['hamstrings', 'calves'], st: ['Pedal on the stationary bike at a steady cadence or interval resistance.'] },
+  { id: 'cardio_stairmaster', n: 'stairmaster climbing', bp: 'cardio', eq: 'leverage machine', tg: 'cardiovascular system', mg: 'quadriceps', sm: ['glutes', 'calves'], st: ['Step on the stairmaster maintaining an upright posture.'] },
+  { id: 'cardio_bodyweight_hiit', n: 'bodyweight hiit (jumping jacks / burpees / mountain climbers)', bp: 'cardio', eq: 'body weight', tg: 'cardiovascular system', mg: 'quadriceps', sm: ['calves', 'hamstrings'], st: ['Intervals of bodyweight exercises like jumping jacks, burpees, and mountain climbers.'] },
+]
+
+export const CATALOGUE = [...EXDB, ...CUSTOM_CARDIO_EXERCISES].map(catalogueExercise)
 
 // The generated dataset already supplies secondary muscles for most exercises. Keep the
 // handful of conservative catalogue additions that are useful to the muscle map here so a

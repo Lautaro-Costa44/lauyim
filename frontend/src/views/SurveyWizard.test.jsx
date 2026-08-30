@@ -33,13 +33,17 @@ vi.mock('../components/Icon.jsx', () => ({
   default: props => React.createElement('span', props),
 }))
 
-vi.mock('../lib/exercises.js', () => ({
-  EXDB: [
+vi.mock('../lib/exercises.js', () => {
+  const mockDb = [
     { id: '0001', n: 'push up', bp: 'chest', eq: 'body weight', tg: 'pectorals' },
     { id: '0002', n: 'pull up', bp: 'back', eq: 'body weight', tg: 'lats' },
     { id: '0003', n: 'squat', bp: 'upper legs', eq: 'body weight', tg: 'quads' },
-  ],
-}))
+  ]
+  return {
+    EXDB: mockDb,
+    CATALOGUE: mockDb,
+  }
+})
 
 describe('SurveyWizard — §1.28 Test obligatorio avisoFrecuencia en el DOM', () => {
   let root = null

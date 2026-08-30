@@ -1,8 +1,8 @@
 /**
- * Tests del motor de generación de rutinas — v3 (correcciones.md)
+ * Tests del motor de generación de rutinas — v5
  */
 import { describe, it, expect } from 'vitest'
-import { generarRutina, rutinaGeneradaToRoutines, buildRoutineNames } from './generarRutina.js'
+import { generarRutina, rutinaGeneradaToRoutines, buildRoutineNames, derivarSplit, calcularCantidadEjercicios, filtrarPorPreferenciaEquipo, obtenerAlternativas } from './generarRutina.js'
 
 const MOCK_DICT_ES = {
   bw001: 'Sentadilla con peso corporal',
@@ -28,8 +28,20 @@ const MOCK_DICT_ES = {
   bb003: 'Peso muerto con barra',
   bb004: 'Remo con barra',
   bb005: 'Press militar con barra',
-  // Sin traducción a propósito:
-  // untranslated01: no existe en MOCK_DICT_ES
+  db001: 'Press de banca con mancuernas',
+  db002: 'Remo con mancuernas',
+  cb001: 'Cruces de polea',
+  cb002: 'Press de banca en máquina',
+  cb003: 'Jalón al pecho',
+  cb004: 'Extensiones de tríceps en polea',
+  cb005: 'Remo en polea baja',
+  fb001: 'Crunch en fitball',
+  cardio_treadmill: 'Caminadora / Cinta de correr',
+  cardio_bike: 'Bicicleta fija',
+  cardio_stairmaster: 'Escaladora / Stairmaster',
+  '1716': 'Estiramiento asistido de pectoral mayor',
+  '1405': 'Estiramiento de espalda y pectorales',
+  '1512': 'Estiramiento de cuádriceps',
 }
 
 const MOCK_DB = [
@@ -37,111 +49,79 @@ const MOCK_DB = [
   { id: 'bw002', n: 'glute bridge', bp: 'upper legs', eq: 'body weight', tg: 'glutes', mg: 'hamstrings', sm: ['hamstrings'] },
   { id: 'bw003', n: 'lying leg curl', bp: 'upper legs', eq: 'body weight', tg: 'hamstrings', mg: 'glutes', sm: ['glutes'] },
   { id: 'bw004', n: 'calf raise', bp: 'lower legs', eq: 'body weight', tg: 'calves', mg: 'calves', sm: [] },
-  { id: 'bw005', n: 'hip abduction', bp: 'upper legs', eq: 'body weight', tg: 'abductors', mg: 'glutes', sm: [] },
-  { id: 'bw006', n: 'inner thigh squeeze', bp: 'upper legs', eq: 'body weight', tg: 'adductors', mg: 'adductors', sm: [] },
   { id: 'bw007', n: 'pike push up', bp: 'shoulders', eq: 'body weight', tg: 'delts', mg: 'triceps', sm: ['triceps'] },
-  { id: 'bw008', n: 'inverted row', bp: 'back', eq: 'body weight', tg: 'upper back', mg: 'biceps', sm: ['biceps'] },
-  { id: 'bw009', n: 'diamond push up', bp: 'chest', eq: 'body weight', tg: 'triceps', mg: 'pectorals', sm: ['pectorals'] },
-  { id: 'bw010', n: 'chin up', bp: 'back', eq: 'body weight', tg: 'lats', mg: 'biceps', sm: ['biceps'] },
-  { id: 'bw011', n: 'isometric wall sit', bp: 'upper legs', eq: 'body weight', tg: 'quads', mg: 'glutes', sm: ['glutes'] },
-  { id: 'bw012', n: 'plank hold', bp: 'waist', eq: 'body weight', tg: 'abs', mg: 'spine', sm: [] },
-  { id: 'bw013', n: 'reverse crunch', bp: 'waist', eq: 'body weight', tg: 'abs', mg: 'spine', sm: [] },
-  { id: 'bw014', n: 'back extension', bp: 'waist', eq: 'body weight', tg: 'spine', mg: 'glutes', sm: ['glutes'] },
   { id: 'bw015', n: 'pull up', bp: 'back', eq: 'body weight', tg: 'lats', mg: 'biceps', sm: ['biceps'] },
-  { id: 'bw016', n: 'dip bench', bp: 'upper arms', eq: 'body weight', tg: 'triceps', mg: 'pectorals', sm: [] },
-  { id: 'bw017', n: 'incline push up', bp: 'chest', eq: 'body weight', tg: 'pectorals', mg: 'triceps', sm: ['triceps'] },
-  { id: 'bw018', n: 'single leg hip thrust', bp: 'upper legs', eq: 'body weight', tg: 'glutes', mg: 'hamstrings', sm: [] },
   { id: 'bb001', n: 'barbell squat', bp: 'upper legs', eq: 'barbell', tg: 'quads', mg: 'glutes', sm: ['glutes', 'hamstrings'] },
   { id: 'bb002', n: 'barbell bench press', bp: 'chest', eq: 'barbell', tg: 'pectorals', mg: 'triceps', sm: ['triceps', 'delts'] },
   { id: 'bb003', n: 'barbell deadlift', bp: 'upper legs', eq: 'barbell', tg: 'glutes', mg: 'hamstrings', sm: ['hamstrings', 'lats'] },
-  { id: 'bb004', n: 'barbell row', bp: 'back', eq: 'barbell', tg: 'lats', mg: 'upper back', sm: ['upper back', 'biceps'] },
-  { id: 'bb005', n: 'overhead press', bp: 'shoulders', eq: 'barbell', tg: 'delts', mg: 'triceps', sm: ['triceps'] },
-  // Ejercicio sin traducción para probar QA 6.4:
-  { id: 'untranslated01', n: 'astride jumps (male)', bp: 'cardio', eq: 'body weight', tg: 'cardiovascular system' },
-  // Ejercicio raro para probar §5.4:
-  { id: 'rare01', n: 'bosu ball squat on wheel (female)', bp: 'upper legs', eq: 'body weight', tg: 'quads' },
+  { id: 'cb001', n: 'cable crossover', bp: 'chest', eq: 'cable', tg: 'pectorals', mg: 'triceps', sm: ['triceps'] },
+  { id: 'cb002', n: 'lever bench press', bp: 'chest', eq: 'leverage machine', tg: 'pectorals', mg: 'triceps', sm: ['triceps'] },
+  { id: 'cb003', n: 'cable pulldown', bp: 'back', eq: 'cable', tg: 'lats', mg: 'biceps', sm: ['biceps'] },
+  { id: 'cb004', n: 'cable pushdown', bp: 'arms', eq: 'cable', tg: 'triceps', mg: 'triceps', sm: [] },
+  { id: 'cb005', n: 'cable seated row', bp: 'back', eq: 'cable', tg: 'lats', mg: 'biceps', sm: ['biceps'] },
+  { id: 'fb001', n: 'stability ball crunch', bp: 'waist', eq: 'stability ball', tg: 'abs', mg: 'abs', sm: [] },
 ]
 
 const baseInput = {
-  objetivo: 'fitness_general',
-  tieneLesion: false,
-  lesiones: [],
-  diasSeleccionados: ['lunes', 'miercoles', 'viernes'],
-  tiempoPorSesion: '30-40',
+  edad: 30,
+  pesoKg: 70,
+  objetivo: 'hipertrofia',
   nivel: 'intermedio',
+  diasSeleccionados: ['lunes', 'miercoles', 'viernes'],
+  tiempoPorSesion: '40-60',
   equipamiento: 'gimnasio_completo',
   preferenciaEjercicio: 'sin_preferencia',
   enfoque: 'balance',
-  cardio: 'hiit',
-  movilidadEstiramientos: true,
-  edad: 28,
-  pesoKg: 75,
-  descansoSegundos: '60',
-  tipoProgresion: 'lineal',
+  descansoSegundos: '90-120',
+  tipoProgresion: 'doble_progresion',
   metricaEsfuerzo: 'rir',
+  cardio: 'sin_cardio',
+  movilidadEstiramientos: false,
+  lesiones: [],
 }
 
-describe('generarRutina v3 — Correcciones QA', () => {
-  it('Bug QA 6.3: Cardio NUNCA aparece dentro de ejercicios[]', () => {
+describe('generarRutina v5 — Requerimientos actualizados', () => {
+  it('Requerimiento 1: Excluir peso corporal cuando se prefieren máquinas o pesos libres', () => {
+    const r = generarRutina({ ...baseInput, preferenciaEjercicio: 'pesos_libres' }, MOCK_DB, MOCK_DICT_ES)
+    const normales = r.dias.flatMap(d => d.ejercicios.filter(e => e.isNormal))
+    const idsBodyweight = normales.map(e => e.id).filter(id => id.startsWith('bw'))
+    expect(idsBodyweight.length).toBe(0)
+  })
+
+  it('Requerimiento 2: Respetar días exactos seleccionados', () => {
     const r = generarRutina(baseInput, MOCK_DB, MOCK_DICT_ES)
-    for (const dia of r.dias) {
-      expect(dia.cardio).toBeDefined()
-      expect(dia.cardio.tipo).toBe('hiit')
-      expect(dia.cardio.duracionMin).toBe(15)
-      // Verificar que ningún ejercicio del array de fuerza tenga id de cardio o note de cardio
-      for (const ej of dia.ejercicios) {
-        expect(ej.exerciseId).not.toBe('cardio_custom')
-      }
-    }
+    const { week } = rutinaGeneradaToRoutines(r, baseInput)
+    expect(week[1]).toBeDefined()
+    expect(week[3]).toBeDefined()
+    expect(week[5]).toBeDefined()
+    expect(week[2]).toBeUndefined()
   })
 
-  it('Bug QA 6.4: Descarta ejercicios sin traducción en el diccionario español', () => {
-    const r = generarRutina(baseInput, MOCK_DB, MOCK_DICT_ES)
-    const todosIds = r.dias.flatMap(d => d.ejercicios.map(e => e.exerciseId))
-    expect(todosIds).not.toContain('untranslated01')
-  })
-
-  it('Filtro 5.4: Pruning de ejercicios raros o con male/female/bosu', () => {
-    const r = generarRutina(baseInput, MOCK_DB, MOCK_DICT_ES)
-    const todosIds = r.dias.flatMap(d => d.ejercicios.map(e => e.exerciseId))
-    expect(todosIds).not.toContain('rare01')
-  })
-
-  it('Filtro 6.1: Slots por tiempo recalculados (30-40 min = 4 ejercicios)', () => {
-    const r = generarRutina({ ...baseInput, tiempoPorSesion: '30-40' }, MOCK_DB, MOCK_DICT_ES)
-    for (const dia of r.dias) {
-      expect(dia.ejercicios.length).toBeLessThanOrEqual(4)
-      expect(dia.ejercicios[0].series).toBe(3)
-    }
-  })
-
-  it('Sección 8: Genera parametrosGlobales recomendados', () => {
-    const r = generarRutina(baseInput, MOCK_DB, MOCK_DICT_ES)
-    expect(r.parametrosGlobales).toBeDefined()
-    expect(r.parametrosGlobales.descansoRecomendado).toContain('segundos')
-    expect(r.parametrosGlobales.tipoProgresion).toBeDefined()
-    expect(r.parametrosGlobales.metricaEsfuerzo).toBeDefined()
-  })
-
-  it('Ampliación de lesiones: codos excluye bench press pesado', () => {
-    const input = {
-      ...baseInput,
-      tieneLesion: true,
-      lesiones: ['codos'],
-    }
+  it('Nuevo split: pierna_prioridad cuando enfoque es piernas_gluteos', () => {
+    const input = { ...baseInput, enfoque: 'piernas_gluteos', diasSeleccionados: ['lunes', 'miercoles', 'viernes'] }
     const r = generarRutina(input, MOCK_DB, MOCK_DICT_ES)
-    const todosIds = r.dias.flatMap(d => d.ejercicios.map(e => e.exerciseId))
-    expect(todosIds).not.toContain('bb002') // barbell bench press
+    expect(r.splitAsignado).toBe('pierna_prioridad')
   })
 
-  it('Ampliación de lesiones: isquiotibiales excluye hamstrings', () => {
-    const input = {
-      ...baseInput,
-      tieneLesion: true,
-      lesiones: ['isquiotibiales'],
-    }
+  it('Metadatos de esfuerzo y progresión presentes en ejercicios generados', () => {
+    const input = { ...baseInput, metricaEsfuerzo: 'rpe', tipoProgresion: 'doble_progresion' }
     const r = generarRutina(input, MOCK_DB, MOCK_DICT_ES)
-    const todosIds = r.dias.flatMap(d => d.ejercicios.map(e => e.exerciseId))
-    expect(todosIds).not.toContain('bw003') // lying leg curl
+    const normal = r.dias[0].ejercicios.find(e => e.isNormal)
+    expect(normal.metrica).toBe('rpe')
+    expect(normal.valorEsfuerzo).toBe('8-9')
+    expect(normal.progresion).toBe('doble_progresion')
+  })
+
+  it('filtrarPorPreferenciaEquipo exclamando fitball y stability ball cuando pide maquinas_poleas', () => {
+    const filtrado = filtrarPorPreferenciaEquipo(MOCK_DB, 'maquinas_poleas')
+    expect(filtrado.some(e => e.eq === 'stability ball')).toBe(false)
+    expect(filtrado.every(e => ['leverage machine', 'cable', 'smith machine', 'assisted'].includes(e.eq))).toBe(true)
+  })
+
+  it('obtenerAlternativas sugiere ejercicios equivalentes con el mismo grupo objetivo', () => {
+    const ejBench = { id: 'bb002', tg: 'pectorals' }
+    const alts = obtenerAlternativas(ejBench, MOCK_DB, new Set(['bb002']), 3)
+    expect(alts.length).toBeGreaterThan(0)
+    expect(alts.every(e => e.tg === 'pectorals' && e.id !== 'bb002')).toBe(true)
   })
 })

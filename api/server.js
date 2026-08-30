@@ -394,7 +394,8 @@ const clearCookie = COOKIE === LEGACY_COOKIE
 // none of them acts on the caller's existing session.
 const CSRF_EXEMPT = new Set([
   'POST /api/register/options', 'POST /api/register/verify',
-  'POST /api/login/options', 'POST /api/login/verify'
+  'POST /api/login/options', 'POST /api/login/verify',
+  'POST /api/auth/device/start', 'GET /api/auth/device/poll'
 ]);
 const originsMatch = (a, b) => a.replace(/\/+$/, '') === b.replace(/\/+$/, '');
 function csrfOk(req, key) {
@@ -430,6 +431,31 @@ function takeChallenge(cid) {
   return c;
 }
 setInterval(() => { for (const [k, v] of challenges) if (v.exp < Date.now()) challenges.delete(k); }, 60000).unref();
+
+/* ---------- device pairing store (in-memory, 5 min TTL) ---------- */
+const pendingPairings = new Map(); // pairingId -> { pairingId, manualCode, status: 'pending'|'approved', user: null, attempts: 0, exp: number }
+const manualCodeMap = new Map();   // manualCode -> pairingId
+
+function genManualCode() {
+  const chars = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
+  let c = '';
+  for (let i = 0; i < 8; i++) {
+    if (i === 4) c += '-';
+    c += chars[crypto.randomInt(0, chars.length)];
+  }
+  return c;
+}
+
+function cleanExpiredPairings() {
+  const now = Date.now();
+  for (const [id, p] of pendingPairings) {
+    if (p.exp < now) {
+      pendingPairings.delete(id);
+      manualCodeMap.delete(p.manualCode);
+    }
+  }
+}
+setInterval(cleanExpiredPairings, 60000).unref();
 
 /* ---------- helpers ---------- */
 function json(res, code, obj, extraHeaders) {
@@ -708,6 +734,130 @@ const routes = {
     }
     audit(req, 'auth.login.ok', { user });
     json(res, 200, { user: { id: user.id, name: user.name, admin: isAdmin(user) } }, { 'Set-Cookie': sessionCookie(user) });
+  },
+
+  /* ---------- Device Pairing Flow ---------- */
+  'POST /api/auth/device/start': async (req, res) => {
+    cleanExpiredPairings();
+    const pairingId = crypto.randomBytes(16).toString('base64url');
+    const manualCode = genManualCode();
+    const exp = Date.now() + 5 * 60000;
+    const data = { pairingId, manualCode, status: 'pending', user: null, attempts: 0, exp };
+    pendingPairings.set(pairingId, data);
+    manualCodeMap.set(manualCode, pairingId);
+    json(res, 200, { pairingId, manualCode, expiresAt: exp });
+  },
+
+  'POST /api/auth/device/claim': async (req, res) => {
+    const user = readSession(req);
+    if (!user) return json(res, 401, { error: 'not signed in' });
+    const body = await readBody(req);
+    cleanExpiredPairings();
+    const rawCode = String(body.code || body.manualCode || body.pairingId || '').trim().toUpperCase();
+    const pairingId = pendingPairings.has(rawCode) ? rawCode : manualCodeMap.get(rawCode);
+    const pairing = pairingId ? pendingPairings.get(pairingId) : null;
+    if (!pairing || pairing.exp < Date.now()) {
+      return json(res, 400, { error: 'Código o QR no válido o expirado' });
+    }
+    if (pairing.attempts >= 5) {
+      pendingPairings.delete(pairing.pairingId);
+      manualCodeMap.delete(pairing.manualCode);
+      return json(res, 400, { error: 'Demasiados intentos fallidos para este código' });
+    }
+    json(res, 200, { pairingId: pairing.pairingId, manualCode: pairing.manualCode, ok: true });
+  },
+
+  'POST /api/auth/device/confirm': async (req, res) => {
+    const user = readSession(req);
+    if (!user) return json(res, 401, { error: 'not signed in' });
+    const body = await readBody(req);
+    cleanExpiredPairings();
+    const pairingId = String(body.pairingId || '').trim();
+    const pairing = pendingPairings.get(pairingId);
+    if (!pairing || pairing.exp < Date.now()) {
+      return json(res, 400, { error: 'Solicitud de vinculación expirada' });
+    }
+    pairing.status = 'approved';
+    pairing.user = user;
+    audit(req, 'auth.device.approved', { user, pairingId });
+    json(res, 200, { ok: true });
+  },
+
+  'GET /api/auth/device/poll': async (req, res) => {
+    cleanExpiredPairings();
+    const u = new URL(req.url, ORIGIN);
+    const pairingId = u.searchParams.get('pairingId') || u.searchParams.get('id');
+    if (!pairingId) return json(res, 400, { error: 'pairingId required' });
+    const pairing = pendingPairings.get(pairingId);
+    if (!pairing || pairing.exp < Date.now()) {
+      return json(res, 400, { status: 'expired', error: 'expired' });
+    }
+    if (pairing.status === 'pending') {
+      return json(res, 200, { status: 'pending' });
+    }
+    if (pairing.status === 'approved' && pairing.user) {
+      const user = pairing.user;
+      pendingPairings.delete(pairingId);
+      manualCodeMap.delete(pairing.manualCode);
+      audit(req, 'auth.device.login', { user });
+      return json(res, 200, { status: 'approved', user: { id: user.id, name: user.name, admin: isAdmin(user) } }, { 'Set-Cookie': sessionCookie(user) });
+    }
+    json(res, 400, { status: 'expired', error: 'invalid state' });
+  },
+
+  /* ---------- Additional Passkey Registration ---------- */
+  'POST /api/credentials/add/options': async (req, res) => {
+    const user = readSession(req);
+    if (!user) return json(res, 401, { error: 'not signed in' });
+    const userCreds = db.creds.filter(c => c.userId === user.id);
+    const excludeCredentials = userCreds.map(c => ({ id: c.id, type: 'public-key' }));
+    const options = await generateRegistrationOptions({
+      rpName: RP_NAME, rpID: RP_ID,
+      userID: Buffer.from(user.id), userName: user.name, userDisplayName: user.name,
+      attestationType: 'none',
+      authenticatorSelection: { residentKey: 'required', userVerification: 'preferred' },
+      excludeCredentials
+    });
+    const cid = putChallenge({ challenge: options.challenge, uid: user.id });
+    json(res, 200, { cid, options });
+  },
+
+  'POST /api/credentials/add/verify': async (req, res) => {
+    const user = readSession(req);
+    if (!user) return json(res, 401, { error: 'not signed in' });
+    const body = await readBody(req);
+    const c = takeChallenge(body.cid);
+    if (!c || c.uid !== user.id) {
+      return json(res, 400, { error: 'challenge expired — try again' });
+    }
+    let verification;
+    try {
+      verification = await verifyRegistrationResponse({
+        response: body.credential,
+        expectedChallenge: c.challenge,
+        expectedOrigin: ORIGIN,
+        expectedRPID: RP_ID,
+        requireUserVerification: false
+      });
+    } catch (e) {
+      return json(res, 400, { error: verifyError(e, { rpId: RP_ID, origin: ORIGIN }) });
+    }
+    if (!verification.verified) {
+      return json(res, 400, { error: 'not verified' });
+    }
+    const { credential } = verification.registrationInfo;
+    if (db.creds.find(x => x.id === credential.id)) {
+      return json(res, 409, { error: 'credential already registered' });
+    }
+    db.creds.push({
+      id: credential.id, userId: user.id,
+      publicKey: Buffer.from(credential.publicKey).toString('base64url'),
+      counter: credential.counter || 0,
+      transports: body.credential?.response?.transports || []
+    });
+    saveDb();
+    audit(req, 'auth.cred.added', { user });
+    json(res, 200, { ok: true, msg: 'Passkey agregada con éxito' });
   },
 
   // Reads the session purely so the sign-out can be recorded; the cookie is cleared either way.

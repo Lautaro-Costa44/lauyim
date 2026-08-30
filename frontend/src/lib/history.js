@@ -134,15 +134,16 @@ export function defaultConfig(id, mode) {
 // One-line summary of a planned exercise ("3 × 10 · 60 kg"), shared by the routine editor
 // and the plan export so a mode is described the same way everywhere.
 export function exLine(cfg, unit) {
+  if (!cfg) return ''
   const mode = modeOf(cfg)
   const n = cfg.sets || 1
-  // Added weight reads as added: "+10 kg" on a dip belt, "60 kg" on a barbell.
-  const load = cfg.weight ? ' · ' + (isBw(cfg) ? '+' : '') + fmtNum(cfg.weight) + ' ' + unit : ''
-  if (mode === 'cardio') return `${n} × ${cfg.min || 20} min @ ${fmtNum(cfg.speed || 8)} km/h`
+  const u = unit || 'kg'
+  const load = cfg.weight ? ' · ' + (isBw(cfg) ? '+' : '') + fmtNum(cfg.weight) + ' ' + u : ''
+  if (mode === 'cardio') return `${n} × ${cfg.min || 20} min` + (cfg.speed ? ` @ ${fmtNum(cfg.speed)} km/h` : '')
   if (mode === 'time') return `${n} × ${fmtSec(cfg.sec || 45)}${load}`
-  // This is the line with room for it, so the split is spelled out: "3 × 16 · 8/side".
-  const split = isPerSide(cfg) ? ' · ' + t('{0}/side', fmtNum(sideReps(cfg.reps))) : ''
-  return `${n} × ${cfg.reps}${load}${split}`
+  const repsVal = cfg.reps || 10
+  const split = isPerSide(cfg) ? ' · ' + t('{0}/side', fmtNum(sideReps(repsVal))) : ''
+  return `${n} × ${repsVal}${load}${split}`
 }
 
 // Drop superset ids that no longer have an adjacent partner (after unlink/reorder/remove).
@@ -274,11 +275,15 @@ export function bestWeightFor(S, exId) {
   return best
 }
 export function effectiveRoutineId(S, iso) {
-  const ov = S.dayPlan[iso]
+  const ov = (S?.dayPlan || {})[iso]
   if (ov === 'rest') return null
-  if (ov && S.routines.some(r => r.id === ov)) return ov
+  if (typeof ov === 'object' && ov !== null) {
+    if (ov.estado === 'descanso' || ov.estado === 'completado') return null
+    if (ov.estado === 'rutina') return ov.rutinaId || null
+  }
+  if (ov && typeof ov === 'string' && S?.routines?.some(r => r.id === ov)) return ov
   const wd = new Date(iso + 'T12:00:00').getDay()
-  return S.week[wd] || null
+  return (S?.week || {})[wd] || null
 }
 export function effectiveRoutine(S, iso) {
   const id = effectiveRoutineId(S, iso)
@@ -423,17 +428,70 @@ export function supersetUnits(items) {
 }
 export function unitOf(units, idx) { return units.find(u => u.includes(idx)) || [idx] }
 
-export function streakWeeks(S) {
-  if (!S.workouts.length) return 0
-  const weeks = new Set(S.workouts.map(w => weekKey(w.d)))
-  let streak = 0
-  const cur = new Date()
-  for (let i = 0; i < 520; i++) {
-    const wk = weekKey(isoOf(cur))
-    if (weeks.has(wk)) streak++
-    else if (i > 0) break
-    cur.setDate(cur.getDate() - 7)
+export function evalWeek(S, mondayDate) {
+  const diasProgramados = []
+  const diasCompletados = []
+
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(mondayDate)
+    d.setDate(mondayDate.getDate() + i)
+    const iso = isoOf(d)
+    const effId = effectiveRoutineId(S, iso)
+    const isScheduled = !!effId && effId !== 'rest'
+    const isDone = (S.workouts || []).some(w => w.d === iso)
+
+    if (isScheduled) {
+      diasProgramados.push(i)
+      if (isDone) diasCompletados.push(i)
+    }
   }
+
+  let completa = false
+  if (diasProgramados.length > 0) {
+    completa = diasCompletados.length >= diasProgramados.length
+  } else {
+    let doneCount = 0
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(mondayDate)
+      d.setDate(mondayDate.getDate() + i)
+      if ((S.workouts || []).some(w => w.d === isoOf(d))) doneCount++
+    }
+    completa = doneCount > 0
+  }
+
+  return {
+    semanaId: weekKey(isoOf(mondayDate)),
+    diasProgramados,
+    diasCompletados,
+    completa,
+  }
+}
+
+export function streakWeeks(S) {
+  if (!S || !S.workouts || !S.workouts.length) return 0
+
+  const now = new Date()
+  const day = (now.getDay() + 6) % 7
+  const currentMonday = new Date(now)
+  currentMonday.setDate(now.getDate() - day)
+
+  let streak = 0
+  let checkDate = new Date(currentMonday)
+
+  const curWeek = evalWeek(S, checkDate)
+  if (curWeek.completa) streak++
+
+  checkDate.setDate(checkDate.getDate() - 7)
+  for (let w = 0; w < 520; w++) {
+    const weekInfo = evalWeek(S, checkDate)
+    if (weekInfo.completa) {
+      streak++
+      checkDate.setDate(checkDate.getDate() - 7)
+    } else {
+      break
+    }
+  }
+
   return streak
 }
 

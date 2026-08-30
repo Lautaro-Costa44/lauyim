@@ -103,6 +103,23 @@ function BwSheet({ required, onDone, close }) {
   const unit = st.unit
   const bw = lastBW(st)
   const [v, setV] = useState(bw ? bw.w : 70)
+  const doneRef = useRef(false)
+
+  const pedirPeso = st.configuracion?.pedirPesoAlEntrenar !== false
+  const togglePedirPeso = (val) => {
+    update(s => {
+      s.configuracion = { ...(s.configuracion || {}), pedirPesoAlEntrenar: val }
+    })
+  }
+
+  const finish = (weightVal) => {
+    if (doneRef.current) return
+    doneRef.current = true
+    close()
+    if (onDone) onDone(weightVal)
+    else toast(t('Weight saved'))
+  }
+
   const save = () => {
     const n = Math.round((v || 0) * 10) / 10
     if (!n || n <= 0) { toast(t('Enter a valid weight')); return }
@@ -112,20 +129,52 @@ function BwSheet({ required, onDone, close }) {
       if (ex) { ex.w = n; ex.t = Date.now() } else s.bodyweight.push({ d: iso, w: n, t: Date.now() })
       s.bodyweight.sort((a, b) => (a.d < b.d ? -1 : 1))
     })
-    close()
-    if (onDone) onDone(n); else toast(t('Weight saved'))
+    finish(n)
   }
+
+  const cancel = () => {
+    if (doneRef.current) return
+    doneRef.current = true
+    close()
+  }
+
+  const iniciarSinPesarse = () => {
+    finish(null)
+  }
+
+  useEffect(() => {
+    return () => {
+      doneRef.current = true
+    }
+  }, [])
+
   const recent = [...st.bodyweight].reverse().slice(0, 3)
   const delEntry = d => update(s => { s.bodyweight = s.bodyweight.filter(b => b.d !== d) })
   return <>
-    <h3>{required ? t('Quick check-in') : t('Log body weight')}</h3>
+    <div style={{ position: 'relative', paddingRight: 32 }}>
+      <h3>{required ? t('Quick check-in') : t('Log body weight')}</h3>
+      <button
+        className="iconbtn"
+        style={{ position: 'absolute', top: -4, right: -4, color: 'var(--txt)', background: 'var(--surface-2)' }}
+        onClick={cancel}
+        aria-label="Close"
+      >
+        <Icon name="xmark" />
+      </button>
+    </div>
+
+    {required && <div className="row between" style={{ padding: '8px 0', borderBottom: '1px solid var(--sep)', marginBottom: 12 }}>
+      <span className="small muted">{t('Pedir peso al iniciar entrenamiento')}</span>
+      <Switch checked={pedirPeso} onChange={togglePedirPeso} />
+    </div>}
+
     <div className="muted small">{required ? t('Slide or tap to set your weight — tracked before every workout so your curve stays honest.') : t('Today') + ', ' + fmtDate(todayISO(), true)}</div>
     <WeightInput value={v} setValue={setV} unit={unit} />
     <div style={{ height: 14 }} />
     <Button variant="primary" onClick={save}>{required ? t('Save & start workout') : t('Save')}</Button>
     {required && <>
-      <div style={{ height: 8 }} /><Button variant="ghost" className="dim" onClick={() => { close(); onDone && onDone(null) }}>{t('Start without weighing in')}</Button>
-      <div style={{ height: 2 }} /><Button variant="ghost" className="dim" icon="reset" onClick={() => { close(); nav('/workout') }}>{t('Choose a different workout')}</Button>
+      <div style={{ height: 8 }} /><Button variant="ghost" className="dim" onClick={iniciarSinPesarse}>{t('Start without weighing in')}</Button>
+      <div style={{ height: 2 }} /><Button variant="ghost" className="dim" icon="reset" onClick={() => { doneRef.current = true; close(); nav('/workout') }}>{t('Choose a different workout')}</Button>
     </>}
     {!required && recent.length > 0 && <>
       <h4 className="sec">{t('Recent weigh-ins')}</h4>
@@ -140,7 +189,7 @@ function BwSheet({ required, onDone, close }) {
   </>
 }
 export function bwSheet(opts = {}) {
-  const h = ui().openSheet(close => <BwSheet {...opts} close={close} />, { locked: !!opts.required })
+  const h = ui().openSheet(close => <BwSheet {...opts} close={close} />, { locked: false })
   return h
 }
 
@@ -880,23 +929,75 @@ function DayOverride({ iso, close }) {
   const st = useStore(s => s.S)
   const wd = new Date(iso + 'T12:00:00').getDay()
   const weeklyR = st.routines.find(r => r.id === st.week[wd])
-  const hasOvr = st.dayPlan[iso] !== undefined
+  const ovVal = st.dayPlan[iso]
+  const hasOvr = ovVal !== undefined || st.workouts.some(w => w.d === iso)
   const effId = effectiveRoutineId(st, iso)
-  const set = v => {
-    update(s => { if (!v) delete s.dayPlan[iso]; else s.dayPlan[iso] = v })
+
+  const currentStatus = typeof ovVal === 'object' && ovVal ? ovVal.estado : (ovVal === 'rest' ? 'descanso' : (typeof ovVal === 'string' && ovVal ? 'rutina' : (st.workouts.some(w => w.d === iso) ? 'completado' : null)))
+  const currentRoutineId = typeof ovVal === 'object' && ovVal ? ovVal.rutinaId : (typeof ovVal === 'string' && ovVal !== 'rest' ? ovVal : effId)
+
+  const setEstado = (nuevoEstado, rutinaId = null) => {
+    update(s => {
+      if (nuevoEstado !== 'completado') {
+        s.workouts = s.workouts.filter(w => w.d !== iso)
+      }
+      if (!nuevoEstado) {
+        delete s.dayPlan[iso]
+      } else {
+        s.dayPlan[iso] = {
+          fecha: iso,
+          estado: nuevoEstado,
+          rutinaId: nuevoEstado === 'rutina' ? rutinaId : null,
+        }
+      }
+    })
     close()
-    toast(v === '' ? t('Back to weekly plan') : v === 'rest' ? t('{0} set to rest', fmtDate(iso)) : t('{0} planned for {1}', (st.routines.find(r => r.id === v) || {}).name, fmtDate(iso)))
+    if (!nuevoEstado) toast(t('Back to weekly plan'))
+    else if (nuevoEstado === 'descanso') toast(t('{0} set to rest', fmtDate(iso)))
+    else if (nuevoEstado === 'rutina') toast(t('{0} planned for {1}', (st.routines.find(r => r.id === rutinaId) || {}).name, fmtDate(iso)))
   }
+
+  const markDone = (routine) => {
+    update(s => {
+      s.workouts = s.workouts.filter(w => w.d !== iso)
+      s.workouts.push({
+        id: uid(),
+        d: iso,
+        start: Date.now() - 3600000,
+        end: Date.now(),
+        name: routine ? routine.name : t('Freestyle'),
+        routineId: routine ? routine.id : null,
+        vol: 0,
+        entries: routine ? (routine.ex || []).map(cfg => ({
+          id: cfg.id,
+          sets: Array.from({ length: cfg.sets || 3 }, () => ({ done: true, reps: cfg.reps || 10, w: cfg.weight || 0 }))
+        })) : []
+      })
+      s.dayPlan[iso] = {
+        fecha: iso,
+        estado: 'completado',
+        rutinaId: null,
+      }
+    })
+    close()
+    toast(t('Entrenamiento marcado como realizado'))
+  }
+
   return <>
     <h3>{fmtDate(iso, true)}</h3>
     <div className="muted small" style={{ marginBottom: 12 }}>{t('Weekly plan:')} {weeklyR ? weeklyR.name : t('Rest')}{hasOvr && <span style={{ color: 'var(--orange)' }}> · {t('changed for this day')}</span>}<br />{t('Sick, missed a day or want a different session? Pick what to train instead.')}</div>
     <div className="list">
-      {st.routines.map(r => <div key={r.id} className="item" onClick={() => set(r.id)}>
+      <div className="item" onClick={() => markDone(st.routines.find(r => r.id === effId) || st.routines[0])}>
+        <span className="lrow-i" style={{ background: 'var(--acc)', color: '#000' }}><Icon name="checkCircle" /></span>
+        <div className="grow"><div className="tt">{t('Marcar como realizado en esta fecha')}</div></div>
+        {currentStatus === 'completado' && <Icon name="check" className="accent" />}
+      </div>
+      {st.routines.map(r => <div key={r.id} className="item" onClick={() => setEstado('rutina', r.id)}>
         <span className="lrow-i"><Icon name={glyphOf(r.emoji)} /></span>
         <div className="grow"><div className="tt">{r.name}</div><div className="ss">{exCount(r.ex.length)}</div></div>
-        {effId === r.id && <Icon name="check" className="accent" />}</div>)}
-      <div className="item" onClick={() => set('rest')}><span className="lrow-i" style={{ background: 'var(--surface-3)' }}><Icon name="moon" /></span><div className="grow"><div className="tt">{t('Rest / skip this day')}</div></div>{effId === null && <Icon name="check" className="accent" />}</div>
-      {hasOvr && <div className="item" onClick={() => set('')}><span className="lrow-i" style={{ background: 'var(--surface-3)' }}><Icon name="reset" /></span><div className="grow"><div className="tt">{t('Back to weekly plan')}</div></div></div>}
+        {currentStatus === 'rutina' && currentRoutineId === r.id && <Icon name="check" className="accent" />}</div>)}
+      <div className="item" onClick={() => setEstado('descanso')}><span className="lrow-i" style={{ background: 'var(--surface-3)' }}><Icon name="moon" /></span><div className="grow"><div className="tt">{t('Rest / skip this day')}</div></div>{currentStatus === 'descanso' && <Icon name="check" className="accent" />}</div>
+      {hasOvr && <div className="item" onClick={() => setEstado(null)}><span className="lrow-i" style={{ background: 'var(--surface-3)' }}><Icon name="reset" /></span><div className="grow"><div className="tt">{t('Back to weekly plan')}</div></div></div>}
     </div>
   </>
 }
@@ -1028,6 +1129,12 @@ export function WorkoutRow({ w, onClick }) {
 
 /* ============================ workout lifecycle ============================ */
 export function startFlow(routineId) {
+  const st = S()
+  const pedirPeso = st.configuracion?.pedirPesoAlEntrenar !== false
+  if (!pedirPeso) {
+    beginWorkout(routineId, null)
+    return
+  }
   bwSheet({ required: true, onDone: bw => beginWorkout(routineId, bw) })
 }
 export function beginWorkout(routineId, bw) {

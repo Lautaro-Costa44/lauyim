@@ -1,4 +1,8 @@
 export default {
+  "cardio_treadmill": "Caminadora / Cinta de correr",
+  "cardio_bike": "Bicicleta fija",
+  "cardio_stairmaster": "Escaladora / Stairmaster",
+  "cardio_bodyweight_hiit": "HIIT con peso corporal (Jumping Jacks / Burpees)",
   "0001": "Abdominal 3/4",
   "0002": "Inclinación lateral a 45°",
   "0003": "Bicicleta abdominal",

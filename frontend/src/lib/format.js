@@ -40,7 +40,7 @@ export function weekKey(d) {
   dt.setDate(dt.getDate() - day + 3)
   const jan4 = new Date(dt.getFullYear(), 0, 4)
   const week = 1 + Math.round(((dt - jan4) / 86400000 - 3 + ((jan4.getDay() + 6) % 7)) / 7)
-  return dt.getFullYear() + '-' + week
+  return dt.getFullYear() + '-W' + String(week).padStart(2, '0')
 }
 
 export const localTZ = () => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC' } catch { return 'UTC' } }

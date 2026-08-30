@@ -1,17 +1,55 @@
-import { useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useState, useMemo, useEffect } from 'react'
 import { useStore } from '../store/useStore.js'
 import { useUI } from '../store/useUI.js'
-import { EXDB } from '../lib/exercises.js'
+import { CATALOGUE, EXIDX } from '../lib/exercises.js'
 import { generarRutina, rutinaGeneradaToRoutines, defaultSplitRecomendado, derivarSplit, obtenerAlternativas } from '../lib/generarRutina.js'
-import exerciseNamesEs from '../locales/exercise-names-es.js'
 import { todayISO } from '../lib/format.js'
-import { t } from '../lib/i18n.js'
+import { t, exerciseNameFor } from '../lib/i18n.js'
 import { confirmSheet } from '../sheets.jsx'
 import Icon from '../components/Icon.jsx'
 import { Button } from '../components/ui.jsx'
 
-const PASOS = 6
+const PASOS = 5
+
+function ReemplazarEjercicioSheet({ exActual, poolSeguro, usadosEnSemana, onReemplazar, close }) {
+  const alts = useMemo(() => {
+    return obtenerAlternativas(exActual, poolSeguro, usadosEnSemana, 3)
+  }, [exActual, poolSeguro, usadosEnSemana])
+
+  const exActualObj = EXIDX[exActual.id] || exActual
+  const nombreActual = exerciseNameFor(exActualObj) || exActual.id
+
+  return <>
+    <h3>{t('Reemplazar {0}', nombreActual)}</h3>
+    <div className="muted small" style={{ marginBottom: 14 }}>
+      {t('Seleccioná una alternativa equivalente para este ejercicio:')}
+    </div>
+    {alts.length === 0 ? (
+      <div className="muted" style={{ padding: '16px 0' }}>
+        {t('No hay otras alternativas equivalentes disponibles.')}
+      </div>
+    ) : (
+      <div className="list">
+        {alts.map(alt => {
+          const nombreAlt = exerciseNameFor(alt) || alt.n || alt.id
+          return (
+            <div key={alt.id} className="item" onClick={() => { onReemplazar(alt); close() }}>
+              <span className="lrow-i"><Icon name="dumbbell" /></span>
+              <div className="grow">
+                <div className="tt">{nombreAlt}</div>
+                <div className="ss">{alt.eq || alt.bp || ''}</div>
+              </div>
+              <span className="tag acc">{t('Elegir')}</span>
+            </div>
+          )
+        })}
+      </div>
+    )}
+    <div style={{ height: 12 }} />
+    <Button variant="ghost" className="dim" onClick={close}>{t('Cancelar')}</Button>
+  </>
+}
 
 const DIAS_OPCIONES = [
   { key: 'lunes', label: 'Lun', index: 1 },
@@ -36,19 +74,19 @@ const OPT = {
     { value: 'avanzado',     label: 'Avanzado',     sub: 'Más de 3 años de entrenamiento' },
   ],
   tiempoPorSesion: [
-    { value: '30-40', label: '30–40 min', sub: '3-4 ejercicios por sesión' },
-    { value: '40-60', label: '40–60 min', sub: '5-6 ejercicios por sesión' },
-    { value: '60-90', label: '60–90 min', sub: '6-7 ejercicios por sesión' },
-    { value: '90+',   label: '90+ min',   sub: '7-8 ejercicios por sesión' },
+    { value: '30-40', label: '30–40 min', sub: '4 ejercicios por sesión' },
+    { value: '40-60', label: '40–60 min', sub: '5 ejercicios por sesión' },
+    { value: '60-90', label: '60–90 min', sub: '6 ejercicios por sesión' },
+    { value: '90+',   label: '90+ min',   sub: '7 ejercicios por sesión' },
   ],
   splitPreferido: [
-    { value: 'fullbody',        label: 'Full Body',               sub: 'Todo el cuerpo en cada sesión' },
-    { value: 'torso_pierna',    label: 'Torso / Pierna',          sub: 'Un día tren superior, un día inferior' },
-    { value: 'ppl',             label: 'Push / Pull / Legs',      sub: 'Empuje, Tracción y Pierna' },
-    { value: 'gluteos_piernas', label: 'Glúteos & Piernas Focus', sub: 'Énfasis en tren inferior + soporte de torso' },
+    { value: 'fullbody',     label: 'Full Body',          sub: 'Todo el cuerpo en cada sesión' },
+    { value: 'torso_pierna', label: 'Torso / Pierna',     sub: 'Un día tren superior, un día inferior' },
+    { value: 'ppl',          label: 'Push / Pull / Legs', sub: 'Empuje, Tracción y Pierna' },
+    { value: 'pierna_prioridad', label: 'Piernas y Glúteos', sub: 'Énfasis en tren inferior' },
   ],
   equipamiento: [
-    { value: 'gimnasio_completo', label: 'Gimnasio completo', sub: 'Máquinas, barras, mancuernas…' },
+    { value: 'gimnasio_completo', label: 'Gimnasio completo', sub: 'Máquinas, poleas, barras, mancuernas…' },
     { value: 'solo_mancuernas',   label: 'Solo mancuernas',   sub: 'Mancuernas + peso corporal' },
     { value: 'calistenia',        label: 'Calistenia / Casa', sub: 'Solo con el peso del cuerpo' },
   ],
@@ -73,9 +111,8 @@ const OPT = {
     { value: 'ondulante',        label: 'Ondulante (DUP)',         sub: 'Variar intensidad por día' },
   ],
   metricaEsfuerzo: [
-    { value: 'rir',           label: 'RIR (Reps en reserva)',   sub: 'RIR 1-2 (dejar 1 o 2 reps antes del fallo)' },
-    { value: 'rpe',           label: 'RPE (Esfuerzo percibido)', sub: 'RPE 8-9 (escala del 1 al 10)' },
-    { value: 'porcentaje_rm', label: '% 1RM',                   sub: 'Porcentaje de tu repetición máxima' },
+    { value: 'rir', label: 'RIR (Reps en reserva)', sub: 'RIR 1-2 (dejar 1 o 2 reps antes del fallo)' },
+    { value: 'rpe', label: 'RPE (Esfuerzo percibido)', sub: 'RPE 8-9 (escala del 1 al 10)' },
   ],
   cardio: [
     { value: 'sin_cardio',     label: 'Sin cardio' },
@@ -83,21 +120,28 @@ const OPT = {
     { value: 'hiit',           label: 'HIIT',                  sub: '15 min de intervalos de alta intensidad' },
     { value: 'caminar_correr', label: 'Caminar / Correr',      sub: '30 min de caminata rápida o trote' },
   ],
+  // Requerimiento 7 — Lista completa de lesiones anatomía PWA
   lesiones: [
-    { value: 'hombros',        label: 'Hombros' },
-    { value: 'espalda_baja',   label: 'Espalda baja' },
-    { value: 'rodillas',       label: 'Rodillas' },
-    { value: 'munecas',        label: 'Muñecas' },
-    { value: 'cuello',         label: 'Cuello' },
-    { value: 'cuadriceps',     label: 'Cuádriceps' },
-    { value: 'isquiotibiales', label: 'Isquiotibiales' },
-    { value: 'codos',          label: 'Codos' },
-    { value: 'tobillos',       label: 'Tobillos' },
+    { value: 'hombros',           label: 'Hombros' },
+    { value: 'espalda_alta',      label: 'Espalda alta' },
+    { value: 'espalda_baja',      label: 'Espalda baja' },
+    { value: 'pecho',             label: 'Pecho' },
+    { value: 'biceps',            label: 'Bíceps' },
+    { value: 'triceps',           label: 'Tríceps' },
+    { value: 'codos',             label: 'Codos' },
+    { value: 'antebrazos_munecas',label: 'Antebrazos / Muñecas' },
+    { value: 'cuello',            label: 'Cuello' },
+    { value: 'abdominales',       label: 'Abdominales' },
+    { value: 'gluteos',           label: 'Glúteos' },
+    { value: 'cuadriceps',        label: 'Cuádriceps' },
+    { value: 'rodillas',          label: 'Rodillas' },
+    { value: 'isquiotibiales',    label: 'Isquiotibiales' },
+    { value: 'aductores',         label: 'Aductores' },
+    { value: 'gemelos_tobillos',  label: 'Gemelos / Tobillos' },
   ],
 }
 
 const DEF_RESPUESTAS = {
-  genero: 'hombre',
   objetivo: 'fitness_general',
   nivel: 'intermedio',
   edad: 25,
@@ -120,17 +164,22 @@ const DEF_RESPUESTAS = {
 function OptionGrid({ opciones, valor, onSelect }) {
   return (
     <div className="survey-grid">
-      {opciones.map(op => (
-        <button
-          key={op.value}
-          className={'survey-option' + (valor === op.value ? ' on' : '')}
-          onClick={() => onSelect(op.value)}
-          type="button"
-        >
-          <span className="survey-opt-label">{op.label}</span>
-          {op.sub && <span className="survey-opt-sub">{op.sub}</span>}
-        </button>
-      ))}
+      {opciones.map(op => {
+        const disabled = op.disabled
+        return (
+          <button
+            key={op.value}
+            className={'survey-option' + (valor === op.value ? ' on' : '') + (disabled ? ' disabled' : '')}
+            onClick={() => !disabled && onSelect(op.value)}
+            disabled={disabled}
+            type="button"
+            style={disabled ? { opacity: 0.4, cursor: 'not-allowed' } : {}}
+          >
+            <span className="survey-opt-label">{op.label} {disabled ? '(No disponible)' : ''}</span>
+            {op.sub && <span className="survey-opt-sub">{op.sub}</span>}
+          </button>
+        )
+      })}
     </div>
   )
 }
@@ -161,17 +210,28 @@ export default function SurveyWizard() {
   const [paso, setPaso] = useState(1)
   const [generando, setGenerando] = useState(false)
 
-  // Estados para Previsualización y Cambio de Ejercicios
-  const [rutinaDraft, setRutinaDraft] = useState(null)
-  const [ejercicioAEditar, setEjercicioAEditar] = useState(null)
-  const [opcionesCambio, setOpcionesCambio] = useState([])
-
   const set = (campo, valor) => setResp(r => ({ ...r, [campo]: valor }))
+
+  // Requerimiento 3 — Restricciones lógicas y coherencia dinámica
+  useEffect(() => {
+    // Si equipamiento es Calistenia o Solo Mancuernas, "Máquinas y poleas" no es coherente
+    if (resp.equipamiento === 'calistenia' || resp.equipamiento === 'solo_mancuernas') {
+      if (resp.preferenciaEjercicio === 'maquinas_poleas') {
+        set('preferenciaEjercicio', 'sin_preferencia')
+      }
+    }
+    // Si hay 1 solo día, forzar split Full Body
+    if (resp.diasSeleccionados.length === 1 && resp.splitPreferido !== 'fullbody') {
+      set('splitPreferido', 'fullbody')
+    }
+  }, [resp.equipamiento, resp.diasSeleccionados.length])
 
   const toggleDia = (key) => {
     setResp(r => {
       const ya = r.diasSeleccionados.includes(key)
       const dias = ya ? r.diasSeleccionados.filter(d => d !== key) : [...r.diasSeleccionados, key]
+      // Evitar dejar 0 días
+      if (dias.length === 0) return r
       return { ...r, diasSeleccionados: dias }
     })
   }
@@ -186,45 +246,19 @@ export default function SurveyWizard() {
 
   const totalDias = resp.diasSeleccionados.length
   const splitRecomendado = useMemo(
-    () => defaultSplitRecomendado(resp.nivel, totalDias || 1, resp.genero),
-    [resp.nivel, totalDias, resp.genero]
+    () => defaultSplitRecomendado(resp.nivel, totalDias || 1),
+    [resp.nivel, totalDias]
   )
 
   const avisoLive = useMemo(() => {
-    const { avisoFrecuencia } = derivarSplit(resp.nivel, totalDias || 1, resp.splitPreferido, resp.genero)
+    const { avisoFrecuencia } = derivarSplit(resp.nivel, totalDias || 1, resp.splitPreferido, resp.enfoque)
     return avisoFrecuencia
-  }, [resp.nivel, totalDias, resp.splitPreferido, resp.genero])
+  }, [resp.nivel, totalDias, resp.splitPreferido, resp.enfoque])
 
-  const avanzar = () => {
-    if (paso === 5) {
-      const respuestas = {
-        ...resp,
-        tieneLesion: resp.lesiones.length > 0,
-        diasPorSemana: resp.diasSeleccionados.length,
-      }
-      const borrador = generarRutina(respuestas, EXDB)
-      setRutinaDraft(borrador)
-      setPaso(6)
-    } else {
-      setPaso(p => Math.min(PASOS, p + 1))
-    }
-  }
-
+  const avanzar = () => setPaso(p => Math.min(PASOS, p + 1))
   const retroceder = () => setPaso(p => Math.max(1, p - 1))
 
-  const abrirCambioEjercicio = (diaIdx, ejIdx, exerciseId) => {
-    const alts = obtenerAlternativas(exerciseId, EXDB, 3)
-    setOpcionesCambio(alts)
-    setEjercicioAEditar({ diaIdx, ejIdx })
-  }
-
-  const reemplazarEjercicio = (nuevoId) => {
-    if (!ejercicioAEditar || !rutinaDraft) return
-    const copia = JSON.parse(JSON.stringify(rutinaDraft))
-    copia.dias[ejercicioAEditar.diaIdx].ejercicios[ejercicioAEditar.ejIdx].exerciseId = nuevoId
-    setRutinaDraft(copia)
-    setEjercicioAEditar(null)
-  }
+  const [planRevision, setPlanRevision] = useState(null)
 
   const finalizar = async () => {
     setGenerando(true)
@@ -235,58 +269,125 @@ export default function SurveyWizard() {
         diasPorSemana: resp.diasSeleccionados.length,
       }
 
-      const rutinaAFinal = rutinaDraft || generarRutina(respuestas, EXDB)
-      const { routines, week } = rutinaGeneradaToRoutines(rutinaAFinal)
+      const rutinaGenerada = generarRutina(respuestas, CATALOGUE)
+      const { routines, week } = rutinaGeneradaToRoutines(rutinaGenerada, respuestas)
 
-      const tieneRutinasPrevias = S.routines.length > 0
-
-      const guardar = () => {
-        update(st => {
-          st.routines = routines
-          st.week = week
-          st.estadoInicial = 'encuesta_completada'
-          st.respuestasEncuesta = respuestas
-          st.rutinaGenerada = rutinaAFinal
-          st.fechaUltimaEncuesta = todayISO()
-
-          if (resp.pesoKg && (!st.bodyweight || st.bodyweight.length === 0)) {
-            st.bodyweight = [{ d: todayISO(), w: +resp.pesoKg, t: Date.now() }]
-          }
-
-          if (resp.descansoSegundos) {
-            const mapSec = { '60': 60, '90-120': 90, '180+': 180 }
-            st.restSec = mapSec[resp.descansoSegundos] || 90
-          }
-
-          if (resp.metricaEsfuerzo) {
-            st.effort = resp.metricaEsfuerzo.startsWith('rpe') ? 'rpe' : 'rir'
-          }
-        })
-
-        if (rutinaAFinal.avisoFrecuencia) {
-          toast(rutinaAFinal.avisoFrecuencia)
-        } else {
-          toast(t('¡Tu rutina personalizada está lista!'))
-        }
-        nav('/home')
-      }
-
-      if (tieneRutinasPrevias) {
-        setGenerando(false)
-        confirmSheet({
-          title: t('¿Reemplazar tu plan actual?'),
-          message: t('La rutina recomendada va a reemplazar tu plan de entrenamiento actual. Tus entrenamientos registrados no se modifican.'),
-          confirmText: t('Sí, reemplazar'),
-          onConfirm: guardar,
-        })
-      } else {
-        guardar()
-      }
+      setPlanRevision({
+        rutinaGenerada,
+        routines,
+        week,
+        poolSeguro: rutinaGenerada.poolSeguro || [],
+        usadosEnSemana: new Set(rutinaGenerada.usadosEnSemana || []),
+        respuestas,
+      })
+      setGenerando(false)
+      setPaso(6)
     } catch (e) {
       toast(t('Hubo un error al generar tu rutina. Intentá de nuevo.'))
       setGenerando(false)
     }
   }
+
+  const reemplazarEjercicio = (routineIdx, exIdx, exViejo, exNuevo) => {
+    if (!planRevision) return
+    const prevUsados = new Set(planRevision.usadosEnSemana)
+    prevUsados.delete(exViejo.id)
+    prevUsados.add(exNuevo.id)
+
+    const newRoutines = planRevision.routines.map((r, rI) => {
+      if (rI !== routineIdx) return r
+      const newEx = [...r.ex]
+      newEx[exIdx] = {
+        ...newEx[exIdx],
+        id: exNuevo.id,
+      }
+      return { ...r, ex: newEx }
+    })
+
+    const newDias = planRevision.rutinaGenerada.dias.map((d, dI) => {
+      if (dI !== routineIdx) return d
+      const newEjercicios = [...(d.ejercicios || d.ex || [])]
+      newEjercicios[exIdx] = {
+        ...newEjercicios[exIdx],
+        id: exNuevo.id,
+        exerciseId: exNuevo.id,
+      }
+      return { ...d, ejercicios: newEjercicios, ex: newEjercicios }
+    })
+
+    const newRutinaGenerada = {
+      ...planRevision.rutinaGenerada,
+      dias: newDias,
+      usadosEnSemana: prevUsados,
+    }
+
+    setPlanRevision({
+      ...planRevision,
+      routines: newRoutines,
+      rutinaGenerada: newRutinaGenerada,
+      usadosEnSemana: prevUsados,
+    })
+    useUI.getState().toast(t('Ejercicio reemplazado'))
+  }
+
+  const guardarDefinitivo = () => {
+    if (!planRevision) return
+    const { routines, week, respuestas, rutinaGenerada } = planRevision
+    const tieneRutinasPrevias = S.routines.length > 0
+
+    const guardar = () => {
+      update(st => {
+        st.routines = routines
+        st.week = week
+        st.estadoInicial = 'encuesta_completada'
+        st.respuestasEncuesta = respuestas
+        st.rutinaGenerada = rutinaGenerada
+        st.fechaUltimaEncuesta = todayISO()
+
+        if (respuestas.pesoKg && (!st.bodyweight || st.bodyweight.length === 0)) {
+          st.bodyweight = [{ d: todayISO(), w: +respuestas.pesoKg, t: Date.now() }]
+        }
+
+        if (respuestas.descansoSegundos) {
+          const mapSec = { '60': 60, '90-120': 90, '180+': 180 }
+          st.restSec = mapSec[respuestas.descansoSegundos] || 90
+        }
+
+        if (respuestas.metricaEsfuerzo) {
+          const mapEffort = { rir: 'rir', rpe: 'rpe' }
+          st.effort = mapEffort[respuestas.metricaEsfuerzo] || 'rir'
+        }
+      })
+
+      if (rutinaGenerada.avisoFrecuencia) {
+        toast(rutinaGenerada.avisoFrecuencia)
+      } else {
+        toast(t('¡Tu rutina personalizada está lista!'))
+      }
+      nav('/home')
+    }
+
+    if (tieneRutinasPrevias) {
+      confirmSheet({
+        title: t('¿Reemplazar tu plan actual?'),
+        message: t('La rutina recomendada va a reemplazar tu plan de entrenamiento actual. Tus entrenamientos registrados no se modifican.'),
+        confirmText: t('Sí, reemplazar'),
+        onConfirm: guardar,
+      })
+    } else {
+      guardar()
+    }
+  }
+
+  // Opciones filtradas dinámicamente según requerimiento 3
+  const preferenciasOpciones = useMemo(() => {
+    return OPT.preferenciaEjercicio.map(op => {
+      if (op.value === 'maquinas_poleas' && (resp.equipamiento === 'calistenia' || resp.equipamiento === 'solo_mancuernas')) {
+        return { ...op, disabled: true }
+      }
+      return op
+    })
+  }, [resp.equipamiento])
 
   const renderPaso = () => {
     switch (paso) {
@@ -296,25 +397,20 @@ export default function SurveyWizard() {
             <h2 className="survey-step-title">Paso 1: Perfil & Biometría</h2>
             <p className="survey-step-sub muted">Datos básicos para calibrar volumen y descanso.</p>
 
-            <h2 className="survey-step-title">Género</h2>
-            <OptionGrid
-              opciones={[
-                { value: 'hombre', label: 'Hombre', sub: 'Mayor volumen relativo en torso' },
-                { value: 'mujer',  label: 'Mujer',  sub: 'Recomendación automática de Glúteos Focus' },
-              ]}
-              valor={resp.genero || 'hombre'}
-              onSelect={v => set('genero', v)}
-            />
-
-            <div className="survey-inputs-row" style={{ marginBottom: 20, marginTop: 16 }}>
+            <div className="survey-inputs-row" style={{ marginBottom: 20 }}>
               <div className="survey-input-card">
                 <span className="lbl">Edad (14 - 90 años)</span>
                 <input
                   type="number"
                   min="14"
                   max="90"
-                  value={resp.edad || ''}
-                  onChange={e => set('edad', Math.min(90, Math.max(14, +e.target.value)) || +e.target.value)}
+                  value={resp.edad ?? ''}
+                  onChange={e => set('edad', e.target.value === '' ? '' : +e.target.value)}
+                  onBlur={() => {
+                    const n = +resp.edad
+                    if (n && n < 14) set('edad', 14)
+                    else if (n > 90) set('edad', 90)
+                  }}
                   placeholder="25"
                 />
               </div>
@@ -325,8 +421,13 @@ export default function SurveyWizard() {
                   step="0.5"
                   min="30"
                   max="250"
-                  value={resp.pesoKg || ''}
-                  onChange={e => set('pesoKg', Math.min(250, Math.max(30, +e.target.value)) || +e.target.value)}
+                  value={resp.pesoKg ?? ''}
+                  onChange={e => set('pesoKg', e.target.value === '' ? '' : +e.target.value)}
+                  onBlur={() => {
+                    const n = +resp.pesoKg
+                    if (n && n < 30) set('pesoKg', 30)
+                    else if (n > 250) set('pesoKg', 250)
+                  }}
                   placeholder="70"
                 />
               </div>
@@ -376,7 +477,7 @@ export default function SurveyWizard() {
             <OptionGrid opciones={OPT.splitPreferido} valor={resp.splitPreferido} onSelect={v => set('splitPreferido', v)} />
 
             {avisoLive && (
-              <div className="survey-banner" role="alert" style={{ marginTop: 12 }}>
+              <div className="survey-banner" role="alert">
                 <Icon name="info" style={{ fontSize: 16, marginTop: 1, flexShrink: 0 }} />
                 <span>{avisoLive}</span>
               </div>
@@ -392,7 +493,7 @@ export default function SurveyWizard() {
 
             <div style={{ height: 24 }} />
             <h2 className="survey-step-title">Preferencia de ejercicios</h2>
-            <OptionGrid opciones={OPT.preferenciaEjercicio} valor={resp.preferenciaEjercicio} onSelect={v => set('preferenciaEjercicio', v)} />
+            <OptionGrid opciones={preferenciasOpciones} valor={resp.preferenciaEjercicio} onSelect={v => set('preferenciaEjercicio', v)} />
 
             <div style={{ height: 24 }} />
             <h2 className="survey-step-title">Enfoque muscular</h2>
@@ -423,13 +524,13 @@ export default function SurveyWizard() {
 
             <div style={{ height: 24 }} />
             <h2 className="survey-step-title">Movilidad y estiramientos</h2>
-            <p className="survey-step-sub muted small">Agrega un bloque de 8 min de movilidad al final de cada sesión.</p>
+            <p className="survey-step-sub muted small">Agrega ejercicios de movilidad al final de cada sesión.</p>
             <div style={{ display: 'flex', gap: 10 }}>
               <CheckPill
                 checked={resp.movilidadEstiramientos}
                 onChange={v => set('movilidadEstiramientos', v)}
               >
-                {resp.movilidadEstiramientos ? '✓ Bloque de movilidad activado' : 'Sin bloque de movilidad'}
+                {resp.movilidadEstiramientos ? '✓ Estiramientos finales activados' : 'Sin estiramientos'}
               </CheckPill>
             </div>
           </>
@@ -439,7 +540,7 @@ export default function SurveyWizard() {
         return (
           <>
             <h2 className="survey-step-title">Paso 5: Lesiones & Salud</h2>
-            <p className="survey-step-sub muted">Excluiremos ejercicios que involucren sobrecarga o impacto en esas zonas.</p>
+            <p className="survey-step-sub muted">Excluiremos ejercicios que afecten a estas zonas del cuerpo.</p>
             <div style={{ marginTop: 12, marginBottom: 12 }}>
               <CheckPill
                 checked={resp.lesiones.length === 0}
@@ -461,77 +562,60 @@ export default function SurveyWizard() {
             </div>
             {resp.lesiones.length > 0 && (
               <p className="muted small" style={{ marginTop: 16, lineHeight: 1.5 }}>
-                ⚠️ La rutina excluirá automáticamente los ejercicios de riesgo para las zonas marcadas.
+                ⚠️ La rutina excluirá automáticamente los ejercicios de riesgo para las zonas marcadas. Si sentís dolor agudo, detené la actividad y consultá a un profesional.
               </p>
             )}
           </>
         )
 
       case 6:
+        if (!planRevision) return null
         return (
-          <div className="preview-container">
-            <h2 className="survey-step-title">Previsualización de tu Rutina</h2>
-            <p className="survey-step-sub muted">Revisá los ejercicios asignados. Podés tocar "Cambiar" para ver opciones similares.</p>
+          <>
+            <h2 className="survey-step-title">{t('Revisá y ajustá tus ejercicios')}</h2>
+            <p className="survey-step-sub muted">
+              {t('Esta es la lista completa de ejercicios generados. Podés reemplazar los que prefieras por alternativas equivalentes.')}
+            </p>
 
-            {rutinaDraft && rutinaDraft.dias.map((dia, dIdx) => (
-              <div key={dIdx} style={{ background: 'var(--surface)', padding: 14, borderRadius: 10, marginBottom: 12 }}>
-                <h4 style={{ margin: '0 0 10px 0' }}>{dia.diaLabel}</h4>
-                <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
-                  {dia.ejercicios.map((ej, eIdx) => {
-                    const nombreEs = exerciseNamesEs[ej.exerciseId] || ej.exerciseId
+            {planRevision.routines.map((r, rIdx) => (
+              <div key={r.id} className="card" style={{ marginBottom: 14 }}>
+                <h3 style={{ margin: '0 0 10px', fontSize: 16, fontWeight: 700 }}>{r.name}</h3>
+                <div className="list" style={{ gap: 4 }}>
+                  {r.ex.map((ex, exIdx) => {
+                    const exObj = EXIDX[ex.id] || ex
+                    const nombre = exerciseNameFor(exObj) || exObj.n || ex.id
+                    const isNormal = ex.isNormal !== false && !ex.isCardio && !ex.isStretch
                     return (
-                      <li key={eIdx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', borderBottom: '1px solid var(--border)' }}>
-                        <span style={{ fontSize: 14 }}>{ej.series}x{ej.repeticiones} — <strong>{nombreEs}</strong></span>
-                        <button
-                          type="button"
-                          className="survey-pill"
-                          onClick={() => abrirCambioEjercicio(dIdx, eIdx, ej.exerciseId)}
-                          style={{ fontSize: 12, padding: '2px 8px' }}
-                        >
-                          🔄 Cambiar
-                        </button>
-                      </li>
+                      <div key={exIdx} className="row between" style={{ padding: '8px 4px', borderBottom: exIdx < r.ex.length - 1 ? '1px solid var(--sep)' : 'none' }}>
+                        <div>
+                          <div style={{ fontWeight: 600, fontSize: 14 }}>{nombre}</div>
+                          <div className="small muted">{ex.sets} {t('series')} × {ex.reps} {t('reps')}</div>
+                        </div>
+                        {isNormal && (
+                          <Button
+                            size="sm"
+                            variant="tinted"
+                            icon="reset"
+                            onClick={() => useUI.getState().openSheet(close => (
+                              <ReemplazarEjercicioSheet
+                                exActual={ex}
+                                poolSeguro={planRevision.poolSeguro}
+                                usadosEnSemana={planRevision.usadosEnSemana}
+                                onReemplazar={(nueva) => reemplazarEjercicio(rIdx, exIdx, ex, nueva)}
+                                close={close}
+                              />
+                            ))}
+                          >
+                            {t('Reemplazar')}
+                          </Button>
+                        )}
+                      </div>
                     )
                   })}
-                </ul>
-
-                {dia.cardio && (
-                  <div style={{ fontSize: 12, marginTop: 8, color: 'var(--acc)' }}>
-                    🏃 Cardio: {dia.cardio.duracionMin} min ({dia.cardio.tipo})
-                  </div>
-                )}
-                {dia.movilidad && (
-                  <div style={{ fontSize: 12, marginTop: 4, color: 'var(--acc)' }}>
-                    🧘 Movilidad: {dia.movilidad.duracionMin} min
-                  </div>
-                )}
-              </div>
-            ))}
-
-            {ejercicioAEditar && (
-              <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
-                <div style={{ background: 'var(--surface)', padding: 20, borderRadius: 12, maxWidth: 350, width: '90%' }}>
-                  <h3 style={{ marginTop: 0 }}>Seleccioná un reemplazo</h3>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8, margin: '16px 0' }}>
-                    {opcionesCambio.map(alt => (
-                      <button
-                        key={alt.id}
-                        type="button"
-                        className="survey-option"
-                        onClick={() => reemplazarEjercicio(alt.id)}
-                      >
-                        <strong>{exerciseNamesEs[alt.id] || alt.n}</strong>
-                        <span className="small muted"> ({alt.eq})</span>
-                      </button>
-                    ))}
-                  </div>
-                  <Button variant="secondary" onClick={() => setEjercicioAEditar(null)} style={{ width: '100%' }}>
-                    Cancelar
-                  </Button>
                 </div>
               </div>
-            )}
-          </div>
+            ))}
+          </>
         )
 
       default:
@@ -572,11 +656,11 @@ export default function SurveyWizard() {
         <div className="survey-progress-wrap">
           <div
             className="survey-progress-bar"
-            style={{ width: `${(paso / PASOS) * 100}%` }}
+            style={{ width: `${(Math.min(paso, PASOS) / PASOS) * 100}%` }}
           />
         </div>
         <span className="muted small" style={{ whiteSpace: 'nowrap' }}>
-          {paso} / {PASOS}
+          {paso > PASOS ? t('Revisión') : `${paso} / ${PASOS}`}
         </span>
       </div>
 
@@ -594,9 +678,9 @@ export default function SurveyWizard() {
             disabled={!puedeAvanzar()}
             style={{ width: '100%' }}
           >
-            {paso === 5 ? 'Ver previsualización' : 'Siguiente'}
+            Siguiente
           </Button>
-        ) : (
+        ) : paso === PASOS ? (
           <Button
             variant="primary"
             icon="sparkles"
@@ -604,7 +688,16 @@ export default function SurveyWizard() {
             disabled={generando}
             style={{ width: '100%' }}
           >
-            {generando ? 'Generando…' : '¡Confirmar y crear mi rutina!'}
+            {generando ? 'Generando…' : '¡Crear mi rutina!'}
+          </Button>
+        ) : (
+          <Button
+            variant="primary"
+            icon="check"
+            onClick={guardarDefinitivo}
+            style={{ width: '100%' }}
+          >
+            {t('Confirmar rutina')}
           </Button>
         )}
       </div>

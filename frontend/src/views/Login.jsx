@@ -1,6 +1,6 @@
 import { useStore } from '../store/useStore.js'
 import { useUI } from '../store/useUI.js'
-import { webauthnOK, passkeyLogin, passkeyRegister, BIO } from '../lib/api.js'
+import { webauthnOK, passkeyLogin, passkeyRegister, BIO, api } from '../lib/api.js'
 import { hasData } from '../store/useStore.js'
 import { t } from '../lib/i18n.js'
 import { DEMO, REPO } from '../lib/demo.js'
@@ -46,6 +46,75 @@ function RegisterSheet({ close }) {
   </>
 }
 
+function DevicePairingSheet({ close }) {
+  const { setUser, pullState } = useStore()
+  const [pairing, setPairing] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
+
+  useEffect(() => {
+    let timer = null
+    let active = true
+
+    const start = async () => {
+      try {
+        const res = await api('/api/auth/device/start', { method: 'POST', body: '{}' })
+        if (!active) return
+        setPairing(res)
+        setLoading(false)
+
+        const poll = async () => {
+          try {
+            const p = await api(`/api/auth/device/poll?pairingId=${res.pairingId}`)
+            if (p.status === 'approved' && p.user) {
+              setUser(p.user)
+              await pullState()
+              useUI.getState().toast(t('Welcome back, {0}', p.user.name))
+              close()
+              return
+            }
+            if (p.status === 'expired') {
+              setError(t('El código ha expirado. Reintenta.'))
+              return
+            }
+          } catch (e) { /* retry */ }
+          if (active) timer = setTimeout(poll, 2000)
+        }
+        timer = setTimeout(poll, 2000)
+      } catch (e) {
+        if (active) { setError(e.message || t('Error al iniciar vinculación')); setLoading(false); }
+      }
+    }
+    start()
+
+    return () => {
+      active = false
+      if (timer) clearTimeout(timer)
+    }
+  }, [setUser, pullState, close])
+
+  return <>
+    <h3>{t('Iniciar sesión desde el celu')}</h3>
+    <div className="muted small" style={{ marginBottom: 14 }}>
+      {t('Abrí la app en tu celular donde tengas sesión iniciada e ingresá este código en Configuración → Vincular dispositivo.')}
+    </div>
+    {loading && <div className="muted" style={{ padding: 20 }}>{t('Generando código...')}</div>}
+    {error && <div style={{ color: 'var(--red)', margin: '10px 0' }}>{error}</div>}
+    {pairing && !error && <>
+      <div className="card" style={{ textAlign: 'center', background: 'var(--surface-2)', padding: 20, margin: '14px 0' }}>
+        <div style={{ fontSize: 13, color: 'var(--label-2)', marginBottom: 6 }}>{t('Código de vinculación')}</div>
+        <div style={{ fontSize: 32, fontWeight: 800, letterSpacing: '.18em', color: 'var(--acc)', fontFamily: 'monospace' }}>
+          {pairing.manualCode}
+        </div>
+        <div className="small muted" style={{ marginTop: 8 }}>
+          {t('Expira en 5 minutos · Esperando aprobación...')}
+        </div>
+      </div>
+    </>}
+    <Button variant="ghost" className="dim" onClick={close}>{t('Cancelar')}</Button>
+  </>
+}
+
 export default function Login() {
   const { setUser, pullState, setGuest } = useStore()
   const config = useStore(s => s.config)
@@ -78,9 +147,11 @@ export default function Login() {
   return (
     <div className="narrow" style={wrap}>
       {head}
-      <div className="muted" style={{ marginBottom: 34 }}>{t('Tus entrenamientos. Tus pesos. Tu perfil.')}</div>
+      <div className="muted" style={{ marginBottom: 34 }}>{t('Tus entrenamientos. Tus pesos. Tus perfiles.')}</div>
       {webauthnOK() ? <>
         <Button variant="primary" icon="person" onClick={signIn}>{t('Ingresar con passkey')}</Button>
+        <div style={{ height: 10 }} />
+        <Button variant="tinted" icon="phone" onClick={() => useUI.getState().openSheet(c => <DevicePairingSheet close={c} />)}>{t('Iniciar sesión desde el celu')}</Button>
         <div style={{ height: 10 }} />
         <Button icon="sparkles" onClick={() => useUI.getState().openSheet(close => <RegisterSheet close={close} />)}>{t('Crear nuevo perfil')}</Button>
         {canGuest && <div style={{ height: 10 }} />}

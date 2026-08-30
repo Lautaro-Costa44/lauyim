@@ -4,7 +4,69 @@ import { useStore, DEF, hasData } from '../store/useStore.js'
 import { useUI } from '../store/useUI.js'
 import { ACCENTS, todayISO, localTZ } from '../lib/format.js'
 import { effortOf } from '../lib/history.js'
-import { api, webauthnOK, passkeyLogin, passkeyRegister, IS_ANDROID } from '../lib/api.js'
+import { api, webauthnOK, passkeyLogin, passkeyRegister, passkeyAddCredential, IS_ANDROID } from '../lib/api.js'
+
+function ClaimDeviceSheet({ close }) {
+  const toast = useUI(s => s.toast)
+  const [code, setCode] = useState('')
+  const [pending, setPending] = useState(null)
+  const [loading, setLoading] = useState(false)
+
+  const checkCode = async () => {
+    const c = code.trim().toUpperCase()
+    if (!c) { toast(t('Ingresa un código')); return }
+    setLoading(true)
+    try {
+      const res = await api('/api/auth/device/claim', { method: 'POST', body: JSON.stringify({ code: c }) })
+      setPending(res)
+    } catch (e) {
+      toast(e.message || t('Código no válido o expirado'))
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const confirmPairing = async () => {
+    if (!pending) return
+    setLoading(true)
+    try {
+      await api('/api/auth/device/confirm', { method: 'POST', body: JSON.stringify({ pairingId: pending.pairingId }) })
+      toast(t('¡Dispositivo vinculado con éxito!'))
+      close()
+    } catch (e) {
+      toast(e.message || t('Error al confirmar vinculación'))
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return <>
+    <h3>{t('Vincular dispositivo')}</h3>
+    <div className="muted small" style={{ marginBottom: 14 }}>
+      {t('Ingresá el código corto de 8 caracteres que se muestra en la computadora para iniciarle sesión en tu cuenta.')}
+    </div>
+    {!pending ? <>
+      <input
+        className="input"
+        placeholder="XXXX-XXXX"
+        maxLength={9}
+        value={code}
+        onChange={e => setCode(e.target.value.toUpperCase())}
+        style={{ letterSpacing: '.18em', fontWeight: 700, fontSize: 20, textAlign: 'center' }}
+      />
+      <div style={{ height: 14 }} />
+      <Button variant="primary" onClick={checkCode} disabled={loading}>{loading ? t('Verificando...') : t('Verificar código')}</Button>
+    </> : <>
+      <div className="card" style={{ background: 'var(--surface-2)', padding: 16, margin: '12px 0', textAlign: 'center' }}>
+        <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 6 }}>{t('¿Confirmás iniciar sesión?')}</div>
+        <div className="muted small">{t('Un nuevo dispositivo está solicitando acceso a tu perfil de lauyim.')}</div>
+      </div>
+      <Button variant="primary" onClick={confirmPairing} disabled={loading}>{loading ? t('Aprobando...') : t('Aprobar e iniciar sesión')}</Button>
+    </>}
+    <div style={{ height: 8 }} />
+    <Button variant="ghost" className="dim" onClick={close}>{t('Cancelar')}</Button>
+  </>
+}
 import { pushSupported, enablePush, disablePush, sendTestPush } from '../lib/push.js'
 import { wakeLockSupported } from '../lib/wakelock.js'
 import { DEMO, REPO } from '../lib/demo.js'
@@ -78,6 +140,15 @@ export default function Settings() {
       </> : user ? <>
         <Row icon="personCircle" iconTint="var(--grey)" title={user.name} subtitle={t('Signed in with passkey — data syncs to this profile.')} />
         {user.admin && <Row icon="wrench" iconTint="var(--indigo)" title={t('Admin dashboard')} accessory="chevron" onClick={() => nav('/admin')} />}
+        <Row icon="phone" iconTint="var(--blue)" title={t('Vincular otro dispositivo')} subtitle={t('Iniciar sesión en una compu ingresando su código')} accessory="chevron" onClick={() => useUI.getState().openSheet(c => <ClaimDeviceSheet close={c} />)} />
+        <Row icon="key" iconTint="var(--acc)" title={t('Agregar otra passkey')} subtitle={t('Registrar una passkey adicional de respaldo')} accessory="chevron" onClick={async () => {
+          try {
+            await passkeyAddCredential()
+            toast(t('¡Nueva passkey agregada con éxito!'))
+          } catch (e) {
+            if (e.name !== 'NotAllowedError' && e.name !== 'AbortError') toast(e.message || t('Error al agregar passkey'))
+          }
+        }} />
         <Row icon="signOut" iconTint="var(--red)" title={t('Sign out')} danger onClick={() => confirmSheet({ title: t('Sign out?'), message: t('Your data is synced to your profile first, then cleared from this device.'), confirmText: t('Sign out'), danger: true, onConfirm: () => { signOut(); nav('/home') } })} />
         <Row icon="shield" iconTint="var(--red)" title={t('Sign out everywhere')} subtitle={t('Ends this profile’s sessions on all your devices.')} danger onClick={signOutEverywhere} />
       </> : webauthnOK() ? <>

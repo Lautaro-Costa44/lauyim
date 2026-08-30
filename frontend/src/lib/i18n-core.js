@@ -36,10 +36,9 @@ export const instrFor = ex => (instr && instr[ex.id]) || ex.st || []
 // Built-in catalogue names are bilingual when a complete translated name pack is active.
 // User-created exercises have no entry in the pack and keep their exact chosen name.
 export const exerciseNameFor = ex => {
-  const translated = exerciseNames && ex && exerciseNames[ex.id]
+  const translated = exerciseNames && ex && ex.id && exerciseNames[ex.id]
   if (!translated) return ex?.n || ''
-  // Some names are established terms in Spanish too; repeating an identical loanword in
-  // parentheses adds noise rather than context.
+  if (!ex || !ex.n) return translated
   return translated.toLocaleLowerCase('es-ES') === ex.n.toLocaleLowerCase('en')
     ? translated
     : `${translated} (${ex.n})`

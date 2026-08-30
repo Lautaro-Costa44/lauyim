@@ -62,3 +62,9 @@ export async function passkeyLogin() {
   const res = await api('/api/login/verify', { method: 'POST', body: JSON.stringify({ cid, credential: credToJSON(cred) }) })
   return res.user
 }
+export async function passkeyAddCredential() {
+  const { cid, options } = await api('/api/credentials/add/options', { method: 'POST', body: '{}' })
+  const cred = await navigator.credentials.create({ publicKey: toCreationOptions(options) })
+  const res = await api('/api/credentials/add/verify', { method: 'POST', body: JSON.stringify({ cid, credential: credToJSON(cred) }) })
+  return res
+}

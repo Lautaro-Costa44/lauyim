@@ -1,5 +1,5 @@
-import { useEffect } from 'react'
 import { HashRouter, Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom'
+import { useEffect } from 'react'
 import { useStore } from './store/useStore.js'
 import { useUI } from './store/useUI.js'
 import { bindUI } from './components/ui.jsx'
@@ -102,7 +102,7 @@ function Shell() {
           )}
         </ErrorBoundary>
       </div>
-      <TabBar onStart={startFlow} />
+      {loc.pathname !== '/onboarding/encuesta' && <TabBar onStart={startFlow} />}
       <RestTimer />
       <Modals />
       <Toast />
