@@ -43,7 +43,7 @@ const SECURE = /^https:/i.test(ORIGIN) ? ' Secure;' : '';
 fs.mkdirSync(DATA, { recursive: true });
 function feeDueDate(reminder, today) {
   if (!reminder?.feeOn || !/^\d{4}-\d{2}-\d{2}$/.test(reminder.feeDate || '')) return null;
-  const interval = reminder.feeInterval === 'annual' ? 12 : reminder.feeInterval === 'bimonthly' ? 2 : 1;
+  const interval = reminder.feeInterval === 'annual' ? 12 : reminder.feeInterval === 'bimonthly' ? 2 : reminder.feeInterval === 'quarterly' ? 3 : 1;
   const anchor = new Date(reminder.feeDate + 'T12:00:00');
   if (Number.isNaN(anchor.getTime())) return null;
   if (reminder.feeDate > today) return null;

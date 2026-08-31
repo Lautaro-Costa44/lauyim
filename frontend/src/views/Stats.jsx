@@ -21,6 +21,52 @@ import {
 } from '../lib/effort.js'
 import { Button, Segmented, SelectRow } from '../components/ui.jsx'
 import { isWarmupRow } from '../lib/workout-model.js'
+import { calcularTMB, calcularCaloriasSugeridas } from '../lib/calories.js'
+import { startTourB } from '../lib/onboarding.js'
+
+function CaloricCard({ S }) {
+  const resp = S.respuestasEncuesta || {}
+  const bwObj = lastBW(S)
+  const peso = bwObj ? bwObj.w : (resp.pesoKg || 70)
+  const altura = S.altura || resp.altura || 170
+  const edad = resp.edad || 25
+  const sexo = resp.sexoBiologico || (S.genero === 'femenino' ? 'femenino' : 'masculino')
+  const dias = resp.diasSeleccionados || Object.keys(S.week || {})
+  const objetivo = resp.objetivo || 'fitness_general'
+
+  const tmb = calcularTMB(peso, altura, edad, sexo)
+  const { mantenimiento, sugerido } = calcularCaloriasSugeridas(tmb, dias, objetivo)
+
+  const objLabelMap = {
+    hipertrofia: t('ganar músculo'),
+    fuerza: t('ganar fuerza'),
+    perder_grasa: t('perder grasa'),
+    fitness_general: t('mantenimiento salud'),
+  }
+
+  return (
+    <div className="card" style={{ marginTop: 14 }}>
+      <h2>{t('Gasto calórico estimado')}</h2>
+      <div className="tiles" style={{ marginBottom: 10 }}>
+        <div className="tile">
+          <div className="l">{t('Metabolismo basal (TMB)')}</div>
+          <div className="v" style={{ fontSize: 20 }}>{tmb} <span className="small muted">kcal</span></div>
+        </div>
+        <div className="tile">
+          <div className="l">{t('Mantenimiento estimado')}</div>
+          <div className="v" style={{ fontSize: 20 }}>~{mantenimiento} <span className="small muted">kcal/día</span></div>
+        </div>
+        <div className="tile">
+          <div className="l">{t('Para tu objetivo ({0})', objLabelMap[objetivo] || objetivo)}</div>
+          <div className="v accent" style={{ fontSize: 20 }}>~{sugerido} <span className="small muted">kcal/día</span></div>
+        </div>
+      </div>
+      <div className="small dim">
+        {t('Estimación calculada con la fórmula Mifflin-St Jeor + factor de actividad por días de entrenamiento. Basado en {0} kg, {1} cm, {2} años.', fmtNum(peso), altura, edad)}
+      </div>
+    </div>
+  )
+}
 
 // Which muscles the training in a window actually hit — and, the point of the card,
 // which ones it keeps missing. Shading is relative within the window (lib/muscles.js).
@@ -277,7 +323,14 @@ function EffortCard({ S }) {
 export default function Stats() {
   const nav = useNavigate()
   const S = useStore(s => s.S)
+  const workouts = S.workouts || []
   const [range, setRange] = useState(90)
+
+  useEffect(() => {
+    if (!S.onboardingStatsCompletado) {
+      setTimeout(() => startTourB(), 600)
+    }
+  }, [S.onboardingStatsCompletado])
   const [exId, setExId] = useState(null)
   const [exMetric, setExMetric] = useState('top')
   const now = Date.now()
@@ -421,6 +474,7 @@ export default function Stats() {
         <Segmented className="seg-range" value={range} onChange={setRange}
           options={[{ value: 30, label: '1M' }, { value: 90, label: '3M' }, { value: 365, label: '1Y' }, { value: 0, label: t('All') }]} />
         <div className="chart"><LineChart points={bwPts} h={160} unit={S.unit} goal={S.targetW} /></div>
+        <CaloricCard S={S} />
       </div>
 
       <div className="card">

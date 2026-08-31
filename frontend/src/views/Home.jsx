@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useStore } from '../store/useStore.js'
 import { effectiveRoutine, effectiveRoutineId, streakWeeks, lastBW, setsDoneActive } from '../lib/history.js'
@@ -9,6 +9,7 @@ import LineChart from '../components/LineChart.jsx'
 import Icon from '../components/Icon.jsx'
 import { Button } from '../components/ui.jsx'
 import { glyphOf } from '../lib/glyphs.js'
+import { startTourA } from '../lib/onboarding.js'
 
 
 // Home = what to do now + a quick glance. Deep charts & history live in Stats.
@@ -18,6 +19,12 @@ export default function Home() {
   const user = useStore(s => s.user)
   const config = useStore(s => s.config)
   const [weekOffset, setWeekOffset] = useState(0)
+
+  useEffect(() => {
+    if (user && !S.onboardingCompletado) {
+      setTimeout(() => startTourA(nav), 600)
+    }
+  }, [user, S.onboardingCompletado, nav])
 
   const today = new Date()
   const routine = effectiveRoutine(S, todayISO())

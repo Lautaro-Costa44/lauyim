@@ -3,7 +3,7 @@ import { useState, useMemo, useEffect } from 'react'
 import { useStore } from '../store/useStore.js'
 import { useUI } from '../store/useUI.js'
 import { CATALOGUE, EXIDX } from '../lib/exercises.js'
-import { generarRutina, rutinaGeneradaToRoutines, defaultSplitRecomendado, derivarSplit, obtenerAlternativas } from '../lib/generarRutina.js'
+import { generarRutina, rutinaGeneradaToRoutines, defaultSplitRecomendado, derivarSplit, obtenerAlternativas, obtenerMasAlternativas, buscarEnGrupoMuscular } from '../lib/generarRutina.js'
 import { todayISO } from '../lib/format.js'
 import { t, exerciseNameFor } from '../lib/i18n.js'
 import { confirmSheet } from '../sheets.jsx'
@@ -13,25 +13,44 @@ import { Button } from '../components/ui.jsx'
 const PASOS = 5
 
 function ReemplazarEjercicioSheet({ exActual, poolSeguro, usadosEnSemana, onReemplazar, close }) {
-  const alts = useMemo(() => {
-    return obtenerAlternativas(exActual, poolSeguro, usadosEnSemana, 3)
-  }, [exActual, poolSeguro, usadosEnSemana])
+  const [masAlts, setMasAlts] = useState([])
+  const [verMasCargado, setVerMasCargado] = useState(false)
+  const [query, setQuery] = useState('')
 
-  const exActualObj = EXIDX[exActual.id] || exActual
-  const nombreActual = exerciseNameFor(exActualObj) || exActual.id
+  const exActualObj = useMemo(() => poolSeguro.find(e => e.id === (exActual.id || exActual.exerciseId)) || EXIDX[exActual.id] || exActual, [exActual, poolSeguro])
+  const nombreActual = exerciseNameFor(exActualObj) || exActualObj.n || exActual.id
+
+  const altsIniciales = useMemo(() => {
+    return obtenerAlternativas(exActualObj, poolSeguro, usadosEnSemana, 3)
+  }, [exActualObj, poolSeguro, usadosEnSemana])
+
+  const cargarMas = () => {
+    const yaMostrados = new Set(altsIniciales.map(a => a.id))
+    const mas = obtenerMasAlternativas(exActualObj, poolSeguro, usadosEnSemana, yaMostrados, 5)
+    setMasAlts(mas)
+    setVerMasCargado(true)
+  }
+
+  const resultadosBusqueda = useMemo(() => {
+    if (!query.trim()) return null
+    return buscarEnGrupoMuscular(query, poolSeguro, exActualObj.tg, usadosEnSemana)
+  }, [query, poolSeguro, exActualObj, usadosEnSemana])
+
+  const listaAMostrar = resultadosBusqueda !== null ? resultadosBusqueda : [...altsIniciales, ...masAlts]
 
   return <>
     <h3>{t('Reemplazar {0}', nombreActual)}</h3>
     <div className="muted small" style={{ marginBottom: 14 }}>
       {t('Seleccioná una alternativa equivalente para este ejercicio:')}
     </div>
-    {alts.length === 0 ? (
+
+    {listaAMostrar.length === 0 ? (
       <div className="muted" style={{ padding: '16px 0' }}>
-        {t('No hay otras alternativas equivalentes disponibles.')}
+        {query ? t('No se encontraron ejercicios en este grupo muscular.') : t('No hay otras alternativas equivalentes disponibles.')}
       </div>
     ) : (
-      <div className="list">
-        {alts.map(alt => {
+      <div className="list" style={{ maxHeight: 260, overflowY: 'auto' }}>
+        {listaAMostrar.map(alt => {
           const nombreAlt = exerciseNameFor(alt) || alt.n || alt.id
           return (
             <div key={alt.id} className="item" onClick={() => { onReemplazar(alt); close() }}>
@@ -46,6 +65,26 @@ function ReemplazarEjercicioSheet({ exActual, poolSeguro, usadosEnSemana, onReem
         })}
       </div>
     )}
+
+    {!query && !verMasCargado && (
+      <div style={{ margin: '10px 0 6px' }}>
+        <Button size="sm" variant="tinted" icon="plus" onClick={cargarMas} style={{ width: '100%' }}>
+          {t('Ver más alternativas (+5)')}
+        </Button>
+      </div>
+    )}
+
+    <div style={{ marginTop: 12 }}>
+      <input
+        className="input"
+        type="text"
+        placeholder={t('Buscar en {0}...', exActualObj.tg || t('mismo grupo'))}
+        value={query}
+        onChange={e => setQuery(e.target.value)}
+        style={{ fontSize: 14 }}
+      />
+    </div>
+
     <div style={{ height: 12 }} />
     <Button variant="ghost" className="dim" onClick={close}>{t('Cancelar')}</Button>
   </>
@@ -62,6 +101,10 @@ const DIAS_OPCIONES = [
 ]
 
 const OPT = {
+  sexoBiologico: [
+    { value: 'masculino', label: 'Masculino' },
+    { value: 'femenino', label: 'Femenino' },
+  ],
   objetivo: [
     { value: 'hipertrofia',     label: 'Ganar músculo',     sub: 'Volumen + progresión en cargas' },
     { value: 'fuerza',          label: 'Ganar fuerza',       sub: 'Compuestos pesados, pocas reps' },
@@ -142,6 +185,8 @@ const OPT = {
 }
 
 const DEF_RESPUESTAS = {
+  sexoBiologico: 'masculino',
+  altura: 170,
   objetivo: 'fitness_general',
   nivel: 'intermedio',
   edad: 25,
@@ -395,11 +440,22 @@ export default function SurveyWizard() {
         return (
           <>
             <h2 className="survey-step-title">Paso 1: Perfil & Biometría</h2>
-            <p className="survey-step-sub muted">Datos básicos para calibrar volumen y descanso.</p>
+            <p className="survey-step-sub muted">Datos básicos para calibrar metabolismo, volumen y descanso.</p>
 
+            <h2 className="survey-step-title" style={{ fontSize: 16 }}>Sexo (biológico)</h2>
+            <OptionGrid
+              opciones={OPT.sexoBiologico}
+              valor={resp.sexoBiologico}
+              onSelect={v => {
+                set('sexoBiologico', v)
+                update(st => { st.genero = v === 'femenino' ? 'femenino' : 'masculino' })
+              }}
+            />
+
+            <div style={{ height: 18 }} />
             <div className="survey-inputs-row" style={{ marginBottom: 20 }}>
               <div className="survey-input-card">
-                <span className="lbl">Edad (14 - 90 años)</span>
+                <span className="lbl">Edad (14 - 90)</span>
                 <input
                   type="number"
                   min="14"
@@ -415,7 +471,7 @@ export default function SurveyWizard() {
                 />
               </div>
               <div className="survey-input-card">
-                <span className="lbl">Peso actual en kg (30 - 250)</span>
+                <span className="lbl">Peso kg (30 - 250)</span>
                 <input
                   type="number"
                   step="0.5"
@@ -429,6 +485,22 @@ export default function SurveyWizard() {
                     else if (n > 250) set('pesoKg', 250)
                   }}
                   placeholder="70"
+                />
+              </div>
+              <div className="survey-input-card">
+                <span className="lbl">Altura cm (100 - 250)</span>
+                <input
+                  type="number"
+                  min="100"
+                  max="250"
+                  value={resp.altura ?? ''}
+                  onChange={e => set('altura', e.target.value === '' ? '' : +e.target.value)}
+                  onBlur={() => {
+                    const n = +resp.altura
+                    if (n && n < 100) set('altura', 100)
+                    else if (n > 250) set('altura', 250)
+                  }}
+                  placeholder="170"
                 />
               </div>
             </div>
@@ -624,7 +696,7 @@ export default function SurveyWizard() {
   }
 
   const puedeAvanzar = () => {
-    if (paso === 1) return !!resp.objetivo && !!resp.nivel && resp.edad >= 14 && resp.edad <= 90 && resp.pesoKg >= 30 && resp.pesoKg <= 250
+    if (paso === 1) return !!resp.sexoBiologico && !!resp.objetivo && !!resp.nivel && resp.edad >= 14 && resp.edad <= 90 && resp.pesoKg >= 30 && resp.pesoKg <= 250 && resp.altura >= 100 && resp.altura <= 250
     if (paso === 2) return resp.diasSeleccionados.length >= 1 && !!resp.tiempoPorSesion
     if (paso === 3) return !!resp.equipamiento && !!resp.preferenciaEjercicio && !!resp.enfoque
     if (paso === 4) return !!resp.descansoSegundos && !!resp.metricaEsfuerzo && !!resp.tipoProgresion && !!resp.cardio

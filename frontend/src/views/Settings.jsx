@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { startTourA, startTourB } from '../lib/onboarding.js'
 import { useStore, DEF, hasData } from '../store/useStore.js'
 import { useUI } from '../store/useUI.js'
 import { ACCENTS, todayISO, localTZ } from '../lib/format.js'
@@ -271,6 +272,8 @@ export default function Settings() {
         accessory="chevron" onClick={() => importRef.current.click()} />
       <Row icon="upload" iconTint="var(--blue)" title={t('Import backup')} accessory="chevron" onClick={() => fileRef.current.click()} />
       <Row icon="download" iconTint="var(--blue)" title={t('Export backup (JSON)')} accessory="chevron" onClick={doExport} />
+      <Row icon="sparkles" iconTint="var(--indigo)" title={t('Tutorial: Primeros pasos')} subtitle={t('Repasá las funciones principales de la app.')} accessory="chevron" onClick={() => { nav('/home'); setTimeout(() => startTourA(nav, true), 400) }} />
+      <Row icon="chart" iconTint="var(--indigo)" title={t('Tutorial: Tu progreso')} subtitle={t('Repasá las gráficas de progreso y balance muscular.')} accessory="chevron" onClick={() => { nav('/stats'); setTimeout(() => startTourB(true), 400) }} />
       <Row icon="trash" iconTint="var(--red)" title={t('Reset everything')} danger onClick={() => confirmSheet({ title: t('Reset everything?'), message: t('Deletes your plan, workouts and body weight on this device. This cannot be undone.'), confirmText: t('Delete everything'), danger: true, onConfirm: () => { replaceState(JSON.parse(JSON.stringify(DEF)), true); nav('/home'); toast(t('All data reset')) } })} />
     </Section>
     <input ref={fileRef} type="file" accept=".json,application/json" style={{ display: 'none' }} onChange={doImport} />
@@ -393,7 +396,7 @@ function PushCard({ S, update, toast }) {
       {on && S.reminder?.feeOn && <>
         <SelectRow icon="timer" iconTint="var(--teal)" title={t('Payment frequency')}
           value={S.reminder?.feeInterval || 'monthly'} onChange={v => update(s => { s.reminder = { ...(s.reminder || DEF.reminder), feeInterval: v } })}
-          options={[['monthly', 'Monthly'], ['bimonthly', 'Every two months'], ['annual', 'Annual']].map(([value, label]) => ({ value, label: t(label) }))} />
+          options={[['monthly', 'Monthly'], ['quarterly', 'Quarterly'], ['bimonthly', 'Every two months'], ['annual', 'Annual']].map(([value, label]) => ({ value, label: t(label) }))} />
         <Row icon="calendar" iconTint="var(--teal)" title={t('Next payment date')}>
           <input type="date" className="timef" value={S.reminder?.feeDate || ''}
             onChange={e => update(s => { s.reminder = { ...(s.reminder || DEF.reminder), feeDate: e.target.value } })} />

@@ -417,7 +417,9 @@ export default {
   'last {0} days': 'últimos {0} días', 'no IP addresses': 'sin direcciones IP', 'Sign-ins': 'Inicios de sesión', 'Failed': 'Fallidos',
   'Nothing logged yet.': 'Aún no hay registros.', 'Gym membership fee': 'Cuota del gimnasio',
   'Receive a reminder when your membership fee is due.': 'Recibe un aviso cuando venza tu cuota.', 'Payment frequency': 'Periodicidad del pago',
-  'Monthly': 'Mensual', 'Every two months': 'Bimensual', 'Annual': 'Anual', 'Next payment date': 'Próxima fecha de pago',
+  'Monthly': 'Mensual', 'Quarterly': 'Trimestral', 'Every two months': 'Bimensual', 'Annual': 'Anual', 'Next payment date': 'Próxima fecha de pago',
+  'Tutorial: Primeros pasos': 'Tutorial: Primeros pasos', 'Repasá las funciones principales de la app.': 'Repasá las funciones principales de la app.',
+  'Tutorial: Tu progreso': 'Tutorial: Tu progreso', 'Repasá las gráficas de progreso y balance muscular.': 'Repasá las gráficas de progreso y balance muscular.',
   // --- muscle map ---
   'Muscle balance': 'Equilibrio muscular',
   'Fatigue': 'Fatiga',

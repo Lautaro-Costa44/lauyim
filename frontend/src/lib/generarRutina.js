@@ -8,7 +8,7 @@
  */
 
 import exerciseNamesEs from '../locales/exercise-names-es.js'
-import { CUSTOM_CARDIO_EXERCISES } from './exercises.js'
+import { CUSTOM_CARDIO_EXERCISES, matchExercise } from './exercises.js'
 
 export const DAY_MAP = {
   domingo: 0,
@@ -687,4 +687,34 @@ export function obtenerAlternativas(ejercicioActual, poolSeguro = [], idsUsadosE
   }
 
   return elegidos
+}
+
+export function obtenerMasAlternativas(ejercicioActual, poolSeguro = [], idsUsadosEnLaSemana = new Set(), yaMostrados = new Set(), n = 5) {
+  const actualDB = poolSeguro.find(e => e.id === (ejercicioActual.id || ejercicioActual.exerciseId)) || ejercicioActual
+  const targetTg = actualDB.tg
+  const actualId = actualDB.id || ejercicioActual.id || ejercicioActual.exerciseId
+
+  const idsSet = idsUsadosEnLaSemana instanceof Set ? idsUsadosEnLaSemana : new Set(idsUsadosEnLaSemana || [])
+  const mostradosSet = yaMostrados instanceof Set ? yaMostrados : new Set(yaMostrados || [])
+
+  return poolSeguro
+    .filter(e =>
+      e.tg === targetTg &&
+      e.id !== actualId &&
+      !idsSet.has(e.id) &&
+      !mostradosSet.has(e.id)
+    )
+    .sort((a, b) => jerarquiaScore(b) - jerarquiaScore(a))
+    .slice(0, n)
+}
+
+export function buscarEnGrupoMuscular(query, poolSeguro = [], tg, idsUsadosEnLaSemana = new Set()) {
+  if (!query || !query.trim()) return []
+  const idsSet = idsUsadosEnLaSemana instanceof Set ? idsUsadosEnLaSemana : new Set(idsUsadosEnLaSemana || [])
+
+  return poolSeguro.filter(e =>
+    e.tg === tg &&
+    !idsSet.has(e.id) &&
+    matchExercise(e, query)
+  )
 }

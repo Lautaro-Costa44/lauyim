@@ -32,6 +32,16 @@ test('localizes gym-fee reminders and preserves their frequency', () => {
     body: 'Recuerda pagar tu cuota bimensual.',
     tag: 'gym-fee',
   });
+  assert.deepEqual(gymFeePush('es', 'quarterly'), {
+    title: 'Cuota del gimnasio',
+    body: 'Recuerda pagar tu cuota trimestral.',
+    tag: 'gym-fee',
+  });
+  assert.deepEqual(gymFeePush('en', 'quarterly'), {
+    title: 'Gym membership fee',
+    body: 'Remember to pay your quarterly gym membership fee.',
+    tag: 'gym-fee',
+  });
   assert.deepEqual(gymFeePush('en', 'annual'), {
     title: 'Gym membership fee',
     body: 'Remember to pay your annual gym membership fee.',

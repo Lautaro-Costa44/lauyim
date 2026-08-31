@@ -42,8 +42,8 @@ export function dayReminderPush(lang, routine) {
 export function gymFeePush(lang, interval) {
   const spanish = lang !== 'en'
   const labels = spanish
-    ? { monthly: 'mensual', bimonthly: 'bimensual', annual: 'anual' }
-    : { monthly: 'monthly', bimonthly: 'every two months', annual: 'annual' }
+    ? { monthly: 'mensual', quarterly: 'trimestral', bimonthly: 'bimensual', annual: 'anual' }
+    : { monthly: 'monthly', quarterly: 'quarterly', bimonthly: 'every two months', annual: 'annual' }
   return {
     title: spanish ? 'Cuota del gimnasio' : 'Gym membership fee',
     body: spanish ? `Recuerda pagar tu cuota ${labels[interval] || labels.monthly}.` : `Remember to pay your ${labels[interval] || labels.monthly} gym membership fee.`,
