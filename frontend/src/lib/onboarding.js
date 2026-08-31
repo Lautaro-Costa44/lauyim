@@ -9,18 +9,16 @@ function esperarElemento(selector, timeoutMs = 3000) {
     if (existente) return resolve(existente)
     const observer = new MutationObserver(() => {
       const el = document.querySelector(selector)
-      if (el) {
-        observer.disconnect()
-        resolve(el)
-      }
+      if (el) { observer.disconnect(); resolve(el) }
     })
     observer.observe(document.body, { childList: true, subtree: true })
-    setTimeout(() => {
-      observer.disconnect()
-      resolve(null)
-    }, timeoutMs)
+    setTimeout(() => { observer.disconnect(); resolve(null) }, timeoutMs)
   })
 }
+
+export { esperarElemento }
+
+const POPOVER_CLASS = 'gym-tour-pop'
 
 export function startTourA(nav, force = false) {
   const S = useStore.getState().S
@@ -28,16 +26,16 @@ export function startTourA(nav, force = false) {
 
   const steps = [
     {
-      element: '.survey-card, .card, #app .hdr',
+      element: '[data-tour="welcome"]',
       popover: {
-        title: t('Paso 1 de 5 · Plan de entrenamiento'),
+        title: t('Paso 1 de 5 · Tu plan'),
         description: t('Desde acá podés generar tu plan personalizado respondiendo la encuesta, cargar la rutina predeterminada o diseñar una propia manualmente.'),
         side: 'bottom',
         align: 'start',
       },
     },
     {
-      element: '.bw-tile, .card, .wday',
+      element: '[data-tour="bw-card"]',
       popover: {
         title: t('Paso 2 de 5 · Peso corporal'),
         description: t('Llevá el seguimiento periódico de tu peso corporal para visualizar cambios a lo largo del tiempo.'),
@@ -46,30 +44,30 @@ export function startTourA(nav, force = false) {
       },
     },
     {
-      element: 'a[href="/plan"], button[aria-label="Plan"], .tabbar a:nth-child(2)',
+      element: '#tabbar button:nth-child(2)',
       popover: {
-        title: t('Paso 3 de 5 · Organizar tu semana'),
+        title: t('Paso 3 de 5 · Tu semana'),
         description: t('Organizá tu semana distribuyendo los días de entrenamiento y editando tus rutinas como prefieras.'),
         side: 'top',
         align: 'center',
       },
     },
     {
-      element: 'a[href="/workout"], button[aria-label="Start"], .tabbar a:nth-child(3)',
+      element: '#tabbar button.start',
       popover: {
         title: t('Paso 4 de 5 · Empezar a entrenar'),
-        description: t('Antes de arrancar podés anotar tu peso previo (opción desactivable). Durante la sesión vas a ir registrando series, repeticiones y cargas.'),
+        description: t('Esta es tu pantalla de entrenamiento — anotás peso, repeticiones y series de cada ejercicio sobre la marcha. El pedido de peso previo es opcional, lo podés apagar.'),
         side: 'top',
         align: 'center',
       },
     },
     {
-      element: 'a[href="/settings"], button[aria-label="Settings"], .tabbar a:nth-child(5)',
+      element: '[data-tour="settings-btn"]',
       popover: {
         title: t('Paso 5 de 5 · Ajustes y perfil'),
         description: t('Ajustá tu perfil, rehacé la encuesta para recalcular tu plan y activá recordatorios para tus días de entrenamiento o pago de cuota.'),
-        side: 'top',
-        align: 'center',
+        side: 'bottom',
+        align: 'end',
       },
     },
   ]
@@ -78,43 +76,22 @@ export function startTourA(nav, force = false) {
 
   const finish = () => {
     useStore.getState().update(s => { s.onboardingCompletado = true })
-    if (driverObj) {
-      driverObj.destroy()
-    }
+    if (driverObj) driverObj.destroy()
   }
 
   driverObj = driver({
+    popoverClass: POPOVER_CLASS,
     showProgress: false,
     animate: true,
     allowClose: true,
-    overlayColor: 'rgba(0, 0, 0, 0.65)',
+    overlayColor: 'rgba(0,0,0,0.72)',
     nextBtnText: t('Siguiente →'),
     prevBtnText: t('← Atrás'),
-    doneBtnText: t('¡Entendido!'),
+    doneBtnText: t('¡Listo!'),
     closeBtnText: t('Saltar'),
-    steps: steps,
+    steps,
     onCloseClick: finish,
     onDestroyed: finish,
-    onNextClick: async (element, step, opts) => {
-      const idx = opts.state.activeIndex
-      if (idx === 0) {
-        driverObj.moveNext()
-      } else if (idx === 1 && nav) {
-        nav('/plan')
-        await esperarElemento('a[href="/plan"], .tabbar a')
-        driverObj.moveNext()
-      } else if (idx === 2 && nav) {
-        nav('/workout')
-        await esperarElemento('a[href="/workout"], .tabbar a')
-        driverObj.moveNext()
-      } else if (idx === 3 && nav) {
-        nav('/settings')
-        await esperarElemento('a[href="/settings"], .tabbar a')
-        driverObj.moveNext()
-      } else {
-        driverObj.moveNext()
-      }
-    },
   })
 
   driverObj.drive()
@@ -126,16 +103,16 @@ export function startTourB(force = false) {
 
   const steps = [
     {
-      element: '.card:has(.cal-grid), .card, .hdr',
+      element: '[data-tour="activity-card"]',
       popover: {
-        title: t('Paso 1 de 3 · Nivel de consistencia'),
-        description: t('Revisá tu nivel de consistencia a través de los bloques de actividad de los últimos 2 meses.'),
+        title: t('Paso 1 de 3 · Consistencia'),
+        description: t('Revisá tu nivel de consistencia a través de los bloques de actividad de los últimos 12 meses.'),
         side: 'bottom',
         align: 'start',
       },
     },
     {
-      element: '.card:has(svg), .card:nth-of-type(2), .card',
+      element: '[data-tour="muscle-card"]',
       popover: {
         title: t('Paso 2 de 3 · Rendimiento & Balance'),
         description: t('Evaluá el balance entre grupos musculares, tu nivel de fatiga acumulada y el crecimiento de tu fuerza.'),
@@ -144,7 +121,7 @@ export function startTourB(force = false) {
       },
     },
     {
-      element: '.card:has(.line-chart), .card:nth-of-type(3), .card',
+      element: '[data-tour="progress-card"]',
       popover: {
         title: t('Paso 3 de 3 · Sobrecarga progresiva'),
         description: t('Consultá la gráfica de peso por ejercicio para verificar que estás aplicando sobrecarga progresiva.'),
@@ -158,21 +135,20 @@ export function startTourB(force = false) {
 
   const finish = () => {
     useStore.getState().update(s => { s.onboardingStatsCompletado = true })
-    if (driverObj) {
-      driverObj.destroy()
-    }
+    if (driverObj) driverObj.destroy()
   }
 
   driverObj = driver({
+    popoverClass: POPOVER_CLASS,
     showProgress: false,
     animate: true,
     allowClose: true,
-    overlayColor: 'rgba(0, 0, 0, 0.65)',
+    overlayColor: 'rgba(0,0,0,0.72)',
     nextBtnText: t('Siguiente →'),
     prevBtnText: t('← Atrás'),
-    doneBtnText: t('¡Entendido!'),
+    doneBtnText: t('¡Listo!'),
     closeBtnText: t('Saltar'),
-    steps: steps,
+    steps,
     onCloseClick: finish,
     onDestroyed: finish,
   })

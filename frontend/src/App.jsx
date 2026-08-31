@@ -73,8 +73,8 @@ function Shell() {
   const authed = !!user || (allowGuest && isGuest)
   if (!ready) return (
     <div id="app">
-      <div style={{ paddingTop: '44vh', display: 'flex', justifyContent: 'center', fontSize: 34, color: 'var(--label-3)' }}>
-        <Icon name="dumbbell" />
+      <div style={{ paddingTop: '44vh', display: 'flex', justifyContent: 'center' }}>
+        <img src="logo.svg" alt="lauyim" style={{ width: 72, height: 72, opacity: 0.35 }} />
       </div>
     </div>
   )

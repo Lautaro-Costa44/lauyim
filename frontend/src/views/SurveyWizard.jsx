@@ -6,7 +6,7 @@ import { CATALOGUE, EXIDX } from '../lib/exercises.js'
 import { generarRutina, rutinaGeneradaToRoutines, defaultSplitRecomendado, derivarSplit, obtenerAlternativas, obtenerMasAlternativas, buscarEnGrupoMuscular } from '../lib/generarRutina.js'
 import { todayISO } from '../lib/format.js'
 import { t, exerciseNameFor } from '../lib/i18n.js'
-import { confirmSheet } from '../sheets.jsx'
+import { confirmSheet, exerciseDetailSheetNoAdd } from '../sheets.jsx'
 import Icon from '../components/Icon.jsx'
 import { Button } from '../components/ui.jsx'
 
@@ -53,13 +53,19 @@ function ReemplazarEjercicioSheet({ exActual, poolSeguro, usadosEnSemana, onReem
         {listaAMostrar.map(alt => {
           const nombreAlt = exerciseNameFor(alt) || alt.n || alt.id
           return (
-            <div key={alt.id} className="item" onClick={() => { onReemplazar(alt); close() }}>
+            <div key={alt.id} className="item" onClick={() => exerciseDetailSheetNoAdd(alt)}>
               <span className="lrow-i"><Icon name="dumbbell" /></span>
               <div className="grow">
                 <div className="tt">{nombreAlt}</div>
                 <div className="ss">{alt.eq || alt.bp || ''}</div>
               </div>
-              <span className="tag acc">{t('Elegir')}</span>
+              <button
+                className="tag acc"
+                style={{ background: 'var(--acc-soft)', color: 'var(--acc)', border: 'none', cursor: 'pointer', borderRadius: 6, padding: '4px 10px', fontSize: 13, fontWeight: 600 }}
+                onClick={e => { e.stopPropagation(); onReemplazar(alt); close() }}
+              >
+                {t('Elegir')}
+              </button>
             </div>
           )
         })}

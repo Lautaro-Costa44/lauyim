@@ -26,6 +26,7 @@ export const DEF = {
   // Onboarding survey + routine generation (spec: motor-rutinas).
   // estadoInicial: 'pendiente' until the user picks one of the three paths in the Welcome card.
   // Null fields until the user completes the survey.
+  edad: null, altura: null, objetivo: null,
   configuracion: { pedirPesoAlEntrenar: true },
   estadoInicial: 'pendiente',
   respuestasEncuesta: null,

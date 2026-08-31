@@ -1195,3 +1195,93 @@ h4.sec{
   border-color:var(--acc);
 }
 
+
+/* ---- driver.js onboarding tour — themed to the app's design system ---- */
+/* Higher specificity (.gym-tour-pop + .driver-popover) intentionally overrides
+   the bundled driver.js defaults without !important. */
+.driver-popover.gym-tour-pop {
+  background: var(--surface-2);
+  border-radius: var(--r-lg);
+  border: var(--hair) solid var(--sep);
+  box-shadow: 0 12px 40px rgba(0,0,0,.55), 0 2px 8px rgba(0,0,0,.3);
+  padding: 18px 18px 14px;
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif;
+  max-width: 310px;
+  min-width: 240px;
+  color: var(--label);
+}
+.driver-popover.gym-tour-pop .driver-popover-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--label);
+  letter-spacing: -.012em;
+  margin-bottom: 6px;
+  line-height: 1.3;
+}
+.driver-popover.gym-tour-pop .driver-popover-description {
+  font-size: 14px;
+  color: var(--label-2);
+  line-height: 1.45;
+  letter-spacing: -.009em;
+}
+.driver-popover.gym-tour-pop .driver-popover-footer {
+  margin-top: 14px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.driver-popover.gym-tour-pop .driver-popover-close-btn {
+  margin-right: auto;
+  background: none;
+  border: none;
+  color: var(--label-3);
+  font-size: 13px;
+  font-family: inherit;
+  cursor: pointer;
+  padding: 6px 0;
+  letter-spacing: -.006em;
+}
+.driver-popover.gym-tour-pop .driver-popover-close-btn:hover {
+  color: var(--label-2);
+}
+.driver-popover.gym-tour-pop .driver-popover-prev-btn {
+  background: var(--surface-3);
+  color: var(--label-2);
+  border: none;
+  border-radius: var(--r-sm);
+  font-size: 14px;
+  font-weight: 500;
+  font-family: inherit;
+  padding: 7px 13px;
+  cursor: pointer;
+  letter-spacing: -.009em;
+}
+.driver-popover.gym-tour-pop .driver-popover-next-btn,
+.driver-popover.gym-tour-pop .driver-popover-done-btn {
+  background: var(--acc);
+  color: var(--on-acc);
+  border: none;
+  border-radius: var(--r-sm);
+  font-size: 14px;
+  font-weight: 600;
+  font-family: inherit;
+  padding: 7px 13px;
+  cursor: pointer;
+  letter-spacing: -.009em;
+}
+/* arrow pointing down (popover above element) */
+.driver-popover.gym-tour-pop.driver-popover-arrow-side-bottom .driver-popover-arrow:before {
+  border-top-color: var(--surface-2) !important;
+}
+/* arrow pointing up (popover below element) */
+.driver-popover.gym-tour-pop.driver-popover-arrow-side-top .driver-popover-arrow:before {
+  border-bottom-color: var(--surface-2) !important;
+}
+/* arrow pointing right (popover to the left) */
+.driver-popover.gym-tour-pop.driver-popover-arrow-side-right .driver-popover-arrow:before {
+  border-left-color: var(--surface-2) !important;
+}
+/* arrow pointing left (popover to the right) */
+.driver-popover.gym-tour-pop.driver-popover-arrow-side-left .driver-popover-arrow:before {
+  border-right-color: var(--surface-2) !important;
+}

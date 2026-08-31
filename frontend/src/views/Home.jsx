@@ -74,7 +74,7 @@ export default function Home() {
   return <div className="narrow">
     <div className="hdr">
       <div><h1>{user ? t('Hi {0}', user.name) : 'lauyim'}</h1><div className="sub">{today.toLocaleDateString(dateLocale(), { weekday: 'long', day: 'numeric', month: 'long' })}</div></div>
-      <button className="iconbtn" onClick={() => nav('/settings')} aria-label={t('Settings')}><Icon name="gear" /></button>
+      <button className="iconbtn" data-tour="settings-btn" onClick={() => nav('/settings')} aria-label={t('Settings')}><Icon name="gear" /></button>
     </div>
 
     <div className="card">
@@ -110,7 +110,7 @@ export default function Home() {
     </div>
 
     {mostrarBienvenida && (
-      <div className="card">
+      <div className="card" data-tour="welcome">
         <div className="row" style={{ gap: 10, marginBottom: 6 }}>
           <span className="lrow-i"><Icon name="sparkles" /></span>
           <div className="big" style={{ fontSize: 22 }}>{t('Welcome!')}</div>
@@ -139,7 +139,7 @@ export default function Home() {
       </div>
     )}
 
-    <div className="card">
+    <div className="card" data-tour="bw-card">
       <div className="row between" style={{ marginBottom: 6 }}>
         <h2 style={{ margin: 0 }}>{t('Body weight')}</h2>
         <div className="row" style={{ gap: 8 }}>

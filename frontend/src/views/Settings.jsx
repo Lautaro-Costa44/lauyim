@@ -141,7 +141,7 @@ export default function Settings() {
       </> : user ? <>
         <Row icon="personCircle" iconTint="var(--grey)" title={user.name} subtitle={t('Signed in with passkey — data syncs to this profile.')} />
         {user.admin && <Row icon="wrench" iconTint="var(--indigo)" title={t('Admin dashboard')} accessory="chevron" onClick={() => nav('/admin')} />}
-        <Row icon="phone" iconTint="var(--blue)" title={t('Vincular otro dispositivo')} subtitle={t('Iniciar sesión en una compu ingresando su código')} accessory="chevron" onClick={() => useUI.getState().openSheet(c => <ClaimDeviceSheet close={c} />)} />
+        <Row icon="link" iconTint="var(--blue)" title={t('Vincular otro dispositivo')} subtitle={t('Iniciar sesión en una compu ingresando su código')} accessory="chevron" onClick={() => useUI.getState().openSheet(c => <ClaimDeviceSheet close={c} />)} />
         <Row icon="key" iconTint="var(--acc)" title={t('Agregar otra passkey')} subtitle={t('Registrar una passkey adicional de respaldo')} accessory="chevron" onClick={async () => {
           try {
             await passkeyAddCredential()
@@ -162,7 +162,7 @@ export default function Settings() {
     {!user && !DEMO && <p className="sect-f" style={{ marginTop: -18, marginBottom: 22 }}>{t('Guest mode — data lives only in this browser.')}</p>}
 
     {/* ---------- general ---------- */}
-    <Section title={t('General')} footer={t('Note: switching units only changes the label — logged numbers are not converted.')}>
+    <Section title={t('General')} footer={t('Note: switching units only changes the label — logged numbers are not converted. La edad y la altura se usan para estimar el gasto calórico en Progreso.')}>
       <SelectRow
         icon="globe" iconTint="var(--blue)" title={t('Language')}
         value={getLang() || S.lang || 'es'}
@@ -179,6 +179,43 @@ export default function Settings() {
         <Segmented className="seg-inline"
           options={[{ value: 'kg', label: 'kg' }, { value: 'lb', label: 'lb' }]}
           value={S.unit} onChange={v => update(s => { s.unit = v })} />
+      </Row>
+      <SelectRow
+        icon="target" iconTint="var(--acc)" title={t('Objetivo principal')}
+        value={S.objetivo || 'fitness_general'}
+        onChange={v => update(s => { s.objetivo = v })}
+        options={[
+          { value: 'hipertrofia', label: t('Ganar músculo') },
+          { value: 'fuerza', label: t('Ganar fuerza') },
+          { value: 'perder_grasa', label: t('Perder grasa') },
+          { value: 'fitness_general', label: t('Fitness general') },
+        ]}
+      />
+      <Row icon="person" iconTint="var(--orange)" title={t('Edad')}>
+        <input
+          type="text" inputMode="numeric" className="timef" placeholder="—"
+          defaultValue={S.edad ?? ''}
+          key={S.edad ?? 'edad'}
+          onBlur={e => {
+            const n = parseInt(e.target.value, 10)
+            update(s => { s.edad = isNaN(n) ? null : Math.max(14, Math.min(90, n)) })
+          }}
+          style={{ width: 68, textAlign: 'right' }}
+        />
+        <span className="dim small" style={{ marginLeft: 6 }}>{t('años')}</span>
+      </Row>
+      <Row icon="figureStrength" iconTint="var(--purple)" title={t('Altura')}>
+        <input
+          type="text" inputMode="numeric" className="timef" placeholder="—"
+          defaultValue={S.altura ?? ''}
+          key={S.altura ?? 'altura'}
+          onBlur={e => {
+            const n = parseInt(e.target.value, 10)
+            update(s => { s.altura = isNaN(n) ? null : Math.max(100, Math.min(250, n)) })
+          }}
+          style={{ width: 68, textAlign: 'right' }}
+        />
+        <span className="dim small" style={{ marginLeft: 6 }}>cm</span>
       </Row>
     </Section>
 
@@ -293,7 +330,7 @@ export default function Settings() {
         are running, or whether an update actually installed. */}
     <div className="dim small" style={{ textAlign: 'center', marginTop: 4, lineHeight: 1.6 }}>
       lauyim v{__APP_VERSION__} · {t('free & open source (AGPL v3)')}<br />
-      <a href="https://gitlab.com/DuarteSantos8/opengym" target="_blank" rel="noopener">source code</a> · exercise data: hasaneyldrm/exercises-dataset (MIT)<br />
+      <a href="https://github.com/Lautaro-Costa44/lauyim" target="_blank" rel="noopener">source code</a> · exercise data: hasaneyldrm/exercises-dataset (MIT)<br />
       exercise images and animations © <a href="https://gymvisual.com/" target="_blank" rel="noopener">Gym visual</a>
     </div>
   </div>

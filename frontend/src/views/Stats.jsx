@@ -20,49 +20,87 @@ import {
   effortHistogram, isHardSet, HARD_RIR
 } from '../lib/effort.js'
 import { Button, Segmented, SelectRow } from '../components/ui.jsx'
+import { useUI } from '../store/useUI.js'
 import { isWarmupRow } from '../lib/workout-model.js'
 import { calcularTMB, calcularCaloriasSugeridas } from '../lib/calories.js'
 import { startTourB } from '../lib/onboarding.js'
+
+function caloricInfoSheet(close) {
+  return <>
+    <h3>{t('¿Cómo se calcula?')}</h3>
+    <div className="muted small" style={{ lineHeight: 1.65, marginBottom: 16 }}>
+      <p style={{ marginBottom: 10 }}>
+        {t('Se usa la fórmula Mifflin-St Jeor, la más recomendada por el ACSM para estimar el metabolismo basal:')}
+      </p>
+      <p style={{ fontFamily: 'monospace', background: 'var(--surface-3)', borderRadius: 8, padding: '10px 12px', marginBottom: 10, lineHeight: 1.8 }}>
+        <b>{t('Hombres:')}</b> 10×kg + 6.25×cm − 5×edad + 5<br />
+        <b>{t('Mujeres:')}</b> 10×kg + 6.25×cm − 5×edad − 161
+      </p>
+      <p>{t('El resultado se multiplica por un factor de actividad según tus días de entrenamiento (1.2 a 1.55), y luego se ajusta según tu objetivo (+12.5% para ganar músculo, −17.5% para perder grasa).')}</p>
+    </div>
+    <Button onClick={close}>{t('Entendido')}</Button>
+  </>
+}
 
 function CaloricCard({ S }) {
   const resp = S.respuestasEncuesta || {}
   const bwObj = lastBW(S)
   const peso = bwObj ? bwObj.w : (resp.pesoKg || 70)
   const altura = S.altura || resp.altura || 170
-  const edad = resp.edad || 25
+  const edad = S.edad || resp.edad || 25
   const sexo = resp.sexoBiologico || (S.genero === 'femenino' ? 'femenino' : 'masculino')
   const dias = resp.diasSeleccionados || Object.keys(S.week || {})
-  const objetivo = resp.objetivo || 'fitness_general'
+  const objetivo = S.objetivo || resp.objetivo || 'fitness_general'
 
   const tmb = calcularTMB(peso, altura, edad, sexo)
   const { mantenimiento, sugerido } = calcularCaloriasSugeridas(tmb, dias, objetivo)
 
-  const objLabelMap = {
-    hipertrofia: t('ganar músculo'),
-    fuerza: t('ganar fuerza'),
-    perder_grasa: t('perder grasa'),
-    fitness_general: t('mantenimiento salud'),
+  const objMetaMap = {
+    hipertrofia: t('Ganar Músculo'),
+    fuerza: t('Ganar Fuerza'),
+    perder_grasa: t('Perder Grasa'),
+    fitness_general: t('Mantener Peso'),
   }
 
+  const openInfo = () => useUI.getState().openSheet(close => caloricInfoSheet(close))
+
   return (
-    <div className="card" style={{ marginTop: 14 }}>
-      <h2>{t('Gasto calórico estimado')}</h2>
-      <div className="tiles" style={{ marginBottom: 10 }}>
-        <div className="tile">
-          <div className="l">{t('Metabolismo basal (TMB)')}</div>
-          <div className="v" style={{ fontSize: 20 }}>{tmb} <span className="small muted">kcal</span></div>
+    <div style={{ marginTop: 16 }}>
+      {/* Título + info */}
+      <div className="row between" style={{ marginBottom: 10 }}>
+        <h2 style={{ margin: 0 }}>{t('Tus calorías diarias')}</h2>
+        <button className="helpbtn" aria-label={t('¿Cómo se calcula?')} onClick={openInfo}>
+          <Icon name="info" />
+        </button>
+      </div>
+
+      {/* Desglose en reposo / gasto total */}
+      <div style={{ background: 'var(--surface-2)', borderRadius: 10, overflow: 'hidden', marginBottom: 12 }}>
+        <div className="row between" style={{ padding: '11px 14px' }}>
+          <span style={{ fontSize: 15, color: 'var(--label-2)' }}>{t('En reposo')}</span>
+          <span style={{ fontWeight: 500 }}>{tmb.toLocaleString()} <span className="dim small">kcal</span></span>
         </div>
-        <div className="tile">
-          <div className="l">{t('Mantenimiento estimado')}</div>
-          <div className="v" style={{ fontSize: 20 }}>~{mantenimiento} <span className="small muted">kcal/día</span></div>
-        </div>
-        <div className="tile">
-          <div className="l">{t('Para tu objetivo ({0})', objLabelMap[objetivo] || objetivo)}</div>
-          <div className="v accent" style={{ fontSize: 20 }}>~{sugerido} <span className="small muted">kcal/día</span></div>
+        <div style={{ height: 'var(--hair)', background: 'var(--sep)', margin: '0 14px' }} />
+        <div className="row between" style={{ padding: '11px 14px' }}>
+          <span style={{ fontSize: 15, color: 'var(--label-2)' }}>{t('Gasto total diario')}</span>
+          <span style={{ fontWeight: 500 }}>~{mantenimiento.toLocaleString()} <span className="dim small">kcal</span></span>
         </div>
       </div>
-      <div className="small dim">
-        {t('Estimación calculada con la fórmula Mifflin-St Jeor + factor de actividad por días de entrenamiento. Basado en {0} kg, {1} cm, {2} años.', fmtNum(peso), altura, edad)}
+
+      {/* Meta destacada */}
+      <div style={{ background: 'var(--acc-soft)', borderRadius: 12, padding: '14px 16px', textAlign: 'center', marginBottom: 10 }}>
+        <div style={{ fontSize: 13, color: 'var(--acc)', fontWeight: 600, marginBottom: 6, letterSpacing: '-.006em' }}>
+          🎯 {t('Meta para {0}', objMetaMap[objetivo] || objetivo)}
+        </div>
+        <div style={{ fontSize: 36, fontWeight: 700, letterSpacing: '-.028em', color: 'var(--acc)', lineHeight: 1 }}>
+          {sugerido.toLocaleString()}
+        </div>
+        <div className="dim small" style={{ marginTop: 4 }}>kcal / día</div>
+      </div>
+
+      {/* Aclaración */}
+      <div className="small dim" style={{ lineHeight: 1.45 }}>
+        {t('Calculado para {0} kg, {1} cm, {2} años y tus días de entrenamiento.', fmtNum(peso), altura, edad)}
       </div>
     </div>
   )
@@ -188,7 +226,7 @@ function MuscleBalance({ S }) {
   const max = worked.length ? load[worked[0]] : 0
   const sets = m => Math.round((load[m] || 0) * 10) / 10
 
-  return <div className="card">
+  return <div className="card" data-tour="muscle-card">
     <Segmented className="seg-range" value={view} onChange={setView}
       options={[{ value: 'balance', label: t('Muscle balance') }, { value: 'fatigue', label: t('Fatigue') }, { value: 'strength', label: t('Strength') }]} />
     {view === 'balance' ? <>
@@ -341,7 +379,6 @@ export default function Stats() {
     .map(b => ({ t: b.t || new Date(b.d).getTime(), y: b.w, d: b.d }))
   const bw30 = S.bodyweight.filter(b => (b.t || new Date(b.d).getTime()) > now - 30 * 86400000)
   const bwDelta30 = bw30.length > 1 ? bw30[bw30.length - 1].w - bw30[0].w : null
-  const workouts = S.workouts
   const monthW = workouts.filter(w => String(w.d || '').slice(0, 7) === todayISO().slice(0, 7)).length
 
   const nameOf = id => EXIDX[id] ? exerciseNameFor(EXIDX[id]) : (workouts.flatMap(w => w.entries).find(e => e.id === id)?.n || id)
@@ -454,7 +491,7 @@ export default function Stats() {
 
     </div>
 
-    <div className="card">
+    <div className="card" data-tour="activity-card">
       <h2>{t('Activity — last 12 months')} <span className="dim" style={{ textTransform: 'none', letterSpacing: 0 }}>· {t('by time trained')}</span></h2>
       <Heatmap S={S} onDay={iso => { const ws = workouts.filter(w => w.d === iso); if (ws.length === 1) workoutDetailSheet(ws[0]); else if (ws.length) calendarSheet(iso) }} />
     </div>
@@ -477,7 +514,7 @@ export default function Stats() {
         <CaloricCard S={S} />
       </div>
 
-      <div className="card">
+      <div className="card" data-tour="progress-card">
         <h2>{t('Exercise progress')}</h2>
         {exHist.length ? <>
           <div className="sect-b" style={{ marginBottom: 10 }}>

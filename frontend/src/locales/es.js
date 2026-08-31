@@ -254,7 +254,7 @@ export default {
   "This browser doesn't support passkeys — you can still use lauyim locally on this device.": 'Este navegador no admite passkeys — aun así puedes usar lauyim localmente en este dispositivo.',
   "This browser doesn't support passkeys, and this instance requires an account. Try a browser or device with passkey support.": 'Este navegador no admite passkeys y este servidor requiere una cuenta. Prueba con un navegador o dispositivo compatible con passkeys.',
   'Continue without account': 'Continuar sin cuenta',
-  'Passkeys use {0} — no passwords.': 'Las passkeys usan {0} — sin contraseñas.',
+  'Passkeys use {0} — no passwords.': 'Las passkeys usan tu huella digital, cara o PIN — sin contraseñas.',
   'Each profile keeps its own plan, workouts & body weight.': 'Cada perfil guarda su propio plan, entrenamientos y peso corporal.',
   'Account': 'Cuenta',
   'Signed in with passkey — data syncs to this profile.': 'Sesión iniciada con passkey — los datos se sincronizan con este perfil.',
