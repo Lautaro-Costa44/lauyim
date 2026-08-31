@@ -1,5 +1,5 @@
 /* opengym-api — passkey (WebAuthn) auth + per-user state storage for openGym
-   No framework, JSON-file storage, signed session cookies.               */
+   SQLite storage via better-sqlite3, signed session cookies.               */
 import http from 'node:http';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
@@ -13,6 +13,34 @@ import {
 } from '@simplewebauthn/server';
 import { dayReminderPush, gymFeePush, restTimerPush, testPush } from './push-messages.js';
 import { verifyError } from './verify-error.js';
+import {
+  initDatabase,
+  getAllUsers,
+  getUserById,
+  createUser,
+  updateUser,
+  getCredentialById,
+  getCredentialsByUserId,
+  createCredential,
+  updateCredentialCounter,
+  getSubscriptionsByUserId,
+  createSubscription,
+  deleteSubscription,
+  deleteSubscriptionsByUserId,
+  getAllInvites,
+  getInviteByCode,
+  createInvite,
+  updateInviteUsedBy,
+  deleteInvite,
+  getAllPresets,
+  getPresetWithExercises,
+  createPreset,
+  updatePreset,
+  deletePreset,
+  getUserState,
+  saveUserState,
+  getWorkoutsByUserId,
+} from './database.js';
 
 const PORT = +(process.env.PORT || 3000);
 const DATA = process.env.DATA_DIR || '/data';
@@ -41,6 +69,10 @@ const MAX_BODY = 5 * 1024 * 1024;
 const SECURE = /^https:/i.test(ORIGIN) ? ' Secure;' : '';
 
 fs.mkdirSync(DATA, { recursive: true });
+
+// Inicializar base de datos SQLite
+initDatabase();
+
 function feeDueDate(reminder, today) {
   if (!reminder?.feeOn || !/^\d{4}-\d{2}-\d{2}$/.test(reminder.feeDate || '')) return null;
   const interval = reminder.feeInterval === 'annual' ? 12 : reminder.feeInterval === 'bimonthly' ? 2 : reminder.feeInterval === 'quarterly' ? 3 : 1;
@@ -57,27 +89,15 @@ function feeDueDate(reminder, today) {
   return due.toISOString().slice(0, 10);
 }
 
-/* ---------- secret + db ---------- */
+/* ---------- secret ---------- */
 const secretFile = path.join(DATA, 'secret');
 if (!fs.existsSync(secretFile)) fs.writeFileSync(secretFile, crypto.randomBytes(32).toString('hex'), { mode: 0o600 });
 const SECRET = fs.readFileSync(secretFile, 'utf8').trim();
 
-const dbFile = path.join(DATA, 'db.json');
-let db = { users: [], creds: [], subs: [], invites: [], presets: [] };
-try { db = JSON.parse(fs.readFileSync(dbFile, 'utf8')); } catch {}
-db.subs = db.subs || [];
-db.invites = db.invites || [];
-db.presets = Array.isArray(db.presets) ? db.presets : [];
+// Funciones auxiliares para compatibilidad
 const isAdmin = user => !!user && (user.admin === true || ADMIN_UIDS.includes(user.id));
-function saveDb() { atomicWrite(dbFile, JSON.stringify(db, null, 2)); }
-function atomicWrite(file, content) {
-  const tmp = file + '.tmp';
-  fs.writeFileSync(tmp, content);
-  fs.renameSync(tmp, file);
-}
-const stateFile = uid => path.join(DATA, 'state-' + uid.replace(/[^a-zA-Z0-9_-]/g, '') + '.json');
 function readState(uid) {
-  try { return JSON.parse(fs.readFileSync(stateFile(uid), 'utf8')); } catch { return null; }
+  return getUserState(uid);
 }
 
 function cleanPreset(body, existingId) {

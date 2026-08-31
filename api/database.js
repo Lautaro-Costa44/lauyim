@@ -1,0 +1,792 @@
+/**
+ * Capa de acceso a datos SQLite para openGym
+ * Reemplaza las operaciones que antes usaban db.json + state-<uid>.json
+ */
+
+import Database from 'better-sqlite3';
+import path from 'path';
+import fs from 'fs';
+
+const DATA = process.env.DATA_DIR || '/data';
+const dbPath = path.join(DATA, 'gym.db');
+
+let db;
+
+export function initDatabase() {
+  db = new Database(dbPath);
+  db.pragma('journal_mode = WAL');
+  db.pragma('foreign_keys = ON');
+  return db;
+}
+
+export function getDatabase() {
+  if (!db) {
+    db = initDatabase();
+  }
+  return db;
+}
+
+// ============================================================
+// Operaciones de usuarios
+// ============================================================
+
+export function getAllUsers() {
+  const stmt = getDatabase().prepare('SELECT * FROM users');
+  return stmt.all();
+}
+
+export function getUserById(id) {
+  const stmt = getDatabase().prepare('SELECT * FROM users WHERE id = ?');
+  return stmt.get(id);
+}
+
+export function createUser(user) {
+  const stmt = getDatabase().prepare(`
+    INSERT INTO users (id, name, admin, disabled, created_at)
+    VALUES (?, ?, ?, ?, ?)
+  `);
+  stmt.run(user.id, user.name, user.admin ? 1 : 0, user.disabled ? 1 : 0, user.created || Date.now());
+}
+
+export function updateUser(id, updates) {
+  const fields = [];
+  const values = [];
+  for (const [key, value] of Object.entries(updates)) {
+    if (key === 'admin' || key === 'disabled') {
+      fields.push(`${key} = ?`);
+      values.push(value ? 1 : 0);
+    } else {
+      fields.push(`${key} = ?`);
+      values.push(value);
+    }
+  }
+  if (fields.length === 0) return;
+  values.push(id);
+  const stmt = getDatabase().prepare(`UPDATE users SET ${fields.join(', ')} WHERE id = ?`);
+  stmt.run(...values);
+}
+
+// ============================================================
+// Operaciones de credenciales
+// ============================================================
+
+export function getCredentialById(id) {
+  const stmt = getDatabase().prepare('SELECT * FROM credentials WHERE id = ?');
+  return stmt.get(id);
+}
+
+export function getCredentialsByUserId(userId) {
+  const stmt = getDatabase().prepare('SELECT * FROM credentials WHERE user_id = ?');
+  return stmt.all(userId);
+}
+
+export function createCredential(cred) {
+  const stmt = getDatabase().prepare(`
+    INSERT INTO credentials (id, user_id, public_key, counter, transports, created_at)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `);
+  stmt.run(
+    cred.id,
+    cred.userId,
+    cred.publicKey,
+    cred.counter || 0,
+    cred.transports ? JSON.stringify(cred.transports) : null,
+    cred.created || Date.now()
+  );
+}
+
+export function updateCredentialCounter(id, counter) {
+  const stmt = getDatabase().prepare('UPDATE credentials SET counter = ? WHERE id = ?');
+  stmt.run(counter, id);
+}
+
+// ============================================================
+// Operaciones de suscripciones
+// ============================================================
+
+export function getSubscriptionsByUserId(userId) {
+  const stmt = getDatabase().prepare('SELECT * FROM subscriptions WHERE user_id = ?');
+  return stmt.all(userId);
+}
+
+export function createSubscription(sub) {
+  const stmt = getDatabase().prepare(`
+    INSERT OR REPLACE INTO subscriptions (endpoint, user_id, keys, created_at)
+    VALUES (?, ?, ?, ?)
+  `);
+  stmt.run(
+    sub.endpoint,
+    sub.userId,
+    JSON.stringify(sub.keys),
+    sub.created || Date.now()
+  );
+}
+
+export function deleteSubscription(endpoint) {
+  const stmt = getDatabase().prepare('DELETE FROM subscriptions WHERE endpoint = ?');
+  stmt.run(endpoint);
+}
+
+export function deleteSubscriptionsByUserId(userId) {
+  const stmt = getDatabase().prepare('DELETE FROM subscriptions WHERE user_id = ?');
+  stmt.run(userId);
+}
+
+// ============================================================
+// Operaciones de invites
+// ============================================================
+
+export function getAllInvites() {
+  const stmt = getDatabase().prepare('SELECT * FROM invites');
+  return stmt.all();
+}
+
+export function getInviteByCode(code) {
+  const stmt = getDatabase().prepare('SELECT * FROM invites WHERE code = ?');
+  return stmt.get(code);
+}
+
+export function createInvite(invite) {
+  const stmt = getDatabase().prepare(`
+    INSERT INTO invites (code, created_by, revoked, created_at)
+    VALUES (?, ?, ?, ?)
+  `);
+  stmt.run(invite.code, invite.createdBy, invite.revoked ? 1 : 0, invite.created || Date.now());
+}
+
+export function updateInviteUsedBy(code, userId) {
+  const stmt = getDatabase().prepare('UPDATE invites SET used_by = ? WHERE code = ?');
+  stmt.run(userId, code);
+}
+
+export function deleteInvite(code) {
+  const stmt = getDatabase().prepare('DELETE FROM invites WHERE code = ?');
+  stmt.run(code);
+}
+
+// ============================================================
+// Operaciones de presets
+// ============================================================
+
+export function getAllPresets() {
+  const stmt = getDatabase().prepare('SELECT * FROM presets');
+  return stmt.all();
+}
+
+export function getPresetById(id) {
+  const stmt = getDatabase().prepare('SELECT * FROM presets WHERE id = ?');
+  return stmt.get(id);
+}
+
+export function getPresetWithExercises(id) {
+  const presetStmt = getDatabase().prepare('SELECT * FROM presets WHERE id = ?');
+  const preset = presetStmt.get(id);
+  if (!preset) return null;
+
+  const exStmt = getDatabase().prepare('SELECT * FROM preset_exercises WHERE preset_id = ? ORDER BY id');
+  preset.ex = exStmt.all(id).map(row => ({
+    id: row.exercise_id,
+    sets: row.sets,
+    reps: row.reps,
+    weight: row.weight,
+    mode: row.mode,
+    min: row.min,
+    speed: row.speed,
+    sec: row.sec,
+    bodyweight: row.bodyweight ? true : undefined,
+    side: row.side ? true : undefined
+  }));
+  return preset;
+}
+
+export function createPreset(preset) {
+  const stmt = getDatabase().prepare(`
+    INSERT INTO presets (id, name, emoji)
+    VALUES (?, ?, ?)
+  `);
+  stmt.run(preset.id, preset.name, preset.emoji);
+
+  const exStmt = getDatabase().prepare(`
+    INSERT INTO preset_exercises (preset_id, exercise_id, sets, reps, weight, mode, min, speed, sec, bodyweight, side)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+  for (const ex of preset.ex) {
+    exStmt.run(
+      preset.id,
+      ex.id,
+      ex.sets,
+      ex.reps || null,
+      ex.weight || 0,
+      ex.mode || 'reps',
+      ex.min || null,
+      ex.speed || null,
+      ex.sec || null,
+      ex.bodyweight ? 1 : 0,
+      ex.side ? 1 : 0
+    );
+  }
+}
+
+export function updatePreset(id, preset) {
+  const stmt = getDatabase().prepare('UPDATE presets SET name = ?, emoji = ? WHERE id = ?');
+  stmt.run(preset.name, preset.emoji, id);
+
+  // Eliminar ejercicios viejos y insertar nuevos
+  const deleteExStmt = getDatabase().prepare('DELETE FROM preset_exercises WHERE preset_id = ?');
+  deleteExStmt.run(id);
+
+  const exStmt = getDatabase().prepare(`
+    INSERT INTO preset_exercises (preset_id, exercise_id, sets, reps, weight, mode, min, speed, sec, bodyweight, side)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+  for (const ex of preset.ex) {
+    exStmt.run(
+      id,
+      ex.id,
+      ex.sets,
+      ex.reps || null,
+      ex.weight || 0,
+      ex.mode || 'reps',
+      ex.min || null,
+      ex.speed || null,
+      ex.sec || null,
+      ex.bodyweight ? 1 : 0,
+      ex.side ? 1 : 0
+    );
+  }
+}
+
+export function deletePreset(id) {
+  const stmt = getDatabase().prepare('DELETE FROM presets WHERE id = ?');
+  stmt.run(id);
+}
+
+// ============================================================
+// Operaciones de estado de usuario
+// ============================================================
+
+export function getUserState(userId) {
+  const stmt = getDatabase().prepare('SELECT * FROM user_state WHERE user_id = ?');
+  const row = stmt.get(userId);
+  if (!row) return null;
+
+  // Reconstruir el objeto de estado similar al JSON original
+  const S = {
+    _ts: row._ts,
+    unit: row.unit,
+    restSec: row.rest_sec,
+    restPauseSec: row.rest_pause_sec,
+    sound: row.sound === 1,
+    keepAwake: row.keep_awake === 1,
+    lang: row.lang,
+    theme: row.theme,
+    accent: row.accent,
+    body: row.body,
+    targetW: row.target_w,
+    estadoInicial: row.estado_inicial,
+    edad: row.edad,
+    altura: row.altura,
+    objetivo: row.objetivo,
+    nivel: row.nivel,
+    pesoKg: row.peso_kg,
+    configuracion: row.configuracion ? JSON.parse(row.configuracion) : null,
+    respuestasEncuesta: row.respuestas_encuesta ? JSON.parse(row.respuestas_encuesta) : null,
+    rutinaGenerada: row.rutina_generada ? JSON.parse(row.rutina_generada) : null,
+    fechaUltimaEncuesta: row.fecha_ultima_encuesta,
+    effort: row.effort,
+    autoBackup: row.auto_backup === 1,
+    activeEquipId: row.active_equip_id,
+    equipFilterOn: row.equip_filter_on === 1,
+  };
+
+  // Cargar relaciones
+  S.routines = getRoutinesByUserId(userId);
+  S.week = getWeekPlanByUserId(userId);
+  S.dayPlan = getDayPlanByUserId(userId);
+  S.workouts = getWorkoutsByUserId(userId);
+  S.exWeights = getExerciseWeightsByUserId(userId);
+  S.bodyweight = getBodyweightByUserId(userId);
+  S.customEx = getCustomExercisesByUserId(userId);
+  S.exNotes = getExerciseNotesByUserId(userId);
+  S.reminder = getReminderSettingsByUserId(userId);
+  S.equipProfiles = getEquipProfilesByUserId(userId);
+
+  return S;
+}
+
+export function saveUserState(userId, S) {
+  const db = getDatabase();
+
+  // Guardar estado principal
+  const stateStmt = db.prepare(`
+    INSERT OR REPLACE INTO user_state (
+      user_id, _ts, unit, rest_sec, rest_pause_sec, sound, keep_awake, lang, theme, accent,
+      body, target_w, estado_inicial, edad, altura, objetivo, nivel, peso_kg, configuracion,
+      respuestas_encuesta, rutina_generada, fecha_ultima_encuesta, effort, auto_backup,
+      active_equip_id, equip_filter_on
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+  stateStmt.run(
+    userId,
+    S._ts || Date.now(),
+    S.unit || 'kg',
+    S.restSec || 90,
+    S.restPauseSec || 15,
+    S.sound ? 1 : 0,
+    S.keepAwake ? 1 : 0,
+    S.lang || 'es',
+    S.theme || 'dark',
+    S.accent || 'lime',
+    S.body || 'male',
+    S.targetW || null,
+    S.estadoInicial || 'pendiente',
+    S.edad || null,
+    S.altura || null,
+    S.objetivo || null,
+    S.nivel || null,
+    S.pesoKg || null,
+    S.configuracion ? JSON.stringify(S.configuracion) : null,
+    S.respuestasEncuesta ? JSON.stringify(S.respuestasEncuesta) : null,
+    S.rutinaGenerada ? JSON.stringify(S.rutinaGenerada) : null,
+    S.fechaUltimaEncuesta || null,
+    S.effort || null,
+    S.autoBackup ? 1 : 0,
+    S.activeEquipId || null,
+    S.equipFilterOn ? 1 : 0
+  );
+
+  // Guardar rutinas
+  saveRoutines(userId, S.routines || []);
+
+  // Guardar week plan
+  saveWeekPlan(userId, S.week || {});
+
+  // Guardar day plan
+  saveDayPlan(userId, S.dayPlan || {});
+
+  // Guardar workouts
+  saveWorkouts(userId, S.workouts || []);
+
+  // Guardar exercise weights
+  saveExerciseWeights(userId, S.exWeights || {});
+
+  // Guardar bodyweight
+  saveBodyweight(userId, S.bodyweight || []);
+
+  // Guardar custom exercises
+  saveCustomExercises(userId, S.customEx || []);
+
+  // Guardar exercise notes
+  saveExerciseNotes(userId, S.exNotes || {});
+
+  // Guardar reminder settings
+  saveReminderSettings(userId, S.reminder);
+
+  // Guardar equipment profiles
+  saveEquipProfiles(userId, S.equipProfiles || []);
+}
+
+// ============================================================
+// Operaciones de rutinas
+// ============================================================
+
+export function getRoutinesByUserId(userId) {
+  const stmt = getDatabase().prepare('SELECT * FROM routines WHERE user_id = ?');
+  const routines = stmt.all(userId);
+
+  for (const routine of routines) {
+    const exStmt = getDatabase().prepare('SELECT * FROM routine_exercises WHERE routine_id = ? ORDER BY position');
+    routine.ex = exStmt.all(routine.id).map(row => ({
+      id: row.exercise_id,
+      sg: row.sg,
+      sets: row.sets,
+      reps: row.reps,
+      weight: row.weight,
+      mode: row.mode,
+      min: row.min,
+      speed: row.speed,
+      sec: row.sec,
+      bodyweight: row.bodyweight ? true : undefined,
+      side: row.side ? true : undefined,
+      note: row.note
+    }));
+  }
+
+  return routines;
+}
+
+function saveRoutines(userId, routines) {
+  const db = getDatabase();
+
+  // Eliminar rutinas viejas
+  const deleteStmt = db.prepare('DELETE FROM routines WHERE user_id = ?');
+  deleteStmt.run(userId);
+
+  const routineStmt = db.prepare(`
+    INSERT INTO routines (id, user_id, name, emoji, created_at)
+    VALUES (?, ?, ?, ?, ?)
+  `);
+
+  const exStmt = db.prepare(`
+    INSERT INTO routine_exercises (routine_id, exercise_id, position, sg, sets, reps, weight, mode, min, speed, sec, bodyweight, side, note)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+
+  for (const routine of routines) {
+    routineStmt.run(routine.id, userId, routine.name, routine.emoji || 'dumbbell', routine.created || Date.now());
+    for (let i = 0; i < (routine.ex || []).length; i++) {
+      const ex = routine.ex[i];
+      exStmt.run(
+        routine.id,
+        ex.id,
+        i,
+        ex.sg || null,
+        ex.sets || null,
+        ex.reps || null,
+        ex.weight || null,
+        ex.mode || 'reps',
+        ex.min || null,
+        ex.speed || null,
+        ex.sec || null,
+        ex.bodyweight ? 1 : 0,
+        ex.side ? 1 : 0,
+        ex.note || null
+      );
+    }
+  }
+}
+
+// ============================================================
+// Operaciones de week plan
+// ============================================================
+
+export function getWeekPlanByUserId(userId) {
+  const stmt = getDatabase().prepare('SELECT * FROM week_plan WHERE user_id = ?');
+  const rows = stmt.all(userId);
+  const week = {};
+  for (const row of rows) {
+    week[row.day_index] = row.routine_id;
+  }
+  return week;
+}
+
+function saveWeekPlan(userId, week) {
+  const db = getDatabase();
+  const deleteStmt = db.prepare('DELETE FROM week_plan WHERE user_id = ?');
+  deleteStmt.run(userId);
+
+  const stmt = db.prepare('INSERT INTO week_plan (user_id, day_index, routine_id) VALUES (?, ?, ?)');
+  for (const [dayIndex, routineId] of Object.entries(week)) {
+    stmt.run(userId, parseInt(dayIndex), routineId || null);
+  }
+}
+
+// ============================================================
+// Operaciones de day plan
+// ============================================================
+
+export function getDayPlanByUserId(userId) {
+  const stmt = getDatabase().prepare('SELECT * FROM day_plan WHERE user_id = ?');
+  const rows = stmt.all(userId);
+  const dayPlan = {};
+  for (const row of rows) {
+    dayPlan[row.date] = row.routine_id;
+  }
+  return dayPlan;
+}
+
+function saveDayPlan(userId, dayPlan) {
+  const db = getDatabase();
+  const deleteStmt = db.prepare('DELETE FROM day_plan WHERE user_id = ?');
+  deleteStmt.run(userId);
+
+  const stmt = db.prepare('INSERT INTO day_plan (user_id, date, routine_id) VALUES (?, ?, ?)');
+  for (const [date, routineId] of Object.entries(dayPlan)) {
+    stmt.run(userId, date, routineId || null);
+  }
+}
+
+// ============================================================
+// Operaciones de workouts
+// ============================================================
+
+export function getWorkoutsByUserId(userId) {
+  const stmt = getDatabase().prepare('SELECT * FROM workouts WHERE user_id = ? ORDER BY start DESC');
+  const workouts = stmt.all(userId);
+
+  for (const workout of workouts) {
+    const entryStmt = getDatabase().prepare('SELECT * FROM workout_entries WHERE workout_id = ?');
+    workout.entries = entryStmt.all(workout.id).map(row => ({
+      id: row.exercise_id,
+      topW: row.top_w,
+      target: row.target ? JSON.parse(row.target) : null,
+      note: row.note,
+      notePin: row.note_pin === 1,
+      muscleSnapshot: row.muscle_snapshot ? JSON.parse(row.muscle_snapshot) : null,
+      sets: getWorkoutSetsByEntryId(row.id)
+    }));
+  }
+
+  return workouts;
+}
+
+function getWorkoutSetsByEntryId(entryId) {
+  const stmt = getDatabase().prepare('SELECT * FROM workout_sets WHERE entry_id = ?');
+  return stmt.all(entryId).map(row => ({
+    w: row.w,
+    r: row.r,
+    sec: row.sec,
+    min: row.min,
+    speed: row.speed,
+    done: row.done === 1,
+    rir: row.rir,
+    rpe: row.rpe
+  }));
+}
+
+function saveWorkouts(userId, workouts) {
+  const db = getDatabase();
+
+  // Eliminar workouts viejos
+  const deleteStmt = db.prepare('DELETE FROM workouts WHERE user_id = ?');
+  deleteStmt.run(userId);
+
+  const workoutStmt = db.prepare(`
+    INSERT INTO workouts (id, user_id, date, start, end, routine_id, name, bw, vol, note)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+
+  const entryStmt = db.prepare(`
+    INSERT INTO workout_entries (workout_id, exercise_id, top_w, target, note, note_pin, muscle_snapshot)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `);
+
+  const setStmt = db.prepare(`
+    INSERT INTO workout_sets (entry_id, w, r, sec, min, speed, done, rir, rpe)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+
+  for (const workout of workouts) {
+    workoutStmt.run(
+      workout.id,
+      userId,
+      workout.d,
+      workout.start,
+      workout.end,
+      workout.routineId || null,
+      workout.name,
+      workout.bw || null,
+      workout.vol || null,
+      workout.note || null
+    );
+
+    for (const entry of workout.entries || []) {
+      entryStmt.run(
+        workout.id,
+        entry.id,
+        entry.topW || null,
+        entry.target ? JSON.stringify(entry.target) : null,
+        entry.note || null,
+        entry.notePin ? 1 : 0,
+        entry.muscleSnapshot ? JSON.stringify(entry.muscleSnapshot) : null
+      );
+
+      const entryId = db.prepare('SELECT id FROM workout_entries WHERE workout_id = ? AND exercise_id = ? LIMIT 1')
+        .get(workout.id, entry.id)?.id;
+      if (entryId) {
+        for (const set of entry.sets || []) {
+          setStmt.run(
+            entryId,
+            set.w || null,
+            set.r || null,
+            set.sec || null,
+            set.min || null,
+            set.speed || null,
+            set.done ? 1 : 0,
+            set.rir || null,
+            set.rpe || null
+          );
+        }
+      }
+    }
+  }
+}
+
+// ============================================================
+// Operaciones de exercise weights
+// ============================================================
+
+export function getExerciseWeightsByUserId(userId) {
+  const stmt = getDatabase().prepare('SELECT * FROM exercise_weights WHERE user_id = ?');
+  const rows = stmt.all(userId);
+  const exWeights = {};
+  for (const row of rows) {
+    exWeights[row.exercise_id] = { w: row.w, d: row.date };
+  }
+  return exWeights;
+}
+
+function saveExerciseWeights(userId, exWeights) {
+  const db = getDatabase();
+  const deleteStmt = db.prepare('DELETE FROM exercise_weights WHERE user_id = ?');
+  deleteStmt.run(userId);
+
+  const stmt = db.prepare('INSERT INTO exercise_weights (user_id, exercise_id, w, date) VALUES (?, ?, ?, ?)');
+  for (const [exId, data] of Object.entries(exWeights)) {
+    stmt.run(userId, exId, data.w, data.d);
+  }
+}
+
+// ============================================================
+// Operaciones de bodyweight
+// ============================================================
+
+export function getBodyweightByUserId(userId) {
+  const stmt = getDatabase().prepare('SELECT * FROM bodyweight WHERE user_id = ? ORDER BY t DESC');
+  return stmt.all(userId).map(row => ({
+    d: row.date,
+    w: row.w,
+    t: row.t
+  }));
+}
+
+function saveBodyweight(userId, bodyweight) {
+  const db = getDatabase();
+  const deleteStmt = db.prepare('DELETE FROM bodyweight WHERE user_id = ?');
+  deleteStmt.run(userId);
+
+  const stmt = db.prepare('INSERT INTO bodyweight (user_id, date, w, t) VALUES (?, ?, ?, ?)');
+  for (const bw of bodyweight) {
+    stmt.run(userId, bw.d, bw.w, bw.t);
+  }
+}
+
+// ============================================================
+// Operaciones de custom exercises
+// ============================================================
+
+export function getCustomExercisesByUserId(userId) {
+  const stmt = getDatabase().prepare('SELECT * FROM custom_exercises WHERE user_id = ?');
+  return stmt.all(userId).map(row => ({
+    id: row.id,
+    n: row.n,
+    bp: row.bp,
+    eq: row.eq,
+    tg: row.tg,
+    mg: row.mg,
+    sm: row.sm ? JSON.parse(row.sm) : [],
+    st: row.st ? JSON.parse(row.st) : [],
+    created: row.created_at,
+    custom: true
+  }));
+}
+
+function saveCustomExercises(userId, customEx) {
+  const db = getDatabase();
+  const deleteStmt = db.prepare('DELETE FROM custom_exercises WHERE user_id = ?');
+  deleteStmt.run(userId);
+
+  const stmt = db.prepare(`
+    INSERT INTO custom_exercises (id, user_id, n, bp, eq, tg, mg, sm, st, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+  for (const ex of customEx) {
+    stmt.run(
+      ex.id,
+      userId,
+      ex.n,
+      ex.bp || null,
+      ex.eq || null,
+      ex.tg || null,
+      ex.mg || null,
+      ex.sm ? JSON.stringify(ex.sm) : null,
+      ex.st ? JSON.stringify(ex.st) : null,
+      ex.created || Date.now()
+    );
+  }
+}
+
+// ============================================================
+// Operaciones de exercise notes
+// ============================================================
+
+export function getExerciseNotesByUserId(userId) {
+  const stmt = getDatabase().prepare('SELECT * FROM exercise_notes WHERE user_id = ?');
+  const rows = stmt.all(userId);
+  const exNotes = {};
+  for (const row of rows) {
+    exNotes[row.exercise_id] = row.note;
+  }
+  return exNotes;
+}
+
+function saveExerciseNotes(userId, exNotes) {
+  const db = getDatabase();
+  const deleteStmt = db.prepare('DELETE FROM exercise_notes WHERE user_id = ?');
+  deleteStmt.run(userId);
+
+  const stmt = db.prepare('INSERT INTO exercise_notes (user_id, exercise_id, note) VALUES (?, ?, ?)');
+  for (const [exId, note] of Object.entries(exNotes)) {
+    stmt.run(userId, exId, note);
+  }
+}
+
+// ============================================================
+// Operaciones de reminder settings
+// ============================================================
+
+export function getReminderSettingsByUserId(userId) {
+  const stmt = getDatabase().prepare('SELECT * FROM reminder_settings WHERE user_id = ?');
+  const row = stmt.get(userId);
+  if (!row) return null;
+  return {
+    on: row.on === 1,
+    time: row.time,
+    tz: row.tz,
+    feeOn: row.fee_on === 1,
+    feeInterval: row.fee_interval,
+    feeDate: row.fee_date
+  };
+}
+
+function saveReminderSettings(userId, reminder) {
+  if (!reminder) return;
+  const stmt = getDatabase().prepare(`
+    INSERT OR REPLACE INTO reminder_settings (user_id, on, time, tz, fee_on, fee_interval, fee_date)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `);
+  stmt.run(
+    userId,
+    reminder.on ? 1 : 0,
+    reminder.time || null,
+    reminder.tz || null,
+    reminder.feeOn ? 1 : 0,
+    reminder.feeInterval || 'monthly',
+    reminder.feeDate || null
+  );
+}
+
+// ============================================================
+// Operaciones de equipment profiles
+// ============================================================
+
+export function getEquipProfilesByUserId(userId) {
+  const stmt = getDatabase().prepare('SELECT * FROM equip_profiles WHERE user_id = ?');
+  return stmt.all(userId).map(row => ({
+    id: row.id,
+    name: row.name,
+    equipment: JSON.parse(row.equipment),
+    created: row.created_at
+  }));
+}
+
+function saveEquipProfiles(userId, profiles) {
+  const db = getDatabase();
+  const deleteStmt = db.prepare('DELETE FROM equip_profiles WHERE user_id = ?');
+  deleteStmt.run(userId);
+
+  const stmt = db.prepare('INSERT INTO equip_profiles (id, user_id, name, equipment, created_at) VALUES (?, ?, ?, ?, ?)');
+  for (const profile of profiles) {
+    stmt.run(profile.id, userId, profile.name, JSON.stringify(profile.equipment), profile.created || Date.now());
+  }
+}
