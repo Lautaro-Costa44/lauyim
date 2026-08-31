@@ -3,98 +3,15 @@ import { useState, useMemo, useEffect } from 'react'
 import { useStore } from '../store/useStore.js'
 import { useUI } from '../store/useUI.js'
 import { CATALOGUE, EXIDX } from '../lib/exercises.js'
-import { generarRutina, rutinaGeneradaToRoutines, defaultSplitRecomendado, derivarSplit, obtenerAlternativas, obtenerMasAlternativas, buscarEnGrupoMuscular } from '../lib/generarRutina.js'
+import { generarRutina, rutinaGeneradaToRoutines, defaultSplitRecomendado, derivarSplit } from '../lib/generarRutina.js'
 import { todayISO } from '../lib/format.js'
 import { t, exerciseNameFor } from '../lib/i18n.js'
 import { confirmSheet, exerciseDetailSheetNoAdd } from '../sheets.jsx'
 import Icon from '../components/Icon.jsx'
 import { Button } from '../components/ui.jsx'
+import ExerciseReplacementSheet from '../components/ExerciseReplacementSheet.jsx'
 
 const PASOS = 5
-
-function ReemplazarEjercicioSheet({ exActual, poolSeguro, usadosEnSemana, onReemplazar, close }) {
-  const [masAlts, setMasAlts] = useState([])
-  const [verMasCargado, setVerMasCargado] = useState(false)
-  const [query, setQuery] = useState('')
-
-  const exActualObj = useMemo(() => poolSeguro.find(e => e.id === (exActual.id || exActual.exerciseId)) || EXIDX[exActual.id] || exActual, [exActual, poolSeguro])
-  const nombreActual = exerciseNameFor(exActualObj) || exActualObj.n || exActual.id
-
-  const altsIniciales = useMemo(() => {
-    return obtenerAlternativas(exActualObj, poolSeguro, usadosEnSemana, 3)
-  }, [exActualObj, poolSeguro, usadosEnSemana])
-
-  const cargarMas = () => {
-    const yaMostrados = new Set(altsIniciales.map(a => a.id))
-    const mas = obtenerMasAlternativas(exActualObj, poolSeguro, usadosEnSemana, yaMostrados, 5)
-    setMasAlts(mas)
-    setVerMasCargado(true)
-  }
-
-  const resultadosBusqueda = useMemo(() => {
-    if (!query.trim()) return null
-    return buscarEnGrupoMuscular(query, poolSeguro, exActualObj.tg, usadosEnSemana)
-  }, [query, poolSeguro, exActualObj, usadosEnSemana])
-
-  const listaAMostrar = resultadosBusqueda !== null ? resultadosBusqueda : [...altsIniciales, ...masAlts]
-
-  return <>
-    <h3>{t('Reemplazar {0}', nombreActual)}</h3>
-    <div className="muted small" style={{ marginBottom: 14 }}>
-      {t('Seleccioná una alternativa equivalente para este ejercicio:')}
-    </div>
-
-    {listaAMostrar.length === 0 ? (
-      <div className="muted" style={{ padding: '16px 0' }}>
-        {query ? t('No se encontraron ejercicios en este grupo muscular.') : t('No hay otras alternativas equivalentes disponibles.')}
-      </div>
-    ) : (
-      <div className="list" style={{ maxHeight: 260, overflowY: 'auto' }}>
-        {listaAMostrar.map(alt => {
-          const nombreAlt = exerciseNameFor(alt) || alt.n || alt.id
-          return (
-            <div key={alt.id} className="item" onClick={() => exerciseDetailSheetNoAdd(alt)}>
-              <span className="lrow-i"><Icon name="dumbbell" /></span>
-              <div className="grow">
-                <div className="tt">{nombreAlt}</div>
-                <div className="ss">{alt.eq || alt.bp || ''}</div>
-              </div>
-              <button
-                className="tag acc"
-                style={{ background: 'var(--acc-soft)', color: 'var(--acc)', border: 'none', cursor: 'pointer', borderRadius: 6, padding: '4px 10px', fontSize: 13, fontWeight: 600 }}
-                onClick={e => { e.stopPropagation(); onReemplazar(alt); close() }}
-              >
-                {t('Elegir')}
-              </button>
-            </div>
-          )
-        })}
-      </div>
-    )}
-
-    {!query && !verMasCargado && (
-      <div style={{ margin: '10px 0 6px' }}>
-        <Button size="sm" variant="tinted" icon="plus" onClick={cargarMas} style={{ width: '100%' }}>
-          {t('Ver más alternativas (+5)')}
-        </Button>
-      </div>
-    )}
-
-    <div style={{ marginTop: 12 }}>
-      <input
-        className="input"
-        type="text"
-        placeholder={t('Buscar en {0}...', exActualObj.tg || t('mismo grupo'))}
-        value={query}
-        onChange={e => setQuery(e.target.value)}
-        style={{ fontSize: 14 }}
-      />
-    </div>
-
-    <div style={{ height: 12 }} />
-    <Button variant="ghost" className="dim" onClick={close}>{t('Cancelar')}</Button>
-  </>
-}
 
 const DIAS_OPCIONES = [
   { key: 'lunes', label: 'Lun', index: 1 },
@@ -348,9 +265,34 @@ export default function SurveyWizard() {
     const newRoutines = planRevision.routines.map((r, rI) => {
       if (rI !== routineIdx) return r
       const newEx = [...r.ex]
+      // Preservar propiedades específicas según tipo
+      const isCardio = exViejo.isCardio
+      const isStretch = exViejo.isStretch
+
       newEx[exIdx] = {
         ...newEx[exIdx],
         id: exNuevo.id,
+        // Para cardio, preservar tiempo y modo
+        ...(isCardio && {
+          isCardio: true,
+          mode: 'cardio',
+          min: exViejo.min,
+          speed: exViejo.speed,
+          note: exNuevo.bp === 'cardio' ? exNuevo.st?.[0] || '' : exViejo.note,
+        }),
+        // Para estiramientos, preservar duración
+        ...(isStretch && {
+          isStretch: true,
+          mode: 'time',
+          sec: exViejo.sec,
+          note: 'Estiramiento recomendado para los músculos de hoy',
+        }),
+        // Para ejercicios normales, preservar series y reps
+        ...(!isCardio && !isStretch && {
+          isNormal: true,
+          sets: exViejo.sets,
+          reps: exViejo.reps,
+        }),
       }
       return { ...r, ex: newEx }
     })
@@ -358,10 +300,31 @@ export default function SurveyWizard() {
     const newDias = planRevision.rutinaGenerada.dias.map((d, dI) => {
       if (dI !== routineIdx) return d
       const newEjercicios = [...(d.ejercicios || d.ex || [])]
+      const isCardio = exViejo.isCardio
+      const isStretch = exViejo.isStretch
+
       newEjercicios[exIdx] = {
         ...newEjercicios[exIdx],
         id: exNuevo.id,
         exerciseId: exNuevo.id,
+        ...(isCardio && {
+          isCardio: true,
+          mode: 'cardio',
+          min: exViejo.min,
+          speed: exViejo.speed,
+          note: exNuevo.bp === 'cardio' ? exNuevo.st?.[0] || '' : exViejo.note,
+        }),
+        ...(isStretch && {
+          isStretch: true,
+          mode: 'time',
+          sec: exViejo.sec,
+          note: 'Estiramiento recomendado para los músculos de hoy',
+        }),
+        ...(!isCardio && !isStretch && {
+          isNormal: true,
+          sets: exViejo.sets,
+          reps: exViejo.reps,
+        }),
       }
       return { ...d, ejercicios: newEjercicios, ex: newEjercicios }
     })
@@ -663,24 +626,29 @@ export default function SurveyWizard() {
                     const exObj = EXIDX[ex.id] || ex
                     const nombre = exerciseNameFor(exObj) || exObj.n || ex.id
                     const isNormal = ex.isNormal !== false && !ex.isCardio && !ex.isStretch
+                    const isCardio = ex.isCardio
+                    const isStretch = ex.isStretch
                     return (
                       <div key={exIdx} className="row between" style={{ padding: '8px 4px', borderBottom: exIdx < r.ex.length - 1 ? '1px solid var(--sep)' : 'none' }}>
                         <div>
                           <div style={{ fontWeight: 600, fontSize: 14 }}>{nombre}</div>
-                          <div className="small muted">{ex.sets} {t('series')} × {ex.reps} {t('reps')}</div>
+                          <div className="small muted">
+                            {isCardio ? `${ex.min} min` : isStretch ? `${ex.sec} s` : `${ex.sets} ${t('series')} × ${ex.reps} ${t('reps')}`}
+                          </div>
                         </div>
-                        {isNormal && (
+                        {(isNormal || isCardio || isStretch) && (
                           <Button
                             size="sm"
                             variant="tinted"
                             icon="reset"
                             onClick={() => useUI.getState().openSheet(close => (
-                              <ReemplazarEjercicioSheet
+                              <ExerciseReplacementSheet
                                 exActual={ex}
                                 poolSeguro={planRevision.poolSeguro}
                                 usadosEnSemana={planRevision.usadosEnSemana}
                                 onReemplazar={(nueva) => reemplazarEjercicio(rIdx, exIdx, ex, nueva)}
                                 close={close}
+                                tipo={isCardio ? 'cardio' : isStretch ? 'stretch' : 'normal'}
                               />
                             ))}
                           >
