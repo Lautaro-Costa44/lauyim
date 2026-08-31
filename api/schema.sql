@@ -233,7 +233,7 @@ CREATE TABLE IF NOT EXISTS workout_sets (
   speed REAL,                  -- velocidad (para cardio)
   done INTEGER DEFAULT 0,
   rir REAL,                    -- reps in reserve
-  rpe REAL,                    // effort percibido
+  rpe REAL,                    -- effort percibido
   FOREIGN KEY (entry_id) REFERENCES workout_entries(id) ON DELETE CASCADE
 );
 
@@ -274,10 +274,10 @@ CREATE TABLE IF NOT EXISTS custom_exercises (
   n TEXT NOT NULL,             -- nombre
   bp TEXT,                     -- body part
   eq TEXT,                     -- equipment
-  tg TEXT,                     // target group
-  mg TEXT,                     // main muscle
-  sm TEXT,                     // JSON array (secondary muscles)
-  st TEXT,                     // JSON array (instructions)
+  tg TEXT,                     -- target group
+  mg TEXT,                     -- main muscle
+  sm TEXT,                     -- JSON array (secondary muscles)
+  st TEXT,                     -- JSON array (instructions)
   created_at INTEGER NOT NULL,
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
@@ -300,7 +300,7 @@ CREATE INDEX IF NOT EXISTS idx_exercise_notes_user_id ON exercise_notes(user_id)
 -- Reminder settings
 CREATE TABLE IF NOT EXISTS reminder_settings (
   user_id TEXT PRIMARY KEY,
-  on INTEGER DEFAULT 0,
+  "on" INTEGER DEFAULT 0,
   time TEXT,                   -- HH:MM
   tz TEXT,                     -- timezone IANA
   fee_on INTEGER DEFAULT 0,

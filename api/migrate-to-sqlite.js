@@ -174,7 +174,7 @@ const stateStmt = sqlite.prepare(`
     body, target_w, estado_inicial, edad, altura, objetivo, nivel, peso_kg, configuracion,
     respuestas_encuesta, rutina_generada, fecha_ultima_encuesta, effort, auto_backup,
     active_equip_id, equip_filter_on
-  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `);
 
 const routineStmt = sqlite.prepare(`
@@ -184,7 +184,7 @@ const routineStmt = sqlite.prepare(`
 
 const routineExStmt = sqlite.prepare(`
   INSERT OR IGNORE INTO routine_exercises (routine_id, exercise_id, position, sg, sets, reps, weight, mode, min, speed, sec, bodyweight, side, note)
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `);
 
 const weekStmt = sqlite.prepare(`
@@ -233,7 +233,7 @@ const exNoteStmt = sqlite.prepare(`
 `);
 
 const reminderStmt = sqlite.prepare(`
-  INSERT OR REPLACE INTO reminder_settings (user_id, on, time, tz, fee_on, fee_interval, fee_date)
+  INSERT OR REPLACE INTO reminder_settings (user_id, "on", time, tz, fee_on, fee_interval, fee_date)
   VALUES (?, ?, ?, ?, ?, ?, ?)
 `);
 
