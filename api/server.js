@@ -6,6 +6,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import https from 'node:https';
 import dns from 'node:dns';
+import { fileURLToPath } from 'node:url';
 import webpush from 'web-push';
 import {
   generateRegistrationOptions, verifyRegistrationResponse,
@@ -49,6 +50,13 @@ const DATA = process.env.DATA_DIR || '/data';
 const RP_ID = process.env.RP_ID || 'localhost';
 const ORIGIN = process.env.ORIGIN || 'http://localhost:8080';
 const RP_NAME = process.env.RP_NAME || 'openGym';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+let apiVersion = '1.2.11';
+try {
+  const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, 'package.json'), 'utf8'));
+  apiVersion = pkg.version || apiVersion;
+} catch {}
 // Admin dashboard (issue): admins are matched by uid; INVITE_ONLY gates new signups behind a
 // code the admin generates. Both default off so a fresh self-hosted instance stays open.
 const ADMIN_UIDS = (process.env.ADMIN_UIDS || '').split(',').map(s => s.trim()).filter(Boolean);
@@ -543,6 +551,74 @@ const routes = {
   'GET /api/health': async (req, res) => json(res, 200, { ok: true, users: getAllUsers().length }),
 
   'GET /api/config': async (req, res) => json(res, 200, { invite_only: INVITE_ONLY, allow_guest: ALLOW_GUEST, survey_enabled: SURVEY_ENABLED }),
+
+  'POST /api/support': async (req, res) => {
+    const body = await readBody(req);
+    const asunto = String(body.asunto || '').trim().slice(0, 150);
+    const mensaje = String(body.mensaje || '').trim().slice(0, 2000);
+    const emailContacto = String(body.emailContacto || '').trim().slice(0, 100);
+    const pwaInstalled = !!body.pwaInstalled;
+
+    if (!asunto || !mensaje) {
+      return json(res, 400, { error: 'Asunto y mensaje son requeridos' });
+    }
+
+    const brevoApiKey = process.env.BREVO_API_KEY;
+    const supportDestination = process.env.SUPPORT_DESTINATION_EMAIL || 'soporte@lauyim.online';
+
+    if (!brevoApiKey) {
+      console.error('POST /api/support error: BREVO_API_KEY is not configured');
+      return json(res, 500, { error: 'No se pudo enviar el reporte, intentá de nuevo' });
+    }
+
+    const userAgent = req.headers['user-agent'] || 'Desconocido';
+    const appVersion = apiVersion;
+    const user = readSession(req);
+    const userInfo = user ? `Usuario: ${user.name} (ID: ${user.id})` : 'Usuario: Invitado / No autenticado';
+
+    const htmlContent = `
+      <h2>Nuevo reporte de soporte / problema</h2>
+      <p><strong>Asunto:</strong> ${asunto}</p>
+      <p><strong>Mensaje:</strong><br/>${mensaje.replace(/\n/g, '<br/>')}</p>
+      <hr/>
+      <h3>Datos de diagnóstico:</h3>
+      <ul>
+        <li><strong>Email de contacto:</strong> ${emailContacto || 'No provisto'}</li>
+        <li>${userInfo}</li>
+        <li><strong>Versión de la app:</strong> v${appVersion}</li>
+        <li><strong>PWA instalada:</strong> ${pwaInstalled ? 'Sí' : 'No'}</li>
+        <li><strong>User Agent:</strong> ${userAgent}</li>
+      </ul>
+    `;
+
+    try {
+      const brevoRes = await fetch('https://api.brevo.com/v3/smtp/email', {
+        method: 'POST',
+        headers: {
+          'accept': 'application/json',
+          'api-key': brevoApiKey,
+          'content-type': 'application/json'
+        },
+        body: JSON.stringify({
+          sender: { name: 'Soporte Lauyim', email: 'soporte@lauyim.online' },
+          to: [{ email: supportDestination }],
+          subject: `[Soporte Lauyim] ${asunto}`,
+          htmlContent
+        })
+      });
+
+      if (!brevoRes.ok) {
+        const errText = await brevoRes.text();
+        console.error('Brevo API error:', brevoRes.status, errText);
+        return json(res, 500, { error: 'No se pudo enviar el reporte, intentá de nuevo' });
+      }
+
+      return json(res, 200, { ok: true });
+    } catch (e) {
+      console.error('POST /api/support fetch error:', e);
+      return json(res, 500, { error: 'No se pudo enviar el reporte, intentá de nuevo' });
+    }
+  },
 
   'GET /api/me': async (req, res) => {
     const user = readSession(req);

@@ -316,6 +316,9 @@ export default function Settings() {
       <Row icon="chart" iconTint="var(--indigo)" title={t('Tutorial: Tu progreso')} subtitle={t('Repasá las gráficas de progreso y balance muscular.')} accessory="chevron" onClick={() => { nav('/stats'); setTimeout(() => startTourB(true), 400) }} />
       <Row icon="trash" iconTint="var(--red)" title={t('Reset everything')} danger onClick={() => confirmSheet({ title: t('Reset everything?'), message: t('Deletes your plan, workouts and body weight on this device. This cannot be undone.'), confirmText: t('Delete everything'), danger: true, onConfirm: () => { replaceState(JSON.parse(JSON.stringify(DEF)), true); nav('/home'); toast(t('All data reset')) } })} />
     </Section>
+    <Section title={t('Contacto')}>
+      <Row icon="mail" iconTint="var(--acc)" title={t('Reportar un problema')} subtitle={t('Envianos tus comentarios o reportá un error.')} accessory="chevron" onClick={supportSheet} />
+    </Section>
     <input ref={fileRef} type="file" accept=".json,application/json" style={{ display: 'none' }} onChange={doImport} />
     {/* Reset after reading so picking the same file twice still fires onChange. */}
     <input ref={importRef} type="file" accept=".csv,.xml,text/csv,text/xml" style={{ display: 'none' }}
@@ -352,6 +355,64 @@ const EFFORT_ROWS = [
 // RIR 2 / RPE 8: the row a working set usually lands on — the anchor the others are read
 // against. Not where the stepper starts; + walks up from the bottom of the scale.
 const EFFORT_TYPICAL = 2
+
+function supportSheet() {
+  const { openSheet } = useUI.getState()
+  const toast = useUI.getState().toast
+
+  openSheet(close => {
+    const [asunto, setAsunto] = useState('')
+    const [mensaje, setMensaje] = useState('')
+    const [emailContacto, setEmailContacto] = useState('')
+    const [loading, setLoading] = useState(false)
+
+    const send = async () => {
+      if (!asunto.trim() || !mensaje.trim()) {
+        toast(t('Ingresá asunto y mensaje'))
+        return
+      }
+      setLoading(true)
+      try {
+        const pwaInstalled = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true
+        await api('/api/support', {
+          method: 'POST',
+          body: JSON.stringify({
+            asunto: asunto.trim(),
+            mensaje: mensaje.trim(),
+            emailContacto: emailContacto.trim(),
+            pwaInstalled
+          })
+        })
+        toast(t('Reporte enviado con éxito'))
+        close()
+      } catch (e) {
+        toast(e.message || t('No se pudo enviar el reporte, intentá de nuevo'))
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    return <>
+      <h3>{t('Reportar un problema')}</h3>
+      <div className="muted small" style={{ marginBottom: 14 }}>{t('Envianos detalles del problema o sugerencia. Te responderemos a la brevedad.')}</div>
+      <div style={{ marginBottom: 10 }}>
+        <div className="dim small" style={{ marginBottom: 4 }}>{t('Asunto')}</div>
+        <input className="input" placeholder={t('Ej: Error al registrar serie')} value={asunto} onChange={e => setAsunto(e.target.value)} maxLength={150} />
+      </div>
+      <div style={{ marginBottom: 10 }}>
+        <div className="dim small" style={{ marginBottom: 4 }}>{t('Mensaje')}</div>
+        <textarea className="input" style={{ minHeight: 100, resize: 'vertical', fontFamily: 'inherit' }} placeholder={t('Describí el problema...')} value={mensaje} onChange={e => setMensaje(e.target.value)} maxLength={2000} />
+      </div>
+      <div style={{ marginBottom: 16 }}>
+        <div className="dim small" style={{ marginBottom: 4 }}>{t('Email de contacto (opcional)')}</div>
+        <input className="input" type="email" placeholder={t('tu@email.com')} value={emailContacto} onChange={e => setEmailContacto(e.target.value)} maxLength={100} />
+      </div>
+      <Button variant="primary" disabled={loading} onClick={send}>
+        {loading ? t('Enviando...') : t('Enviar reporte')}
+      </Button>
+    </>
+  })
+}
 
 function effortHelpSheet() {
   useUI.getState().openSheet(close => <>
