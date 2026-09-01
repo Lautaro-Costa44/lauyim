@@ -31,6 +31,7 @@ export const DEF = {
   configuracion: { pedirPesoAlEntrenar: true },
   estadoInicial: 'pendiente',
   onboardingCompletado: false,
+  onboardingStatsCompletado: false,
   respuestasEncuesta: null,
   rutinaGenerada: null,
   fechaUltimaEncuesta: null,
