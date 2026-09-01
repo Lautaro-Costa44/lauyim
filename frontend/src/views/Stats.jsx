@@ -129,7 +129,7 @@ export const FATIGUE_LEVELS = [
   { at: 0.15, level: 1 },
   { at: 0.25, level: 2 },
   { at: 0.4, level: 3 },
-  { at: 0.55, level: 4, exclusive: true },
+  { at: 0.5, level: 4, exclusive: true },
 ]
 
 export const STRENGTH_LEVELS = [

@@ -359,6 +359,8 @@ export default function SurveyWizard() {
         st.objetivo = respuestas.objetivo || st.objetivo || 'fitness_general'
         st.pesoKg = Number.isFinite(+respuestas.pesoKg) ? +respuestas.pesoKg : null
         st.nivel = respuestas.nivel || st.nivel || null
+        st.genero = respuestas.sexoBiologico === 'femenino' ? 'femenino' : 'masculino'
+        st.body = st.genero === 'femenino' ? 'female' : 'male'
         st.respuestasEncuesta = respuestas
         st.rutinaGenerada = rutinaGenerada
         st.fechaUltimaEncuesta = todayISO()
@@ -422,7 +424,11 @@ export default function SurveyWizard() {
               valor={resp.sexoBiologico}
               onSelect={v => {
                 set('sexoBiologico', v)
-                update(st => { st.genero = v === 'femenino' ? 'femenino' : 'masculino' })
+                const genero = v === 'femenino' ? 'femenino' : 'masculino'
+                update(st => {
+                  st.genero = genero
+                  st.body = genero === 'femenino' ? 'female' : 'male'
+                })
               }}
             />
 

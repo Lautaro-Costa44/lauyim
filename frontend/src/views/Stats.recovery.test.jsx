@@ -197,6 +197,7 @@ describe('Stats muscle recovery view runtime', () => {
     await click(viewButton('Fatigue'))
     expectPressed(viewButton('Fatigue'))
     expect(lastMap().thresholds).toBeTruthy()
+    expect(lastMap().thresholds.at(-1)).toEqual({ at: 0.5, level: 4, exclusive: true })
     expect(container.textContent).toContain('Fatigue shows how recently each muscle was trained. High means rest.')
     expect(container.querySelector('[data-selected-muscle="chest"]')).toBeTruthy()
 

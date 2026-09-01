@@ -274,8 +274,11 @@ export default function Settings() {
         <Segmented
           className="seg-inline"
           options={[{ value: 'male', label: t('Male') }, { value: 'female', label: t('Female') }]}
-          value={S.body === 'female' ? 'female' : 'male'}
-          onChange={v => update(s => { s.body = v })}
+          value={S.body || (S.genero === 'femenino' ? 'female' : 'male')}
+          onChange={v => update(s => {
+            s.body = v
+            s.genero = v === 'female' ? 'femenino' : 'masculino'
+          })}
         />
       </Row>
       <div className="lrow" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 12, paddingTop: 13, paddingBottom: 14 }}>
