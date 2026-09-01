@@ -250,6 +250,8 @@ for (const file of stateFiles) {
     const S = JSON.parse(fs.readFileSync(statePath, 'utf8'));
     totalStates++;
 
+    const validRoutineIds = new Set((S.routines || []).map(r => String(r?.id || '')).filter(Boolean));
+
     // User state
     stateStmt.run(
       uid,
@@ -307,26 +309,29 @@ for (const file of stateFiles) {
     // Week plan
     if (S.week) {
       for (const [dayIndex, routineId] of Object.entries(S.week)) {
-        weekStmt.run(uid, parseInt(dayIndex), routineId || null);
+        const nextRoutineId = validRoutineIds && routineId ? (validRoutineIds.has(String(routineId)) ? String(routineId) : null) : (routineId || null);
+        weekStmt.run(uid, parseInt(dayIndex), nextRoutineId);
       }
     }
 
     // Day plan
     if (S.dayPlan) {
       for (const [date, routineId] of Object.entries(S.dayPlan)) {
-        dayPlanStmt.run(uid, date, routineId || null);
+        const nextRoutineId = validRoutineIds && routineId ? (validRoutineIds.has(String(routineId)) ? String(routineId) : null) : (routineId || null);
+        dayPlanStmt.run(uid, date, nextRoutineId);
       }
     }
 
     // Workouts
     for (const workout of S.workouts || []) {
+      const nextRoutineId = validRoutineIds && workout?.routineId ? (validRoutineIds.has(String(workout.routineId)) ? String(workout.routineId) : null) : (workout?.routineId || null);
       workoutStmt.run(
         workout.id,
         uid,
         workout.d,
         workout.start,
         workout.end,
-        workout.routineId || null,
+        nextRoutineId,
         workout.name,
         workout.bw || null,
         workout.vol || null,

@@ -383,6 +383,7 @@ export function getUserState(userId) {
 
 export function saveUserState(userId, S) {
   const db = getDatabase();
+  const validRoutineIds = new Set((S.routines || []).map(r => String(r?.id || '')).filter(Boolean));
 
   // Guardar estado principal
   const stateStmt = db.prepare(`
@@ -426,13 +427,13 @@ export function saveUserState(userId, S) {
   saveRoutines(userId, S.routines || []);
 
   // Guardar week plan
-  saveWeekPlan(userId, S.week || {});
+  saveWeekPlan(userId, S.week || {}, validRoutineIds);
 
   // Guardar day plan
-  saveDayPlan(userId, S.dayPlan || {});
+  saveDayPlan(userId, S.dayPlan || {}, validRoutineIds);
 
   // Guardar workouts
-  saveWorkouts(userId, S.workouts || []);
+  saveWorkouts(userId, S.workouts || [], validRoutineIds);
 
   // Guardar exercise weights
   saveExerciseWeights(userId, S.exWeights || {});
@@ -537,14 +538,15 @@ export function getWeekPlanByUserId(userId) {
   return week;
 }
 
-function saveWeekPlan(userId, week) {
+function saveWeekPlan(userId, week, validRoutineIds = null) {
   const db = getDatabase();
   const deleteStmt = db.prepare('DELETE FROM week_plan WHERE user_id = ?');
   deleteStmt.run(userId);
 
   const stmt = db.prepare('INSERT INTO week_plan (user_id, day_index, routine_id) VALUES (?, ?, ?)');
   for (const [dayIndex, routineId] of Object.entries(week)) {
-    stmt.run(userId, parseInt(dayIndex), routineId || null);
+    const nextRoutineId = validRoutineIds && routineId ? (validRoutineIds.has(String(routineId)) ? String(routineId) : null) : (routineId || null);
+    stmt.run(userId, parseInt(dayIndex), nextRoutineId);
   }
 }
 
@@ -562,14 +564,15 @@ export function getDayPlanByUserId(userId) {
   return dayPlan;
 }
 
-function saveDayPlan(userId, dayPlan) {
+function saveDayPlan(userId, dayPlan, validRoutineIds = null) {
   const db = getDatabase();
   const deleteStmt = db.prepare('DELETE FROM day_plan WHERE user_id = ?');
   deleteStmt.run(userId);
 
   const stmt = db.prepare('INSERT INTO day_plan (user_id, date, routine_id) VALUES (?, ?, ?)');
   for (const [date, routineId] of Object.entries(dayPlan)) {
-    stmt.run(userId, date, routineId || null);
+    const nextRoutineId = validRoutineIds && routineId ? (validRoutineIds.has(String(routineId)) ? String(routineId) : null) : (routineId || null);
+    stmt.run(userId, date, nextRoutineId);
   }
 }
 
@@ -631,7 +634,7 @@ function getWorkoutSetsByEntryId(entryId) {
   }));
 }
 
-function saveWorkouts(userId, workouts) {
+function saveWorkouts(userId, workouts, validRoutineIds = null) {
   const db = getDatabase();
   // Eliminar workouts viejos
   const deleteStmt = db.prepare('DELETE FROM workouts WHERE user_id = ?');
@@ -657,58 +660,62 @@ function saveWorkouts(userId, workouts) {
     const wId = String(w.id || ('w_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7)));
     if (!seenIds.has(wId)) {
       seenIds.add(wId);
-      cleanWorkouts.push({ ...w, id: wId });
+      cleanWorkouts.push({
+        ...w,
+        id: wId,
+        routineId: validRoutineIds && w?.routineId ? (validRoutineIds.has(String(w.routineId)) ? String(w.routineId) : null) : (w?.routineId || null)
+      });
     }
   }
 
-  const runTransaction = db.transaction((workouts) => {
-  deleteStmt.run(userId);
-  for (const workout of workouts) {
-    workoutStmt.run(
-      workout.id,
-      userId,
-      workout.d,
-      workout.start,
-      workout.end,
-      workout.routineId || null,
-      workout.name,
-      workout.bw || null,
-      workout.vol || null,
-      workout.note || null
-    );
-
-    for (const entry of workout.entries || []) {
-      entryStmt.run(
+  const runTransaction = db.transaction((items) => {
+    deleteStmt.run(userId);
+    for (const workout of items) {
+      workoutStmt.run(
         workout.id,
-        entry.id,
-        entry.topW || null,
-        entry.target ? JSON.stringify(entry.target) : null,
-        entry.note || null,
-        entry.notePin ? 1 : 0,
-        entry.muscleSnapshot ? JSON.stringify(entry.muscleSnapshot) : null
+        userId,
+        workout.d,
+        workout.start,
+        workout.end,
+        workout.routineId || null,
+        workout.name,
+        workout.bw || null,
+        workout.vol || null,
+        workout.note || null
       );
 
-      const entryId = db.prepare('SELECT id FROM workout_entries WHERE workout_id = ? AND exercise_id = ? LIMIT 1')
-        .get(workout.id, entry.id)?.id;
-      if (entryId) {
-        for (const set of entry.sets || []) {
-          setStmt.run(
-            entryId,
-            set.w || null,
-            set.r || null,
-            set.sec || null,
-            set.min || null,
-            set.speed || null,
-            set.done ? 1 : 0,
-            set.rir || null,
-            set.rpe || null
-          );
+      for (const entry of workout.entries || []) {
+        entryStmt.run(
+          workout.id,
+          entry.id,
+          entry.topW || null,
+          entry.target ? JSON.stringify(entry.target) : null,
+          entry.note || null,
+          entry.notePin ? 1 : 0,
+          entry.muscleSnapshot ? JSON.stringify(entry.muscleSnapshot) : null
+        );
+
+        const entryId = db.prepare('SELECT id FROM workout_entries WHERE workout_id = ? AND exercise_id = ? LIMIT 1')
+          .get(workout.id, entry.id)?.id;
+        if (entryId) {
+          for (const set of entry.sets || []) {
+            setStmt.run(
+              entryId,
+              set.w || null,
+              set.r || null,
+              set.sec || null,
+              set.min || null,
+              set.speed || null,
+              set.done ? 1 : 0,
+              set.rir || null,
+              set.rpe || null
+            );
+          }
         }
       }
     }
-  }
   });
-  runTransaction(workouts);
+  runTransaction(cleanWorkouts);
 }
 
 // ============================================================

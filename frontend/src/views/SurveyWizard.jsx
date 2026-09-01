@@ -354,6 +354,11 @@ export default function SurveyWizard() {
         st.routines = routines
         st.week = week
         st.estadoInicial = 'encuesta_completada'
+        st.edad = Number.isFinite(+respuestas.edad) ? +respuestas.edad : null
+        st.altura = Number.isFinite(+respuestas.altura) ? +respuestas.altura : null
+        st.objetivo = respuestas.objetivo || st.objetivo || 'fitness_general'
+        st.pesoKg = Number.isFinite(+respuestas.pesoKg) ? +respuestas.pesoKg : null
+        st.nivel = respuestas.nivel || st.nivel || null
         st.respuestasEncuesta = respuestas
         st.rutinaGenerada = rutinaGenerada
         st.fechaUltimaEncuesta = todayISO()
