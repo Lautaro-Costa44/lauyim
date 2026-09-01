@@ -170,8 +170,6 @@ export default function SurveyWizard() {
   const S = useStore(s => s.S)
   const { update } = useStore()
   const toast = useUI(s => s.toast)
-  const addGroup = useStore(s => s.addGroup)
-  const setActiveGroupId = useStore(s => s.setActiveGroupId)
 
   const [resp, setResp] = useState(() => ({
     ...DEF_RESPUESTAS,
@@ -352,18 +350,6 @@ export default function SurveyWizard() {
     const tieneRutinasPrevias = S.routines.length > 0
 
     const guardar = () => {
-      const existingGroups = useStore.getState().S.routineGroups || []
-      const groupName = respuestas.splitPreferido || t('Mi Plan')
-      const existingGroup = existingGroups.find(g => g.name.trim().toLowerCase() === groupName.toLowerCase())
-      let groupId
-      if (existingGroup) {
-        groupId = existingGroup.id
-      } else {
-        const newGroup = addGroup(groupName, routines, week, true)
-        groupId = newGroup.id
-      }
-      setActiveGroupId(groupId)
-
       update(st => {
         st.routines = routines
         st.week = week
