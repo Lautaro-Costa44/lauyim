@@ -52,7 +52,7 @@ const ORIGIN = process.env.ORIGIN || 'http://localhost:8080';
 const RP_NAME = process.env.RP_NAME || 'openGym';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-let apiVersion = '1.2.11';
+let apiVersion = '2.0.0';
 try {
   const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, 'package.json'), 'utf8'));
   apiVersion = pkg.version || apiVersion;
