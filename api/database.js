@@ -41,6 +41,7 @@ export function initDatabase() {
       body TEXT,
       target_w REAL,
       estado_inicial TEXT,
+      onboarding_completado INTEGER,
       edad INTEGER,
       altura INTEGER,
       objetivo TEXT,
@@ -72,7 +73,8 @@ export function initDatabase() {
     ['effort', 'TEXT'],
     ['auto_backup', 'INTEGER'],
     ['active_equip_id', 'TEXT'],
-    ['equip_filter_on', 'INTEGER']
+    ['equip_filter_on', 'INTEGER'],
+    ['onboarding_completado', 'INTEGER']
   ];
 
   for (const [col, type] of columnsToAdd) {
@@ -351,6 +353,7 @@ export function getUserState(userId) {
     body: row.body,
     targetW: row.target_w,
     estadoInicial: row.estado_inicial,
+    onboardingCompletado: row.onboarding_completado === 1,
     edad: row.edad,
     altura: row.altura,
     objetivo: row.objetivo,
@@ -389,10 +392,10 @@ export function saveUserState(userId, S) {
   const stateStmt = db.prepare(`
     INSERT OR REPLACE INTO user_state (
       user_id, _ts, unit, rest_sec, rest_pause_sec, sound, keep_awake, lang, theme, accent,
-      body, target_w, estado_inicial, edad, altura, objetivo, nivel, peso_kg, configuracion,
+      body, target_w, estado_inicial, onboarding_completado, edad, altura, objetivo, nivel, peso_kg, configuracion,
       respuestas_encuesta, rutina_generada, fecha_ultima_encuesta, effort, auto_backup,
       active_equip_id, equip_filter_on
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
   stateStmt.run(
     userId,
@@ -408,6 +411,7 @@ export function saveUserState(userId, S) {
     S.body || 'male',
     S.targetW || null,
     S.estadoInicial || 'pendiente',
+    S.onboardingCompletado ? 1 : 0,
     S.edad || null,
     S.altura || null,
     S.objetivo || null,

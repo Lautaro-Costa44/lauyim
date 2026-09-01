@@ -1,6 +1,7 @@
 import { useNavigate } from 'react-router-dom'
 import { useState, useMemo, useEffect } from 'react'
-import { useStore, useUI } from '../store/useStore.js'
+import { useStore } from '../store/useStore.js'
+import { useUI } from '../store/useUI.js'
 import { CATALOGUE, EXIDX } from '../lib/exercises.js'
 import { generarRutina, rutinaGeneradaToRoutines, defaultSplitRecomendado, derivarSplit } from '../lib/generarRutina.js'
 import { todayISO } from '../lib/format.js'
@@ -9,7 +10,6 @@ import { confirmSheet, exerciseDetailSheetNoAdd } from '../sheets.jsx'
 import Icon from '../components/Icon.jsx'
 import { Button } from '../components/ui.jsx'
 import ExerciseReplacementSheet from '../components/ExerciseReplacementSheet.jsx'
-import { getRoutineGroups, setActiveGroupId, addGroup, removeGroup } from '../store/useStore.js'
 
 const PASOS = 5
 
@@ -170,6 +170,8 @@ export default function SurveyWizard() {
   const S = useStore(s => s.S)
   const { update } = useStore()
   const toast = useUI(s => s.toast)
+  const addGroup = useStore(s => s.addGroup)
+  const setActiveGroupId = useStore(s => s.setActiveGroupId)
 
   const [resp, setResp] = useState(() => ({
     ...DEF_RESPUESTAS,
@@ -241,7 +243,7 @@ export default function SurveyWizard() {
       const { routines, week } = rutinaGeneradaToRoutines(rutinaGenerada, respuestas)
 
       // Create a routine group instead of directly setting routines
-      const existingGroups = get().S.routineGroups || []
+      const existingGroups = useStore.getState().S.routineGroups || []
       const groupName = resp.splitPreferido || t('Mi Plan')
       
       // Check if a group with this name already exists
@@ -254,7 +256,7 @@ export default function SurveyWizard() {
         groupId = existingGroup.id
       } else {
         // Create new group
-        const newGroup = addGroupToState(get().S, groupName, routines, week, true)
+        const newGroup = addGroup(groupName, routines, week, true)
         groupId = newGroup.id
       }
       

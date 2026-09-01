@@ -30,6 +30,7 @@ export const DEF = {
   edad: null, altura: null, objetivo: null,
   configuracion: { pedirPesoAlEntrenar: true },
   estadoInicial: 'pendiente',
+  onboardingCompletado: false,
   respuestasEncuesta: null,
   rutinaGenerada: null,
   fechaUltimaEncuesta: null,

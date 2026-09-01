@@ -1,8 +1,10 @@
 import { useNavigate } from 'react-router-dom'
 import { useStore } from '../store/useStore.js'
+import { useUI } from '../store/useUI.js'
 import { DAYN, uid, exCount } from '../lib/format.js'
 import { t } from '../lib/i18n.js'
-import { dayAssignSheet, loadStarterPlan, planToolsSheet } from '../sheets.jsx'
+import { dayAssignSheet, loadStarterPlan, planToolsSheet, confirmSheet } from '../sheets.jsx'
+import { MAX_ROUTINE_GROUPS } from '../lib/routineGroups.js'
 import Icon from '../components/Icon.jsx'
 import { Button } from '../components/ui.jsx'
 import { glyphOf, DEFAULT_GLYPH } from '../lib/glyphs.js'
@@ -11,7 +13,11 @@ export default function Plan() {
   const nav = useNavigate()
   const S = useStore(s => s.S)
   const update = useStore(s => s.update)
-  const { getRoutineGroups, setActiveGroupId, addGroup, removeGroup } = useStore()
+  const toast = useUI(s => s.toast)
+  const getRoutineGroups = useStore(s => s.getRoutineGroups)
+  const setActiveGroupId = useStore(s => s.setActiveGroupId)
+  const addGroup = useStore(s => s.addGroup)
+  const removeGroup = useStore(s => s.removeGroup)
 
   const addRoutine = () => {
     const r = { id: uid(), name: t('New routine'), emoji: DEFAULT_GLYPH, ex: [] }
@@ -105,7 +111,7 @@ export default function Plan() {
                 message: t('¿Estás seguro de eliminar el grupo {0}? Esto moverá sus rutinas al grupo activo.'),
                 confirmText: t('Eliminar'),
                 onConfirm: () => {
-                  const activeId = get().S.activeGroupId
+                  const activeId = useStore.getState().S.activeGroupId
                   removeGroup(activeId)
                 },
               })}

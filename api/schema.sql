@@ -109,6 +109,7 @@ CREATE TABLE IF NOT EXISTS user_state (
   body TEXT DEFAULT 'male',
   target_w REAL,
   estado_inicial TEXT DEFAULT 'pendiente',
+  onboarding_completado INTEGER DEFAULT 0,
   edad INTEGER,
   altura INTEGER,
   objetivo TEXT,

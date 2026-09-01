@@ -4,7 +4,7 @@ import { useStore } from '../store/useStore.js'
 import { effectiveRoutine, effectiveRoutineId, streakWeeks, lastBW, setsDoneActive } from '../lib/history.js'
 import { fmtNum, fmtDate, todayISO, isoOf, weekKey, DAYS } from '../lib/format.js'
 import { t, dateLocale } from '../lib/i18n.js'
-import { bwSheet, goalSheet, dayOverrideSheet, calendarSheet, startFlow, loadStarterPlan, bwDeltaColor } from '../sheets.jsx'
+import { bwSheet, goalSheet, dayOverrideSheet, calendarSheet, startFlow, loadStarterPlan, bwDeltaColor, confirmSheet } from '../sheets.jsx'
 import LineChart from '../components/LineChart.jsx'
 import Icon from '../components/Icon.jsx'
 import { Button } from '../components/ui.jsx'
@@ -18,6 +18,8 @@ export default function Home() {
   const S = useStore(s => s.S)
   const user = useStore(s => s.user)
   const config = useStore(s => s.config)
+  const removeGroup = useStore(s => s.removeGroup)
+  const setActiveGroupId = useStore(s => s.setActiveGroupId)
   const [weekOffset, setWeekOffset] = useState(0)
 
   useEffect(() => {
@@ -178,7 +180,7 @@ export default function Home() {
                   message: t('¿Estás seguro de eliminar el grupo {0}? Esto moverá sus rutinas al grupo activo.'),
                   confirmText: t('Eliminar'),
                   onConfirm: () => {
-                    const activeId = get().S.activeGroupId
+                    const activeId = useStore.getState().S.activeGroupId
                     removeGroup(activeId)
                   },
                 })}
@@ -191,7 +193,6 @@ export default function Home() {
       </div>
     )}
 
-    <div className="card" data-tour="bw-card">
 
     <div className="card" data-tour="bw-card">
       <div className="row between" style={{ marginBottom: 6 }}>
