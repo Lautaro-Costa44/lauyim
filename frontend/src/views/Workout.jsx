@@ -306,6 +306,26 @@ function ActiveWorkout() {
   useEffect(() => {
     progressHighWater.current = A.entries.map(e => e.sets.filter(s => s.done).length)
   }, [A.entries.length])
+
+  useEffect(() => {
+    if (!A) return
+    const lastTime = A.lastActivity || A.start
+    if (Date.now() - lastTime > 2 * 3600 * 1000) {
+      const doneSets = A.entries.reduce((n, e) => n + e.sets.filter(s => s.done).length, 0)
+      if (doneSets > 0) {
+        doFinishWorkout(true)
+      } else {
+        update(s => { s.active = null })
+      }
+      useUI.getState().openSheet(close => <>
+        <h3 style={{ margin: '8px 0' }}>{t('Entrenamiento parcial')}</h3>
+        <div className="muted small" style={{ marginBottom: 16 }}>
+          {t('Se marcó tu entrenamiento como completado parcialmente al no registrarse actividad.')}
+        </div>
+        <Button variant="primary" onClick={close}>{t('Okey')}</Button>
+      </>, { kind: 'center', locked: true })
+    }
+  }, [])
   useEffect(() => {
     if (!isSuperset) return
     const el = exRefs.current[cur]
@@ -396,15 +416,15 @@ function ActiveWorkout() {
   const toggle = (idx, i) => {
     const m = modeAt(idx)
     const cardioEntry = m === 'cardio'
-    const isLastUnit = unitIdx >= units.length - 1
     let askTop = false, exJustDone = false, workoutDone = false, checked = false
     mutEntry(idx, e => {
       e.sets[i].done = !e.sets[i].done
       checked = e.sets[i].done
+      A.lastActivity = Date.now()
       if (e.sets[i].done) {
         beep(S.sound, 1040, 0.12); vibrate(30)
-        const unitDone = unit.every(ui => (ui === idx ? e : A.entries[ui]).sets.every(x => x.done))
-        if (unitDone && isLastUnit) workoutDone = true      // last exercise's last set → done
+        const allExercisesDone = A.entries.length > 0 && A.entries.every(en => en.sets.length > 0 && en.sets.every(x => x.done))
+        if (allExercisesDone) workoutDone = true
         // Only loaded reps training has a "working weight" worth confirming — a bodyweight
         // plank has nothing to put in that slider, and neither does a set of push-ups
         // (issue #32: the fewest taps that still record what happened).

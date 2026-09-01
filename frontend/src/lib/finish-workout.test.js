@@ -68,4 +68,26 @@ describe('session notes', () => {
     expect(buildCompletedWorkout({ ...a, note: 'slept badly' }).note).toBe('slept badly')
     expect('note' in buildCompletedWorkout(a)).toBe(false)
   })
+
+  it('marks workout as partial if not all sets are done', () => {
+    const active = {
+      id: 'active-1', d: '2026-08-08', start: 1000, routineId: 'routine-1', name: 'Push', bw: 80,
+      entries: [
+        { id: '0025', sets: [{ done: true, w: 60, r: 8 }, { done: false, w: 60, r: 8 }] }
+      ],
+    }
+    const completed = buildCompletedWorkout(active)
+    expect(completed.partial).toBe(true)
+  })
+
+  it('does not mark workout as partial if all sets are done', () => {
+    const active = {
+      id: 'active-1', d: '2026-08-08', start: 1000, routineId: 'routine-1', name: 'Push', bw: 80,
+      entries: [
+        { id: '0025', sets: [{ done: true, w: 60, r: 8 }, { done: true, w: 60, r: 8 }] }
+      ],
+    }
+    const completed = buildCompletedWorkout(active)
+    expect(completed.partial).toBeUndefined()
+  })
 })

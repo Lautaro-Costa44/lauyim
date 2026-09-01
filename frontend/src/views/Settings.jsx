@@ -163,7 +163,7 @@ export default function Settings() {
     {!user && !DEMO && <p className="sect-f" style={{ marginTop: -18, marginBottom: 22 }}>{t('Guest mode — data lives only in this browser.')}</p>}
 
     {/* ---------- general ---------- */}
-    <Section title={t('General')} footer={t('Note: switching units only changes the label — logged numbers are not converted. La edad y la altura se usan para estimar el gasto calórico en Progreso.')}>
+    <Section title={t('General')} footer={t('Nota: Cambiar las unidades no transforma los números. La edad y la altura se usan para estimar el gasto calórico en Progreso.')}>
       <SelectRow
         icon="globe" iconTint="var(--blue)" title={t('Language')}
         value={getLang() || S.lang || 'es'}
@@ -404,7 +404,10 @@ function PushCard({ S, update, toast }) {
   }
   const test = async () => {
     try { await sendTestPush(); toast(t('Test sent — should arrive any second')) }
-    catch (e) { toast(e.message || t('Test failed')) }
+    catch (e) { 
+      const msg = e.message === 'not signed in' ? t('Not signed in') : (e.message || t('Test failed'))
+      toast(msg) 
+    }
   }
 
   if (!supported) return (
@@ -447,8 +450,12 @@ function PushCard({ S, update, toast }) {
             onChange={e => update(s => { s.reminder = { ...(s.reminder || DEF.reminder), feeDate: e.target.value } })} />
         </Row>
       </>}
+      {on && (
+        <div style={{ marginTop: 12, marginBottom: 4, display: 'flex', justifyContent: 'center' }}>
+          <Button size="sm" icon="bell" onClick={test}>{t('Send test notification')}</Button>
+        </div>
+      )}
     </Section>
-    {on && <div style={{ marginTop: -12, marginBottom: 22 }}><Button size="sm" icon="bell" onClick={test}>{t('Send test notification')}</Button></div>}
   </>
 }
 

@@ -1,6 +1,6 @@
 // The persisted boundary for a finished session. Keep this pure so compatibility tests can
 // exercise the exact shape the UI writes without mounting React or mutating store state.
-export function buildCompletedWorkout(active, { end = Date.now(), prs = [], snapshotFor } = {}) {
+export function buildCompletedWorkout(active, { end = Date.now(), prs = [], snapshotFor, partial = false } = {}) {
   const entries = (active?.entries || []).map(entry => {
     const completed = {
       id: entry.id,
@@ -12,9 +12,6 @@ export function buildCompletedWorkout(active, { end = Date.now(), prs = [], snap
     if (snapshot && typeof snapshot === 'object' && !Array.isArray(snapshot) && Object.keys(snapshot).length) {
       completed.muscleSnapshot = { ...snapshot }
     }
-    // What you typed about this exercise today, and whether you asked to see it again next
-    // time. Written only when there is something to keep, so an untouched entry is byte-for-byte
-    // the shape it always was.
     const note = (entry.note || '').trim()
     if (note) {
       completed.note = note
@@ -24,6 +21,9 @@ export function buildCompletedWorkout(active, { end = Date.now(), prs = [], snap
   }).filter(entry => entry.sets.some(set => set.done))
 
   const sessionNote = (active?.note || '').trim()
+  const totalSets = (active?.entries || []).reduce((n, e) => n + (e.sets || []).length, 0)
+  const doneSets = (active?.entries || []).reduce((n, e) => n + (e.sets || []).filter(s => s.done).length, 0)
+  const isPartial = partial || (doneSets < totalSets)
 
   return {
     id: active.id,
@@ -35,6 +35,7 @@ export function buildCompletedWorkout(active, { end = Date.now(), prs = [], snap
     bw: active.bw,
     entries,
     prs,
+    ...(isPartial ? { partial: true } : {}),
     ...(sessionNote ? { note: sessionNote } : {}),
   }
 }
