@@ -106,7 +106,7 @@ function Shell() {
       </div>
       {!licenseExpired && loc.pathname !== '/onboarding/encuesta' && <TabBar onStart={startFlow} />}
       {!licenseExpired && <RestTimer />}
-      {!licenseExpired && <Modals />}
+      <Modals />
       <Toast />
     </>
   )

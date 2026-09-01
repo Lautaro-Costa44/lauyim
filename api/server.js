@@ -1185,7 +1185,7 @@ http.createServer(async (req, res) => {
   // Verificar expiración de licencia por fecha (si está configurada y vencida)
   // Excluimos /api/health para que monitores o chequeos básicos puedan seguir funcionando si es necesario, 
   // pero endpoints protegidos / login / /api/me devuelven license_expired.
-  if (LICENSE_EXPIRES_AT && Date.now() > LICENSE_EXPIRES_AT && url.pathname.startsWith('/api/') && url.pathname !== '/api/health') {
+  if (LICENSE_EXPIRES_AT && Date.now() > LICENSE_EXPIRES_AT && url.pathname.startsWith('/api/') && url.pathname !== '/api/health' && url.pathname !== '/api/support') {
     return json(res, 403, { error: 'license_expired' });
   }
 
