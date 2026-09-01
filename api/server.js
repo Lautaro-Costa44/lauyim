@@ -70,6 +70,9 @@ const MAX_BODY = 5 * 1024 * 1024;
 // Secure cookies require HTTPS; over plain http://localhost the flag would drop the cookie
 const SECURE = /^https:/i.test(ORIGIN) ? ' Secure;' : '';
 
+// Licencia por fecha (LICENSE_EXPIRES_AT)
+const LICENSE_EXPIRES_AT = process.env.LICENSE_EXPIRES_AT ? new Date(process.env.LICENSE_EXPIRES_AT).getTime() : null;
+
 fs.mkdirSync(DATA, { recursive: true });
 
 // Inicializar base de datos SQLite
@@ -1102,6 +1105,14 @@ http.createServer(async (req, res) => {
   }
   const url = new URL(req.url, 'http://x');
   const key = req.method + ' ' + url.pathname;
+
+  // Verificar expiración de licencia por fecha (si está configurada y vencida)
+  // Excluimos /api/health para que monitores o chequeos básicos puedan seguir funcionando si es necesario, 
+  // pero endpoints protegidos / login / /api/me devuelven license_expired.
+  if (LICENSE_EXPIRES_AT && Date.now() > LICENSE_EXPIRES_AT && url.pathname.startsWith('/api/') && url.pathname !== '/api/health') {
+    return json(res, 403, { error: 'license_expired' });
+  }
+
   const handler = routes[key];
   if (!handler) return json(res, 404, { error: 'not found' });
   if (!csrfOk(req, key)) {

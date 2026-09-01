@@ -13,7 +13,15 @@ export async function api(path, opts) {
   const headers = Object.assign({ 'Content-Type': 'application/json' }, opts && opts.headers)
   const r = await fetch(path, Object.assign({}, opts, { headers }))
   const data = await r.json().catch(() => ({}))
-  if (!r.ok) { const e = new Error(data.error || ('HTTP ' + r.status)); e.status = r.status; throw e }
+  if (!r.ok) { 
+    const e = new Error(data.error || ('HTTP ' + r.status))
+    e.status = r.status
+    e.data = data
+    if (data.error === 'license_expired' || r.status === 403) {
+      window.dispatchEvent(new CustomEvent('gym:license_expired', { detail: data }))
+    }
+    throw e 
+  }
   return data
 }
 

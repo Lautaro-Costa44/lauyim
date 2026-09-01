@@ -73,6 +73,7 @@ function removeGroup(state, groupId) {
 
 export const useStore = create((set, get) => {
   let pushTm = null
+  let licenseExpired = false
 
   const persist = (S, push = true) => {
     S._ts = Date.now()
@@ -236,6 +237,11 @@ export const useStore = create((set, get) => {
 
     // Boot: ask the server who we are, then pull.
     async boot() {
+      if (typeof window !== 'undefined') {
+        window.addEventListener('gym:license_expired', () => {
+          set({ licenseExpired: true })
+        })
+      }
       // Demo build (GitHub Pages): no backend at all — seed once, stay in guest mode.
       if (DEMO) {
         if (!localStorage.getItem(DEMO_SEEDED)) {
@@ -264,6 +270,9 @@ export const useStore = create((set, get) => {
         }
       } catch (e) {
         if (e.status === 401) get().setUser(null)
+        if (e.data?.error === 'license_expired' || e.status === 403) {
+          set({ licenseExpired: true })
+        }
       }
       set({ ready: true })
     }

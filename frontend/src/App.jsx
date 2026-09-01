@@ -25,6 +25,7 @@ import Library from './views/Library.jsx'
 import Settings from './views/Settings.jsx'
 import Admin from './views/Admin.jsx'
 import SurveyWizard from './views/SurveyWizard.jsx'
+import LicenseExpired from './views/LicenseExpired.jsx'
 
 bindUI(useUI)   // lets the shared controls open sheets without importing the store at module scope
 
@@ -45,6 +46,7 @@ function Shell() {
   const navigate = useNavigate()
   const loc = useLocation()
   const { S, user, ready } = useStore()
+  const licenseExpired = useStore(s => s.licenseExpired)
   const isGuest = useStore(s => s.isGuest())
   const langV = useLang()   // re-renders the whole shell when the language (pack) changes
   useEffect(() => { setNav(navigate) }, [navigate])
@@ -85,7 +87,7 @@ function Shell() {
           re-mounts the boundary, so the tab bar is always a way out */}
       <div id="app" className="vfade" key={loc.pathname}>
         <ErrorBoundary>
-          {!authed ? <Login /> : (
+          {licenseExpired ? <LicenseExpired /> : !authed ? <Login /> : (
             <Routes>
               <Route path="/home" element={<Home />} />
               <Route path="/plan" element={<Plan />} />
@@ -102,9 +104,9 @@ function Shell() {
           )}
         </ErrorBoundary>
       </div>
-      {loc.pathname !== '/onboarding/encuesta' && <TabBar onStart={startFlow} />}
-      <RestTimer />
-      <Modals />
+      {!licenseExpired && loc.pathname !== '/onboarding/encuesta' && <TabBar onStart={startFlow} />}
+      {!licenseExpired && <RestTimer />}
+      {!licenseExpired && <Modals />}
       <Toast />
     </>
   )
