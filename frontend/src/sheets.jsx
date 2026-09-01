@@ -45,6 +45,25 @@ export function confirmSheet(opts) {
   ui().openSheet(close => <ConfirmDialog {...opts} close={close} />, { kind: 'center' })
 }
 
+/* ============================ custom input dialog ============================ */
+function InputDialog({ title, message, placeholder, defaultValue, confirmText, cancelText, onConfirm, close }) {
+  const [val, setVal] = useState(defaultValue || '')
+  const inputRef = useRef(null)
+  useEffect(() => { inputRef.current?.focus(); inputRef.current?.select?.() }, [])
+  return <div style={{ textAlign: 'center', padding: '4px 0' }}>
+    {title && <h3 style={{ marginBottom: 8 }}>{title}</h3>}
+    {message && <div className="muted" style={{ marginBottom: 18, lineHeight: 1.5 }}>{message}</div>}
+    <TextField ref={inputRef} value={val} onChange={e => setVal(e.target.value)} placeholder={placeholder} maxLength={80} onKeyDown={e => { if (e.key === 'Enter' && val.trim()) { close(); onConfirm(val.trim()) } }} />
+    <div style={{ height: 16 }} />
+    <button className="btn primary" onClick={() => { if (val.trim()) { close(); onConfirm(val.trim()) } }}>{confirmText || t('Confirm')}</button>
+    <div style={{ height: 8 }} />
+    <Button variant="ghost" className="dim" onClick={close}>{cancelText || t('Cancel')}</Button>
+  </div>
+}
+export function inputSheet(opts) {
+  ui().openSheet(close => <InputDialog {...opts} close={close} />, { kind: 'center' })
+}
+
 /* ============================ starter plan ============================ */
 export async function loadStarterPlan() {
   let routines = null

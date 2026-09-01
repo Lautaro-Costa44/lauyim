@@ -242,27 +242,6 @@ export default function SurveyWizard() {
       const rutinaGenerada = generarRutina(respuestas, CATALOGUE)
       const { routines, week } = rutinaGeneradaToRoutines(rutinaGenerada, respuestas)
 
-      // Create a routine group instead of directly setting routines
-      const existingGroups = useStore.getState().S.routineGroups || []
-      const groupName = resp.splitPreferido || t('Mi Plan')
-      
-      // Check if a group with this name already exists
-      const existingGroup = existingGroups.find(g => g.name.trim().toLowerCase() === groupName.toLowerCase())
-      let groupId
-      
-      if (existingGroup) {
-        // Group exists, use number suffix
-        const suffix = existingGroups.filter(g => g.name.trim().startsWith(groupName)).length + 1
-        groupId = existingGroup.id
-      } else {
-        // Create new group
-        const newGroup = addGroup(groupName, routines, week, true)
-        groupId = newGroup.id
-      }
-      
-      // Set the active group
-      setActiveGroupId(groupId)
-
       setPlanRevision({
         rutinaGenerada,
         routines,
@@ -373,6 +352,18 @@ export default function SurveyWizard() {
     const tieneRutinasPrevias = S.routines.length > 0
 
     const guardar = () => {
+      const existingGroups = useStore.getState().S.routineGroups || []
+      const groupName = respuestas.splitPreferido || t('Mi Plan')
+      const existingGroup = existingGroups.find(g => g.name.trim().toLowerCase() === groupName.toLowerCase())
+      let groupId
+      if (existingGroup) {
+        groupId = existingGroup.id
+      } else {
+        const newGroup = addGroup(groupName, routines, week, true)
+        groupId = newGroup.id
+      }
+      setActiveGroupId(groupId)
+
       update(st => {
         st.routines = routines
         st.week = week
