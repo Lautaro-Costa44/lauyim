@@ -274,15 +274,23 @@ CREATE TABLE IF NOT EXISTS custom_exercises (
   id TEXT PRIMARY KEY,
   user_id TEXT NOT NULL,
   n TEXT NOT NULL,             -- nombre
-  bp TEXT,                     -- body part
-  eq TEXT,                     -- equipment
-  tg TEXT,                     -- target group
+  tipo TEXT DEFAULT 'fuerza',  -- 'fuerza' | 'cardio' | 'estiramiento'
+  equipamiento TEXT,           -- JSON array (equipamiento necesario)
+  grupo_muscular TEXT,         -- grupo muscular / target principal
+  bp TEXT,                     -- body part (compatibilidad)
+  eq TEXT,                     -- equipment (compatibilidad)
+  tg TEXT,                     -- target group (compatibilidad)
   mg TEXT,                     -- main muscle
   sm TEXT,                     -- JSON array (secondary muscles)
   st TEXT,                     -- JSON array (instructions)
   created_at INTEGER NOT NULL,
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
+
+-- COMANDO ALTER TABLE PARA CORRER MANUALMENTE EN BASES EXISTENTES (dev.lauyim.online):
+-- ALTER TABLE custom_exercises ADD COLUMN tipo TEXT DEFAULT 'fuerza';
+-- ALTER TABLE custom_exercises ADD COLUMN equipamiento TEXT;
+-- ALTER TABLE custom_exercises ADD COLUMN grupo_muscular TEXT;
 
 -- Índices para custom_exercises
 CREATE INDEX IF NOT EXISTS idx_custom_exercises_user_id ON custom_exercises(user_id);

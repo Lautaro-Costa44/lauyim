@@ -782,6 +782,9 @@ export function getCustomExercisesByUserId(userId) {
   return stmt.all(userId).map(row => ({
     id: row.id,
     n: row.n,
+    tipo: row.tipo || (row.bp === 'cardio' ? 'cardio' : 'fuerza'),
+    equipamiento: safeJsonParse(row.equipamiento, row.eq ? [row.eq] : ['body weight']),
+    grupo_muscular: row.grupo_muscular || row.tg || row.bp || '',
     bp: row.bp,
     eq: row.eq,
     tg: row.tg,
@@ -799,20 +802,24 @@ function saveCustomExercises(userId, customEx) {
   deleteStmt.run(userId);
 
   const stmt = db.prepare(`
-    INSERT INTO custom_exercises (id, user_id, n, bp, eq, tg, mg, sm, st, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO custom_exercises (id, user_id, n, tipo, equipamiento, grupo_muscular, bp, eq, tg, mg, sm, st, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
   for (const ex of customEx) {
+    const equipArr = Array.isArray(ex.equipamiento) ? ex.equipamiento : (ex.eq ? [ex.eq] : ['body weight']);
     stmt.run(
       ex.id,
       userId,
       ex.n,
-      ex.bp || null,
-      ex.eq || null,
-      ex.tg || null,
-      ex.mg || null,
-      ex.sm ? JSON.stringify(ex.sm) : null,
-      ex.st ? JSON.stringify(ex.st) : null,
+      ex.tipo || (ex.bp === 'cardio' ? 'cardio' : 'fuerza'),
+      JSON.stringify(equipArr),
+      ex.grupo_muscular || ex.tg || ex.bp || '',
+      ex.bp || '',
+      equipArr[0] || ex.eq || 'body weight',
+      ex.tg || ex.grupo_muscular || ex.bp || '',
+      ex.mg || '',
+      JSON.stringify(ex.sm || []),
+      JSON.stringify(ex.st || []),
       ex.created || Date.now()
     );
   }

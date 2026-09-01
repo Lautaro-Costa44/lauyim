@@ -3,7 +3,7 @@ import { useStore } from '../store/useStore.js'
 import { useUI } from '../store/useUI.js'
 import { DAYN, uid, exCount } from '../lib/format.js'
 import { t } from '../lib/i18n.js'
-import { dayAssignSheet, loadStarterPlan, planToolsSheet, confirmSheet } from '../sheets.jsx'
+import { dayAssignSheet, loadStarterPlan, planToolsSheet, confirmSheet, inputSheet } from '../sheets.jsx'
 import { MAX_ROUTINE_GROUPS } from '../lib/routineGroups.js'
 import Icon from '../components/Icon.jsx'
 import { Button } from '../components/ui.jsx'
@@ -34,23 +34,33 @@ export default function Plan() {
       toast(t('Límite de {0} grupos alcanzado.', MAX_ROUTINE_GROUPS))
       return
     }
-    const groupName = prompt(t('Nombre del grupo')) || t('Nuevo Grupo')
-    if (groupName) {
-      addGroup(groupName, [], {}, true)
-      toast(t('Grupo "{0}" creado', groupName))
-    }
+    inputSheet({
+      title: t('Nuevo grupo'),
+      placeholder: t('Nombre del grupo'),
+      defaultValue: t('Nuevo Grupo'),
+      confirmText: t('Crear'),
+      onConfirm: (groupName) => {
+        addGroup(groupName, [], {}, true)
+        toast(t('Grupo "{0}" creado', groupName))
+      }
+    })
   }
 
   const renameGroupPrompt = (g) => {
-    const newName = prompt(t('Nuevo nombre del grupo'), g.name)
-    if (newName && newName.trim()) {
-      try {
-        renameGroup(g.id, newName.trim())
-        toast(t('Grupo renombrado'))
-      } catch (e) {
-        toast(e.message || t('Error al renombrar grupo'))
+    inputSheet({
+      title: t('Renombrar grupo'),
+      placeholder: t('Nuevo nombre del grupo'),
+      defaultValue: g.name,
+      confirmText: t('Guardar'),
+      onConfirm: (newName) => {
+        try {
+          renameGroup(g.id, newName)
+          toast(t('Grupo renombrado'))
+        } catch (e) {
+          toast(e.message || t('Error al renombrar grupo'))
+        }
       }
-    }
+    })
   }
 
   const deleteGroupPrompt = (g) => {
@@ -85,7 +95,6 @@ export default function Plan() {
       <div className="row between" style={{ marginTop: 22, marginBottom: 10 }}>
         <h4 className="sec" style={{ margin: 0 }}>{t('Routines')}</h4>
         <div className="row" style={{ gap: 6 }}>
-          <Button size="sm" variant="tinted" icon="folder" onClick={addGroupBtn}>{t('New group')}</Button>
           <Button size="sm" variant="tinted" icon="plus" onClick={addRoutine}>{t('New')}</Button>
         </div>
       </div>

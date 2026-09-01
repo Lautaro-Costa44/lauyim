@@ -45,6 +45,25 @@ export function confirmSheet(opts) {
   ui().openSheet(close => <ConfirmDialog {...opts} close={close} />, { kind: 'center' })
 }
 
+/* ============================ custom input dialog ============================ */
+function InputDialog({ title, message, placeholder, defaultValue, confirmText, cancelText, onConfirm, close }) {
+  const [val, setVal] = useState(defaultValue || '')
+  const inputRef = useRef(null)
+  useEffect(() => { inputRef.current?.focus(); inputRef.current?.select?.() }, [])
+  return <div style={{ textAlign: 'center', padding: '4px 0' }}>
+    {title && <h3 style={{ marginBottom: 8 }}>{title}</h3>}
+    {message && <div className="muted" style={{ marginBottom: 18, lineHeight: 1.5 }}>{message}</div>}
+    <TextField ref={inputRef} value={val} onChange={e => setVal(e.target.value)} placeholder={placeholder} maxLength={80} onKeyDown={e => { if (e.key === 'Enter' && val.trim()) { close(); onConfirm(val.trim()) } }} />
+    <div style={{ height: 16 }} />
+    <button className="btn primary" onClick={() => { if (val.trim()) { close(); onConfirm(val.trim()) } }}>{confirmText || t('Confirm')}</button>
+    <div style={{ height: 8 }} />
+    <Button variant="ghost" className="dim" onClick={close}>{cancelText || t('Cancel')}</Button>
+  </div>
+}
+export function inputSheet(opts) {
+  ui().openSheet(close => <InputDialog {...opts} close={close} />, { kind: 'center' })
+}
+
 /* ============================ starter plan ============================ */
 export async function loadStarterPlan() {
   let routines = null
@@ -408,7 +427,13 @@ export const addToRoutineSheet = ex => ui().openSheet(close => <AddToRoutine ex=
 // (planning, logging, PRs, stats), just without an animation.
 function CustomExForm({ existing, prefill, onDone, close }) {
   const [n, setN] = useState(existing ? existing.n : (prefill || ''))
-  const [bp, setBp] = useState(existing ? existing.bp : '')
+  const [tipo, setTipo] = useState(existing ? (existing.tipo || (existing.bp === 'cardio' ? 'cardio' : 'fuerza')) : 'fuerza')
+  const [grupoMuscular, setGrupoMuscular] = useState(existing ? (existing.grupo_muscular || existing.tg || existing.bp || '') : '')
+  const [equipamiento, setEquipamiento] = useState(() => {
+    if (existing && Array.isArray(existing.equipamiento)) return [...existing.equipamiento]
+    if (existing && existing.eq) return [existing.eq]
+    return ['body weight']
+  })
   const [desc, setDesc] = useState(existing ? (existing.desc || '') : '')
   const [primaries, setPrimaries] = useState(() => {
     if (existing && Array.isArray(existing.primaries) && existing.primaries.length) return [...existing.primaries]
@@ -422,36 +447,76 @@ function CustomExForm({ existing, prefill, onDone, close }) {
   })
   const togglePrimary = value => setPrimaries(current => current.includes(value) ? current.filter(m => m !== value) : [...current, value])
   const toggleSecondary = value => setSecondaries(current => current.includes(value) ? current.filter(m => m !== value) : [...current, value])
+  const toggleEquip = value => setEquipamiento(current => current.includes(value) ? current.filter(e => e !== value) : [...current, value])
+
   const save = () => {
     const name = n.trim()
     if (!name) { toast(t('Give it a name')); return }
-    if (!bp) { toast(t('Pick a body part')); return }
+    if (!tipo) { toast(t('Select exercise type')); return }
+    if (!grupoMuscular) { toast(t('Select muscle group / target')); return }
     const dup = allExercises(S()).find(e => e.n.toLowerCase() === name.toLowerCase() && e.id !== (existing || {}).id)
     if (dup) { toast(t('“{0}” already exists', dup.n)); return }
     const d = desc.trim().slice(0, 1000)
     const prim = [...primaries]
     const sm = secondaries.filter(m => !prim.includes(m))
     const groups = [...prim, ...sm]
+    const equipArr = equipamiento.length ? equipamiento : ['body weight']
+    const primaryEq = equipArr[0] || 'body weight'
+    const bpVal = tipo === 'cardio' ? 'cardio' : (tipo === 'estiramiento' ? 'stretch' : grupoMuscular)
+
     let id = existing && existing.id
     if (existing) update(s => { const c = (s.customEx || []).find(x => x.id === id); if (c) {
-      c.n = name; c.bp = bp; c.desc = d; c.tg = prim[0] || ''; c.sm = sm; c.muscleGroups = groups; c.primaries = prim; c.secondaries = sm
+      c.n = name; c.tipo = tipo; c.equipamiento = equipArr; c.grupo_muscular = grupoMuscular; c.bp = bpVal; c.eq = primaryEq; c.desc = d; c.tg = grupoMuscular; c.sm = sm; c.muscleGroups = groups; c.primaries = prim; c.secondaries = sm
     } })
     else {
       id = 'c' + uid()
-      update(s => { (s.customEx = s.customEx || []).push({ id, n: name, bp, desc: d, tg: prim[0] || '', sm, muscleGroups: groups, primaries: prim, secondaries: sm, eq: 'custom', custom: true }) })
+      update(s => { (s.customEx = s.customEx || []).push({ id, n: name, tipo, equipamiento: equipArr, grupo_muscular: grupoMuscular, bp: bpVal, eq: primaryEq, desc: d, tg: grupoMuscular, sm, muscleGroups: groups, primaries: prim, secondaries: sm, custom: true }) })
     }
     close()
     toast(existing ? t('Saved') : t('“{0}” created', name))
     onDone && onDone(EXIDX[id])
   }
+
+  const equipOptions = [
+    { id: 'dumbbell', label: t('Mancuernas') },
+    { id: 'barbell', label: t('Barra') },
+    { id: 'leverage machine', label: t('Máquina/Polea') },
+    { id: 'body weight', label: t('Calistenia/Peso corporal') },
+    { id: 'treadmill', label: t('Cinta/Bici') }
+  ]
+
+  const tipoOptions = [
+    { id: 'fuerza', label: t('Fuerza/Pesas') },
+    { id: 'cardio', label: t('Cardio') },
+    { id: 'estiramiento', label: t('Estiramiento/Movilidad') }
+  ]
+
   return <>
     <h3>{existing ? t('Edit custom exercise') : t('Create your own exercise')}</h3>
-    <div className="muted small" style={{ marginBottom: 12 }}>{t('Name it and pick a body part — it behaves like any other exercise, just without an animation.')}</div>
+    {existing && (!existing.tipo || !existing.grupo_muscular) && (
+      <div className="muted small" style={{ color: 'var(--yellow)', marginBottom: 8, background: 'var(--surface-2)', padding: 8, borderRadius: 6 }}>
+        {t('Este ejercicio personalizado antiguo no tiene categorización completa. Te sugerimos completarla para que aparezca correctamente en los buscadores y filtros de sustitución.')}
+      </div>
+    )}
+    <div className="muted small" style={{ marginBottom: 12 }}>{t('Categorizá tu ejercicio para que el motor de rutinas y sustitutos pueda incluirlo.')}</div>
     <input className="input" placeholder={t('Exercise name')} value={n} onChange={e => setN(e.target.value)} />
-    <div className="chips" style={{ margin: '12px 0' }}>
-      {BODYPARTS.map(b => <button key={b} className={'chip' + (bp === b ? ' on' : '')} onClick={() => setBp(b)}>{t(b)}</button>)}
+    
+    <div style={{ margin: '12px 0 6px', fontWeight: 600, fontSize: 13 }}>{t('Tipo de ejercicio')} *</div>
+    <div className="chips" style={{ marginBottom: 12 }}>
+      {tipoOptions.map(opt => <button key={opt.id} type="button" className={'chip' + (tipo === opt.id ? ' on' : '')} onClick={() => setTipo(opt.id)}>{opt.label}</button>)}
     </div>
-    {bp && bp !== 'cardio' && <>
+
+    <div style={{ margin: '12px 0 6px', fontWeight: 600, fontSize: 13 }}>{t('Grupo muscular / Target')} *</div>
+    <div className="chips" style={{ marginBottom: 12, flexWrap: 'wrap' }}>
+      {BODYPARTS.map(b => <button key={b} type="button" className={'chip' + (grupoMuscular === b ? ' on' : '')} onClick={() => setGrupoMuscular(b)}>{t(b)}</button>)}
+    </div>
+
+    <div style={{ margin: '12px 0 6px', fontWeight: 600, fontSize: 13 }}>{t('Equipamiento necesario')}</div>
+    <div className="chips" style={{ marginBottom: 12, flexWrap: 'wrap' }}>
+      {equipOptions.map(eqOpt => <button key={eqOpt.id} type="button" className={'chip' + (equipamiento.includes(eqOpt.id) ? ' on' : '')} onClick={() => toggleEquip(eqOpt.id)}>{eqOpt.label}</button>)}
+    </div>
+
+    {tipo !== 'cardio' && tipo !== 'estiramiento' && <>
       <MultiSelectRow title={t('Primary muscle groups')} sheetTitle={t('Primary muscle groups')}
         values={primaries}
         options={MUSCLES.map(m => ({ value: m, label: t(MUSCLE_NAME[m]) }))}
@@ -461,8 +526,9 @@ function CustomExForm({ existing, prefill, onDone, close }) {
         options={MUSCLES.filter(m => !primaries.includes(m)).map(m => ({ value: m, label: t(MUSCLE_NAME[m]) }))}
         onToggle={toggleSecondary} noneLabel={t('No explicit muscle group')} doneLabel={t('Done')} />
     </>}
-    {bp === 'cardio' && <div className="small dim row" style={{ marginBottom: 10, gap: 5 }}><Icon name="figureRun" style={{ fontSize: 13 }} />{t('Cardio exercises log time + speed instead of weight × reps.')}</div>}
-    <textarea className="input" rows={4} maxLength={1000} placeholder={t('Description (optional) — setup, cues, anything you want to remember')}
+    {tipo === 'cardio' && <div className="small dim row" style={{ marginBottom: 10, gap: 5 }}><Icon name="figureRun" style={{ fontSize: 13 }} />{t('Cardio exercises log time + speed instead of weight × reps.')}</div>}
+    
+    <textarea className="input" rows={3} maxLength={1000} placeholder={t('Description (optional) — setup, cues, anything you want to remember')}
       value={desc} onChange={e => setDesc(e.target.value)} />
     <div style={{ height: 14 }} />
     <Button variant="primary" onClick={save}>{existing ? t('Save') : t('Create exercise')}</Button>
