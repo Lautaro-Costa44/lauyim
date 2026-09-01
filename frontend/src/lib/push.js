@@ -5,10 +5,15 @@ import { api } from './api.js'
 export const pushSupported = () => 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window
 export const pushPermission = () => (pushSupported() ? Notification.permission : 'unsupported')
 
-const urlBase64ToUint8Array = b64 => {
-  const padded = (b64 + '='.repeat((4 - b64.length % 4) % 4)).replace(/-/g, '+').replace(/_/g, '/')
-  const raw = atob(padded)
-  return Uint8Array.from([...raw].map(c => c.charCodeAt(0)))
+function urlBase64ToUint8Array(base64String) {
+  const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const rawData = window.atob(base64);
+  const outputArray = new Uint8Array(rawData.length);
+  for (let i = 0; i < rawData.length; ++i) {
+    outputArray[i] = rawData.charCodeAt(i);
+  }
+  return outputArray;
 }
 
 export async function enablePush() {
@@ -17,7 +22,8 @@ export async function enablePush() {
   if (perm !== 'granted') throw new Error('Notifications permission was not granted')
   const reg = await navigator.serviceWorker.ready
   const { key } = await api('/api/push/public-key')
-  const subscription = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(key) })
+  const convertedVapidKey = urlBase64ToUint8Array(key)
+  const subscription = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: convertedVapidKey })
   await api('/api/push/subscribe', { method: 'POST', body: JSON.stringify({ subscription: subscription.toJSON() }) })
 }
 
