@@ -432,37 +432,38 @@ function CustomExForm({ existing, prefill, onDone, close }) {
   const [equipamiento, setEquipamiento] = useState(() => {
     if (existing && Array.isArray(existing.equipamiento)) return [...existing.equipamiento]
     if (existing && existing.eq) return [existing.eq]
-    return ['body weight']
+    return tipo === 'estiramiento' ? ['body weight'] : ['body weight']
   })
   const [desc, setDesc] = useState(existing ? (existing.desc || '') : '')
-  const [primaries, setPrimaries] = useState(() => {
-    if (existing && Array.isArray(existing.primaries) && existing.primaries.length) return [...existing.primaries]
-    const norm = hasExplicitMuscleMetadata(existing || {}) ? normalizeMuscleGroups(existing || {}) : []
-    return norm.length ? [norm[0]] : []
-  })
   const [secondaries, setSecondaries] = useState(() => {
-    if (existing && Array.isArray(existing.primaries) && existing.primaries.length) return [...(existing.secondaries || [])]
+    if (existing && Array.isArray(existing.secondaries) && existing.secondaries.length) return [...existing.secondaries]
+    if (existing && Array.isArray(existing.primaries) && existing.primaries.length > 1) return existing.primaries.slice(1)
     const norm = hasExplicitMuscleMetadata(existing || {}) ? normalizeMuscleGroups(existing || {}) : []
-    return norm.slice(1)
+    return norm.length > 1 ? norm.slice(1) : []
   })
-  const togglePrimary = value => setPrimaries(current => current.includes(value) ? current.filter(m => m !== value) : [...current, value])
+  const [showSecondary, setShowSecondary] = useState(() => {
+    return (existing && Array.isArray(existing.secondaries) && existing.secondaries.length > 0) || false
+  })
+  const [showEquipMore, setShowEquipMore] = useState(false)
+
   const toggleSecondary = value => setSecondaries(current => current.includes(value) ? current.filter(m => m !== value) : [...current, value])
   const toggleEquip = value => setEquipamiento(current => current.includes(value) ? current.filter(e => e !== value) : [...current, value])
 
   const save = () => {
     const name = n.trim()
     if (!name) { toast(t('Give it a name')); return }
-    if (!tipo) { toast(t('Select exercise type')); return }
-    if (!grupoMuscular) { toast(t('Select muscle group / target')); return }
+    if (!tipo) { toast(t('Select exercise type')); return}
+    if (tipo !== 'cardio' && !grupoMuscular) { toast(t('Select primary muscle group')); return }
+
     const dup = allExercises(S()).find(e => e.n.toLowerCase() === name.toLowerCase() && e.id !== (existing || {}).id)
     if (dup) { toast(t('“{0}” already exists', dup.n)); return }
     const d = desc.trim().slice(0, 1000)
-    const prim = [...primaries]
-    const sm = secondaries.filter(m => !prim.includes(m))
+    const prim = grupoMuscular ? [grupoMuscular] : []
+    const sm = tipo === 'estiramiento' && !showSecondary ? [] : secondaries.filter(m => !prim.includes(m))
     const groups = [...prim, ...sm]
-    const equipArr = equipamiento.length ? equipamiento : ['body weight']
+    const equipArr = equipamiento.length ? equipamiento : (tipo === 'estiramiento' ? ['body weight'] : ['body weight'])
     const primaryEq = equipArr[0] || 'body weight'
-    const bpVal = tipo === 'cardio' ? 'cardio' : (tipo === 'estiramiento' ? 'stretch' : grupoMuscular)
+    const bpVal = tipo === 'cardio' ? 'cardio' : (tipo === 'estiramiento' ? 'stretch' : (grupoMuscular || 'other'))
 
     let id = existing && existing.id
     if (existing) update(s => { const c = (s.customEx || []).find(x => x.id === id); if (c) {
@@ -503,29 +504,87 @@ function CustomExForm({ existing, prefill, onDone, close }) {
     
     <div style={{ margin: '12px 0 6px', fontWeight: 600, fontSize: 13 }}>{t('Tipo de ejercicio')} *</div>
     <div className="chips" style={{ marginBottom: 12 }}>
-      {tipoOptions.map(opt => <button key={opt.id} type="button" className={'chip' + (tipo === opt.id ? ' on' : '')} onClick={() => setTipo(opt.id)}>{opt.label}</button>)}
+      {tipoOptions.map(opt => <button key={opt.id} type="button" className={'chip' + (tipo === opt.id ? ' on' : '')} onClick={() => {
+        setTipo(opt.id)
+        if (opt.id === 'estiramiento' && (!equipamiento.length || equipamiento.includes('treadmill'))) {
+          setEquipamiento(['body weight'])
+        }
+      }}>{opt.label}</button>)}
     </div>
 
-    <div style={{ margin: '12px 0 6px', fontWeight: 600, fontSize: 13 }}>{t('Grupo muscular / Target')} *</div>
+    <div style={{ margin: '12px 0 6px', fontWeight: 600, fontSize: 13 }}>
+      {t('Grupo muscular primario')} {tipo === 'cardio' ? '(opcional)' : '*'}
+    </div>
     <div className="chips" style={{ marginBottom: 12, flexWrap: 'wrap' }}>
       {BODYPARTS.map(b => <button key={b} type="button" className={'chip' + (grupoMuscular === b ? ' on' : '')} onClick={() => setGrupoMuscular(b)}>{t(b)}</button>)}
     </div>
 
-    <div style={{ margin: '12px 0 6px', fontWeight: 600, fontSize: 13 }}>{t('Equipamiento necesario')}</div>
-    <div className="chips" style={{ marginBottom: 12, flexWrap: 'wrap' }}>
-      {equipOptions.map(eqOpt => <button key={eqOpt.id} type="button" className={'chip' + (equipamiento.includes(eqOpt.id) ? ' on' : '')} onClick={() => toggleEquip(eqOpt.id)}>{eqOpt.label}</button>)}
-    </div>
+    {tipo !== 'estiramiento' && (
+      <>
+        <div style={{ margin: '12px 0 6px', fontWeight: 600, fontSize: 13 }}>{t('Músculos secundarios')} <span className="muted">({t('opcional')})</span></div>
+        <div className="chips" style={{ marginBottom: 12, flexWrap: 'wrap' }}>
+          {MUSCLES.filter(m => m !== grupoMuscular).map(m => (
+            <button key={m} type="button" className={'chip' + (secondaries.includes(m) ? ' on' : '')} onClick={() => toggleSecondary(m)}>
+              {t(MUSCLE_NAME[m] || m)}
+            </button>
+          ))}
+        </div>
+      </>
+    )}
 
-    {tipo !== 'cardio' && tipo !== 'estiramiento' && <>
-      <MultiSelectRow title={t('Primary muscle groups')} sheetTitle={t('Primary muscle groups')}
-        values={primaries}
-        options={MUSCLES.map(m => ({ value: m, label: t(MUSCLE_NAME[m]) }))}
-        onToggle={togglePrimary} noneLabel={t('No explicit muscle group')} doneLabel={t('Done')} />
-      <MultiSelectRow title={t('Additional muscle groups')} sheetTitle={t('Additional muscle groups')}
-        values={secondaries}
-        options={MUSCLES.filter(m => !primaries.includes(m)).map(m => ({ value: m, label: t(MUSCLE_NAME[m]) }))}
-        onToggle={toggleSecondary} noneLabel={t('No explicit muscle group')} doneLabel={t('Done')} />
-    </>}
+    {tipo === 'estiramiento' && (
+      <div style={{ marginBottom: 12 }}>
+        {!showSecondary ? (
+          <button type="button" className="btn sm" style={{ background: 'var(--surface-2)', border: '1px solid var(--border)' }} onClick={() => setShowSecondary(true)}>
+            + {t('Agregar músculo secundario')}
+          </button>
+        ) : (
+          <>
+            <div style={{ margin: '8px 0 6px', fontWeight: 600, fontSize: 13 }}>{t('Músculos secundarios')}</div>
+            <div className="chips" style={{ marginBottom: 8, flexWrap: 'wrap' }}>
+              {MUSCLES.filter(m => m !== grupoMuscular).map(m => (
+                <button key={m} type="button" className={'chip' + (secondaries.includes(m) ? ' on' : '')} onClick={() => toggleSecondary(m)}>
+                  {t(MUSCLE_NAME[m] || m)}
+                </button>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
+    )}
+
+    <div style={{ margin: '12px 0 6px', fontWeight: 600, fontSize: 13 }}>{t('Equipamiento necesario')} <span className="muted">({t('opcional')})</span></div>
+    {tipo === 'estiramiento' ? (
+      <div style={{ marginBottom: 12 }}>
+        <div className="chips" style={{ marginBottom: 6, flexWrap: 'wrap' }}>
+          <button type="button" className={'chip' + (equipamiento.includes('body weight') && equipamiento.length === 1 ? ' on' : '')} onClick={() => setEquipamiento(['body weight'])}>
+            {t('Calistenia/Peso corporal')}
+          </button>
+        </div>
+        {!showEquipMore ? (
+          <button type="button" className="btn sm" style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', fontSize: 12 }} onClick={() => setShowEquipMore(true)}>
+            {t('Más opciones de equipamiento')}...
+          </button>
+        ) : (
+          <div className="chips" style={{ marginTop: 6, flexWrap: 'wrap' }}>
+            {equipOptions.map(eqOpt => (
+              <button key={eqOpt.id} type="button" className={'chip' + (equipamiento.includes(eqOpt.id) ? ' on' : '')} onClick={() => toggleEquip(eqOpt.id)}>
+                {eqOpt.label}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    ) : (
+      <div className="chips" style={{ marginBottom: 12, flexWrap: 'wrap' }}>
+        {equipOptions.map(eqOpt => (
+          <button key={eqOpt.id} type="button" className={'chip' + (equipamiento.includes(eqOpt.id) ? ' on' : '')} onClick={() => toggleEquip(eqOpt.id)}>
+            {eqOpt.label}
+          </button>
+        ))}
+      </div>
+    )}
+
     {tipo === 'cardio' && <div className="small dim row" style={{ marginBottom: 10, gap: 5 }}><Icon name="figureRun" style={{ fontSize: 13 }} />{t('Cardio exercises log time + speed instead of weight × reps.')}</div>}
     
     <textarea className="input" rows={3} maxLength={1000} placeholder={t('Description (optional) — setup, cues, anything you want to remember')}
