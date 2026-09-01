@@ -84,10 +84,10 @@ export default function Plan() {
     </div><div>
       <div className="row between" style={{ marginTop: 22, marginBottom: 10 }}>
         <h4 className="sec" style={{ margin: 0 }}>{t('Routines')}</h4>
-        <Button size="sm" variant="tinted" icon="plus" onClick={addRoutine}>{t('New')}</Button>
-        {S.routineGroups && S.routineGroups.length > 0 && (
-          <Button size="sm" variant="tinted" icon="folder" style={{ marginLeft: 8 }} onClick={addGroupBtn}>{t('New group')}</Button>
-        )}
+        <div className="row" style={{ gap: 6 }}>
+          <Button size="sm" variant="tinted" icon="folder" onClick={addGroupBtn}>{t('New group')}</Button>
+          <Button size="sm" variant="tinted" icon="plus" onClick={addRoutine}>{t('New')}</Button>
+        </div>
       </div>
       {S.routines.length ? <div className="list">{S.routines.map(r => <div key={r.id} className="item" onClick={() => nav('/plan/r/' + r.id)}>
         <span className="lrow-i"><Icon name={glyphOf(r.emoji)} /></span>
@@ -96,12 +96,12 @@ export default function Plan() {
         <div className="empty"><div className="ico"><Icon name="clipboard" /></div>{t('No routines yet.')}<br />{t('Create one or load the starter plan.')}</div>
         <Button icon="sparkles" onClick={loadStarterPlan}>{t('Load starter plan (Push / Pull / Legs)')}</Button>
       </>}
-      {S.routineGroups && S.routineGroups.length > 0 && (
-        <div style={{ marginTop: 12, paddingTop: 10, borderTop: 'var(--sep) solid' }}>
-          <div className="row between" style={{ marginBottom: 6 }}>
-            <div className="muted small" style={{ fontWeight: 500 }}>{t('Grupos de rutinas')}</div>
-            <Button size="sm" variant="tinted" icon="folder" onClick={addGroupBtn}>{t('Nuevo grupo')}</Button>
-          </div>
+      <div style={{ marginTop: 12, paddingTop: 10, borderTop: 'var(--sep) solid' }}>
+        <div className="row between" style={{ marginBottom: 6 }}>
+          <div className="muted small" style={{ fontWeight: 500 }}>{t('Grupos de rutinas')}</div>
+          <Button size="sm" variant="tinted" icon="folder" onClick={addGroupBtn}>{t('Nuevo grupo')}</Button>
+        </div>
+        {S.routineGroups && S.routineGroups.length > 0 ? (
           <div className="list" style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             {S.routineGroups.map((g) => {
               const isActive = S.activeGroupId === g.id
@@ -152,8 +152,12 @@ export default function Plan() {
               )
             })}
           </div>
-        </div>
-      )}
+        ) : (
+          <div className="empty" style={{ padding: '12px 0', fontSize: '0.85rem' }}>
+            {t('No hay grupos de rutinas creados.')}
+          </div>
+        )}
+      </div>
     </div></div>
   </>
 }

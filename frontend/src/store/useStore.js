@@ -43,9 +43,15 @@ const clone = o => JSON.parse(JSON.stringify(o))
 function loadState() {
   try {
     const raw = localStorage.getItem(KEY)
-    if (raw) return Object.assign(clone(DEF), JSON.parse(raw))
+    if (raw) {
+      const s = Object.assign(clone(DEF), JSON.parse(raw))
+      syncActiveGroupInState(s)
+      return s
+    }
   } catch (e) { /* ignore */ }
-  return clone(DEF)
+  const s = clone(DEF)
+  syncActiveGroupInState(s)
+  return s
 }
 
 const hasData = st => !!((st.workouts || []).length || (st.routines || []).length || (st.bodyweight || []).length)
