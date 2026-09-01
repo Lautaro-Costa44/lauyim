@@ -4,6 +4,7 @@ import { localTZ } from '../lib/format.js'
 import { registerCustom } from '../lib/exercises.js'
 import { DEMO, DEMO_SEEDED } from '../lib/demo.js'
 import { guestAllowed } from '../lib/guest.js'
+import { MAX_ROUTINE_GROUPS, canAddGroup, validateGroupName, createRoutineGroup, syncActiveGroupInState, addGroupToState, removeGroupFromState } from '../lib/routineGroups.js'
 
 const KEY = 'gym_state_v1'
 export const DEF = {
@@ -32,6 +33,9 @@ export const DEF = {
   respuestasEncuesta: null,
   rutinaGenerada: null,
   fechaUltimaEncuesta: null,
+  // Routine groups for organizing routines into blocks/folders
+  routineGroups: [],
+  activeGroupId: null,
 }
 const clone = o => JSON.parse(JSON.stringify(o))
 
@@ -44,6 +48,20 @@ function loadState() {
 }
 
 const hasData = st => !!((st.workouts || []).length || (st.routines || []).length || (st.bodyweight || []).length)
+
+// Helper functions for routine groups management
+function syncGroupInStore() {
+  const S = get().S
+  return syncActiveGroupInState(S)
+}
+
+function addNewGroup(state, name, routines, week, setAsActive) {
+  return addGroupToState(state, name, routines, week, setAsActive)
+}
+
+function removeGroup(state, groupId) {
+  return removeGroupFromState(get().S, groupId)
+}
 
 export const useStore = create((set, get) => {
   let pushTm = null
@@ -158,6 +176,54 @@ export const useStore = create((set, get) => {
       const { buildDemoState } = await import('../lib/demoSeed.js')
       localStorage.removeItem('gym_dirty')
       persist(Object.assign(clone(DEF), buildDemoState()), false)
+    },
+
+    // Routine groups management
+    getRoutineGroups: () => {
+      const S = get().S
+      return S.routineGroups || []
+    },
+    getActiveGroupId: () => get().S.activeGroupId,
+    setActiveGroupId: (groupId) => {
+      const S = get().S
+      syncActiveGroupInState(S)
+      S.activeGroupId = groupId
+      const targetGroup = S.routineGroups.find(g => g.id === groupId)
+      if (targetGroup) {
+        S.routines = JSON.parse(JSON.stringify(targetGroup.routines || []))
+        S.week = JSON.parse(JSON.stringify(targetGroup.week || {}))
+      }
+      set({ S })
+    },
+    addGroup: (name, routines, week, setAsActive) => {
+      const S = get().S
+      const newGroup = addGroupToState(S, name, routines || [], week || {}, setAsActive)
+      set({ S: { ...S, routineGroups: S.routineGroups || [], ...newGroup } })
+      return newGroup
+    },
+    removeGroup: (groupId) => {
+      const S = get().S
+      const newGroups = (S.routineGroups || []).filter(g => g.id !== groupId)
+      set({ S: { ...S, routineGroups: newGroups } })
+      // If we removed the active group, activate the first remaining
+      if (S.activeGroupId === groupId && newGroups.length > 0) {
+        const nextGroup = newGroups[0]
+        setActiveGroupId(nextGroup.id)
+      } else if (S.activeGroupId === groupId && newGroups.length === 0) {
+        setActiveGroupId(null)
+      }
+    },
+    renameGroup: (groupId, newName) => {
+      const S = get().S
+      const group = S.routineGroups.find(g => g.id === groupId)
+      if (!group) return null
+      const validated = validateGroupName(newName, S.routineGroups, groupId)
+      if (!validated.valid) {
+        throw new Error(validated.error || t('Nombre de grupo inválido'))
+      }
+      group.name = newName.trim()
+      set({ S })
+      return group
     },
 
     // Boot: ask the server who we are, then pull.

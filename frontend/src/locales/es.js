@@ -713,6 +713,24 @@ export default {
   'Use on this device': 'Usar en este dispositivo',
   'Local keeps everything on this phone. Connecting syncs to your own lauyim server instead — you can switch later in Settings.': 'Local mantiene todo en este teléfono. Conectar sincroniza con tu propio servidor de lauyim — puedes cambiarlo luego en Ajustes.',
 
+  // --- caloric info ---
+  '¿Cómo se calcula?': '¿Cómo se calcula?',
+  'Se usa la fórmula Mifflin-St Jeor, la más recomendada por el ACSM para estimar el metabolismo basal:': 'Se usa la fórmula Mifflin-St Jeor, la más recomendada por el ACSM para estimar el metabolismo basal:',
+  'Hombres:': 'Hombres:',
+  'Mujeres:': 'Mujeres:',
+  'El resultado se multiplica por un factor de actividad según tus días de entrenamiento (1.2 a 1.55), y luego se ajusta según tu objetivo (+12.5% para ganar músculo, −17.5% para perder grasa).': 'El resultado se multiplica por un factor de actividad según tus días de entrenamiento (1.2 a 1.55), y luego se ajusta según tu objetivo (+12.5% para ganar músculo, −17.5% para perder grasa).',
+  'Entendido': 'Entendido',
+  'Tus calorías diarias': 'Tus calorías diarias',
+  'En reposo': 'En reposo',
+  'Gasto total diario': 'Gasto total diario',
+  '🎯 Meta para {0}': '🎯 Meta para {0}',
+  'kcal / día': 'kcal / día',
+  'Calculado para {0} kg, {1} cm, {2} años y tus días de entrenamiento.': 'Calculado para {0} kg, {1} cm, {2} años y tus días de entrenamiento.',
+  'Mantener Peso': 'Mantener Peso',
+  'Ganar Fuerza': 'Ganar Fuerza',
+  'Ganar Músculo': 'Ganar Músculo',
+  'Perder Grasa': 'Perder Grasa',
+
   // --- workout notes and planned warm-ups ---
   '{0} — done': '{0} — hecho',
   'Workout done': 'Entrenamiento hecho',

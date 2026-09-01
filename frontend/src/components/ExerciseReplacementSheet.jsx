@@ -6,6 +6,8 @@ import Icon from './Icon.jsx'
 import { Button } from './ui.jsx'
 import { t } from '../lib/i18n.js'
 import { obtenerAlternativas as obtenerAlternativasNormal, obtenerMasAlternativas as obtenerMasAlternativasNormal, buscarEnGrupoMuscular } from '../lib/generarRutina.js'
+import { musclesOf, MUSCLE_NAME } from '../lib/muscles.js'
+import Media from './Media.jsx'
 
 function ExerciseReplacementSheet({ exActual, poolSeguro, usadosEnSemana, onReemplazar, close, tipo = 'normal' }) {
   const [masAlts, setMasAlts] = useState([])
@@ -65,19 +67,34 @@ function ExerciseReplacementSheet({ exActual, poolSeguro, usadosEnSemana, onReem
         {query ? t('No se encontraron ejercicios.') : t('No hay otras alternativas disponibles.')}
       </div>
     ) : (
-      <div className="list" style={{ maxHeight: 260, overflowY: 'auto' }}>
+      <div className="list" style={{ maxHeight: 360, overflowY: 'auto' }}>
         {listaAMostrar.map(alt => {
           const nombreAlt = exerciseNameFor(alt) || alt.n || alt.id
+          const musculos = musclesOf(alt)
+          const musculosPrimarios = Object.entries(musculos)
+            .filter(([_, peso]) => peso >= 0.8)
+            .map(([slug, _]) => t(MUSCLE_NAME[slug]))
+            .slice(0, 2)
           return (
-            <div key={alt.id} className="item" onClick={() => exerciseDetailSheetNoAdd(alt)}>
-              <span className="lrow-i"><Icon name="dumbbell" /></span>
-              <div className="grow">
-                <div className="tt">{nombreAlt}</div>
-                <div className="ss">{alt.eq || alt.bp || ''}</div>
+            <div key={alt.id} className="item" style={{ padding: '12px 16px', borderBottom: 'var(--hair) solid var(--sep)', display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+              {alt.img && <Media alt={nombreAlt} src={alt.img} style={{ width: 50, height: 50, borderRadius: 8, objectFit: 'cover', flexShrink: 0 }} />}
+              <div className="grow" style={{ minWidth: 0 }}>
+                <div className="tt" style={{ fontWeight: 600, marginBottom: 4 }}>{nombreAlt}</div>
+                <div className="ss muted" style={{ fontSize: 12, marginBottom: 6 }}>
+                  {musculosPrimarios.length > 0 && <span>{musculosPrimarios.join(', ')}</span>}
+                  {alt.eq && <span style={{ display: 'block', fontSize: 11 }}>{alt.eq}</span>}
+                </div>
+                <button
+                  className="lrow" style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', gap: 6, marginBottom: 4 }}
+                  onClick={() => exerciseDetailSheetNoAdd(alt)}
+                >
+                  <span style={{ fontSize: 13, color: 'var(--acc)', fontWeight: 600 }}>{t('Ver detalles')}</span>
+                  <Icon name="chevronRight" style={{ fontSize: 13, color: 'var(--acc)' }} />
+                </button>
               </div>
               <button
                 className="tag acc"
-                style={{ background: 'var(--acc-soft)', color: 'var(--acc)', border: 'none', cursor: 'pointer', borderRadius: 6, padding: '4px 10px', fontSize: 13, fontWeight: 600 }}
+                style={{ background: 'var(--acc-soft)', color: 'var(--acc)', border: 'none', cursor: 'pointer', borderRadius: 6, padding: '6px 12px', fontSize: 13, fontWeight: 600, flexShrink: 0 }}
                 onClick={e => { e.stopPropagation(); onReemplazar(alt); close() }}
               >
                 {t('Elegir')}
