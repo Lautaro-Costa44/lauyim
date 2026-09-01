@@ -1531,7 +1531,8 @@ export function supportSheet() {
             asunto: asunto.trim(),
             mensaje: mensaje.trim(),
             emailContacto: emailContacto.trim(),
-            pwaInstalled
+            pwaInstalled,
+            hostname: window.location.hostname
           })
         })
         toast(t('Reporte enviado con éxito'))

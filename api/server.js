@@ -565,6 +565,7 @@ const routes = {
 
     const brevoApiKey = process.env.BREVO_API_KEY;
     const supportDestination = process.env.SUPPORT_DESTINATION_EMAIL || 'soporte@lauyim.online';
+    const instanceName = process.env.INSTANCE_NAME || body.hostname || req.headers['x-forwarded-host'] || req.headers['host'] || 'Desconocida';
 
     if (!brevoApiKey) {
       console.error('POST /api/support error: BREVO_API_KEY is not configured');
@@ -578,11 +579,13 @@ const routes = {
 
     const htmlContent = `
       <h2>Nuevo reporte de soporte / problema</h2>
+      <p><strong>Instancia / Origen:</strong> ${instanceName}</p>
       <p><strong>Asunto:</strong> ${asunto}</p>
       <p><strong>Mensaje:</strong><br/>${mensaje.replace(/\n/g, '<br/>')}</p>
       <hr/>
       <h3>Datos de diagnóstico:</h3>
       <ul>
+        <li><strong>Instancia:</strong> ${instanceName}</li>
         <li><strong>Email de contacto:</strong> ${emailContacto || 'No provisto'}</li>
         <li>${userInfo}</li>
         <li><strong>Versión de la app:</strong> v${appVersion}</li>
@@ -602,7 +605,7 @@ const routes = {
         body: JSON.stringify({
           sender: { name: 'Soporte Lauyim', email: 'soporte@lauyim.online' },
           to: [{ email: supportDestination }],
-          subject: `[Soporte Lauyim] ${asunto}`,
+          subject: `[Soporte Lauyim] [${instanceName}] ${asunto}`,
           htmlContent
         })
       });
