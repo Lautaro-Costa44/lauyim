@@ -18,8 +18,6 @@ export default function Home() {
   const S = useStore(s => s.S)
   const user = useStore(s => s.user)
   const config = useStore(s => s.config)
-  const removeGroup = useStore(s => s.removeGroup)
-  const setActiveGroupId = useStore(s => s.setActiveGroupId)
   const [weekOffset, setWeekOffset] = useState(0)
 
   useEffect(() => {
@@ -138,58 +136,6 @@ export default function Home() {
         >
           {t('Crear rutina manualmente')}
         </button>
-        {/* Routine groups management */}
-        {S.routineGroups && S.routineGroups.length > 0 && (
-          <div style={{ marginTop: 12, paddingTop: 8, borderTop: 'var(--sep) solid' }}>
-            <div className="muted small" style={{ fontWeight: 500 }}>{t('Mis grupos de rutinas')}</div>
-            <div className="row" style={{ gap: 6, marginTop: 4, flexWrap: 'wrap' }}>
-              {S.routineGroups.map((g) => (
-                <Button
-                  key={g.id}
-                  style={{
-                    flex: 1,
-                    minWidth: '120px',
-                    background: S.activeGroupId === g.id ? 'var(--acc)' : 'none',
-                    color: S.activeGroupId === g.id ? 'white' : 'var(--acc)',
-                    border: S.activeGroupId === g.id ? 'none' : '1px solid var(--acc)',
-                    borderRadius: 4,
-                    padding: '4px 8px',
-                    fontSize: '0.81rem',
-                    textAlign: 'left',
-                  }}
-                  onClick={() => setActiveGroupId(g.id)}
-                >
-                  {g.name}
-                  {S.activeGroupId === g.id && <span className="muted" style={{ fontSize: '0.7rem', marginLeft: 4 }}>• activo</span>}
-                </Button>
-              ))}
-              <Button
-                style={{
-                  flex: 1,
-                  minWidth: '120px',
-                  background: 'none',
-                  color: 'var(--orange)',
-                  border: '1px solid var(--orange)',
-                  borderRadius: 4,
-                  padding: '4px 8px',
-                  fontSize: '0.81rem',
-                  textAlign: 'left',
-                }}
-                onClick={() => confirmSheet({
-                  title: t('Eliminar grupo'),
-                  message: t('¿Estás seguro de eliminar el grupo {0}? Esto moverá sus rutinas al grupo activo.'),
-                  confirmText: t('Eliminar'),
-                  onConfirm: () => {
-                    const activeId = useStore.getState().S.activeGroupId
-                    removeGroup(activeId)
-                  },
-                })}
-              >
-                {t('Eliminar grupo')}
-              </Button>
-            </div>
-          </div>
-        )}
       </div>
     )}
 

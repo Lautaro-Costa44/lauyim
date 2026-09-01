@@ -19,6 +19,8 @@ export default function Plan() {
   const addGroup = useStore(s => s.addGroup)
   const removeGroup = useStore(s => s.removeGroup)
 
+  const renameGroup = useStore(s => s.renameGroup)
+
   const addRoutine = () => {
     const r = { id: uid(), name: t('New routine'), emoji: DEFAULT_GLYPH, ex: [] }
     update(s => { s.routines.push(r) })
@@ -37,6 +39,30 @@ export default function Plan() {
       addGroup(groupName, [], {}, true)
       toast(t('Grupo "{0}" creado', groupName))
     }
+  }
+
+  const renameGroupPrompt = (g) => {
+    const newName = prompt(t('Nuevo nombre del grupo'), g.name)
+    if (newName && newName.trim()) {
+      try {
+        renameGroup(g.id, newName.trim())
+        toast(t('Grupo renombrado'))
+      } catch (e) {
+        toast(e.message || t('Error al renombrar grupo'))
+      }
+    }
+  }
+
+  const deleteGroupPrompt = (g) => {
+    confirmSheet({
+      title: t('Eliminar grupo'),
+      message: t('¿Estás seguro de eliminar el grupo {0}?', g.name),
+      confirmText: t('Eliminar'),
+      onConfirm: () => {
+        removeGroup(g.id)
+        toast(t('Grupo eliminado'))
+      },
+    })
   }
 
   return <>
@@ -71,53 +97,60 @@ export default function Plan() {
         <Button icon="sparkles" onClick={loadStarterPlan}>{t('Load starter plan (Push / Pull / Legs)')}</Button>
       </>}
       {S.routineGroups && S.routineGroups.length > 0 && (
-        <div style={{ marginTop: 8, paddingTop: 4, borderTop: 'var(--sep) solid' }}>
-          <div className="muted small" style={{ fontWeight: 500, marginBottom: 4 }}>{t('Grupos de rutinas')}</div>
-          <div className="row" style={{ gap: 6, marginTop: 4, flexWrap: 'wrap' }}>
-            {S.routineGroups.map((g) => (
-              <Button
-                key={g.id}
-                style={{
-                  flex: 1,
-                  minWidth: '120px',
-                  background: S.activeGroupId === g.id ? 'var(--acc)' : 'none',
-                  color: S.activeGroupId === g.id ? 'white' : 'var(--acc)',
-                  border: S.activeGroupId === g.id ? 'none' : '1px solid var(--acc)',
-                  borderRadius: 4,
-                  padding: '4px 8px',
-                  fontSize: '0.81rem',
-                  textAlign: 'left',
-                }}
-                onClick={() => setActiveGroupId(g.id)}
-              >
-                {g.name}
-                {S.activeGroupId === g.id && <span className="muted" style={{ fontSize: '0.7rem', marginLeft: 4 }}>• activo</span>}
-              </Button>
-            ))}
-            <Button
-              style={{
-                flex: 1,
-                minWidth: '120px',
-                background: 'none',
-                color: 'var(--orange)',
-                border: '1px solid var(--orange)',
-                borderRadius: 4,
-                padding: '4px 8px',
-                fontSize: '0.81rem',
-                textAlign: 'left',
-              }}
-              onClick={() => confirmSheet({
-                title: t('Eliminar grupo'),
-                message: t('¿Estás seguro de eliminar el grupo {0}? Esto moverá sus rutinas al grupo activo.'),
-                confirmText: t('Eliminar'),
-                onConfirm: () => {
-                  const activeId = useStore.getState().S.activeGroupId
-                  removeGroup(activeId)
-                },
-              })}
-            >
-              {t('Eliminar grupo')}
-            </Button>
+        <div style={{ marginTop: 12, paddingTop: 10, borderTop: 'var(--sep) solid' }}>
+          <div className="row between" style={{ marginBottom: 6 }}>
+            <div className="muted small" style={{ fontWeight: 500 }}>{t('Grupos de rutinas')}</div>
+            <Button size="sm" variant="tinted" icon="folder" onClick={addGroupBtn}>{t('Nuevo grupo')}</Button>
+          </div>
+          <div className="list" style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {S.routineGroups.map((g) => {
+              const isActive = S.activeGroupId === g.id
+              return (
+                <div
+                  key={g.id}
+                  className="item"
+                  style={{
+                    background: isActive ? 'color-mix(in srgb, var(--acc) 10%, var(--surface))' : undefined,
+                    borderColor: isActive ? 'var(--acc)' : undefined,
+                    cursor: 'pointer',
+                  }}
+                  onClick={() => setActiveGroupId(g.id)}
+                >
+                  <span className="lrow-i" style={{ background: isActive ? 'var(--acc)' : 'var(--surface-3)', color: isActive ? '#fff' : 'var(--text)' }}>
+                    <Icon name="folder" />
+                  </span>
+                  <div className="grow">
+                    <div className="tt">
+                      {g.name}
+                      {isActive && <span className="tag acc" style={{ marginLeft: 8, fontSize: '0.7rem', padding: '1px 6px' }}>{t('Activo')}</span>}
+                    </div>
+                    <div className="ss">{t('{0} rutinas', (g.routines || []).length)}</div>
+                  </div>
+                  <div className="row" style={{ gap: 4 }} onClick={e => e.stopPropagation()}>
+                    <button
+                      className="iconbtn"
+                      style={{ width: 30, height: 30, fontSize: 14 }}
+                      onClick={() => renameGroupPrompt(g)}
+                      title={t('Renombrar')}
+                      aria-label={t('Renombrar')}
+                    >
+                      <Icon name="edit" />
+                    </button>
+                    {S.routineGroups.length > 1 && (
+                      <button
+                        className="iconbtn"
+                        style={{ width: 30, height: 30, fontSize: 14, color: 'var(--orange)' }}
+                        onClick={() => deleteGroupPrompt(g)}
+                        title={t('Eliminar')}
+                        aria-label={t('Eliminar')}
+                      >
+                        <Icon name="trash" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )
+            })}
           </div>
         </div>
       )}
