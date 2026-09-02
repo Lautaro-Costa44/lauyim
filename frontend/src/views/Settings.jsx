@@ -249,6 +249,9 @@ export default function Settings() {
           options={[{ value: 'none', label: t('Off') }, { value: 'rir', label: t('RIR') }, { value: 'rpe', label: t('RPE') }]}
           value={effortOf(S)} onChange={v => update(s => { s.effort = v; delete s.showRir })} />
       </Row>
+      <Row icon="lightbulb" iconTint="var(--yellow)" title={t('Consejos sobre series y pesos en base al historial')}>
+        <Switch checked={S.progressionTips !== false} onChange={v => update(s => { s.progressionTips = v })} />
+      </Row>
     </Section>
 
     {user && <NotificationsCard S={S} update={update} toast={toast} />}

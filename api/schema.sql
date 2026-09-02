@@ -76,6 +76,8 @@ CREATE TABLE IF NOT EXISTS preset_exercises (
   sec INTEGER,               -- para time
   bodyweight INTEGER DEFAULT 0,
   side INTEGER DEFAULT 0,
+  progression_type TEXT NULL,
+  progression_config TEXT NULL,
   FOREIGN KEY (preset_id) REFERENCES presets(id) ON DELETE CASCADE
 );
  
@@ -116,6 +118,7 @@ CREATE TABLE IF NOT EXISTS user_state (
   auto_backup INTEGER DEFAULT 0,
   active_equip_id TEXT,
   equip_filter_on INTEGER DEFAULT 0,
+  progression_tips INTEGER DEFAULT 1,
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
  
@@ -153,6 +156,8 @@ CREATE TABLE IF NOT EXISTS routine_exercises (
   bodyweight INTEGER DEFAULT 0,
   side INTEGER DEFAULT 0,
   note TEXT,
+  progression_type TEXT NULL,
+  progression_config TEXT NULL,
   FOREIGN KEY (routine_id) REFERENCES routines(id) ON DELETE CASCADE
 );
  

@@ -24,6 +24,21 @@ export function initDatabase() {
   try {
     db.exec(`ALTER TABLE users ADD COLUMN last_fee_reminder_sent_date TEXT;`);
   } catch {}
+  try {
+    db.exec(`ALTER TABLE routine_exercises ADD COLUMN progression_type TEXT;`);
+  } catch {}
+  try {
+    db.exec(`ALTER TABLE routine_exercises ADD COLUMN progression_config TEXT;`);
+  } catch {}
+  try {
+    db.exec(`ALTER TABLE preset_exercises ADD COLUMN progression_type TEXT;`);
+  } catch {}
+  try {
+    db.exec(`ALTER TABLE preset_exercises ADD COLUMN progression_config TEXT;`);
+  } catch {}
+  try {
+    db.exec(`ALTER TABLE user_state ADD COLUMN progression_tips INTEGER DEFAULT 1;`);
+  } catch {}
 
   // Crear tablas principales si no existen
   db.exec(`
@@ -308,7 +323,9 @@ export function getPresetWithExercises(id) {
     speed: row.speed,
     sec: row.sec,
     bodyweight: row.bodyweight ? true : undefined,
-    side: row.side ? true : undefined
+    side: row.side ? true : undefined,
+    progressionType: row.progression_type || undefined,
+    progressionConfig: safeJsonParse(row.progression_config, null)
   }));
   return preset;
 }
@@ -321,8 +338,8 @@ export function createPreset(preset) {
   stmt.run(preset.id, preset.name, preset.emoji);
 
   const exStmt = getDatabase().prepare(`
-    INSERT INTO preset_exercises (preset_id, exercise_id, sets, reps, weight, mode, min, speed, sec, bodyweight, side)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO preset_exercises (preset_id, exercise_id, sets, reps, weight, mode, min, speed, sec, bodyweight, side, progression_type, progression_config)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
   for (const ex of preset.ex) {
     exStmt.run(
@@ -336,7 +353,9 @@ export function createPreset(preset) {
       ex.speed || null,
       ex.sec || null,
       ex.bodyweight ? 1 : 0,
-      ex.side ? 1 : 0
+      ex.side ? 1 : 0,
+      ex.progressionType || null,
+      ex.progressionConfig ? JSON.stringify(ex.progressionConfig) : null
     );
   }
 }
@@ -413,6 +432,7 @@ export function getUserState(userId) {
     autoBackup: row.auto_backup === 1,
     activeEquipId: row.active_equip_id,
     equipFilterOn: row.equip_filter_on === 1,
+    progressionTips: row.progression_tips !== 0,
   };
 
   // Cargar relaciones
@@ -440,8 +460,8 @@ export function saveUserState(userId, S) {
       user_id, _ts, unit, rest_sec, rest_pause_sec, sound, keep_awake, lang, theme, accent,
       body, target_w, estado_inicial, onboarding_completado, onboarding_stats_completado, edad, altura, objetivo, nivel, peso_kg, configuracion,
       respuestas_encuesta, rutina_generada, fecha_ultima_encuesta, effort, auto_backup,
-      active_equip_id, equip_filter_on
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      active_equip_id, equip_filter_on, progression_tips
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
   stateStmt.run(
     userId,
@@ -471,7 +491,8 @@ export function saveUserState(userId, S) {
     S.effort || null,
     S.autoBackup ? 1 : 0,
     S.activeEquipId || null,
-    S.equipFilterOn ? 1 : 0
+    S.equipFilterOn ? 1 : 0,
+    S.progressionTips !== false ? 1 : 0
   );
 
   // Guardar rutinas
@@ -527,7 +548,9 @@ export function getRoutinesByUserId(userId) {
       sec: row.sec,
       bodyweight: row.bodyweight ? true : undefined,
       side: row.side ? true : undefined,
-      note: row.note
+      note: row.note,
+      progressionType: row.progression_type || undefined,
+      progressionConfig: safeJsonParse(row.progression_config, null)
     }));
   }
 
@@ -547,8 +570,8 @@ function saveRoutines(userId, routines) {
   `);
 
   const exStmt = db.prepare(`
-    INSERT INTO routine_exercises (routine_id, exercise_id, position, sg, sets, reps, weight, mode, min, speed, sec, bodyweight, side, note)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO routine_exercises (routine_id, exercise_id, position, sg, sets, reps, weight, mode, min, speed, sec, bodyweight, side, note, progression_type, progression_config)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   for (const routine of routines) {
@@ -569,7 +592,9 @@ function saveRoutines(userId, routines) {
         ex.sec || null,
         ex.bodyweight ? 1 : 0,
         ex.side ? 1 : 0,
-        ex.note || null
+        ex.note || null,
+        ex.progressionType || null,
+        ex.progressionConfig ? JSON.stringify(ex.progressionConfig) : null
       );
     }
   }
@@ -955,4 +980,145 @@ function saveEquipProfiles(userId, profiles) {
   for (const profile of profiles) {
     stmt.run(profile.id, userId, profile.name, JSON.stringify(profile.equipment), profile.created || Date.now());
   }
+}
+
+// ============================================================
+// Lógica de cálculo de sugerencias de progresión
+// ============================================================
+
+export function getProgressionSuggestion(userId, exerciseId, routineId) {
+  const db = getDatabase();
+
+  const stateRow = db.prepare('SELECT progression_tips FROM user_state WHERE user_id = ?').get(userId);
+  if (stateRow && stateRow.progression_tips === 0) return null;
+
+  const customEx = db.prepare('SELECT tipo FROM custom_exercises WHERE user_id = ? AND id = ?').get(userId, exerciseId);
+  if (customEx && customEx.tipo === 'cardio') return null;
+
+  let pType = null;
+  let pConfigStr = null;
+  let bodyweight = false;
+
+  if (routineId) {
+    const routineEx = db.prepare('SELECT progression_type, progression_config, bodyweight FROM routine_exercises WHERE routine_id = ? AND exercise_id = ?').get(routineId, exerciseId);
+    if (routineEx) {
+      pType = routineEx.progression_type;
+      pConfigStr = routineEx.progression_config;
+      bodyweight = routineEx.bodyweight === 1;
+    }
+  }
+
+  if (!pType) {
+    const presetEx = db.prepare('SELECT progression_type, progression_config, bodyweight FROM preset_exercises WHERE exercise_id = ? AND progression_type IS NOT NULL LIMIT 1').get(exerciseId);
+    if (presetEx) {
+      pType = presetEx.progression_type;
+      pConfigStr = presetEx.progression_config;
+      bodyweight = presetEx.bodyweight === 1;
+    }
+  }
+
+  if (!pType) return null;
+
+  let config = {};
+  if (pConfigStr) {
+    try {
+      config = JSON.parse(pConfigStr);
+    } catch (e) {
+      console.error('Error parsing progression_config for exercise', exerciseId, e);
+      return null;
+    }
+  }
+
+  const recentWorkouts = db.prepare(`
+    SELECT DISTINCT w.id, w.date, w.start
+    FROM workouts w
+    JOIN workout_entries we ON we.workout_id = w.id
+    JOIN workout_sets ws ON ws.entry_id = we.id
+    WHERE w.user_id = ? AND we.exercise_id = ? AND ws.done = 1
+    ORDER BY w.date DESC, w.start DESC
+    LIMIT 3
+  `).all(userId, exerciseId);
+
+  if (!recentWorkouts.length) return null;
+
+  const lastWorkoutId = recentWorkouts[0].id;
+  const lastEntry = db.prepare('SELECT * FROM workout_entries WHERE workout_id = ? AND exercise_id = ?').get(lastWorkoutId, exerciseId);
+  if (!lastEntry) return null;
+
+  const lastSets = db.prepare('SELECT * FROM workout_sets WHERE entry_id = ?').all(lastEntry.id);
+  const doneSets = lastSets.filter(s => s.done === 1);
+  if (!doneSets.length) return null;
+
+  let target = null;
+  if (lastEntry.target) {
+    try { target = JSON.parse(lastEntry.target); } catch {}
+  }
+  if (!target && routineId) {
+    const rEx = db.prepare('SELECT reps, weight FROM routine_exercises WHERE routine_id = ? AND exercise_id = ?').get(routineId, exerciseId);
+    if (rEx) target = { reps: rEx.reps, weight: rEx.weight };
+  }
+
+  const lastWeight = doneSets.reduce((max, s) => Math.max(max, s.w || 0), 0);
+  const lastRepsAvg = doneSets.length ? Math.round(doneSets.reduce((sum, s) => sum + (s.r || 0), 0) / doneSets.length) : 0;
+  const setsCount = lastSets.length;
+
+  let weightSuggested = null;
+  let repsSuggested = null;
+  let setsSuggested = setsCount;
+
+  if (pType === 'linear') {
+    const increment = Number(config.increment_kg) || 2.5;
+    const targetReps = target?.reps || lastRepsAvg || 10;
+    const allReached = doneSets.every(s => (s.r || 0) >= targetReps);
+    if (allReached) {
+      weightSuggested = bodyweight ? null : (lastWeight + increment);
+      repsSuggested = targetReps;
+    } else {
+      weightSuggested = bodyweight ? null : lastWeight;
+      repsSuggested = lastRepsAvg;
+    }
+  } else if (pType === 'double') {
+    const repMin = Number(config.rep_range_min) || 8;
+    const repMax = Number(config.rep_range_max) || 12;
+    const increment = Number(config.increment_kg) || 2.5;
+
+    const allReachedMax = doneSets.every(s => (s.r || 0) >= repMax);
+    if (allReachedMax) {
+      weightSuggested = bodyweight ? null : (lastWeight + increment);
+      repsSuggested = repMin;
+    } else {
+      weightSuggested = bodyweight ? null : lastWeight;
+      repsSuggested = Math.min(lastRepsAvg + 1, repMax);
+    }
+  } else if (pType === 'dup') {
+    const pattern = config.pattern || [];
+    if (!pattern.length) return null;
+
+    const countRow = db.prepare(`
+      SELECT COUNT(DISTINCT w.id) as cnt
+      FROM workouts w
+      JOIN workout_entries we ON we.workout_id = w.id
+      JOIN workout_sets ws ON ws.entry_id = we.id
+      WHERE w.user_id = ? AND we.exercise_id = ? AND ws.done = 1
+    `).get(userId, exerciseId);
+
+    const sessionIdx = countRow ? countRow.cnt : 0;
+    const patternItem = pattern[sessionIdx % pattern.length];
+    if (!patternItem) return null;
+
+    repsSuggested = patternItem.rep_target;
+    const intensity = Number(patternItem.intensity_pct) || 75;
+
+    const topW = lastEntry.top_w || lastWeight || 0;
+    weightSuggested = bodyweight ? null : Math.round((topW * intensity / 100) * 2) / 2;
+  } else {
+    return null;
+  }
+
+  return {
+    weight_suggested: weightSuggested,
+    reps_suggested: repsSuggested,
+    sets_suggested: setsSuggested,
+    progression_type: pType
+  };
 }
