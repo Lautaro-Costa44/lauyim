@@ -49,7 +49,7 @@ export function confirmSheet(opts) {
 function InputDialog({ title, message, placeholder, defaultValue, confirmText, cancelText, onConfirm, close }) {
   const [val, setVal] = useState(defaultValue || '')
   const inputRef = useRef(null)
-  useEffect(() => { inputRef.current?.focus(); inputRef.current?.select?.() }, [])
+  useEffect(() => { /* no autofocus */ }, [])
   return <div style={{ textAlign: 'center', padding: '4px 0' }}>
     {title && <h3 style={{ marginBottom: 8 }}>{title}</h3>}
     {message && <div className="muted" style={{ marginBottom: 18, lineHeight: 1.5 }}>{message}</div>}
