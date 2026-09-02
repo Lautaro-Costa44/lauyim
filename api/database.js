@@ -57,6 +57,23 @@ export function initDatabase() {
       equip_filter_on INTEGER,
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     );
+
+    CREATE TABLE IF NOT EXISTS custom_exercises (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      n TEXT NOT NULL,
+      tipo TEXT,
+      equipamiento TEXT,
+      grupo_muscular TEXT,
+      bp TEXT,
+      eq TEXT,
+      tg TEXT,
+      mg TEXT,
+      sm TEXT,
+      st TEXT,
+      created_at INTEGER NOT NULL,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
   `);
 
   // Migración defensiva: asegurar que existan todas las columnas de la encuesta en bases de datos existentes
@@ -84,6 +101,19 @@ export function initDatabase() {
       // Si la columna ya existe, SQLite lanzará error y se ignora de forma segura
     }
   }
+
+  try {
+    db.exec(`ALTER TABLE custom_exercises ADD COLUMN tipo TEXT;`);
+  } catch {}
+  try {
+    db.exec(`ALTER TABLE custom_exercises ADD COLUMN equipamiento TEXT;`);
+  } catch {}
+  try {
+    db.exec(`ALTER TABLE custom_exercises ADD COLUMN grupo_muscular TEXT;`);
+  } catch {}
+  try {
+    db.exec(`ALTER TABLE workouts ADD COLUMN partial INTEGER DEFAULT 0;`);
+  } catch {}
 
   return db;
 }
@@ -784,7 +814,7 @@ export function getCustomExercisesByUserId(userId) {
   return stmt.all(userId).map(row => ({
     id: row.id,
     n: row.n,
-    tipo: row.tipo || (row.bp === 'cardio' ? 'cardio' : 'fuerza'),
+    tipo: row.tipo,
     equipamiento: safeJsonParse(row.equipamiento, row.eq ? [row.eq] : ['body weight']),
     grupo_muscular: row.grupo_muscular || row.tg || row.bp || '',
     bp: row.bp,
@@ -804,7 +834,7 @@ function saveCustomExercises(userId, customEx) {
   deleteStmt.run(userId);
 
   const stmt = db.prepare(`
-    INSERT INTO custom_exercises (id, user_id, n, tipo, equipamiento, grupo_muscular, bp, eq, tg, mg, sm, st, created_at)
+    INSERT OR REPLACE INTO custom_exercises (id, user_id, n, tipo, equipamiento, grupo_muscular, bp, eq, tg, mg, sm, st, created_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
   for (const ex of customEx) {
@@ -813,7 +843,7 @@ function saveCustomExercises(userId, customEx) {
       ex.id,
       userId,
       ex.n,
-      ex.tipo || (ex.bp === 'cardio' ? 'cardio' : 'fuerza'),
+      ex.tipo || null,
       JSON.stringify(equipArr),
       ex.grupo_muscular || ex.tg || ex.bp || '',
       ex.bp || '',
