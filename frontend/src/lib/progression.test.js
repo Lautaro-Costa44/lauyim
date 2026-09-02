@@ -554,3 +554,119 @@ describe('drop-sets and rest-pause sets in progression', () => {
     expect(out[1]).toEqual({ type: 'dropset', w: 0, r: 10, done: false })
   })
 })
+
+describe('New policies: DUP and Top-Set + Backoff', () => {
+  it('DUP returns kind first when no history exists', () => {
+    const cfg = { id: LIFT, sets: 3, reps: 5, weight: 60, prog: 'dup' }
+    const state = { workouts: [] }
+    const p = nextPrescription(state, cfg)
+    expect(p.policy).toBe('dup')
+    expect(p.kind).toBe('first')
+  })
+
+  it('DUP cycles through 3 day types correctly and compares against same day type', () => {
+    const cfg = { id: LIFT, sets: 3, reps: 5, weight: 60, prog: 'dup' }
+    // Session 0 (Heavy): 60kg, 5 reps (hit)
+    // Session 1 (Moderate): 50kg, 8 reps (hit)
+    // Session 2 (Light): 40kg, 12 reps (hit)
+    // Session 3 (Heavy): should be heavy day, comparing against session 0
+    const state = hist(LIFT, [
+      [60, 5, 5, 5],
+      [50, 8, 8, 8],
+      [40, 12, 12, 12]
+    ])
+    const p = nextPrescription(state, cfg)
+    expect(p.policy).toBe('dup')
+    expect(p.kind).toBe('up')
+    expect(p.weight).toBe(62.5) // 60 + 2.5
+    expect(p.reps).toBe(5) // heavy day target
+  })
+
+  it('DUP moderate day progresses reps or weight (double progression)', () => {
+    const cfg = { id: LIFT, sets: 3, reps: 8, weight: 50, prog: 'dup' }
+    // Session 0 (Heavy): 1 past session means next session is index 1 (Moderate)
+    const state = hist(LIFT, [
+      [60, 5, 5, 5]
+    ])
+    // We want to test when last moderate session exists. If we have [Heavy, Moderate], next is Light.
+    // To have a moderate session as the last same-day session: sessions count needs 1 past moderate session.
+    // Index sequence: 0 (Heavy), 1 (Moderate).
+    const state2 = hist(LIFT, [
+      [60, 5, 5, 5],
+      [50, 7, 7, 7]
+    ])
+    // state2 has 2 sessions: index 0 (Heavy), index 1 (Moderate). Next is index 2 (Light).
+    // To test moderate day, we need sessions count such that (dupSessions.length % 3) === 1.
+    // e.g. 1 session total (index 0 = Heavy, so next is Moderate? Wait! 
+    // If sessions.length = 1, next session index is 1 (1 % 3 = 1 -> Moderate).
+    const stateModerate = hist(LIFT, [
+      [60, 5, 5, 5]
+    ])
+    // If sessions.length = 1, next session is Moderate (index 1). But wait, `lastSameDay` for moderate would be empty because there are no past moderate sessions yet (only 1 heavy session).
+    // If we want lastSameDay for moderate to exist, we need at least 2 sessions: index 0 (Heavy), index 1 (Moderate), and then next session index 4? No, index 1 % 3 = 1.
+    // If we have sessions at index 1 (Moderate), index 4 (Moderate), etc.
+    // Let's set up sessions so that `dupSessions.length % 3 === 1` and `sameDaySessions` has items.
+    // Indices: 
+    // 0: Heavy
+    // 1: Moderate (lastSameDay for moderate)
+    // Next is 2 (Light).
+    // To make next session index 1 (Moderate) have a past moderate session, we need previous sessions to include index 1! But index 1 is the next session. Past sessions are 0, ..., N-1.
+    // If N = 4: indices 0 (Heavy), 1 (Moderate), 2 (Light), 3 (Heavy). Next is 4 (Moderate).
+    // Let's check: 4 % 3 = 1 (Moderate).
+    // And sameDaySessions will contain index 1 (Moderate).
+    const stateMod = hist(LIFT, [
+      [60, 5, 5, 5],
+      [50, 7, 7, 7],
+      [40, 12, 12, 12],
+      [60, 5, 5, 5]
+    ])
+    const p = nextPrescription(stateMod, cfg)
+    expect(p.policy).toBe('dup')
+    expect(p.kind).toBe('hold')
+    expect(p.weight).toBe(50)
+    expect(p.reps).toBe(8) // aims for next rep
+  })
+
+  it('DUP light day progresses reps conservatively', () => {
+    const cfg = { id: LIFT, sets: 3, reps: 12, weight: 40, prog: 'dup' }
+    // Next session index needs to be 2 (Light). 
+    // Index % 3 === 2 when length = 2, 5, 8, etc.
+    // If sessions length = 5: indices 0 (Heavy), 1 (Moderate), 2 (Light), 3 (Heavy), 4 (Moderate). Next is 5 (Light).
+    // sameDaySessions will contain index 2 (Light).
+    const stateLight = hist(LIFT, [
+      [60, 5, 5, 5],
+      [50, 8, 8, 8],
+      [40, 12, 12, 12],
+      [60, 5, 5, 5],
+      [50, 8, 8, 8]
+    ])
+    const p = nextPrescription(stateLight, cfg)
+    expect(p.policy).toBe('dup')
+    expect(p.kind).toBe('hold')
+    expect(p.weight).toBe(40)
+    expect(p.reps).toBe(13) // +1 rep
+  })
+
+  it('Top-Set + Backoff progresses top set and calculates backoff at 85%', () => {
+    const cfg = { id: LIFT, sets: 4, reps: 5, weight: 60, prog: 'topset_backoff' }
+    const state = hist(LIFT, [
+      [60, 5, 8, 8, 8]
+    ])
+    const p = nextPrescription(state, cfg)
+    expect(p.policy).toBe('topset_backoff')
+    expect(p.kind).toBe('up')
+    expect(p.topWeight).toBe(62.5)
+    expect(p.backoffWeight).toBe(52.5) // snap(62.5 * 0.85, 2.5) -> snap(53.125, 2.5) -> 52.5
+  })
+
+  it('bodyweight exercises work correctly across new policies', () => {
+    const cfg = { id: LIFT, sets: 3, reps: 10, weight: 0, prog: 'dup' }
+    // If w <= 0, bodyweight logic takes over in nextPrescription
+    const state = hist(LIFT, [
+      [0, 10, 10, 10]
+    ], { sets: 3, reps: 10, weight: 0 })
+    const p = nextPrescription(state, cfg)
+    expect(p.weight).toBe(0)
+    expect(p.reps).toBe(11) // reps increment for bodyweight (+1)
+  })
+})

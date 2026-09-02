@@ -145,6 +145,7 @@ export const gifSrc = ex => GIF_BASE + ex.gif
 
 // Cardio exercises log time + speed instead of weight × reps.
 export const isCardio = idOrEx => (typeof idOrEx === 'string' ? EXIDX[idOrEx] : idOrEx)?.bp === 'cardio'
+export const isStretch = idOrEx => Boolean((typeof idOrEx === 'string' ? EXIDX[idOrEx] : idOrEx)?.isStretch)
 
 // Exercises the dataset already knows carry no external load (issue #32) — a quarter of the
 // catalogue. This seeds the `bw` flag on a fresh config so a push-up never asks for a weight

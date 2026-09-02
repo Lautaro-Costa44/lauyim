@@ -20,11 +20,11 @@ import { modeOf, repStep, rerampWarmups } from './history.js'
 import { EXIDX } from './exercises.js'
 import { isWarmupRow } from './workout-model.js'
 
-export const POLICIES = ['off', 'linear', 'greyskull', 'double', 'time']
+export const POLICIES = ['off', 'linear', 'greyskull', 'double', 'time', 'dup', 'topset_backoff']
 
 // Which policies can sensibly drive which logging mode.
 export const POLICIES_FOR = {
-  reps: ['off', 'linear', 'greyskull', 'double'],
+  reps: ['off', 'linear', 'greyskull', 'double', 'dup', 'topset_backoff'],
   time: ['off', 'time'],
   cardio: ['off']
 }
@@ -34,19 +34,23 @@ export const POLICY_NAME = {
   linear: 'Linear progression',
   greyskull: 'Greyskull LP',
   double: 'Double progression',
-  time: 'Add time'
+  time: 'Add time',
+  dup: 'Daily Undulating Periodization (DUP)',
+  topset_backoff: 'Top-Set + Backoff'
 }
 export const POLICY_DESC = {
   off: 'Targets stay where you set them.',
   linear: 'Hit every rep in every set and the weight goes up. Repeated misses trigger a deload.',
   greyskull: 'Two straight sets plus a final set taken to failure. Beat the target on that set and the weight goes up — double if you double the reps. One failure resets 10 %.',
   double: 'Work up through a rep range at the same weight. Reach the top of the range in every set and the weight goes up, reps back to the bottom.',
-  time: 'Hold every set for the full duration and the target goes up.'
+  time: 'Hold every set for the full duration and the target goes up.',
+  dup: 'Weekly undulating cycle: Heavy (1-5 reps) → Moderate (6-10 reps) → Light (12-15 reps). Progresses each day type independently.',
+  topset_backoff: '1 max effort top set (1-5 reps) followed by backoff sets at 15% lower weight for volume.'
 }
 
 // Sessions of repeated misses before a deload. Greyskull resets on the first failure by
 // design; the general linear policy gives you two more cracks at it first.
-export const DELOAD_AFTER = { linear: 3, greyskull: 1, double: 3, time: 3 }
+export const DELOAD_AFTER = { linear: 3, greyskull: 1, double: 3, time: 3, dup: 3, topset_backoff: 3 }
 const DELOAD_FACTOR = 0.9
 
 // Body parts where a 5 kg jump is normal rather than brutal.
@@ -222,6 +226,98 @@ export function nextPrescription(S, cfg, routine) {
   }
 
   // linear + greyskull
+  if (policy === 'dup') {
+    // 3 days pattern: 0: heavy (1-5 reps), 1: moderate (6-10 reps), 2: light (12-15 reps)
+    const pattern = [
+      { day: 'heavy', target: 5, intensity: 0.85 },
+      { day: 'moderate', target: 8, intensity: 0.75 },
+      { day: 'light', target: 12, intensity: 0.65 }
+    ]
+    // Filter past sessions matching this day type by counting how many sessions of this exercise had day_index % 3 === dayTypeIndex
+    const dayTypeIndex = sessions.length % 3
+    const currentDayConfig = pattern[dayTypeIndex]
+    
+    // Filter sessions that correspond to this exact day type
+    const sameDaySessions = sessions.filter((_, idx) => (idx % 3) === dayTypeIndex)
+    const lastSameDay = sameDaySessions[sameDaySessions.length - 1]
+
+    if (!lastSameDay) {
+      return { policy, kind: 'first', why: [`First time on {0} day — baseline session.`, currentDayConfig.day] }
+    }
+
+    const sameDayStalls = stallCount(sameDaySessions)
+    if (currentDayConfig.day === 'heavy') {
+      // Linear-like progression for heavy: all reps hit -> weight up
+      if (lastSameDay.ok) {
+        return {
+          policy, kind: 'up', weight: snap(lastSameDay.weight + inc, inc), reps: currentDayConfig.target,
+          why: ['Heavy day — every rep last time, weight up by {0} {1}.', inc, unit]
+        }
+      }
+      if (sameDayStalls >= deloadAt) {
+        const dw = deloadTo(lastSameDay.weight, inc)
+        return { policy, kind: 'deload', weight: dw, reps: currentDayConfig.target, why: ['Heavy day stalled {0} sessions — deload to {1} {2}.', sameDayStalls, dw, unit] }
+      }
+      return { policy, kind: 'hold', weight: lastSameDay.weight, reps: currentDayConfig.target, why: ['Heavy day missed reps — same weight again.'] }
+    } else if (currentDayConfig.day === 'moderate') {
+      // Double progression style for moderate (range 6-10)
+      const repMin = 6
+      const repMax = 10
+      const allReachedMax = lastSameDay.ok && lastSameDay.reps.every(r => r >= repMax)
+      if (allReachedMax) {
+        return { policy, kind: 'up', weight: snap(lastSameDay.weight + inc, inc), reps: repMin, why: ['Moderate day top of range — weight up by {0} {1}, back to {2} reps.', inc, unit, repMin] }
+      }
+      if (sameDayStalls >= deloadAt) {
+        const dw = deloadTo(lastSameDay.weight, inc)
+        return { policy, kind: 'deload', weight: dw, reps: repMin, why: ['Moderate day stalled {0} sessions — deload to {1} {2}.', sameDayStalls, dw, unit] }
+      }
+      const aim = Math.min(repMax, Math.max(repMin, lastSameDay.low + repStep(cfg)))
+      return { policy, kind: 'hold', weight: lastSameDay.weight, reps: aim, why: ['Moderate day — aim for {0} reps.', aim] }
+    } else {
+      // Light day (12-15 reps), conservative rep progression
+      const repMin = 12
+      const repMax = 15
+      const allReachedMax = lastSameDay.ok && lastSameDay.reps.every(r => r >= repMax)
+      if (allReachedMax) {
+        return { policy, kind: 'up', weight: snap(lastSameDay.weight + inc, inc), reps: repMin, why: ['Light day top of range — weight up by {0} {1}.', inc, unit] }
+      }
+      const aim = Math.min(repMax, Math.max(repMin, lastSameDay.low + 1))
+      return { policy, kind: 'hold', weight: lastSameDay.weight, reps: aim, why: ['Light day — focus on technique and velocity, aim for {0} reps.', aim] }
+    }
+  }
+
+  if (policy === 'topset_backoff') {
+    // Top set: 1 set, 1-5 reps. Backoff: 3 sets, 6-12 reps at 15% lower weight.
+    const topSessions = sessions
+    const lastTop = topSessions[topSessions.length - 1]
+    const topStalls = stallCount(topSessions)
+
+    let topWeight = lastTop.weight
+    let topTargetReps = lastTop.goal || 5
+
+    if (lastTop.ok) {
+      topWeight = snap(topWeight + inc, inc)
+      return {
+        policy, kind: 'up', weight: topWeight, reps: topTargetReps, sets: 4,
+        topWeight, backoffWeight: snap(topWeight * 0.85, inc),
+        why: ['Top set hit targets — top weight up by {0} {1}, backoff at 85%.', inc, unit]
+      }
+    }
+    if (topStalls >= deloadAt) {
+      const dw = deloadTo(topWeight, inc)
+      return {
+        policy, kind: 'deload', weight: dw, reps: topTargetReps, sets: 4,
+        topWeight: dw, backoffWeight: snap(dw * 0.85, inc),
+        why: ['Top set stalled {0} sessions — deload top to {1} {2}.', topStalls, dw, unit]
+      }
+    }
+    return {
+      policy, kind: 'hold', weight: topWeight, reps: topTargetReps, sets: 4,
+      topWeight, backoffWeight: snap(topWeight * 0.85, inc),
+      why: ['Top set missed — same top weight ({0} of {1} to go).', deloadAt - topStalls, deloadAt]
+    }
+  }
+
   if (last.ok) {
     // Greyskull's final set is taken to failure: double the target reps there and you have
     // earned a double jump.
@@ -252,13 +348,17 @@ export function nextPrescription(S, cfg, routine) {
  */
 export function applyPrescription(sets, p, step = 2.5) {
   if (!p || p.kind === 'off' || p.kind === 'first') return sets
-  const out = sets.map(s => {
-    // Never rewrite a logged set, and never rewrite a warm-up: the prescription speaks to
-    // the work rows only (a ticked warm-up falling through here would be the data-loss the
-    // cascade fix removed, two files over).
+  const workRowsBefore = sets.filter(s => !isWarmupRow(s))
+  const out = sets.map((s, idx) => {
     if (s.done || isWarmupRow(s)) return s
     const o = { ...s }
-    if (p.weight != null) o.w = p.weight
+    if (p.topWeight != null && p.backoffWeight != null && workRowsBefore.length > 0) {
+      // First work row is top set, rest are backoff sets
+      const isFirstWork = workRowsBefore.findIndex(wr => wr === s) === 0
+      o.w = isFirstWork ? p.topWeight : p.backoffWeight
+    } else if (p.weight != null) {
+      o.w = p.weight
+    }
     if (p.reps != null) o.r = p.reps
     if (p.sec != null) o.sec = p.sec
     return o
