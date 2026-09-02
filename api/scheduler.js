@@ -150,74 +150,84 @@ export function runSchedulerTick() {
     const debugUserId = process.env.DEBUG_USER_ID;
 
     for (const u of users) {
-      if (debugUserId && u.user_id !== debugUserId) {
-        continue;
-      }
+      try {
+        if (debugUserId && u.user_id !== debugUserId) {
+          continue;
+        }
 
-      const tz = u.reminder_tz || 'UTC';
-      const { dateStr, timeStr } = getLocalParts(tz);
+        const tz = u.reminder_tz || 'UTC';
+        const { dateStr, timeStr } = getLocalParts(tz);
 
-      const rawRowLog = {
-        reminder_on: u.reminder_on,
-        reminder_time: u.reminder_time,
-        reminder_tz: u.reminder_tz,
-        last_reminder_sent_date: u.last_reminder_sent_date
-      };
+        const rawRowLog = {
+          reminder_on: u.reminder_on,
+          reminder_time: u.reminder_time,
+          reminder_tz: u.reminder_tz,
+          last_reminder_sent_date: u.last_reminder_sent_date
+        };
 
-      console.log(`[Scheduler Diagnostic Tick] user_id=${u.user_id} | utc_server=${serverUtcIso} | local_tz=${tz} (local_time=${timeStr}, local_date=${dateStr}) | raw_settings=`, JSON.stringify(rawRowLog));
+        console.log(`[Scheduler Diagnostic Tick] user_id=${u.user_id} | utc_server=${serverUtcIso} | local_tz=${tz} (local_time=${timeStr}, local_date=${dateStr}) | raw_settings=`, JSON.stringify(rawRowLog));
 
-      // 1. Recordatorio de entrenamiento
-      if (u.reminder_on === 1 && u.reminder_time) {
-        const timeMatch = u.reminder_time === timeStr;
-        console.log(`[Scheduler Diagnostic] user_id=${u.user_id} | training reminder check | configured_time=${u.reminder_time} vs local_time=${timeStr} -> match=${timeMatch ? 'MATCH' : 'NO MATCH'}`);
+        // 1. Recordatorio de entrenamiento
+        if (u.reminder_on === 1 && u.reminder_time) {
+          const timeMatch = u.reminder_time === timeStr;
+          console.log(`[Scheduler Diagnostic] user_id=${u.user_id} | training reminder check | configured_time=${u.reminder_time} vs local_time=${timeStr} -> match=${timeMatch ? 'MATCH' : 'NO MATCH'}`);
 
-        if (timeMatch) {
-          const sentToday = u.last_reminder_sent_date === dateStr;
-          console.log(`[Scheduler Diagnostic] user_id=${u.user_id} | training reminder already_sent_today check | last_sent=${u.last_reminder_sent_date}, today=${dateStr} -> status=${sentToday ? 'DESCARTADO (ya enviado hoy)' : 'PASAS (enviar)'}`);
+          if (timeMatch) {
+            const sentToday = u.last_reminder_sent_date === dateStr;
+            console.log(`[Scheduler Diagnostic] user_id=${u.user_id} | training reminder already_sent_today check | last_sent=${u.last_reminder_sent_date}, today=${dateStr} -> status=${sentToday ? 'DESCARTADO (ya enviado hoy)' : 'PASAS (enviar)'}`);
 
-          if (!sentToday) {
-            console.log(`[Scheduler] Disparando recordatorio de entrenamiento para user_id=${u.user_id} a las ${timeStr} (${tz})`);
-            // Buscar idioma del usuario si existe
-            let lang = 'es';
-            try {
-              const stateRow = db.prepare('SELECT lang FROM user_state WHERE user_id = ?').get(u.user_id);
-              if (stateRow && stateRow.lang) lang = stateRow.lang;
-            } catch {}
+            if (!sentToday) {
+              console.log(`[Scheduler] Disparando recordatorio de entrenamiento para user_id=${u.user_id} a las ${timeStr} (${tz})`);
+              // Buscar idioma del usuario si existe
+              let lang = 'es';
+              try {
+                const stateRow = db.prepare('SELECT lang FROM user_state WHERE user_id = ?').get(u.user_id);
+                if (stateRow && stateRow.lang) lang = stateRow.lang;
+              } catch {}
 
-            // Buscar rutina activa de hoy si la hubiera (opcional, dayReminderPush maneja fallback)
-            const payload = dayReminderPush(lang, null);
-            sendPushToUser(u.user_id, payload).then(res => {
-              db.prepare('UPDATE users SET last_reminder_sent_date = ? WHERE id = ?').run(dateStr, u.user_id);
-              console.log(`[Scheduler Diagnostic] user_id=${u.user_id} | training reminder sent result: sent=${res.sent}, subscriptions=${res.subCount}`);
-            });
+              // Buscar rutina activa de hoy si la hubiera (opcional, dayReminderPush maneja fallback)
+              const payload = dayReminderPush(lang, null);
+              sendPushToUser(u.user_id, payload).then(res => {
+                db.prepare('UPDATE users SET last_reminder_sent_date = ? WHERE id = ?').run(dateStr, u.user_id);
+                console.log(`[Scheduler Diagnostic] Guardado exitoso de last_reminder_sent_date=${dateStr} para user_id=${u.user_id}`);
+                console.log(`[Scheduler Diagnostic] user_id=${u.user_id} | training reminder sent result: sent=${res.sent}, subscriptions=${res.subCount}`);
+              }).catch(err => {
+                console.error(`[Scheduler] Error al enviar/guardar recordatorio de entrenamiento para user_id=${u.user_id}:`, err);
+              });
+            }
           }
         }
-      }
 
-      // 2. Recordatorio de cuota de gym
-      if (u.fee_on === 1) {
-        const feeDue = checkGymFeeDue(u.fee_date, u.fee_interval, dateStr);
-        console.log(`[Scheduler Diagnostic] user_id=${u.user_id} | gym fee check | fee_date=${u.fee_date}, interval=${u.fee_interval} -> match=${feeDue ? 'MATCH' : 'NO MATCH'}`);
+        // 2. Recordatorio de cuota de gym
+        if (u.fee_on === 1) {
+          const feeDue = checkGymFeeDue(u.fee_date, u.fee_interval, dateStr);
+          console.log(`[Scheduler Diagnostic] user_id=${u.user_id} | gym fee check | fee_date=${u.fee_date}, interval=${u.fee_interval} -> match=${feeDue ? 'MATCH' : 'NO MATCH'}`);
 
-        if (feeDue) {
-          const feeSentToday = u.last_fee_reminder_sent_date === dateStr;
-          console.log(`[Scheduler Diagnostic] user_id=${u.user_id} | gym fee already_sent_today check | last_sent=${u.last_fee_reminder_sent_date}, today=${dateStr} -> status=${feeSentToday ? 'DESCARTADO (ya enviado hoy)' : 'PASAS (enviar)'}`);
+          if (feeDue) {
+            const feeSentToday = u.last_fee_reminder_sent_date === dateStr;
+            console.log(`[Scheduler Diagnostic] user_id=${u.user_id} | gym fee already_sent_today check | last_sent=${u.last_fee_reminder_sent_date}, today=${dateStr} -> status=${feeSentToday ? 'DESCARTADO (ya enviado hoy)' : 'PASAS (enviar)'}`);
 
-          if (!feeSentToday) {
-            console.log(`[Scheduler] Disparando recordatorio de cuota de gym para user_id=${u.user_id} (${u.fee_interval})`);
-            let lang = 'es';
-            try {
-              const stateRow = db.prepare('SELECT lang FROM user_state WHERE user_id = ?').get(u.user_id);
-              if (stateRow && stateRow.lang) lang = stateRow.lang;
-            } catch {}
+            if (!feeSentToday) {
+              console.log(`[Scheduler] Disparando recordatorio de cuota de gym para user_id=${u.user_id} (${u.fee_interval})`);
+              let lang = 'es';
+              try {
+                const stateRow = db.prepare('SELECT lang FROM user_state WHERE user_id = ?').get(u.user_id);
+                if (stateRow && stateRow.lang) lang = stateRow.lang;
+              } catch {}
 
-            const payload = gymFeePush(lang, u.fee_interval || 'monthly');
-            sendPushToUser(u.user_id, payload).then(res => {
-              db.prepare('UPDATE users SET last_fee_reminder_sent_date = ? WHERE id = ?').run(dateStr, u.user_id);
-              console.log(`[Scheduler Diagnostic] user_id=${u.user_id} | gym fee reminder sent result: sent=${res.sent}, subscriptions=${res.subCount}`);
-            });
+              const payload = gymFeePush(lang, u.fee_interval || 'monthly');
+              sendPushToUser(u.user_id, payload).then(res => {
+                db.prepare('UPDATE users SET last_fee_reminder_sent_date = ? WHERE id = ?').run(dateStr, u.user_id);
+                console.log(`[Scheduler Diagnostic] Guardado exitoso de last_fee_reminder_sent_date=${dateStr} para user_id=${u.user_id}`);
+                console.log(`[Scheduler Diagnostic] user_id=${u.user_id} | gym fee reminder sent result: sent=${res.sent}, subscriptions=${res.subCount}`);
+              }).catch(err => {
+                console.error(`[Scheduler] Error al enviar/guardar recordatorio de cuota para user_id=${u.user_id}:`, err);
+              });
+            }
           }
         }
+      } catch (userErr) {
+        console.error(`[Scheduler] Error procesando usuario user_id=${u.user_id}:`, userErr);
       }
     }
   } catch (err) {

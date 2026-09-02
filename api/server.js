@@ -282,33 +282,6 @@ function userNow(tz) {
   } catch { return null; }
 }
 
-setInterval(() => {
-  const allUsers = getAllUsers();
-  for (const user of allUsers) {
-    const subs = getSubscriptionsByUserId(user.id);
-    if (!subs.length) continue;
-    const S = readState(user.id);
-    if (!S?.reminder || (!S.reminder.on && !S.reminder.feeOn)) continue;
-    const now = userNow(S.reminder.tz || 'UTC');
-    if (!now || S.reminder.time !== now.hhmm) continue;
-    if (S.reminder.on && user.lastReminder !== now.date && !(S.workouts || []).some(w => w.d === now.date)) {
-      const rid = effectiveRoutineId(S, now.date);
-      if (rid) {
-        const routine = (S.routines || []).find(r => r.id === rid);
-        console.log('reminder firing', user.id, rid);
-        updateUser(user.id, { lastReminder: now.date });
-        // saveDb(); // Eliminado: SQLite persiste automáticamente
-        sendPush(user.id, dayReminderPush(S.lang, routine));
-      }
-    }
-    const feeDate = feeDueDate(S.reminder, now.date);
-    if (feeDate && user.lastFeeReminder !== feeDate) {
-      updateUser(user.id, { lastFeeReminder: feeDate });
-      // saveDb(); // Eliminado: SQLite persiste automáticamente
-      sendPush(user.id, gymFeePush(S.lang, S.reminder.feeInterval));
-    }
-  }
-}, 10000).unref();
 
 /* ---------- sessions (signed cookie) ---------- */
 function sign(payload) {
