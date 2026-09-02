@@ -12,6 +12,8 @@ import { EXIDX, isBodyweightEq } from './exercises.js'
 import { modeOf, fmtSec, isBw, isPerSide, sideReps, MAX_PLANNED_WARMUPS } from './history.js'
 import { uid, todayISO, DAYN, fmtNum, exCount } from './format.js'
 import { t, exerciseNameFor } from './i18n-core.js'
+import { MUSCLE_NAME } from './muscles.js'
+import { syncActiveGroupInState } from './routineGroups.js'
 
 const PLAN_FMT = 1
 const WEEK_ORDER = [1, 2, 3, 4, 5, 6, 0]   // Mon-first, matching the Plan screen
@@ -76,9 +78,25 @@ function cleanIntensifier(x) {
   return null
 }
 
-/** Build the shareable bundle: every routine, the week schedule, referenced customs. */
+/** Build the shareable bundle: active routine group routines, the week schedule, referenced customs. */
 export function buildPlanBundle(S, name) {
-  const routines = (S.routines || []).map(r => ({
+  let activeRoutines = S.routines || []
+  let activeWeek = {}
+  WEEK_ORDER.forEach(d => { if (S.week?.[d]) activeWeek[d] = S.week[d] })
+  let groupName = name || ''
+
+  if (S.routineGroups && S.routineGroups.length > 0) {
+    const activeId = S.activeGroupId || S.routineGroups[0]?.id
+    const activeGroup = S.routineGroups.find(g => g.id === activeId) || S.routineGroups[0]
+    if (activeGroup) {
+      activeRoutines = activeGroup.routines || []
+      activeWeek = {}
+      WEEK_ORDER.forEach(d => { if (activeGroup.week?.[d]) activeWeek[d] = activeGroup.week[d] })
+      if (!groupName) groupName = activeGroup.name
+    }
+  }
+
+  const routines = activeRoutines.map(r => ({
     id: r.id, name: r.name, emoji: r.emoji, ...(r.prog ? { prog: r.prog } : {}), ex: (r.ex || []).map(cleanEx)
   }))
   const usedIds = new Set(routines.flatMap(r => r.ex.map(e => e.id)))
@@ -86,8 +104,8 @@ export function buildPlanBundle(S, name) {
     .filter(c => usedIds.has(c.id))
     .map(c => ({ id: c.id, n: c.n, bp: c.bp, ...(c.desc ? { desc: c.desc } : {}) }))
   const week = {}
-  WEEK_ORDER.forEach(d => { if (S.week?.[d]) week[d] = S.week[d] })
-  return { lauyim_plan: PLAN_FMT, exported: todayISO(), name: name || '', week, routines, customEx }
+  WEEK_ORDER.forEach(d => { if (activeWeek[d]) week[d] = activeWeek[d] })
+  return { lauyim_plan: PLAN_FMT, exported: todayISO(), name: groupName, week, routines, customEx }
 }
 
 /**
@@ -141,7 +159,7 @@ export function parsePlan(raw) {
  *  - schedule: optional; when on, the shared week REPLACES yours (days the shared plan
  *    leaves empty become rest days — a half-overwritten week would silently mix two plans)
  */
-export function mergePlan(s, bundle, { schedule } = {}) {
+export function mergePlan(s, bundle, { schedule, groupName } = {}) {
   s.customEx = s.customEx || []
   const exIdMap = {}
   bundle.customEx.forEach(c => {
@@ -151,11 +169,13 @@ export function mergePlan(s, bundle, { schedule } = {}) {
     exIdMap[c.id] = nid
     s.customEx.push({ id: nid, n: c.n, bp: c.bp, ...(c.desc ? { desc: c.desc } : {}) })
   })
+
+  const newRoutines = []
   const ridMap = {}
   bundle.routines.forEach(r => {
     const nid = uid()
     ridMap[r.id] = nid
-    s.routines.push({
+    newRoutines.push({
       id: nid,
       name: r.name || t('Shared routine'),
       emoji: r.emoji,
@@ -163,12 +183,30 @@ export function mergePlan(s, bundle, { schedule } = {}) {
       ex: (r.ex || []).map(e => ({ ...e, id: exIdMap[e.id] || e.id }))
     })
   })
+
+  // Sincronizar o inicializar el grupo activo actual en routineGroups
+  syncActiveGroupInState(s)
+
+  // Crear un nuevo grupo de rutinas para el plan importado sin afectar el grupo activo actual
+  const finalGroupName = (groupName !== undefined && groupName !== null && groupName.trim() !== '') ? groupName.trim() : (bundle.name || t('Plan importado'))
+  const newWeek = {}
   if (schedule) {
-    WEEK_ORDER.forEach(d => { delete s.week[d] })
     Object.entries(bundle.week || {}).forEach(([d, oldId]) => {
-      if (ridMap[oldId]) s.week[d] = ridMap[oldId]
+      if (ridMap[oldId]) newWeek[d] = ridMap[oldId]
     })
   }
+
+  const newGroup = {
+    id: uid(),
+    name: finalGroupName,
+    routines: newRoutines,
+    week: newWeek,
+    createdAt: Date.now()
+  }
+
+  s.routineGroups = s.routineGroups || []
+  s.routineGroups.push(newGroup)
+
   return { routines: bundle.routines.length }
 }
 
@@ -208,7 +246,8 @@ function routineHTML(r, unit) {
     const items = u.map(e => {
       const ex = EXIDX[e.id]
       const name = ex ? exerciseNameFor(ex) : t('Unknown exercise')
-      const part = ex && ex.bp && ex.bp !== 'cardio' ? `<span class="part">${esc(ex.bp)}</span>` : ''
+      const muscleLabel = ex && ex.bp && ex.bp !== 'cardio' ? (MUSCLE_NAME[ex.bp] || ex.bp) : ''
+      const part = muscleLabel ? `<span class="part">${esc(muscleLabel)}</span>` : ''
       const note = e.note ? `<div class="ex-note">${esc(e.note)}</div>` : ''
       return `<div class="ex"><div class="ex-row"><div class="ex-n">${esc(name)}${part}</div><div class="ex-s">${esc(scheme(e, unit))}</div></div>${note}</div>`
     }).join('')
@@ -223,23 +262,38 @@ function routineHTML(r, unit) {
   </section>`
 }
 
-function weekHTML(S) {
-  const rows = WEEK_ORDER.map(d => {
-    const r = S.routines.find(x => x.id === S.week?.[d])
-    const val = r ? esc(r.name) : `<span class="rest">${esc(t('Rest'))}</span>`
-    return `<div class="w-row"><div class="w-day">${esc(t(DAYN[d]))}</div><div class="w-r">${val}</div></div>`
-  }).join('')
-  return `<div class="week">${rows}</div>`
-}
-
-/** Full self-contained HTML for the print/PDF view. */
+/** Full self-contained HTML for the print/PDF view (clean, Spanish, no branding/watermark/timestamps). */
 export function planPrintHTML(S, owner) {
   const unit = S.unit || 'kg'
-  const routines = (S.routines || []).filter(r => r.ex && r.ex.length)
+  let activeRoutines = S.routines || []
+  let activeWeek = {}
+  WEEK_ORDER.forEach(d => { if (S.week?.[d]) activeWeek[d] = S.week[d] })
+
+  if (S.routineGroups && S.routineGroups.length > 0) {
+    const activeId = S.activeGroupId || S.routineGroups[0]?.id
+    const activeGroup = S.routineGroups.find(g => g.id === activeId) || S.routineGroups[0]
+    if (activeGroup) {
+      activeRoutines = activeGroup.routines || []
+      activeWeek = {}
+      WEEK_ORDER.forEach(d => { if (activeGroup.week?.[d]) activeWeek[d] = activeGroup.week[d] })
+    }
+  }
+
+  const routines = (activeRoutines || []).filter(r => r.ex && r.ex.length)
   const body = routines.length
     ? routines.map(r => routineHTML(r, unit)).join('')
     : `<p class="none">${esc(t('No routines yet.'))}</p>`
-  const sub = [owner, todayISO()].filter(Boolean).map(esc).join(' · ')
+
+  const weekHTMLActive = () => {
+    const wk = activeWeek
+    return `<div class="week">${WEEK_ORDER.map(d => {
+      const rid = wk[d]
+      const rt = routines.find(x => x.id === rid)
+      const val = rt ? `<span class="w-r">${esc(rt.name)}</span>` : `<span class="rest">${esc(t('Rest'))}</span>`
+      return `<div class="w-row"><div class="w-day">${esc(t(DAYN[d]))}</div><div class="w-r">${val}</div></div>`
+    }).join('')}</div>`
+  }
+
   return `<!doctype html><html><head><meta charset="utf-8">
 <title>${esc(t('Weekly Training Plan'))}</title>
 <style>
@@ -253,9 +307,7 @@ export function planPrintHTML(S, owner) {
   }
   .doc { max-width: 720px; margin: 0 auto; }
   header { border-bottom: 2px solid #16181d; padding-bottom: 12px; margin-bottom: 20px; }
-  header .kicker { font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: #6a7a3a; font-weight: 700; }
-  header h1 { font-size: 27px; letter-spacing: -.02em; margin: 3px 0 0; }
-  header .sub { color: #6b7180; font-size: 13px; margin-top: 4px; }
+  header h1 { font-size: 27px; letter-spacing: -.02em; margin: 0; }
 
   h3.block { font-size: 12px; letter-spacing: .1em; text-transform: uppercase; color: #8a90a0; margin: 0 0 8px; font-weight: 700; }
 
@@ -284,20 +336,15 @@ export function planPrintHTML(S, owner) {
   .ss { break-inside: avoid; page-break-inside: avoid; border-left: 3px solid #cfe08a; padding-left: 12px; margin: 4px 0; }
   .ss-tag { font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: #6a7a3a; font-weight: 700; padding-top: 4px; }
   .ss .ex:first-of-type { padding-top: 2px; }
-
-  footer { margin-top: 26px; padding-top: 10px; border-top: 1px solid #eef0f4; color: #a2a8b6; font-size: 11px; text-align: center; }
 </style></head>
 <body><div class="doc">
   <header>
-    <div class="kicker">lauyim</div>
     <h1>${esc(t('Weekly Training Plan'))}</h1>
-    ${sub ? `<div class="sub">${sub}</div>` : ''}
   </header>
   <h3 class="block">${esc(t('Week schedule'))}</h3>
-  ${weekHTML(S)}
+  ${weekHTMLActive()}
   <h3 class="block">${esc(t('Routines'))}</h3>
   ${body}
-  <footer>${esc(t('Made with lauyim'))} · lauyim.duarte-santos.ch</footer>
 </div></body></html>`
 }
 

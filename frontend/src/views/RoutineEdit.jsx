@@ -163,12 +163,26 @@ export default function RoutineEdit() {
 
           <div
             className={'item' + (inSS.has(i) ? ' in-ss' : '')}
+            draggable
+            onDragStart={ev => ev.dataTransfer.setData('text/plain', i)}
+            onDragOver={ev => ev.preventDefault()}
+            onDrop={ev => {
+              ev.preventDefault()
+              const from = parseInt(ev.dataTransfer.getData('text/plain'), 10)
+              if (!isNaN(from) && from !== i) {
+                edit(ex => {
+                  const [item] = ex.splice(from, 1)
+                  ex.splice(i, 0, item)
+                  cleanupSg(ex)
+                })
+              }
+            }}
             style={
               isCardioBlock
-                ? { gridColumn: '1 / -1', borderLeft: '4px solid var(--acc)', background: 'var(--surface-2)' }
+                ? { gridColumn: '1 / -1', borderLeft: '4px solid var(--acc)', background: 'var(--surface-2)', cursor: 'grab' }
                 : isStretchBlock
-                ? { borderLeft: '4px solid var(--label-3)' }
-                : {}
+                ? { borderLeft: '4px solid var(--label-3)', cursor: 'grab' }
+                : { cursor: 'grab' }
             }
             onClick={() => {
               exConfigSheet(ex, e, cfg => edit(x => { if (x[i]) x[i] = { id: x[i]?.id || e.id, sg: x[i]?.sg, ...cfg } }), () => edit(x => { x.splice(i, 1); cleanupSg(x) }), r)

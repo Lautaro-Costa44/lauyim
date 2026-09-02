@@ -49,7 +49,7 @@ export function confirmSheet(opts) {
 function InputDialog({ title, message, placeholder, defaultValue, confirmText, cancelText, onConfirm, close }) {
   const [val, setVal] = useState(defaultValue || '')
   const inputRef = useRef(null)
-  useEffect(() => { inputRef.current?.focus(); inputRef.current?.select?.() }, [])
+  useEffect(() => { /* no autofocus */ }, [])
   return <div style={{ textAlign: 'center', padding: '4px 0' }}>
     {title && <h3 style={{ marginBottom: 8 }}>{title}</h3>}
     {message && <div className="muted" style={{ marginBottom: 18, lineHeight: 1.5 }}>{message}</div>}
@@ -980,6 +980,7 @@ function PlanTools({ close }) {
   const st = useStore(s => s.S)
   const user = useStore(s => s.user)
   const fileRef = useRef(null)
+  const [sharingQr, setSharingQr] = useState(false)
   const hasRoutines = (st.routines || []).some(r => r.ex && r.ex.length)
 
   const exportFile = async () => {
@@ -990,6 +991,27 @@ function PlanTools({ close }) {
     const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; a.click(); URL.revokeObjectURL(a.href)
     close(); toast(t('Plan file saved — send it to a friend'))
   }
+
+  const shareQr = async () => {
+    setSharingQr(true)
+    try {
+      const bundle = buildPlanBundle(st, user?.name ? t('{0}’s plan', user.name) : '')
+      const res = await fetch('/api/share/plan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(bundle)
+      })
+      if (!res.ok) throw new Error(t('Error al generar código QR'))
+      const { code } = await res.json()
+      close()
+      ui().openSheet(closeModal => <QrShare code={code} close={closeModal} />)
+    } catch (e) {
+      toast(e.message || t('No se pudo compartir por QR'))
+    } finally {
+      setSharingQr(false)
+    }
+  }
+
   const pickFile = ev => {
     const f = ev.target.files[0]; ev.target.value = ''; if (!f) return
     const rd = new FileReader()
@@ -1006,6 +1028,11 @@ function PlanTools({ close }) {
     <Button variant="primary" icon="upload" onClick={exportFile} disabled={!hasRoutines}>{t('Export plan file')}</Button>
     <div className="dim small" style={{ margin: '7px 2px 0', lineHeight: 1.4 }}>{t('A small file a friend imports into their own lauyim — routines only, none of your workouts or weigh-ins.')}</div>
     <div style={{ height: 12 }} />
+    <Button variant="tinted" icon="qrcode" onClick={shareQr} disabled={!hasRoutines || sharingQr}>
+      {sharingQr ? t('Generando...') : t('Compartir por QR')}
+    </Button>
+    <div className="dim small" style={{ margin: '7px 2px 0', lineHeight: 1.4 }}>{t('Genera un código QR temporal (válido por 10 minutos) para compartir el grupo de rutinas activo.')}</div>
+    <div style={{ height: 12 }} />
     <Button variant="tinted" icon="download" onClick={() => { close(); printPlan(st, user?.name || '') }} disabled={!hasRoutines}>{t('Print / Save as PDF')}</Button>
     <div className="dim small" style={{ margin: '7px 2px 0', lineHeight: 1.4 }}>{t('A clean one-page-per-plan printout — no exercise ever splits across a page.')}</div>
     {!hasRoutines && <div className="dim small" style={{ margin: '12px 2px 0' }}>{t('Add an exercise to a routine first — an empty plan has nothing to share.')}</div>}
@@ -1015,12 +1042,39 @@ function PlanTools({ close }) {
   </>
 }
 
+function QrShare({ code, close }) {
+  const qrUrl = `${window.location.origin}/#/import?code=${code}`
+  const imgUrl = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(qrUrl)}`
+  const [copied, setCopied] = useState(false)
+
+  const copyLink = () => {
+    navigator.clipboard.writeText(qrUrl)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+
+  return <>
+    <h3>{t('Compartir por QR')}</h3>
+    <div className="muted small" style={{ marginBottom: 14 }}>{t('Escaneá este código QR o compartí el enlace. Expira en 10 minutos.')}</div>
+    <div style={{ textAlign: 'center', marginBottom: 16 }}>
+      <img src={imgUrl} alt="QR Code" style={{ width: 200, height: 200, borderRadius: 12, background: '#fff', padding: 10, border: '1px solid var(--sep)' }} />
+    </div>
+    <div style={{ marginBottom: 14, wordBreak: 'break-all', fontSize: '0.85rem' }} className="muted">
+      {qrUrl}
+    </div>
+    <Button variant="primary" icon="copy" onClick={copyLink}>
+      {copied ? t('¡Enlace copiado!') : t('Copiar enlace')}
+    </Button>
+  </>
+}
+
 export const planImportSheet = bundle => ui().openSheet(close => <PlanImport bundle={bundle} close={close} />)
 
 function PlanImport({ bundle, close }) {
-  const [schedule, setSchedule] = useState(false)
+  const [schedule, setSchedule] = useState(true)
+  const [groupName, setGroupName] = useState(bundle.name || '')
   const apply = () => {
-    update(s => mergePlan(s, bundle, { schedule }))
+    update(s => mergePlan(s, bundle, { schedule, groupName }))
     close()
     toast(t('Added {0} routines to your plan', bundle.routineCount))
     nav('/plan')
@@ -1034,6 +1088,17 @@ function PlanImport({ bundle, close }) {
         ? ' · ' + t(bundle.scheduledDays === 1 ? 'scheduled on {0} day' : 'scheduled on {0} days', bundle.scheduledDays)
         : ''}
     </div>
+    <div style={{ marginBottom: 14 }}>
+      <div className="dim small" style={{ marginBottom: 4 }}>{t('Nombre del grupo de rutinas')}</div>
+      <input
+        className="input"
+        type="text"
+        value={groupName}
+        onChange={e => setGroupName(e.target.value)}
+        placeholder={bundle.name || t('Plan importado')}
+        maxLength={50}
+      />
+    </div>
     <div className="dim small" style={{ marginBottom: 14, lineHeight: 1.4 }}>{t('These are added as new routines — nothing you already have is changed.')}</div>
     {bundle.dropped > 0 && <div className="small" style={{ color: 'var(--yellow)', marginBottom: 14, lineHeight: 1.4 }}>
       {t(bundle.dropped === 1
@@ -1041,7 +1106,7 @@ function PlanImport({ bundle, close }) {
         : '{0} exercises in the file aren’t in your library and were left out.', bundle.dropped)}
     </div>}
     {bundle.scheduledDays > 0 && <div className="row between" style={{ padding: '10px 2px', borderTop: '1px solid var(--sep)', borderBottom: '1px solid var(--sep)', marginBottom: 16, gap: 12 }}>
-      <div><div className="tt" style={{ fontSize: 15 }}>{t('Use this weekly schedule')}</div><div className="small dim">{t('Replaces your current Mon–Sun assignments.')}</div></div>
+      <div><div className="tt" style={{ fontSize: 15 }}>{t('Usar la distribución de días de la rutina importada')}</div><div className="small dim">{t('Aplica la programación semanal incluida en el plan importado.')}</div></div>
       <Switch checked={schedule} onChange={setSchedule} />
     </div>}
     <Button variant="primary" onClick={apply}>{t('Add to my plan')}</Button>
@@ -1464,16 +1529,17 @@ function FinishSummary({ w, prs, e1prs = [], close }) {
     <Button variant="primary" onClick={() => { close(); nav('/home') }}>{t('Nice!')}</Button>
   </div>
 }
-export function finishWorkout() {
+export function finishWorkout(isPartial = false) {
   const A = S().active
   if (!A) return
   const done = setsDoneActive(A)
   const total = A.entries.reduce((n, e) => n + e.sets.length, 0)
-  if (!done) { confirmSheet({ title: t('Nothing logged yet'), message: t('You haven’t checked off any sets. Finish the workout anyway?'), confirmText: t('Finish anyway'), onConfirm: doFinishWorkout }); return }
-  if (done < total) { confirmSheet({ title: t('Finish early?'), message: t(total - done === 1 ? '{0} set still unchecked. Finish the workout now?' : '{0} sets still unchecked. Finish the workout now?', total - done), confirmText: t('Finish workout'), onConfirm: doFinishWorkout }); return }
-  doFinishWorkout()
+  const partial = isPartial || (done < total)
+  if (!done) { confirmSheet({ title: t('Nothing logged yet'), message: t('You haven’t checked off any sets. Finish the workout anyway?'), confirmText: t('Finish anyway'), onConfirm: () => doFinishWorkout(true) }); return }
+  if (partial && !isPartial) { confirmSheet({ title: t('Finish early?'), message: t(total - done === 1 ? '{0} set still unchecked. Finish the workout now?' : '{0} sets still unchecked. Finish the workout now?', total - done), confirmText: t('Finish workout'), onConfirm: () => doFinishWorkout(true) }); return }
+  doFinishWorkout(partial)
 }
-function doFinishWorkout() {
+function doFinishWorkout(partial = false) {
   const st = S()
   const A = st.active
   if (!A) return
@@ -1491,6 +1557,7 @@ function doFinishWorkout() {
     end: Date.now(),
     prs,
     snapshotFor: e => EXIDX[e.id]?.custom ? exerciseMuscleSnapshot(EXIDX[e.id]) : null,
+    partial,
   })
   w.vol = workoutVolume(w)
   update(s => {

@@ -6,7 +6,6 @@ import { t } from '../lib/i18n.js'
 import { DEMO, REPO } from '../lib/demo.js'
 import { guestAllowed } from '../lib/guest.js'
 import { useState, useRef, useEffect } from 'react'
-import Icon from '../components/Icon.jsx'
 import { Button } from '../components/ui.jsx'
 
 function RegisterSheet({ close }) {
@@ -16,7 +15,7 @@ function RegisterSheet({ close }) {
   const [code, setCode] = useState('')
   const inviteOnly = !!config?.invite_only
   const ref = useRef(null)
-  useEffect(() => { setTimeout(() => ref.current?.focus(), 250) }, [])
+  useEffect(() => { /* no autofocus */ }, [])
   // Boot already fetched this; retry here only if that attempt failed, so the invite field still
   // appears on an instance whose config arrived late rather than never.
   useEffect(() => { loadConfig() }, [loadConfig])

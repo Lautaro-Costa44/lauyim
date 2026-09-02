@@ -1,11 +1,3 @@
--- ============================================================
--- Esquema SQLite para openGym
--- Migración desde db.json + state-<uid>.json
--- ============================================================
-
--- ============================================================
--- Tablas globales (antes en db.json)
--- ============================================================
 
 -- Usuarios
 CREATE TABLE IF NOT EXISTS users (
@@ -17,11 +9,11 @@ CREATE TABLE IF NOT EXISTS users (
   last_reminder TEXT,           -- ISO date
   last_fee_reminder TEXT        -- ISO date
 );
-
+ 
 -- Índices para usuarios
 CREATE INDEX IF NOT EXISTS idx_users_admin ON users(admin);
 CREATE INDEX IF NOT EXISTS idx_users_disabled ON users(disabled);
-
+ 
 -- Credenciales WebAuthn
 CREATE TABLE IF NOT EXISTS credentials (
   id TEXT PRIMARY KEY,
@@ -32,10 +24,10 @@ CREATE TABLE IF NOT EXISTS credentials (
   created_at INTEGER NOT NULL,
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
-
+ 
 -- Índices para credenciales
 CREATE INDEX IF NOT EXISTS idx_credentials_user_id ON credentials(user_id);
-
+ 
 -- Suscripciones Web Push
 CREATE TABLE IF NOT EXISTS subscriptions (
   endpoint TEXT PRIMARY KEY,
@@ -44,10 +36,10 @@ CREATE TABLE IF NOT EXISTS subscriptions (
   created_at INTEGER NOT NULL,
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
-
+ 
 -- Índices para suscripciones
 CREATE INDEX IF NOT EXISTS idx_subscriptions_user_id ON subscriptions(user_id);
-
+ 
 -- Invites
 CREATE TABLE IF NOT EXISTS invites (
   code TEXT PRIMARY KEY,
@@ -58,18 +50,18 @@ CREATE TABLE IF NOT EXISTS invites (
   FOREIGN KEY (created_by) REFERENCES users(id),
   FOREIGN KEY (used_by) REFERENCES users(id)
 );
-
+ 
 -- Índices para invites
 CREATE INDEX IF NOT EXISTS idx_invites_used_by ON invites(used_by);
 CREATE INDEX IF NOT EXISTS idx_invites_revoked ON invites(revoked);
-
+ 
 -- Presets de rutinas
 CREATE TABLE IF NOT EXISTS presets (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
   emoji TEXT NOT NULL
 );
-
+ 
 -- Ejercicios de presets
 CREATE TABLE IF NOT EXISTS preset_exercises (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -86,14 +78,14 @@ CREATE TABLE IF NOT EXISTS preset_exercises (
   side INTEGER DEFAULT 0,
   FOREIGN KEY (preset_id) REFERENCES presets(id) ON DELETE CASCADE
 );
-
+ 
 -- Índices para preset_exercises
 CREATE INDEX IF NOT EXISTS idx_preset_exercises_preset_id ON preset_exercises(preset_id);
-
+ 
 -- ============================================================
 -- Tablas de estado por usuario (antes en state-<uid>.json)
 -- ============================================================
-
+ 
 -- Estado principal del usuario (metadata)
 CREATE TABLE IF NOT EXISTS user_state (
   user_id TEXT PRIMARY KEY,
@@ -126,7 +118,11 @@ CREATE TABLE IF NOT EXISTS user_state (
   equip_filter_on INTEGER DEFAULT 0,
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
-
+ 
+-- COMANDOS ALTER TABLE PARA BASES YA EXISTENTES (user_state):
+-- ALTER TABLE user_state ADD COLUMN onboarding_completado INTEGER DEFAULT 0;
+-- ALTER TABLE user_state ADD COLUMN onboarding_stats_completado INTEGER DEFAULT 0;
+ 
 -- Rutinas
 CREATE TABLE IF NOT EXISTS routines (
   id TEXT PRIMARY KEY,
@@ -136,10 +132,10 @@ CREATE TABLE IF NOT EXISTS routines (
   created_at INTEGER NOT NULL,
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
-
+ 
 -- Índices para rutinas
 CREATE INDEX IF NOT EXISTS idx_routines_user_id ON routines(user_id);
-
+ 
 -- Ejercicios de rutinas
 CREATE TABLE IF NOT EXISTS routine_exercises (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -159,10 +155,10 @@ CREATE TABLE IF NOT EXISTS routine_exercises (
   note TEXT,
   FOREIGN KEY (routine_id) REFERENCES routines(id) ON DELETE CASCADE
 );
-
+ 
 -- Índices para routine_exercises
 CREATE INDEX IF NOT EXISTS idx_routine_exercises_routine_id ON routine_exercises(routine_id);
-
+ 
 -- Plan semanal (week)
 CREATE TABLE IF NOT EXISTS week_plan (
   user_id TEXT NOT NULL,
@@ -172,7 +168,7 @@ CREATE TABLE IF NOT EXISTS week_plan (
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
   FOREIGN KEY (routine_id) REFERENCES routines(id) ON DELETE SET NULL
 );
-
+ 
 -- Plan de día específico (dayPlan)
 CREATE TABLE IF NOT EXISTS day_plan (
   user_id TEXT NOT NULL,
@@ -182,11 +178,11 @@ CREATE TABLE IF NOT EXISTS day_plan (
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
   FOREIGN KEY (routine_id) REFERENCES routines(id) ON DELETE SET NULL
 );
-
+ 
 -- Índices para day_plan
 CREATE INDEX IF NOT EXISTS idx_day_plan_user_id ON day_plan(user_id);
 CREATE INDEX IF NOT EXISTS idx_day_plan_date ON day_plan(date);
-
+ 
 -- Sesiones de entrenamiento (workouts)
 CREATE TABLE IF NOT EXISTS workouts (
   id TEXT PRIMARY KEY,
@@ -199,15 +195,19 @@ CREATE TABLE IF NOT EXISTS workouts (
   bw REAL,                     -- bodyweight
   vol REAL,                    -- volumen total
   note TEXT,
+  partial INTEGER DEFAULT 0,   -- 1 si el entrenamiento fue finalizado parcialmente
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
   FOREIGN KEY (routine_id) REFERENCES routines(id) ON DELETE SET NULL
 );
-
+ 
+-- COMANDOS ALTER TABLE PARA BASES YA EXISTENTES (workouts):
+-- ALTER TABLE workouts ADD COLUMN partial INTEGER DEFAULT 0;
+ 
 -- Índices para workouts (CRÍTICO para calendario y fatiga)
 CREATE INDEX IF NOT EXISTS idx_workouts_user_id ON workouts(user_id);
 CREATE INDEX IF NOT EXISTS idx_workouts_date ON workouts(date);
 CREATE INDEX IF NOT EXISTS idx_workouts_start ON workouts(start);
-
+ 
 -- Entries de workouts (ejercicios en una sesión)
 CREATE TABLE IF NOT EXISTS workout_entries (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -220,10 +220,10 @@ CREATE TABLE IF NOT EXISTS workout_entries (
   muscle_snapshot TEXT,        -- JSON (para ejercicios custom)
   FOREIGN KEY (workout_id) REFERENCES workouts(id) ON DELETE CASCADE
 );
-
+ 
 -- Índices para workout_entries
 CREATE INDEX IF NOT EXISTS idx_workout_entries_workout_id ON workout_entries(workout_id);
-
+ 
 -- Sets de workout entries
 CREATE TABLE IF NOT EXISTS workout_sets (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -238,10 +238,10 @@ CREATE TABLE IF NOT EXISTS workout_sets (
   rpe REAL,                    -- effort percibido
   FOREIGN KEY (entry_id) REFERENCES workout_entries(id) ON DELETE CASCADE
 );
-
+ 
 -- Índices para workout_sets
 CREATE INDEX IF NOT EXISTS idx_workout_sets_entry_id ON workout_sets(entry_id);
-
+ 
 -- Pesos máximos por ejercicio (exWeights)
 CREATE TABLE IF NOT EXISTS exercise_weights (
   user_id TEXT NOT NULL,
@@ -251,10 +251,10 @@ CREATE TABLE IF NOT EXISTS exercise_weights (
   PRIMARY KEY (user_id, exercise_id),
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
-
+ 
 -- Índices para exercise_weights
 CREATE INDEX IF NOT EXISTS idx_exercise_weights_user_id ON exercise_weights(user_id);
-
+ 
 -- Peso corporal histórico
 CREATE TABLE IF NOT EXISTS bodyweight (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -264,11 +264,11 @@ CREATE TABLE IF NOT EXISTS bodyweight (
   t INTEGER NOT NULL,         -- timestamp ms
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
-
+ 
 -- Índices para bodyweight
 CREATE INDEX IF NOT EXISTS idx_bodyweight_user_id ON bodyweight(user_id);
 CREATE INDEX IF NOT EXISTS idx_bodyweight_date ON bodyweight(date);
-
+ 
 -- Ejercicios custom del usuario
 CREATE TABLE IF NOT EXISTS custom_exercises (
   id TEXT PRIMARY KEY,
@@ -286,15 +286,15 @@ CREATE TABLE IF NOT EXISTS custom_exercises (
   created_at INTEGER NOT NULL,
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
-
--- COMANDO ALTER TABLE PARA CORRER MANUALMENTE EN BASES EXISTENTES (dev.lauyim.online):
+ 
+-- COMANDOS ALTER TABLE PARA BASES YA EXISTENTES (custom_exercises):
 -- ALTER TABLE custom_exercises ADD COLUMN tipo TEXT DEFAULT 'fuerza';
 -- ALTER TABLE custom_exercises ADD COLUMN equipamiento TEXT;
 -- ALTER TABLE custom_exercises ADD COLUMN grupo_muscular TEXT;
-
+ 
 -- Índices para custom_exercises
 CREATE INDEX IF NOT EXISTS idx_custom_exercises_user_id ON custom_exercises(user_id);
-
+ 
 -- Notas por ejercicio (exNotes)
 CREATE TABLE IF NOT EXISTS exercise_notes (
   user_id TEXT NOT NULL,
@@ -303,10 +303,10 @@ CREATE TABLE IF NOT EXISTS exercise_notes (
   PRIMARY KEY (user_id, exercise_id),
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
-
+ 
 -- Índices para exercise_notes
 CREATE INDEX IF NOT EXISTS idx_exercise_notes_user_id ON exercise_notes(user_id);
-
+ 
 -- Reminder settings
 CREATE TABLE IF NOT EXISTS reminder_settings (
   user_id TEXT PRIMARY KEY,
@@ -318,7 +318,7 @@ CREATE TABLE IF NOT EXISTS reminder_settings (
   fee_date TEXT,               -- ISO date
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
-
+ 
 -- Perfiles de equipamiento
 CREATE TABLE IF NOT EXISTS equip_profiles (
   id TEXT PRIMARY KEY,
@@ -328,6 +328,6 @@ CREATE TABLE IF NOT EXISTS equip_profiles (
   created_at INTEGER NOT NULL,
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
-
+ 
 -- Índices para equip_profiles
 CREATE INDEX IF NOT EXISTS idx_equip_profiles_user_id ON equip_profiles(user_id);

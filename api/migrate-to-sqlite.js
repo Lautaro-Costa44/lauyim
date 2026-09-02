@@ -198,8 +198,8 @@ const dayPlanStmt = sqlite.prepare(`
 `);
 
 const workoutStmt = sqlite.prepare(`
-  INSERT OR IGNORE INTO workouts (id, user_id, date, start, end, routine_id, name, bw, vol, note)
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  INSERT OR IGNORE INTO workouts (id, user_id, date, start, end, routine_id, name, bw, vol, note, partial)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `);
 
 const entryStmt = sqlite.prepare(`
@@ -223,8 +223,8 @@ const bodyweightStmt = sqlite.prepare(`
 `);
 
 const customExStmt = sqlite.prepare(`
-  INSERT OR IGNORE INTO custom_exercises (id, user_id, n, bp, eq, tg, mg, sm, st, created_at)
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  INSERT OR IGNORE INTO custom_exercises (id, user_id, n, tipo, equipamiento, grupo_muscular, bp, eq, tg, mg, sm, st, created_at)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `);
 
 const exNoteStmt = sqlite.prepare(`
@@ -337,7 +337,8 @@ for (const file of stateFiles) {
         workout.name,
         workout.bw || null,
         workout.vol || null,
-        workout.note || null
+        workout.note || null,
+        workout.partial ? 1 : 0
       );
 
       // Entries
@@ -387,10 +388,14 @@ for (const file of stateFiles) {
 
     // Custom exercises
     for (const ex of S.customEx || []) {
+      const equipArr = Array.isArray(ex.equipamiento) ? ex.equipamiento : (ex.eq ? [ex.eq] : null);
       customExStmt.run(
         ex.id,
         uid,
         ex.n,
+        ex.tipo || 'fuerza',
+        equipArr ? JSON.stringify(equipArr) : (ex.equipamiento ? JSON.stringify(ex.equipamiento) : null),
+        ex.grupo_muscular || ex.tg || ex.bp || null,
         ex.bp || null,
         ex.eq || null,
         ex.tg || null,

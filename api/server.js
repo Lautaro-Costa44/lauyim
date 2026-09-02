@@ -385,8 +385,18 @@ const clearCookie = COOKIE === LEGACY_COOKIE
 const CSRF_EXEMPT = new Set([
   'POST /api/register/options', 'POST /api/register/verify',
   'POST /api/login/options', 'POST /api/login/verify',
-  'POST /api/auth/device/start', 'GET /api/auth/device/poll'
+  'POST /api/auth/device/start', 'GET /api/auth/device/poll',
+  'POST /api/share/plan'
 ]);
+
+/* ---------- Shared Plans Store (QR sharing, TTL 10 mins) ---------- */
+const sharedPlans = new Map();
+setInterval(() => {
+  const now = Date.now();
+  for (const [code, item] of sharedPlans.entries()) {
+    if (now > item.expiresAt) sharedPlans.delete(code);
+  }
+}, 60000).unref();
 const originsMatch = (a, b) => a.replace(/\/+$/, '') === b.replace(/\/+$/, '');
 function csrfOk(req, key) {
   if (req.method === 'GET' || req.method === 'HEAD' || req.method === 'OPTIONS') return true;
@@ -550,7 +560,26 @@ if (AUDIT_ON) {
 const routes = {
   'GET /api/health': async (req, res) => json(res, 200, { ok: true, users: getAllUsers().length }),
 
-  'GET /api/config': async (req, res) => json(res, 200, { invite_only: INVITE_ONLY, allow_guest: ALLOW_GUEST, survey_enabled: SURVEY_ENABLED }),
+  'POST /api/share/plan': async (req, res) => {
+    const body = await readBody(req);
+    if (!body || !body.lauyim_plan) {
+      return json(res, 400, { error: 'invalid plan data' });
+    }
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    let code = '';
+    for (let i = 0; i < 4; i++) {
+      code += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    while (sharedPlans.has(code)) {
+      code = '';
+      for (let i = 0; i < 4; i++) {
+        code += chars.charAt(Math.floor(Math.random() * chars.length));
+      }
+    }
+    const expiresAt = Date.now() + 10 * 60 * 1000; // 10 minutos exactos
+    sharedPlans.set(code, { data: body, expiresAt });
+    return json(res, 200, { code });
+  },
 
   'POST /api/support': async (req, res) => {
     const body = await readBody(req);
@@ -1183,6 +1212,17 @@ http.createServer(async (req, res) => {
     return res.end();
   }
   const url = new URL(req.url, 'http://x');
+
+  if (req.method === 'GET' && url.pathname.startsWith('/api/share/plan/')) {
+    const code = url.pathname.replace('/api/share/plan/', '').trim().toUpperCase();
+    const item = sharedPlans.get(code);
+    if (!item || Date.now() > item.expiresAt) {
+      if (item) sharedPlans.delete(code);
+      return json(res, 404, { error: 'code not found or expired' });
+    }
+    return json(res, 200, item.data);
+  }
+
   const key = req.method + ' ' + url.pathname;
 
   // Verificar expiración de licencia por fecha (si está configurada y vencida)

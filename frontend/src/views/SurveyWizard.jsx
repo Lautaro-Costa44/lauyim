@@ -170,8 +170,6 @@ export default function SurveyWizard() {
   const S = useStore(s => s.S)
   const { update } = useStore()
   const toast = useUI(s => s.toast)
-  const addGroup = useStore(s => s.addGroup)
-  const setActiveGroupId = useStore(s => s.setActiveGroupId)
 
   const [resp, setResp] = useState(() => ({
     ...DEF_RESPUESTAS,
@@ -352,18 +350,6 @@ export default function SurveyWizard() {
     const tieneRutinasPrevias = S.routines.length > 0
 
     const guardar = () => {
-      const existingGroups = useStore.getState().S.routineGroups || []
-      const groupName = respuestas.splitPreferido || t('Mi Plan')
-      const existingGroup = existingGroups.find(g => g.name.trim().toLowerCase() === groupName.toLowerCase())
-      let groupId
-      if (existingGroup) {
-        groupId = existingGroup.id
-      } else {
-        const newGroup = addGroup(groupName, routines, week, true)
-        groupId = newGroup.id
-      }
-      setActiveGroupId(groupId)
-
       update(st => {
         st.routines = routines
         st.week = week
@@ -655,7 +641,7 @@ export default function SurveyWizard() {
                     const isStretch = ex.isStretch
                     return (
                       <div key={exIdx} className="row between" style={{ padding: '8px 4px', borderBottom: exIdx < r.ex.length - 1 ? '1px solid var(--sep)' : 'none' }}>
-                        <div>
+                        <div style={{ cursor: 'pointer', flex: 1 }} onClick={() => exerciseDetailSheetNoAdd(exObj)}>
                           <div style={{ fontWeight: 600, fontSize: 14 }}>{nombre}</div>
                           <div className="small muted">
                             {isCardio ? `${ex.min} min` : isStretch ? `${ex.sec} s` : `${ex.sets} ${t('series')} × ${ex.reps} ${t('reps')}`}
