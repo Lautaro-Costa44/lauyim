@@ -1043,12 +1043,12 @@ function PlanTools({ close }) {
 }
 
 function QrShare({ code, close }) {
-  const url = `${window.location.origin}/#/import?code=${code}`
-  const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(url)}`
+  const qrUrl = `${window.location.origin}/#/import?code=${code}`
+  const imgUrl = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(qrUrl)}`
   const [copied, setCopied] = useState(false)
 
   const copyLink = () => {
-    navigator.clipboard.writeText(url)
+    navigator.clipboard.writeText(qrUrl)
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
   }
@@ -1057,10 +1057,10 @@ function QrShare({ code, close }) {
     <h3>{t('Compartir por QR')}</h3>
     <div className="muted small" style={{ marginBottom: 14 }}>{t('Escaneá este código QR o compartí el enlace. Expira en 10 minutos.')}</div>
     <div style={{ textAlign: 'center', marginBottom: 16 }}>
-      <img src={qrUrl} alt="QR Code" style={{ width: 200, height: 200, borderRadius: 12, background: '#fff', padding: 10, border: '1px solid var(--sep)' }} />
+      <img src={imgUrl} alt="QR Code" style={{ width: 200, height: 200, borderRadius: 12, background: '#fff', padding: 10, border: '1px solid var(--sep)' }} />
     </div>
     <div style={{ marginBottom: 14, wordBreak: 'break-all', fontSize: '0.85rem' }} className="muted">
-      {url}
+      {qrUrl}
     </div>
     <Button variant="primary" icon="copy" onClick={copyLink}>
       {copied ? t('¡Enlace copiado!') : t('Copiar enlace')}

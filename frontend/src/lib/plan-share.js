@@ -168,11 +168,13 @@ export function mergePlan(s, bundle, { schedule } = {}) {
     exIdMap[c.id] = nid
     s.customEx.push({ id: nid, n: c.n, bp: c.bp, ...(c.desc ? { desc: c.desc } : {}) })
   })
+
+  const newRoutines = []
   const ridMap = {}
   bundle.routines.forEach(r => {
     const nid = uid()
     ridMap[r.id] = nid
-    s.routines.push({
+    newRoutines.push({
       id: nid,
       name: r.name || t('Shared routine'),
       emoji: r.emoji,
@@ -180,12 +182,41 @@ export function mergePlan(s, bundle, { schedule } = {}) {
       ex: (r.ex || []).map(e => ({ ...e, id: exIdMap[e.id] || e.id }))
     })
   })
+
+  // Sincronizar grupo activo actual antes de crear uno nuevo si existen grupos
+  if (s.routineGroups && s.routineGroups.length > 0) {
+    // Sincronizar estado actual
+    const activeId = s.activeGroupId || s.routineGroups[0]?.id
+    const activeGroup = s.routineGroups.find(g => g.id === activeId)
+    if (activeGroup) {
+      activeGroup.routines = JSON.parse(JSON.stringify(s.routines || []))
+      activeGroup.week = JSON.parse(JSON.stringify(s.week || {}))
+    }
+  }
+
+  // Crear un nuevo grupo de rutinas para el plan importado para que no se agregue al activo
+  const groupName = bundle.name || t('Plan importado')
+  const newWeek = {}
   if (schedule) {
-    WEEK_ORDER.forEach(d => { delete s.week[d] })
     Object.entries(bundle.week || {}).forEach(([d, oldId]) => {
-      if (ridMap[oldId]) s.week[d] = ridMap[oldId]
+      if (ridMap[oldId]) newWeek[d] = ridMap[oldId]
     })
   }
+
+  const newGroup = {
+    id: uid(),
+    name: groupName,
+    routines: newRoutines,
+    week: newWeek,
+    createdAt: Date.now()
+  }
+
+  s.routineGroups = s.routineGroups || []
+  s.routineGroups.push(newGroup)
+  s.activeGroupId = newGroup.id
+  s.routines = JSON.parse(JSON.stringify(newRoutines))
+  s.week = schedule ? newWeek : {}
+
   return { routines: bundle.routines.length }
 }
 
