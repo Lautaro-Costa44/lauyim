@@ -1,20 +1,17 @@
-<?xml version="1.0" standalone="no"?>
-<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 20010904//EN"
- "http://www.w3.org/TR/2001/REC-SVG-20010904/DTD/svg10.dtd">
-<svg version="1.0" xmlns="http://www.w3.org/2000/svg"
- width="512.000000pt" height="512.000000pt" viewBox="0 0 512.000000 512.000000"
- preserveAspectRatio="xMidYMid meet">
-
-<g transform="translate(0.000000,512.000000) scale(0.100000,-0.100000)"
-fill="#000000" stroke="none">
-<path d="M0 2560 l0 -2560 2560 0 2560 0 0 2560 0 2560 -2560 0 -2560 0 0
--2560z m2100 580 c0 -1051 2 -1164 16 -1193 23 -45 44 -66 86 -88 36 -18 71
--19 793 -19 415 0 755 -3 755 -7 0 -4 -62 -70 -137 -145 l-138 -138 -892 0
--893 0 0 1183 0 1182 197 192 c109 106 201 192 206 192 4 1 7 -521 7 -1159z
-m1460 -685 l0 -535 -135 0 -135 0 2 462 3 461 130 73 c72 39 131 72 133 73 1
-1 2 -240 2 -534z m-350 -150 l0 -385 -135 0 -135 0 0 323 0 323 127 62 c69 34
-130 62 135 62 4 0 8 -173 8 -385z m-350 -110 l0 -275 -140 0 -140 0 0 208 0
-209 138 66 c75 37 138 67 140 67 1 0 2 -124 2 -275z m-350 -110 l0 -165 -140
-0 -140 0 0 103 0 103 128 61 c70 34 133 62 140 62 9 1 12 -38 12 -164z"/>
-</g>
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="48" height="48">
+  <rect width="48" height="48" rx="10" fill="#0A0A0A"/>
+  <defs>
+    <linearGradient id="faviconGreen" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#4ADE80"/>
+      <stop offset="100%" stop-color="#10B981"/>
+    </linearGradient>
+  </defs>
+  <g transform="translate(-1.5, 0)">
+    <path d="M 14 39 L 14 11 L 19 6 L 19 35 L 34 35 L 39 39 Z" fill="#FFFFFF"/>
+    <polygon points="20.5,30.5 23,29.5 23,33.5 20.5,33.5" fill="url(#faviconGreen)"/>
+    <polygon points="24.5,26.5 27,25 27,33.5 24.5,33.5" fill="url(#faviconGreen)"/>
+    <polygon points="28.5,22 31,20.5 31,33.5 28.5,33.5" fill="url(#faviconGreen)"/>
+    <polygon points="32.5,17.5 35,16 35,33.5 32.5,33.5" fill="url(#faviconGreen)"/>
+  </g>
 </svg>
