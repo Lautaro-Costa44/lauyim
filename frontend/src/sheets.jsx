@@ -1071,7 +1071,7 @@ function QrShare({ code, close }) {
 export const planImportSheet = bundle => ui().openSheet(close => <PlanImport bundle={bundle} close={close} />)
 
 function PlanImport({ bundle, close }) {
-  const [schedule, setSchedule] = useState(false)
+  const [schedule, setSchedule] = useState(true)
   const [groupName, setGroupName] = useState(bundle.name || '')
   const apply = () => {
     update(s => mergePlan(s, bundle, { schedule, groupName }))
@@ -1106,7 +1106,7 @@ function PlanImport({ bundle, close }) {
         : '{0} exercises in the file aren’t in your library and were left out.', bundle.dropped)}
     </div>}
     {bundle.scheduledDays > 0 && <div className="row between" style={{ padding: '10px 2px', borderTop: '1px solid var(--sep)', borderBottom: '1px solid var(--sep)', marginBottom: 16, gap: 12 }}>
-      <div><div className="tt" style={{ fontSize: 15 }}>{t('Use this weekly schedule')}</div><div className="small dim">{t('Replaces your current Mon–Sun assignments.')}</div></div>
+      <div><div className="tt" style={{ fontSize: 15 }}>{t('Usar la distribución de días de la rutina importada')}</div><div className="small dim">{t('Aplica la programación semanal incluida en el plan importado.')}</div></div>
       <Switch checked={schedule} onChange={setSchedule} />
     </div>}
     <Button variant="primary" onClick={apply}>{t('Add to my plan')}</Button>
