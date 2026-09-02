@@ -214,7 +214,7 @@ function ExerciseBlock({ entryIdx, compact, suggestion, dismissed, onDismiss, on
           <Icon name="lightbulb" style={{ color: 'var(--yellow)' }} />
           <span>
             {suggestion.weight_suggested != null
-              ? t('Sugerencia: {0} {2} x {1} reps', suggestion.weight_suggested, suggestion.reps_suggested, unitOf(S))
+              ? t('Sugerencia: {0} {2} x {1} reps', suggestion.weight_suggested, suggestion.reps_suggested, S.unit)
               : t('Sugerencia: {0} reps', suggestion.reps_suggested)}
           </span>
         </div>
