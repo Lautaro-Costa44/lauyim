@@ -13,6 +13,7 @@ import {
   generateAuthenticationOptions, verifyAuthenticationResponse
 } from '@simplewebauthn/server';
 import { dayReminderPush, gymFeePush, restTimerPush, testPush } from './push-messages.js';
+import { startScheduler } from './scheduler.js';
 import { verifyError } from './verify-error.js';
 import {
   initDatabase,
@@ -25,6 +26,7 @@ import {
   createCredential,
   updateCredentialCounter,
   getSubscriptionsByUserId,
+  getAllSubscriptions,
   createSubscription,
   deleteSubscription,
   deleteSubscriptionsByUserId,
@@ -652,6 +654,10 @@ const routes = {
     }
   },
 
+  'GET /api/config': async (req, res) => {
+    json(res, 200, { invite_only: INVITE_ONLY, allow_guest: ALLOW_GUEST });
+  },
+
   'GET /api/me': async (req, res) => {
     const user = readSession(req);
     if (!user) return json(res, 401, { error: 'not signed in' });
@@ -1171,6 +1177,60 @@ const routes = {
     json(res, 200, { ok: true });
   },
 
+  'POST /api/admin/push': async (req, res) => {
+    const admin = requireAdmin(req, res); if (!admin) return;
+    const body = await readBody(req);
+    const titulo = String(body.titulo || '').trim();
+    const texto = String(body.texto || '').trim();
+    if (!titulo || !texto) return json(res, 400, { error: 'titulo and texto required' });
+    if (titulo.length > 50) return json(res, 400, { error: 'titulo exceeds 50 characters' });
+    if (texto.length > 120) return json(res, 400, { error: 'texto exceeds 120 characters' });
+
+    let redirectUrl = body.redirectUrl ? String(body.redirectUrl).trim() : null;
+    if (redirectUrl) {
+      try {
+        const u = new URL(redirectUrl);
+        if (!['http:', 'https:'].includes(u.protocol)) throw new Error('invalid protocol');
+      } catch {
+        return json(res, 400, { error: 'invalid redirectUrl' });
+      }
+    }
+
+    const rawSubs = getAllSubscriptions();
+    if (!rawSubs.length) return json(res, 200, { ok: true, sent: 0 });
+
+    const payload = {
+      title: titulo,
+      body: texto,
+      tag: 'admin-custom',
+      data: {
+        redirectUrl: redirectUrl
+      }
+    };
+
+    const payloadStr = JSON.stringify(payload);
+    let sent = 0;
+    for (const s of rawSubs) {
+      const keys = typeof s.keys === 'string' ? JSON.parse(s.keys) : s.keys;
+      try {
+        await webpush.sendNotification({ endpoint: s.endpoint, keys }, payloadStr, {
+          urgency: 'high',
+          timeout: PUSH_TIMEOUT_MS,
+          agent: PUSH_AGENT
+        });
+        sent++;
+      } catch (e) {
+        console.error('admin push send failed', s.endpoint, e.statusCode, e.body || e.message);
+        if (e.statusCode === 404 || e.statusCode === 410) {
+          deleteSubscription(s.endpoint);
+        }
+      }
+    }
+
+    audit(req, 'admin.push.send', { user: admin, msg: titulo, sent });
+    json(res, 200, { ok: true, sent });
+  },
+
   /* ---------- activity log ---------- */
   'GET /api/admin/audit': async (req, res) => {
     if (!requireAdmin(req, res)) return;
@@ -1243,4 +1303,7 @@ http.createServer(async (req, res) => {
     console.error(key, e);
     if (!res.headersSent) json(res, 500, { error: 'server error' });
   }
-}).listen(PORT, () => console.log(`gym-api on :${PORT} (rpID=${RP_ID}, origin=${ORIGIN})`));
+}).listen(PORT, () => {
+  console.log(`gym-api on :${PORT} (rpID=${RP_ID}, origin=${ORIGIN})`);
+  startScheduler();
+});

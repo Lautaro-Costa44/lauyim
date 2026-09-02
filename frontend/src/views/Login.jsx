@@ -123,7 +123,7 @@ export default function Login() {
     catch (e) { if (e.name !== 'NotAllowedError' && e.name !== 'AbortError') useUI.getState().toast(e.message || t('Sign-in failed')) }
   }
   const head = <>
-    <div style={{ display: 'flex', justifyContent: 'center', paddingTop: 32 }}>
+    <div style={{ display: 'flex', justifyContent: 'center', paddingTop: 12 }}>
       <img src="icon-login.PNG" alt="lauyim" style={{ width: 96, height: 96, objectFit: 'contain' }} />
     </div>
     <h1 style={{ fontSize: 34, fontWeight: 700, letterSpacing: '-.028em', margin: '-18px 0 4px' }}>lauyim</h1>

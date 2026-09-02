@@ -17,6 +17,14 @@ export function initDatabase() {
   db.pragma('journal_mode = WAL');
   db.pragma('foreign_keys = ON');
 
+  // Migraciones adicionales si faltan columnas en bases existentes
+  try {
+    db.exec(`ALTER TABLE users ADD COLUMN last_reminder_sent_date TEXT;`);
+  } catch {}
+  try {
+    db.exec(`ALTER TABLE users ADD COLUMN last_fee_reminder_sent_date TEXT;`);
+  } catch {}
+
   // Crear tablas principales si no existen
   db.exec(`
     CREATE TABLE IF NOT EXISTS users (
@@ -24,7 +32,9 @@ export function initDatabase() {
       name TEXT NOT NULL,
       admin INTEGER DEFAULT 0,
       disabled INTEGER DEFAULT 0,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      last_reminder_sent_date TEXT,
+      last_fee_reminder_sent_date TEXT
     );
 
     CREATE TABLE IF NOT EXISTS user_state (
@@ -206,6 +216,11 @@ export function updateCredentialCounter(id, counter) {
 export function getSubscriptionsByUserId(userId) {
   const stmt = getDatabase().prepare('SELECT * FROM subscriptions WHERE user_id = ?');
   return stmt.all(userId);
+}
+
+export function getAllSubscriptions() {
+  const stmt = getDatabase().prepare('SELECT * FROM subscriptions');
+  return stmt.all();
 }
 
 export function createSubscription(sub) {

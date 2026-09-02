@@ -15,15 +15,21 @@ self.addEventListener('push', e => {
     icon: 'icon-512.png',
     badge: 'icon-180.png',
     tag: data.tag || 'lauyim',
-    renotify: true
+    renotify: true,
+    data: data.data || {}
   }))
 })
 self.addEventListener('notificationclick', e => {
   e.notification.close()
-  e.waitUntil(self.clients.matchAll({ type: 'window' }).then(clients => {
-    const c = clients.find(c => 'focus' in c)
-    return c ? c.focus() : self.clients.openWindow('./')
-  }))
+  const redirectUrl = e.notification.data && e.notification.data.redirectUrl
+  e.waitUntil(
+    redirectUrl
+      ? self.clients.openWindow(redirectUrl)
+      : self.clients.matchAll({ type: 'window' }).then(clients => {
+          const c = clients.find(c => 'focus' in c)
+          return c ? c.focus() : self.clients.openWindow('./')
+        })
+  )
 })
 
 self.addEventListener('fetch', e => {
