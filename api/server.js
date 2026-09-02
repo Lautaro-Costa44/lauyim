@@ -652,6 +652,11 @@ const routes = {
     }
   },
 
+
+  'GET /api/config': async (req, res) => {
+    json(res, 200, { invite_only: INVITE_ONLY, allow_guest: ALLOW_GUEST });
+  },
+
   'GET /api/me': async (req, res) => {
     const user = readSession(req);
     if (!user) return json(res, 401, { error: 'not signed in' });
