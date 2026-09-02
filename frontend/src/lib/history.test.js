@@ -516,6 +516,21 @@ describe('applyIntensifierPlan', () => {
     expect(out[1].clusters.reduce((sum, c) => sum + c.r, 0)).toBe(out[1].r)
   })
 
+  it('applies topback intensifier: top set preserves prescription, generates backoff sets at pct% with backoffReps, preserving warmups', () => {
+    const sets = [
+      { w: 40, r: 5, done: false, phase: 'warmup' },
+      { w: 100, r: 3, done: false }
+    ]
+    const out = applyIntensifierPlan(sets, { intensifier: { type: 'topback', count: 3, pct: 85, backoffReps: 10 } })
+    expect(out).toEqual([
+      { w: 40, r: 5, done: false, phase: 'warmup' },
+      { w: 100, r: 3, done: false },
+      { w: 85, r: 10, done: false },
+      { w: 85, r: 10, done: false },
+      { w: 85, r: 10, done: false },
+    ])
+  })
+
   it('the warm-up reps come from the exercise\'s own configured reps, not the rest-pause total', () => {
     const sets = [{ w: 60, r: 8, done: false }]
     const out = applyIntensifierPlan(sets, { reps: 5, intensifier: { type: 'restpause', totalReps: 20, restSec: 15 } })

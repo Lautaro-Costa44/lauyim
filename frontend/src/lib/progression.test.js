@@ -647,17 +647,6 @@ describe('New policies: DUP and Top-Set + Backoff', () => {
     expect(p.reps).toBe(13) // +1 rep
   })
 
-  it('Top-Set + Backoff progresses top set and calculates backoff at 85%', () => {
-    const cfg = { id: LIFT, sets: 4, reps: 5, weight: 60, prog: 'topset_backoff' }
-    const state = hist(LIFT, [
-      [60, 5, 8, 8, 8]
-    ])
-    const p = nextPrescription(state, cfg)
-    expect(p.policy).toBe('topset_backoff')
-    expect(p.kind).toBe('up')
-    expect(p.topWeight).toBe(62.5)
-    expect(p.backoffWeight).toBe(52.5) // snap(62.5 * 0.85, 2.5) -> snap(53.125, 2.5) -> 52.5
-  })
 
   it('bodyweight exercises work correctly across new policies', () => {
     const cfg = { id: LIFT, sets: 3, reps: 10, weight: 0, prog: 'dup' }

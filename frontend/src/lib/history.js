@@ -361,7 +361,7 @@ function buildWorkSets(S, cfg, options = {}) {
  */
 export function applyIntensifierPlan(sets, cfg) {
   const kind = cfg && cfg.intensifier && cfg.intensifier.type
-  if (kind !== 'dropset' && kind !== 'restpause') return sets
+  if (kind !== 'dropset' && kind !== 'restpause' && kind !== 'topback') return sets
   if (kind === 'dropset') {
     const count = Math.max(1, Math.round(cfg.intensifier.count) || 1)
     const pct = cfg.intensifier.pct
@@ -372,6 +372,21 @@ export function applyIntensifierPlan(sets, cfg) {
       for (let k = 0; k < count; k++) { w = nextDropWeight(w, pct); drops.push({ w, r: s.r }) }
       return { ...s, type: 'dropset', drops }
     })
+  }
+  if (kind === 'topback') {
+    const count = Math.max(1, Math.round(cfg.intensifier.count) || 3)
+    const pct = cfg.intensifier.pct ?? 85
+    const backoffReps = Math.max(1, Math.round(cfg.intensifier.backoffReps) || 10)
+    const warmupRows = sets.filter(s => isWarmupRow(s))
+    const workSets = sets.filter(s => !isWarmupRow(s))
+    if (!workSets.length) return sets
+    const topSet = workSets[0]
+    const backoffWeight = Math.round(Math.max(0, (topSet.w || 0) * pct / 100) * 2) / 2
+    const backoffSets = []
+    for (let k = 0; k < count; k++) {
+      backoffSets.push({ w: backoffWeight, r: backoffReps, done: false })
+    }
+    return [...warmupRows, topSet, ...backoffSets]
   }
   // Rest-pause trains as exactly two sets, not one per configured `sets` count: a warm-up at
   // the exercise's own configured reps, then a single rest-pause work set. Doing the full

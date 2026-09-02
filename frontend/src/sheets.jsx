@@ -382,7 +382,7 @@ function ExerciseDetail({ ex, close, noAdd = false }) {
       <Button icon="pencil" style={{ flex: 1 }} onClick={() => { close(); customExSheet(ex) }}>{t('Edit')}</Button>
       <Button variant="danger" icon="trash" style={{ flex: 1 }} onClick={() => deleteCustomEx(ex, close)}>{t('Delete')}</Button>
     </div>}
-    {!isCardio(ex) && !isStretch(ex) && <OneRM ex={ex} />}
+    {!isCardio(ex) && !isStretch(ex) && !isBw(ex) && <OneRM ex={ex} />}
     {instrFor(ex).length > 0 &&<><h4 className="sec">{t('How to')}{!INSTR_LANGS.includes(getLang()) && <span className="dim" style={{ textTransform: 'none', letterSpacing: 0 }}> · {t('instructions in English')}</span>}</h4><ol className="steps-list">{instrFor(ex).map((s, i) => <li key={i}>{s}</li>)}</ol></>}
   </>
 }
@@ -909,6 +909,8 @@ function ExConfig({ ex, existing, onSave, onDelete, close, routine, initial }) {
             ...x,
             intensifier: !v ? undefined : v === 'dropset'
               ? { type: 'dropset', count: x.intensifier?.count || 1, pct: x.intensifier?.pct || 20 }
+              : v === 'topback'
+              ? { type: 'topback', count: x.intensifier?.count || 3, pct: x.intensifier?.pct || 85, backoffReps: x.intensifier?.backoffReps || 10 }
               // The activation set's own reps are whatever "Reps" above already says — a
               // rest-pause plan only adds two new numbers: the total extra reps wanted past
               // it, and the rest between the bursts that total gets split into.
@@ -917,6 +919,7 @@ function ExConfig({ ex, existing, onSave, onDelete, close, routine, initial }) {
           options={[
             { value: '', label: t('None') },
             { value: 'dropset', label: t('Drop-set') },
+            { value: 'topback', label: t('Top-set + Backoff') },
             { value: 'restpause', label: t('Rest-pause') },
           ]} />
       </div>
@@ -925,6 +928,14 @@ function ExConfig({ ex, existing, onSave, onDelete, close, routine, initial }) {
           onChange={v => setC(x => ({ ...x, intensifier: { ...x.intensifier, count: Math.max(1, v) } }))} />
         <Stepper label={t('Weight drop (%)')} value={c.intensifier.pct} step={5} decimal={false}
           onChange={v => setC(x => ({ ...x, intensifier: { ...x.intensifier, pct: Math.max(5, v) } }))} />
+      </div>}
+      {c.intensifier?.type === 'topback' && <div className="row cfgrow" style={{ marginBottom: 8 }}>
+        <Stepper label={t('Backoff sets')} value={c.intensifier.count} step={1} decimal={false}
+          onChange={v => setC(x => ({ ...x, intensifier: { ...x.intensifier, count: Math.max(1, v) } }))} />
+        <Stepper label={t('Weight drop (%)')} value={c.intensifier.pct} step={5} decimal={false}
+          onChange={v => setC(x => ({ ...x, intensifier: { ...x.intensifier, pct: Math.max(5, v) } }))} />
+        <Stepper label={t('Backoff reps')} value={c.intensifier.backoffReps} step={1} decimal={false}
+          onChange={v => setC(x => ({ ...x, intensifier: { ...x.intensifier, backoffReps: Math.max(1, v) } }))} />
       </div>}
       {c.intensifier?.type === 'restpause' && <div className="row cfgrow" style={{ marginBottom: 8 }}>
         <Stepper label={t('Rest-pause reps')} value={c.intensifier.totalReps} step={1} decimal={false}
@@ -935,6 +946,8 @@ function ExConfig({ ex, existing, onSave, onDelete, close, routine, initial }) {
       {c.intensifier?.type && <div className="small dim" style={{ marginTop: -2, marginBottom: 18 }}>
         {c.intensifier.type === 'dropset'
           ? t('Every set becomes a drop-set: after the main set, {0} drop(s) with no rest, each about {1}% lighter.', c.intensifier.count, c.intensifier.pct)
+          : c.intensifier.type === 'topback'
+          ? t('Cada set se convierte en top-set + backoff: 1 serie principal al peso prescrito, luego {0} serie(s) de backoff al {1}% de ese peso, {2} reps cada una.', c.intensifier.count, c.intensifier.pct, c.intensifier.backoffReps)
           : t('Every set becomes rest-pause: {0} reps to start, then {1} more split into short bursts, {2}s rest before each, roughly halving each time.', c.reps || 0, c.intensifier.totalReps, c.intensifier.restSec)}
       </div>}
     </>}
