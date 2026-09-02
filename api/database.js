@@ -621,6 +621,7 @@ export function getWorkoutsByUserId(userId) {
       bw: row.bw,
       vol: row.vol,
       note: row.note,
+      partial: row.partial === 1,
       entries
     };
   });
@@ -645,8 +646,8 @@ function saveWorkouts(userId, workouts, validRoutineIds = null) {
   // Eliminar workouts viejos
   const deleteStmt = db.prepare('DELETE FROM workouts WHERE user_id = ?');
   const workoutStmt = db.prepare(`
-    INSERT OR REPLACE INTO workouts (id, user_id, date, start, end, routine_id, name, bw, vol, note)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT OR REPLACE INTO workouts (id, user_id, date, start, end, routine_id, name, bw, vol, note, partial)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   const entryStmt = db.prepare(`
@@ -687,7 +688,8 @@ function saveWorkouts(userId, workouts, validRoutineIds = null) {
         workout.name,
         workout.bw || null,
         workout.vol || null,
-        workout.note || null
+        workout.note || null,
+        workout.partial ? 1 : 0
       );
 
       for (const entry of workout.entries || []) {
