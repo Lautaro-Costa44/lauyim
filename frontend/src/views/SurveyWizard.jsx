@@ -641,7 +641,7 @@ export default function SurveyWizard() {
                     const isStretch = ex.isStretch
                     return (
                       <div key={exIdx} className="row between" style={{ padding: '8px 4px', borderBottom: exIdx < r.ex.length - 1 ? '1px solid var(--sep)' : 'none' }}>
-                        <div>
+                        <div style={{ cursor: 'pointer', flex: 1 }} onClick={() => exerciseDetailSheetNoAdd(exObj)}>
                           <div style={{ fontWeight: 600, fontSize: 14 }}>{nombre}</div>
                           <div className="small muted">
                             {isCardio ? `${ex.min} min` : isStretch ? `${ex.sec} s` : `${ex.sets} ${t('series')} × ${ex.reps} ${t('reps')}`}

@@ -980,6 +980,7 @@ function PlanTools({ close }) {
   const st = useStore(s => s.S)
   const user = useStore(s => s.user)
   const fileRef = useRef(null)
+  const [sharingQr, setSharingQr] = useState(false)
   const hasRoutines = (st.routines || []).some(r => r.ex && r.ex.length)
 
   const exportFile = async () => {
@@ -990,6 +991,27 @@ function PlanTools({ close }) {
     const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; a.click(); URL.revokeObjectURL(a.href)
     close(); toast(t('Plan file saved — send it to a friend'))
   }
+
+  const shareQr = async () => {
+    setSharingQr(true)
+    try {
+      const bundle = buildPlanBundle(st, user?.name ? t('{0}’s plan', user.name) : '')
+      const res = await fetch('/api/share/plan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(bundle)
+      })
+      if (!res.ok) throw new Error(t('Error al generar código QR'))
+      const { code } = await res.json()
+      close()
+      ui().openSheet(closeModal => <QrShare code={code} close={closeModal} />)
+    } catch (e) {
+      toast(e.message || t('No se pudo compartir por QR'))
+    } finally {
+      setSharingQr(false)
+    }
+  }
+
   const pickFile = ev => {
     const f = ev.target.files[0]; ev.target.value = ''; if (!f) return
     const rd = new FileReader()
@@ -1006,12 +1028,43 @@ function PlanTools({ close }) {
     <Button variant="primary" icon="upload" onClick={exportFile} disabled={!hasRoutines}>{t('Export plan file')}</Button>
     <div className="dim small" style={{ margin: '7px 2px 0', lineHeight: 1.4 }}>{t('A small file a friend imports into their own lauyim — routines only, none of your workouts or weigh-ins.')}</div>
     <div style={{ height: 12 }} />
+    <Button variant="tinted" icon="qrcode" onClick={shareQr} disabled={!hasRoutines || sharingQr}>
+      {sharingQr ? t('Generando...') : t('Compartir por QR')}
+    </Button>
+    <div className="dim small" style={{ margin: '7px 2px 0', lineHeight: 1.4 }}>{t('Genera un código QR temporal (válido por 10 minutos) para compartir el grupo de rutinas activo.')}</div>
+    <div style={{ height: 12 }} />
     <Button variant="tinted" icon="download" onClick={() => { close(); printPlan(st, user?.name || '') }} disabled={!hasRoutines}>{t('Print / Save as PDF')}</Button>
     <div className="dim small" style={{ margin: '7px 2px 0', lineHeight: 1.4 }}>{t('A clean one-page-per-plan printout — no exercise ever splits across a page.')}</div>
     {!hasRoutines && <div className="dim small" style={{ margin: '12px 2px 0' }}>{t('Add an exercise to a routine first — an empty plan has nothing to share.')}</div>}
     <h4 className="sec">{t('Got a plan from a friend?')}</h4>
     <Button variant="ghost" icon="folder" onClick={() => fileRef.current?.click()}>{t('Import a plan file')}</Button>
     <input ref={fileRef} type="file" accept="application/json,.json" onChange={pickFile} hidden />
+  </>
+}
+
+function QrShare({ code, close }) {
+  const url = `${window.location.origin}/#/import?code=${code}`
+  const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(url)}`
+  const [copied, setCopied] = useState(false)
+
+  const copyLink = () => {
+    navigator.clipboard.writeText(url)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+
+  return <>
+    <h3>{t('Compartir por QR')}</h3>
+    <div className="muted small" style={{ marginBottom: 14 }}>{t('Escaneá este código QR o compartí el enlace. Expira en 10 minutos.')}</div>
+    <div style={{ textAlign: 'center', marginBottom: 16 }}>
+      <img src={qrUrl} alt="QR Code" style={{ width: 200, height: 200, borderRadius: 12, background: '#fff', padding: 10, border: '1px solid var(--sep)' }} />
+    </div>
+    <div style={{ marginBottom: 14, wordBreak: 'break-all', fontSize: '0.85rem' }} className="muted">
+      {url}
+    </div>
+    <Button variant="primary" icon="copy" onClick={copyLink}>
+      {copied ? t('¡Enlace copiado!') : t('Copiar enlace')}
+    </Button>
   </>
 }
 
