@@ -13,6 +13,7 @@ import { modeOf, fmtSec, isBw, isPerSide, sideReps, MAX_PLANNED_WARMUPS } from '
 import { uid, todayISO, DAYN, fmtNum, exCount } from './format.js'
 import { t, exerciseNameFor } from './i18n-core.js'
 import { MUSCLE_NAME } from './muscles.js'
+import { syncActiveGroupInState } from './routineGroups.js'
 
 const PLAN_FMT = 1
 const WEEK_ORDER = [1, 2, 3, 4, 5, 6, 0]   // Mon-first, matching the Plan screen
@@ -158,7 +159,7 @@ export function parsePlan(raw) {
  *  - schedule: optional; when on, the shared week REPLACES yours (days the shared plan
  *    leaves empty become rest days — a half-overwritten week would silently mix two plans)
  */
-export function mergePlan(s, bundle, { schedule } = {}) {
+export function mergePlan(s, bundle, { schedule, groupName } = {}) {
   s.customEx = s.customEx || []
   const exIdMap = {}
   bundle.customEx.forEach(c => {
@@ -183,19 +184,11 @@ export function mergePlan(s, bundle, { schedule } = {}) {
     })
   })
 
-  // Sincronizar grupo activo actual antes de crear uno nuevo si existen grupos
-  if (s.routineGroups && s.routineGroups.length > 0) {
-    // Sincronizar estado actual
-    const activeId = s.activeGroupId || s.routineGroups[0]?.id
-    const activeGroup = s.routineGroups.find(g => g.id === activeId)
-    if (activeGroup) {
-      activeGroup.routines = JSON.parse(JSON.stringify(s.routines || []))
-      activeGroup.week = JSON.parse(JSON.stringify(s.week || {}))
-    }
-  }
+  // Sincronizar o inicializar el grupo activo actual en routineGroups
+  syncActiveGroupInState(s)
 
-  // Crear un nuevo grupo de rutinas para el plan importado para que no se agregue al activo
-  const groupName = bundle.name || t('Plan importado')
+  // Crear un nuevo grupo de rutinas para el plan importado sin afectar el grupo activo actual
+  const finalGroupName = (groupName !== undefined && groupName !== null && groupName.trim() !== '') ? groupName.trim() : (bundle.name || t('Plan importado'))
   const newWeek = {}
   if (schedule) {
     Object.entries(bundle.week || {}).forEach(([d, oldId]) => {
@@ -205,7 +198,7 @@ export function mergePlan(s, bundle, { schedule } = {}) {
 
   const newGroup = {
     id: uid(),
-    name: groupName,
+    name: finalGroupName,
     routines: newRoutines,
     week: newWeek,
     createdAt: Date.now()
@@ -213,9 +206,6 @@ export function mergePlan(s, bundle, { schedule } = {}) {
 
   s.routineGroups = s.routineGroups || []
   s.routineGroups.push(newGroup)
-  s.activeGroupId = newGroup.id
-  s.routines = JSON.parse(JSON.stringify(newRoutines))
-  s.week = schedule ? newWeek : {}
 
   return { routines: bundle.routines.length }
 }

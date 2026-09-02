@@ -1072,8 +1072,9 @@ export const planImportSheet = bundle => ui().openSheet(close => <PlanImport bun
 
 function PlanImport({ bundle, close }) {
   const [schedule, setSchedule] = useState(false)
+  const [groupName, setGroupName] = useState(bundle.name || '')
   const apply = () => {
-    update(s => mergePlan(s, bundle, { schedule }))
+    update(s => mergePlan(s, bundle, { schedule, groupName }))
     close()
     toast(t('Added {0} routines to your plan', bundle.routineCount))
     nav('/plan')
@@ -1086,6 +1087,17 @@ function PlanImport({ bundle, close }) {
       {bundle.scheduledDays > 0
         ? ' · ' + t(bundle.scheduledDays === 1 ? 'scheduled on {0} day' : 'scheduled on {0} days', bundle.scheduledDays)
         : ''}
+    </div>
+    <div style={{ marginBottom: 14 }}>
+      <div className="dim small" style={{ marginBottom: 4 }}>{t('Nombre del grupo de rutinas')}</div>
+      <input
+        className="input"
+        type="text"
+        value={groupName}
+        onChange={e => setGroupName(e.target.value)}
+        placeholder={bundle.name || t('Plan importado')}
+        maxLength={50}
+      />
     </div>
     <div className="dim small" style={{ marginBottom: 14, lineHeight: 1.4 }}>{t('These are added as new routines — nothing you already have is changed.')}</div>
     {bundle.dropped > 0 && <div className="small" style={{ color: 'var(--yellow)', marginBottom: 14, lineHeight: 1.4 }}>
