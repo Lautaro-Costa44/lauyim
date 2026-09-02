@@ -119,6 +119,8 @@ CREATE TABLE IF NOT EXISTS user_state (
   active_equip_id TEXT,
   equip_filter_on INTEGER DEFAULT 0,
   progression_tips INTEGER DEFAULT 1,
+  progression_type TEXT NULL,
+  progression_config TEXT NULL,
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
  

@@ -57,6 +57,8 @@ test('getProgressionSuggestion calculates linear, double, dup and handles edge c
     _ts: Date.now(),
     unit: 'kg',
     progressionTips: true,
+    progressionType: 'linear',
+    progressionConfig: { increment_kg: 2.5 },
     routines: [
       {
         id: 'r_lin',
@@ -64,9 +66,8 @@ test('getProgressionSuggestion calculates linear, double, dup and handles edge c
         emoji: '💪',
         created: Date.now(),
         ex: [
-          { id: 'ex_bench', sets: 3, reps: 10, weight: 60, progressionType: 'linear', progressionConfig: { increment_kg: 2.5 } },
-          { id: 'ex_bw', sets: 3, reps: 15, bodyweight: true, progressionType: 'linear', progressionConfig: { increment_kg: 2.5 } },
-          { id: 'ex_cardio', sets: 1, mode: 'cardio', progressionType: 'linear', progressionConfig: { increment_kg: 2.5 } }
+          { id: 'ex_bench', sets: 3, reps: 10, weight: 60 },
+          { id: 'ex_cardio', sets: 1, mode: 'cardio' }
         ]
       }
     ],
@@ -101,11 +102,41 @@ test('getProgressionSuggestion calculates linear, double, dup and handles edge c
 
   dbMod.saveUserState('u1', state);
 
-  const sug = dbMod.getProgressionSuggestion('u1', 'ex_bench', 'r_lin');
-  assert.equal(sug.weight_suggested, 62.5);
-  assert.equal(sug.reps_suggested, 10);
-  assert.equal(sug.progression_type, 'linear');
+  // 1. Sin tipo de progresión configurado (debe retornar null)
+  const stateNoType = { ...state, progressionType: null };
+  dbMod.saveUserState('u1', stateNoType);
+  assert.equal(dbMod.getProgressionSuggestion('u1', 'ex_bench', 'r_lin'), null);
 
+  // 2. Lineal
+  dbMod.saveUserState('u1', { ...state, progressionType: 'linear', progressionConfig: { increment_kg: 2.5 } });
+  const sugLin = dbMod.getProgressionSuggestion('u1', 'ex_bench', 'r_lin');
+  assert.equal(sugLin.weight_suggested, 62.5);
+  assert.equal(sugLin.reps_suggested, 10);
+  assert.equal(sugLin.progression_type, 'linear');
+
+  // 3. Doble progresión
+  dbMod.saveUserState('u1', { ...state, progressionType: 'double', progressionConfig: { rep_range_min: 8, rep_range_max: 10, increment_kg: 2.5 } });
+  const sugDouble = dbMod.getProgressionSuggestion('u1', 'ex_bench', 'r_lin');
+  assert.equal(sugDouble.weight_suggested, 62.5);
+  assert.equal(sugDouble.reps_suggested, 8);
+  assert.equal(sugDouble.progression_type, 'double');
+
+  // 4. DUP
+  dbMod.saveUserState('u1', {
+    ...state,
+    progressionType: 'dup',
+    progressionConfig: {
+      pattern: [
+        { day_index: 0, rep_target: 8, intensity_pct: 80 }
+      ]
+    }
+  });
+  const sugDup = dbMod.getProgressionSuggestion('u1', 'ex_bench', 'r_lin');
+  assert.equal(sugDup.reps_suggested, 8);
+  assert.equal(sugDup.progression_type, 'dup');
+
+  // Exclusión cardio
+  dbMod.saveUserState('u1', { ...state, progressionType: 'linear' });
   const sugCardio = dbMod.getProgressionSuggestion('u1', 'ex_cardio', 'r_lin');
   assert.equal(sugCardio, null);
 });

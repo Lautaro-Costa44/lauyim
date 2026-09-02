@@ -39,6 +39,12 @@ export function initDatabase() {
   try {
     db.exec(`ALTER TABLE user_state ADD COLUMN progression_tips INTEGER DEFAULT 1;`);
   } catch {}
+  try {
+    db.exec(`ALTER TABLE user_state ADD COLUMN progression_type TEXT;`);
+  } catch {}
+  try {
+    db.exec(`ALTER TABLE user_state ADD COLUMN progression_config TEXT;`);
+  } catch {}
 
   // Crear tablas principales si no existen
   db.exec(`
@@ -433,6 +439,8 @@ export function getUserState(userId) {
     activeEquipId: row.active_equip_id,
     equipFilterOn: row.equip_filter_on === 1,
     progressionTips: row.progression_tips !== 0,
+    progressionType: row.progression_type || null,
+    progressionConfig: safeJsonParse(row.progression_config, null),
   };
 
   // Cargar relaciones
@@ -460,8 +468,8 @@ export function saveUserState(userId, S) {
       user_id, _ts, unit, rest_sec, rest_pause_sec, sound, keep_awake, lang, theme, accent,
       body, target_w, estado_inicial, onboarding_completado, onboarding_stats_completado, edad, altura, objetivo, nivel, peso_kg, configuracion,
       respuestas_encuesta, rutina_generada, fecha_ultima_encuesta, effort, auto_backup,
-      active_equip_id, equip_filter_on, progression_tips
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      active_equip_id, equip_filter_on, progression_tips, progression_type, progression_config
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
   stateStmt.run(
     userId,
@@ -492,7 +500,9 @@ export function saveUserState(userId, S) {
     S.autoBackup ? 1 : 0,
     S.activeEquipId || null,
     S.equipFilterOn ? 1 : 0,
-    S.progressionTips !== false ? 1 : 0
+    S.progressionTips !== false ? 1 : 0,
+    S.progressionType || null,
+    S.progressionConfig ? JSON.stringify(S.progressionConfig) : null
   );
 
   // Guardar rutinas
@@ -989,42 +999,37 @@ function saveEquipProfiles(userId, profiles) {
 export function getProgressionSuggestion(userId, exerciseId, routineId) {
   const db = getDatabase();
 
-  const stateRow = db.prepare('SELECT progression_tips FROM user_state WHERE user_id = ?').get(userId);
+  const stateRow = db.prepare('SELECT progression_tips, progression_type, progression_config FROM user_state WHERE user_id = ?').get(userId);
   if (stateRow && stateRow.progression_tips === 0) return null;
 
   const customEx = db.prepare('SELECT tipo FROM custom_exercises WHERE user_id = ? AND id = ?').get(userId, exerciseId);
   if (customEx && customEx.tipo === 'cardio') return null;
 
-  let pType = null;
-  let pConfigStr = null;
-  let bodyweight = false;
+  const pType = stateRow ? stateRow.progression_type : null;
+  const pConfigStr = stateRow ? stateRow.progression_config : null;
 
+  if (!pType) return null;
+
+  let bodyweight = false;
   if (routineId) {
-    const routineEx = db.prepare('SELECT progression_type, progression_config, bodyweight FROM routine_exercises WHERE routine_id = ? AND exercise_id = ?').get(routineId, exerciseId);
+    const routineEx = db.prepare('SELECT bodyweight FROM routine_exercises WHERE routine_id = ? AND exercise_id = ?').get(routineId, exerciseId);
     if (routineEx) {
-      pType = routineEx.progression_type;
-      pConfigStr = routineEx.progression_config;
       bodyweight = routineEx.bodyweight === 1;
     }
   }
-
-  if (!pType) {
-    const presetEx = db.prepare('SELECT progression_type, progression_config, bodyweight FROM preset_exercises WHERE exercise_id = ? AND progression_type IS NOT NULL LIMIT 1').get(exerciseId);
+  if (!bodyweight) {
+    const presetEx = db.prepare('SELECT bodyweight FROM preset_exercises WHERE exercise_id = ? AND bodyweight = 1 LIMIT 1').get(exerciseId);
     if (presetEx) {
-      pType = presetEx.progression_type;
-      pConfigStr = presetEx.progression_config;
-      bodyweight = presetEx.bodyweight === 1;
+      bodyweight = true;
     }
   }
-
-  if (!pType) return null;
 
   let config = {};
   if (pConfigStr) {
     try {
       config = JSON.parse(pConfigStr);
     } catch (e) {
-      console.error('Error parsing progression_config for exercise', exerciseId, e);
+      console.error('Error parsing progression_config for user', userId, e);
       return null;
     }
   }

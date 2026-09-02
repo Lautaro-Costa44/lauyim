@@ -252,6 +252,112 @@ export default function Settings() {
       <Row icon="lightbulb" iconTint="var(--yellow)" title={t('Consejos sobre series y pesos en base al historial')}>
         <Switch checked={S.progressionTips !== false} onChange={v => update(s => { s.progressionTips = v })} />
       </Row>
+      {S.progressionTips !== false && (
+        <>
+          <Row title={t('Tipo de progresión')}>
+            <Segmented
+              options={[
+                { value: 'linear', label: t('Lineal') },
+                { value: 'double', label: t('Doble progresión') },
+                { value: 'dup', label: t('DUP') }
+              ]}
+              value={S.progressionType || 'linear'}
+              onChange={v => update(s => {
+                s.progressionType = v;
+                if (!s.progressionConfig) s.progressionConfig = {};
+                if (v === 'linear' && s.progressionConfig.increment_kg == undefined) {
+                  s.progressionConfig.increment_kg = 2.5;
+                } else if (v === 'double') {
+                  if (s.progressionConfig.rep_range_min == undefined) s.progressionConfig.rep_range_min = 8;
+                  if (s.progressionConfig.rep_range_max == undefined) s.progressionConfig.rep_range_max = 12;
+                  if (s.progressionConfig.increment_kg == undefined) s.progressionConfig.increment_kg = 2.5;
+                } else if (v === 'dup') {
+                  // TODO: UI para editar patrón DUP en iteración futura
+                  s.progressionConfig.pattern = [
+                    { day_index: 0, rep_target: 8, intensity_pct: 80 },
+                    { day_index: 1, rep_target: 10, intensity_pct: 75 },
+                    { day_index: 2, rep_target: 12, intensity_pct: 70 }
+                  ];
+                }
+              })}
+            />
+          </Row>
+          {(S.progressionType === 'linear' || !S.progressionType) && (
+            <Row title={t('Incremento en kg')}>
+              <input
+                type="number"
+                step="0.5"
+                min="0.5"
+                style={{ width: 80, padding: '6px 10px', background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text)', textAlign: 'right' }}
+                value={S.progressionConfig?.increment_kg ?? 2.5}
+                onChange={e => {
+                  const val = parseFloat(e.target.value);
+                  update(s => {
+                    if (!s.progressionConfig) s.progressionConfig = {};
+                    s.progressionConfig.increment_kg = isNaN(val) ? 2.5 : val;
+                  });
+                }}
+              />
+            </Row>
+          )}
+          {S.progressionType === 'double' && (
+            <>
+              <Row title={t('Rango de reps')}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <input
+                    type="number"
+                    min="1"
+                    style={{ width: 50, padding: '6px 8px', background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text)', textAlign: 'center' }}
+                    value={S.progressionConfig?.rep_range_min ?? 8}
+                    onChange={e => {
+                      const val = parseInt(e.target.value, 10);
+                      update(s => {
+                        if (!s.progressionConfig) s.progressionConfig = {};
+                        s.progressionConfig.rep_range_min = isNaN(val) ? 8 : val;
+                      });
+                    }}
+                  />
+                  <span>-</span>
+                  <input
+                    type="number"
+                    min="1"
+                    style={{ width: 50, padding: '6px 8px', background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text)', textAlign: 'center' }}
+                    value={S.progressionConfig?.rep_range_max ?? 12}
+                    onChange={e => {
+                      const val = parseInt(e.target.value, 10);
+                      update(s => {
+                        if (!s.progressionConfig) s.progressionConfig = {};
+                        s.progressionConfig.rep_range_max = isNaN(val) ? 12 : val;
+                      });
+                    }}
+                  />
+                </div>
+              </Row>
+              <Row title={t('Incremento en kg')}>
+                <input
+                  type="number"
+                  step="0.5"
+                  min="0.5"
+                  style={{ width: 80, padding: '6px 10px', background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text)', textAlign: 'right' }}
+                  value={S.progressionConfig?.increment_kg ?? 2.5}
+                  onChange={e => {
+                    const val = parseFloat(e.target.value);
+                    update(s => {
+                      if (!s.progressionConfig) s.progressionConfig = {};
+                      s.progressionConfig.increment_kg = isNaN(val) ? 2.5 : val;
+                    });
+                  }}
+                />
+              </Row>
+            </>
+          )}
+          {S.progressionType === 'dup' && (
+            <Row title={t('Patrón DUP')}>
+              <span style={{ fontSize: 13, color: 'var(--text-dim)' }}>{t('Patrón ondulante semanal predefinido (8 reps / 10 reps / 12 reps)')}</span>
+            </Row>
+          )}
+        </>
+      )}
     </Section>
 
     {user && <NotificationsCard S={S} update={update} toast={toast} />}
