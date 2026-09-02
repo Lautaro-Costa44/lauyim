@@ -34,8 +34,8 @@ export default function ImportPlan() {
       .then(data => {
         const bundle = parsePlan(data)
         setLoading(false)
-        planImportSheet(bundle)
         nav('/plan', { replace: true })
+        planImportSheet(bundle)
       })
       .catch(e => {
         setError(e.message || t('No se pudo cargar el plan.'))
