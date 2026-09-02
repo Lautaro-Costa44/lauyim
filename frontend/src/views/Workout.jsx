@@ -70,7 +70,7 @@ function Elapsed({ start }) {
 }
 
 /* ---------- one exercise block (reps: weight×reps · time: a held duration · cardio: duration+speed) ---------- */
-function ExerciseBlock({ entryIdx, compact, suggestion, dismissed, onDismiss, onToggle, onField, onAddSet, onRemoveSet, onAddWarmup, onRemoveSetAt, onStartTimed, onPairPrev, onPairNext }) {
+function ExerciseBlock({ entryIdx, compact, onToggle, onField, onAddSet, onRemoveSet, onAddWarmup, onRemoveSetAt, onStartTimed, onPairPrev, onPairNext }) {
   const S = useStore(s => s.S)
   const update = useStore(s => s.update)
   const working = useUI(s => s.work)
@@ -208,21 +208,6 @@ function ExerciseBlock({ entryIdx, compact, suggestion, dismissed, onDismiss, on
       <Icon name={plan.kind === 'up' ? 'arrowUp' : plan.kind === 'deload' ? 'arrowDown' : 'lightbulb'} />
       <span>{t(...plan.why)}</span>
     </div>}
-    {suggestion && !dismissed && S.progressionTips !== false && (
-      <div className="card" style={{ background: 'var(--surface-2)', padding: '10px 14px', margin: '8px 0 0 0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderRadius: 10 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, fontWeight: 500 }}>
-          <Icon name="lightbulb" style={{ color: 'var(--yellow)' }} />
-          <span>
-            {suggestion.weight_suggested != null
-              ? t('Sugerencia: {0} {2} x {1} reps', suggestion.weight_suggested, suggestion.reps_suggested, S.unit)
-              : t('Sugerencia: {0} reps', suggestion.reps_suggested)}
-          </span>
-        </div>
-        <button className="iconbtn" aria-label={t('Descartar')} onClick={onDismiss}>
-          <Icon name="xmark" style={{ fontSize: 14 }} />
-        </button>
-      </div>
-    )}
     <div className="card" style={{ marginTop: 10, marginBottom: 0 }}>
       {/* the header carries the same eff3 sizing as the rows, or the labels drift off their columns */}
       <div className={'sethead' + (col3 ? ' eff3' : '')}><span className="n-sp" /><span className="w-sp">{col1.hd}</span>{col2 && <span className="r-sp">{col2.hd}</span>}{col3 && <span className="eff-sp">{col3.hd}</span>}{timed && <span className="ck-sp" />}<span className="ck-sp" /></div>
@@ -312,27 +297,6 @@ function ActiveWorkout() {
   const unitIdx = units.findIndex(u => u === unit)
   const isSuperset = unit.length > 1
 
-  const [suggestions, setSuggestions] = useState({})
-  const [dismissed, setDismissed] = useState(new Set())
-
-  useEffect(() => {
-    if (S.progressionTips === false) return
-    const routineId = A.routineId
-    for (const entry of A.entries) {
-      if (suggestions[entry.id] !== undefined || dismissed.has(entry.id)) continue
-      api(`/api/progression-suggestion?exercise_id=${encodeURIComponent(entry.id)}&routine_id=${encodeURIComponent(routineId || '')}`)
-        .then(res => {
-          if (res.suggestion) {
-            setSuggestions(prev => ({ ...prev, [entry.id]: res.suggestion }))
-          } else {
-            setSuggestions(prev => ({ ...prev, [entry.id]: null }))
-          }
-        })
-        .catch(() => {
-          setSuggestions(prev => ({ ...prev, [entry.id]: null }))
-        })
-    }
-  }, [A.entries, A.routineId, S.progressionTips])
   // Superset flow: keep the active exercise in view - completing a set scrolls to the
   // next exercise in the group, then back up to the first exercise of the next round.
   const exRefs = useRef({})
@@ -567,17 +531,11 @@ function ActiveWorkout() {
           {unit.map((idx, k) => <div key={idx} ref={el => { exRefs.current[idx] = el }} className="ss-ex" data-exidx={idx}>
             {k > 0 && <div className="ss-amp">+</div>}
             <ExerciseBlock entryIdx={idx} compact
-              suggestion={suggestions[A.entries[idx]?.id]}
-              dismissed={dismissed.has(A.entries[idx]?.id)}
-              onDismiss={() => setDismissed(prev => new Set(prev).add(A.entries[idx]?.id))}
               onToggle={i => toggle(idx, i)} onField={(i, f, v) => setField(idx, i, f, v)} onAddSet={() => addSet(idx)} onRemoveSet={() => removeSet(idx)} onAddWarmup={() => addWarmup(idx)} onRemoveSetAt={i => removeSetAt(idx, i)} onStartTimed={i => startTimed(idx, i)} />
           </div>)}
         </div>
       ) : (
         <ExerciseBlock entryIdx={cur}
-          suggestion={suggestions[A.entries[cur]?.id]}
-          dismissed={dismissed.has(A.entries[cur]?.id)}
-          onDismiss={() => setDismissed(prev => new Set(prev).add(A.entries[cur]?.id))}
           onToggle={i => toggle(cur, i)} onField={(i, f, v) => setField(cur, i, f, v)} onAddSet={() => addSet(cur)} onRemoveSet={() => removeSet(cur)} onAddWarmup={() => addWarmup(cur)} onRemoveSetAt={i => removeSetAt(cur, i)} onStartTimed={i => startTimed(cur, i)} onPairPrev={onPairPrev} onPairNext={onPairNext} />
       )}
     </> : <div className="empty"><div className="ico"><Icon name="shuffle" /></div>{t('Freestyle workout — add your first exercise.')}</div>}

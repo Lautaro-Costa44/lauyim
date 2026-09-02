@@ -17,7 +17,6 @@ import { startScheduler } from './scheduler.js';
 import { verifyError } from './verify-error.js';
 import {
   initDatabase,
-  getProgressionSuggestion,
   getAllUsers,
   getUserById,
   createUser,
@@ -536,16 +535,6 @@ if (AUDIT_ON) {
 const routes = {
   'GET /api/health': async (req, res) => json(res, 200, { ok: true, users: getAllUsers().length }),
 
-  'GET /api/progression-suggestion': async (req, res) => {
-    const user = readSession(req);
-    if (!user) return json(res, 401, { error: 'unauthorized' });
-    const url = new URL(req.url, 'http://x');
-    const exerciseId = url.searchParams.get('exercise_id');
-    const routineId = url.searchParams.get('routine_id');
-    if (!exerciseId) return json(res, 400, { error: 'missing exercise_id' });
-    const suggestion = getProgressionSuggestion(user.id, exerciseId, routineId);
-    json(res, 200, { suggestion });
-  },
 
   'POST /api/share/plan': async (req, res) => {
     const body = await readBody(req);

@@ -171,7 +171,7 @@ export default {
   'Remove drop': 'Quitar bajada',
   'Remove burst': 'Quitar ráfaga',
   'Rest (s)': 'Descanso (s)',
-  'Drop-set / rest-pause': 'Series descendentes / rest-pause',
+  'Drop-set / rest-pause / top-set back-off': 'Series descendentes / rest-pause / top-set back-off',
   'Intensifier': 'Intensificador',
   'None': 'Ninguno',
   'Drop-set': 'Serie descendente',
