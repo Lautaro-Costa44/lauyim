@@ -7,8 +7,9 @@ data/
 !data/db_espanol.json
 # Local config
 .env
-.env.local
+.env.example
 *.pem
+
 
 # Cloudflare Tunnels credentials
 /etc/cloudflared/
@@ -24,3 +25,4 @@ node_modules/
 node_modules
 .claude/
 .agents/
+docker-compose.yml
