@@ -654,10 +654,6 @@ const routes = {
     }
   },
 
-<<<<<<< HEAD
-=======
-
->>>>>>> a3b5d984886e77ea0b159b75355e5af1aa8e2447
   'GET /api/config': async (req, res) => {
     json(res, 200, { invite_only: INVITE_ONLY, allow_guest: ALLOW_GUEST });
   },
@@ -1307,11 +1303,7 @@ http.createServer(async (req, res) => {
     console.error(key, e);
     if (!res.headersSent) json(res, 500, { error: 'server error' });
   }
-<<<<<<< HEAD
 }).listen(PORT, () => {
   console.log(`gym-api on :${PORT} (rpID=${RP_ID}, origin=${ORIGIN})`);
   startScheduler();
 });
-=======
-}).listen(PORT, () => console.log(`gym-api on :${PORT} (rpID=${RP_ID}, origin=${ORIGIN})`));
->>>>>>> a3b5d984886e77ea0b159b75355e5af1aa8e2447
