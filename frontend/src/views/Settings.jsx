@@ -347,34 +347,34 @@ export default function Settings() {
       />
 
       {S.defaultIntensifier?.type === 'dropset' && <div className="row cfgrow" style={{ marginBottom: 8, paddingLeft: 12 }}>
-        <Stepper label={t('Drops')} value={S.defaultIntensifier.count} step={1} decimal={false}
+        <Stepper label={t('Drops')} value={S.defaultIntensifier.count ?? 1} step={1} decimal={false}
           onChange={v => update(s => { s.defaultIntensifier = { ...s.defaultIntensifier, count: Math.max(1, v) } })} />
-        <Stepper label={t('Weight drop (%)')} value={S.defaultIntensifier.pct} step={5} decimal={false}
+        <Stepper label={t('Weight drop (%)')} value={S.defaultIntensifier.pct ?? 80} step={5} decimal={false}
           onChange={v => update(s => { s.defaultIntensifier = { ...s.defaultIntensifier, pct: Math.max(5, v) } })} />
       </div>}
 
       {S.defaultIntensifier?.type === 'topback' && <div className="row cfgrow" style={{ marginBottom: 8, paddingLeft: 12 }}>
-        <Stepper label={t('Backoff sets')} value={S.defaultIntensifier.count} step={1} decimal={false}
+        <Stepper label={t('Backoff sets')} value={S.defaultIntensifier.count ?? 2} step={1} decimal={false}
           onChange={v => update(s => { s.defaultIntensifier = { ...s.defaultIntensifier, count: Math.max(1, v) } })} />
-        <Stepper label={t('Weight drop (%)')} value={S.defaultIntensifier.pct} step={5} decimal={false}
+        <Stepper label={t('Weight drop (%)')} value={S.defaultIntensifier.pct ?? 80} step={5} decimal={false}
           onChange={v => update(s => { s.defaultIntensifier = { ...s.defaultIntensifier, pct: Math.max(5, v) } })} />
-        <Stepper label={t('Backoff reps')} value={S.defaultIntensifier.backoffReps} step={1} decimal={false}
+        <Stepper label={t('Backoff reps')} value={S.defaultIntensifier.backoffReps ?? 10} step={1} decimal={false}
           onChange={v => update(s => { s.defaultIntensifier = { ...s.defaultIntensifier, backoffReps: Math.max(1, v) } })} />
       </div>}
 
       {S.defaultIntensifier?.type === 'restpause' && <div className="row cfgrow" style={{ marginBottom: 8, paddingLeft: 12 }}>
-        <Stepper label={t('Rest-pause reps')} value={S.defaultIntensifier.totalReps} step={1} decimal={false}
+        <Stepper label={t('Rest-pause reps')} value={S.defaultIntensifier.totalReps ?? 10} step={1} decimal={false}
           onChange={v => update(s => { s.defaultIntensifier = { ...s.defaultIntensifier, totalReps: Math.max(1, v) } })} />
-        <Stepper label={t('Rest (s)')} value={S.defaultIntensifier.restSec} step={5} decimal={false}
+        <Stepper label={t('Rest (s)')} value={S.defaultIntensifier.restSec ?? 30} step={5} decimal={false}
           onChange={v => update(s => { s.defaultIntensifier = { ...s.defaultIntensifier, restSec: Math.max(5, v) } })} />
       </div>}
 
-      <Row icon="list" iconTint="var(--blue)" title={t('Series por ejercicio (por defecto)')}>
+      {/* <Row icon="list" iconTint="var(--blue)" title={t('Series por ejercicio (por defecto)')}>
         <div style={{ maxWidth: 110 }}>
           <Stepper value={S.defaultSets ?? 3} min={1} max={6} step={1} decimal={false}
             onChange={v => update(s => { s.defaultSets = Math.max(1, Math.min(6, v)) })} />
         </div>
-      </Row>
+      </Row> */}
     </Section>
 
     {user && <NotificationsCard S={S} update={update} toast={toast} />}
