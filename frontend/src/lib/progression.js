@@ -107,7 +107,13 @@ export function readSession(entry, fallback) {
   // Warm-up rows are prep, not the session: one filtered read beats guarding every consumer
   // below (an undone warm-up otherwise poisons `ok` forever and its reps drag `low`/`count`).
   const sets = ((entry && entry.sets) || []).filter(s => !isWarmupRow(s))
-  const planned = target.sets || sets.length
+  const intensifier = (entry && entry.target && entry.target.intensifier) || (fallback && fallback.intensifier) || target.intensifier || {}
+  let planned = target.sets || sets.length
+  if (intensifier.type === 'topback') {
+    planned = 1 + (intensifier.count || 0)
+  } else if (intensifier.type === 'restpause') {
+    planned = 1
+  }
   const enough = sets.length >= planned
 
   if (mode === 'time') {

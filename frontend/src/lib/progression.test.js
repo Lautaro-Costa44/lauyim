@@ -51,6 +51,20 @@ describe('readSession', () => {
     expect(readSession({ id: LIFT, target: {}, sets: [{ w: 60, r: 5, done: true }] }).ok).toBe(false)
   })
 
+  it('correctly handles topback intensifier planned sets vs default target.sets', () => {
+    const target = { sets: 3, reps: 5, intensifier: { type: 'topback', count: 1 } }
+    const sets = [{ w: 80, r: 5, done: true }, { w: 70, r: 8, done: true }]
+    const s = readSession({ id: LIFT, target, sets })
+    expect(s.ok).toBe(true)
+  })
+
+  it('correctly handles restpause intensifier planned sets', () => {
+    const target = { sets: 3, reps: 8, intensifier: { type: 'restpause' } }
+    const sets = [{ w: 40, r: 5, done: true, warmup: true }, { type: 'restpause', w: 60, r: 8, done: true }]
+    const s = readSession({ id: LIFT, target, sets })
+    expect(s.ok).toBe(true)
+  })
+
   it('reads a timed session by the hold, not by reps', () => {
     const s = readSession({ id: LIFT, target: { sets: 2, sec: 45, mode: 'time' }, sets: [{ sec: 45, w: 0, done: true }, { sec: 50, w: 0, done: true }] })
     expect(s.mode).toBe('time')
