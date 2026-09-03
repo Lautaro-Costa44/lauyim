@@ -222,178 +222,159 @@ export default function Settings() {
       </Row>
     </Section>
 
-    {/* ---------- during a workout ---------- */}
     <Section title={t('During a workout')} footer={wakeOK ? t('The screen stays on while a workout is running, so you don’t have to unlock your phone between sets.') : null}>
       <SelectRow icon="timer" iconTint="var(--orange)" title={t('Rest timer')}
         value={S.restSec} onChange={v => update(s => { s.restSec = v })}
         options={[{ value: 0, label: t('Off') }, ...[60, 90, 120, 150, 180].map(v => ({ value: v, label: v + 's' }))]} />
-      {/* Default for a rest-pause burst added live on a plain set — a planned exercise's own
-          "Rest (s)" (in its Intensifier config) overrides this, same as the main rest timer
-          is the fallback whenever an exercise has no progression rule of its own. */}
-      {(
-        <Row icon="sun" iconTint="var(--yellow)" title={t('Keep screen awake')}
-          subtitle={wakeOK ? null : t('Not supported in this browser.')}>
-          <Switch checked={wakeOK && S.keepAwake !== false} disabled={!wakeOK}
-            onChange={v => update(s => { s.keepAwake = v })} />
-        </Row>
-      )}
+
+      <Row icon="sun" iconTint="var(--yellow)" title={t('Keep screen awake')}
+        subtitle={wakeOK ? null : t('Not supported in this browser.')}>
+        <Switch checked={wakeOK && S.keepAwake !== false} disabled={!wakeOK}
+          onChange={v => update(s => { s.keepAwake = v })} />
+      </Row>
+
       <Row icon="bell" iconTint="var(--pink)" title={t('Sounds')}>
         <Switch checked={!!S.sound} onChange={v => update(s => { s.sound = v })} />
       </Row>
-      {/* Two names for the same judgement, so the column asks in the scale you already think in.
-          The (i) sits before the control — you read it on the way to the choice, not after it. */}
+
       <Row icon="target" iconTint="var(--purple)" title={t('Effort per set')}>
         <button className="helpbtn" aria-label={t('What are RIR and RPE?')} onClick={effortHelpSheet}><Icon name="info" /></button>
         <Segmented className="seg-inline"
           options={[{ value: 'none', label: t('Off') }, { value: 'rir', label: t('RIR') }, { value: 'rpe', label: t('RPE') }]}
           value={effortOf(S)} onChange={v => update(s => { s.effort = v; delete s.showRir })} />
       </Row>
-        <>
-          <SelectRow icon="target" iconTint="var(--purple)" title={t('Tipo de progresión')} sheetTitle={t('Tipo de progresión')}
-            value={S.progressionType || 'linear'}
-            onChange={v => update(s => {
-              s.progressionType = v;
-              if (!s.progressionConfig) s.progressionConfig = {};
-              if (v === 'linear' && s.progressionConfig.increment_kg == undefined) {
-                s.progressionConfig.increment_kg = 2.5;
-              } else if (v === 'double') {
-                if (s.progressionConfig.rep_range_min == undefined) s.progressionConfig.rep_range_min = 8;
-                if (s.progressionConfig.rep_range_max == undefined) s.progressionConfig.rep_range_max = 12;
-                if (s.progressionConfig.increment_kg == undefined) s.progressionConfig.increment_kg = 2.5;
-              } else if (s.progressionConfig.increment_kg == undefined) {
-                s.progressionConfig.increment_kg = 2.5;
-              }
-              if (v === 'dup') {
-                s.progressionConfig.pattern = [
-                  { day_index: 0, rep_target: 8, intensity_pct: 80 },
-                  { day_index: 1, rep_target: 10, intensity_pct: 75 },
-                  { day_index: 2, rep_target: 12, intensity_pct: 70 }
-                ];
-              }
-            })}
-            options={POLICIES.filter(p => p !== 'time').map(p => ({ value: p, label: t(POLICY_NAME[p]) }))}
+
+      <SelectRow icon="target" iconTint="var(--purple)" title={t('Tipo de progresión')} sheetTitle={t('Tipo de progresión')}
+        value={S.progressionType || 'linear'}
+        onChange={v => update(s => {
+          s.progressionType = v;
+          if (!s.progressionConfig) s.progressionConfig = {};
+          if (v === 'linear' && s.progressionConfig.increment_kg == undefined) {
+            s.progressionConfig.increment_kg = 2.5;
+          } else if (v === 'double') {
+            if (s.progressionConfig.rep_range_min == undefined) s.progressionConfig.rep_range_min = 8;
+            if (s.progressionConfig.rep_range_max == undefined) s.progressionConfig.rep_range_max = 12;
+            if (s.progressionConfig.increment_kg == undefined) s.progressionConfig.increment_kg = 2.5;
+          } else if (s.progressionConfig.increment_kg == undefined) {
+            s.progressionConfig.increment_kg = 2.5;
+          }
+          if (v === 'dup') {
+            s.progressionConfig.pattern = [
+              { day_index: 0, rep_target: 8, intensity_pct: 80 },
+              { day_index: 1, rep_target: 10, intensity_pct: 75 },
+              { day_index: 2, rep_target: 12, intensity_pct: 70 }
+            ];
+          }
+        })}
+        options={POLICIES.filter(p => p !== 'time').map(p => ({ value: p, label: t(POLICY_NAME[p]) }))}
+      />
+
+      {POLICY_DESC[S.progressionType || 'linear'] && (
+        <div className="muted small" style={{ paddingLeft: 12, paddingRight: 12, marginBottom: 8 }}>
+          {t(POLICY_DESC[S.progressionType || 'linear'])}
+        </div>
+      )}
+
+      {/* Muestra incremento en kg en todos los tipos de progresión excepto en DUP */}
+      {S.progressionType !== 'dup' && (
+        <Row title={t('Incremento en kg')}>
+          <input
+            type="number"
+            step="0.5"
+            min="0.5"
+            style={{ width: 80, padding: '6px 10px', background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text)', textAlign: 'right' }}
+            value={S.progressionConfig?.increment_kg ?? 2.5}
+            onChange={e => {
+              const val = parseFloat(e.target.value);
+              update(s => {
+                if (!s.progressionConfig) s.progressionConfig = {};
+                s.progressionConfig.increment_kg = isNaN(val) ? 2.5 : val;
+              });
+            }}
           />
-          {POLICY_DESC[S.progressionType || 'linear'] && (
-            <div className="muted small" style={{ paddingLeft: 12, paddingRight: 12, marginBottom: 8 }}>
-              {t(POLICY_DESC[S.progressionType || 'linear'])}
-            </div>
-          )}
-          {(S.progressionType === 'linear' || S.progressionType === 'greyskull' || S.progressionType === 'double' || !S.progressionType) && (
-            <Row title={t('Incremento en kg')}>
-              <input
-                type="number"
-                step="0.5"
-                min="0.5"
-                style={{ width: 80, padding: '6px 10px', background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text)', textAlign: 'right' }}
-                value={S.progressionConfig?.increment_kg ?? 2.5}
-                onChange={e => {
-                  const val = parseFloat(e.target.value);
-                  update(s => {
-                    if (!s.progressionConfig) s.progressionConfig = {};
-                    s.progressionConfig.increment_kg = isNaN(val) ? 2.5 : val;
-                  });
-                }}
-              />
-            </Row>
-          )}
-          <SelectRow icon="flame" iconTint="var(--pink)" title={t('Intensificador por defecto')} sheetTitle={t('Intensificador')}
-            value={S.defaultIntensifier?.type || 'none'}
-            onChange={v => update(s => {
-              s.defaultIntensifier = !v || v === 'none' ? { type: 'none' } : v === 'dropset'
-                ? { type: 'dropset', count: s.defaultIntensifier?.count || 1, pct: s.defaultIntensifier?.pct || 20 }
-                : v === 'topback'
-                ? { type: 'topback', count: s.defaultIntensifier?.count || 3, pct: s.defaultIntensifier?.pct || 85, backoffReps: s.defaultIntensifier?.backoffReps || 10 }
-                : { type: 'restpause', totalReps: s.defaultIntensifier?.totalReps || 8, restSec: s.defaultIntensifier?.restSec || s.restPauseSec || 15 };
-            })}
-            options={[
-              { value: 'none', label: t('Ninguno') },
-              { value: 'dropset', label: t('Drop-set') },
-              { value: 'topback', label: t('Top-set + Backoff') },
-              { value: 'restpause', label: t('Rest-pause') },
-            ]}
-          />
-          {S.defaultIntensifier?.type === 'dropset' && <div className="row cfgrow" style={{ marginBottom: 8, paddingLeft: 12 }}>
-            <Stepper label={t('Drops')} value={S.defaultIntensifier.count} step={1} decimal={false}
-              onChange={v => update(s => { s.defaultIntensifier = { ...s.defaultIntensifier, count: Math.max(1, v) } })} />
-            <Stepper label={t('Weight drop (%)')} value={S.defaultIntensifier.pct} step={5} decimal={false}
-              onChange={v => update(s => { s.defaultIntensifier = { ...s.defaultIntensifier, pct: Math.max(5, v) } })} />
-          </div>}
-          {S.defaultIntensifier?.type === 'topback' && <div className="row cfgrow" style={{ marginBottom: 8, paddingLeft: 12 }}>
-            <Stepper label={t('Backoff sets')} value={S.defaultIntensifier.count} step={1} decimal={false}
-              onChange={v => update(s => { s.defaultIntensifier = { ...s.defaultIntensifier, count: Math.max(1, v) } })} />
-            <Stepper label={t('Weight drop (%)')} value={S.defaultIntensifier.pct} step={5} decimal={false}
-              onChange={v => update(s => { s.defaultIntensifier = { ...s.defaultIntensifier, pct: Math.max(5, v) } })} />
-            <Stepper label={t('Backoff reps')} value={S.defaultIntensifier.backoffReps} step={1} decimal={false}
-              onChange={v => update(s => { s.defaultIntensifier = { ...s.defaultIntensifier, backoffReps: Math.max(1, v) } })} />
-          </div>}
-          {S.defaultIntensifier?.type === 'restpause' && <div className="row cfgrow" style={{ marginBottom: 8, paddingLeft: 12 }}>
-            <Stepper label={t('Rest-pause reps')} value={S.defaultIntensifier.totalReps} step={1} decimal={false}
-              onChange={v => update(s => { s.defaultIntensifier = { ...s.defaultIntensifier, totalReps: Math.max(1, v) } })} />
-            <Stepper label={t('Rest (s)')} value={S.defaultIntensifier.restSec} step={5} decimal={false}
-              onChange={v => update(s => { s.defaultIntensifier = { ...s.defaultIntensifier, restSec: Math.max(5, v) } })} />
-          </div>}
-          <Row icon="list" iconTint="var(--blue)" title={t('Series por ejercicio (por defecto)')}>
-            <div style={{ maxWidth: 110 }}>
-              <Stepper value={S.defaultSets ?? 3} min={1} max={6} step={1} decimal={false}
-              onChange={v => update(s => { s.defaultSets = Math.max(1, Math.min(6, v)) })} />
-              </div>
-          </Row>
-          {(S.progressionType === 'linear' || !S.progressionType) && (
-            <Row title={t('Incremento en kg')}>
-              <input
-                type="number"
-                step="0.5"
-                min="0.5"
-                style={{ width: 80, padding: '6px 10px', background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text)', textAlign: 'right' }}
-                value={S.progressionConfig?.increment_kg ?? 2.5}
-                onChange={e => {
-                  const val = parseFloat(e.target.value);
-                  update(s => {
-                    if (!s.progressionConfig) s.progressionConfig = {};
-                    s.progressionConfig.increment_kg = isNaN(val) ? 2.5 : val;
-                  });
-                }}
-              />
-            </Row>
-          )}
-          {S.progressionType === 'double' && (
-            <>
-              <Row title={t('Rango de reps')}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <input
-                    type="number"
-                    min="1"
-                    style={{ width: 50, padding: '6px 8px', background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text)', textAlign: 'center' }}
-                    value={S.progressionConfig?.rep_range_min ?? 8}
-                    onChange={e => {
-                      const val = parseInt(e.target.value, 10);
-                      update(s => {
-                        if (!s.progressionConfig) s.progressionConfig = {};
-                        s.progressionConfig.rep_range_min = isNaN(val) ? 8 : val;
-                      });
-                    }}
-                  />
-                  <span>-</span>
-                  <input
-                    type="number"
-                    min="1"
-                    style={{ width: 50, padding: '6px 8px', background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text)', textAlign: 'center' }}
-                    value={S.progressionConfig?.rep_range_max ?? 12}
-                    onChange={e => {
-                      const val = parseInt(e.target.value, 10);
-                      update(s => {
-                        if (!s.progressionConfig) s.progressionConfig = {};
-                        s.progressionConfig.rep_range_max = isNaN(val) ? 12 : val;
-                      });
-                    }}
-                  />
-                </div>
-              </Row>
-            </>
-          )}
-          {S.progressionType === 'dup'}
-        </>
-      
+        </Row>
+      )}
+
+      {S.progressionType === 'double' && (
+        <Row title={t('Rango de reps')}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <input
+              type="number"
+              min="1"
+              style={{ width: 50, padding: '6px 8px', background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text)', textAlign: 'center' }}
+              value={S.progressionConfig?.rep_range_min ?? 8}
+              onChange={e => {
+                const val = parseInt(e.target.value, 10);
+                update(s => {
+                  if (!s.progressionConfig) s.progressionConfig = {};
+                  s.progressionConfig.rep_range_min = isNaN(val) ? 8 : val;
+                });
+              }}
+            />
+            <span>-</span>
+            <input
+              type="number"
+              min="1"
+              style={{ width: 50, padding: '6px 8px', background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text)', textAlign: 'center' }}
+              value={S.progressionConfig?.rep_range_max ?? 12}
+              onChange={e => {
+                const val = parseInt(e.target.value, 10);
+                update(s => {
+                  if (!s.progressionConfig) s.progressionConfig = {};
+                  s.progressionConfig.rep_range_max = isNaN(val) ? 12 : val;
+                });
+              }}
+            />
+          </div>
+        </Row>
+      )}
+
+      <SelectRow icon="flame" iconTint="var(--pink)" title={t('Intensificador por defecto')} sheetTitle={t('Intensificador')}
+        value={S.defaultIntensifier?.type || 'none'}
+        onChange={v => update(s => {
+          s.defaultIntensifier = !v || v === 'none' ? { type: 'none' } : v === 'dropset'
+            ? { type: 'dropset', count: s.defaultIntensifier?.count || 1, pct: s.defaultIntensifier?.pct || 20 }
+            : v === 'topback'
+            ? { type: 'topback', count: s.defaultIntensifier?.count || 3, pct: s.defaultIntensifier?.pct || 85, backoffReps: s.defaultIntensifier?.backoffReps || 10 }
+            : { type: 'restpause', totalReps: s.defaultIntensifier?.totalReps || 8, restSec: s.defaultIntensifier?.restSec || s.restPauseSec || 15 };
+        })}
+        options={[
+          { value: 'none', label: t('Ninguno') },
+          { value: 'dropset', label: t('Drop-set') },
+          { value: 'topback', label: t('Top-set + Backoff') },
+          { value: 'restpause', label: t('Rest-pause') },
+        ]}
+      />
+
+      {S.defaultIntensifier?.type === 'dropset' && <div className="row cfgrow" style={{ marginBottom: 8, paddingLeft: 12 }}>
+        <Stepper label={t('Drops')} value={S.defaultIntensifier.count} step={1} decimal={false}
+          onChange={v => update(s => { s.defaultIntensifier = { ...s.defaultIntensifier, count: Math.max(1, v) } })} />
+        <Stepper label={t('Weight drop (%)')} value={S.defaultIntensifier.pct} step={5} decimal={false}
+          onChange={v => update(s => { s.defaultIntensifier = { ...s.defaultIntensifier, pct: Math.max(5, v) } })} />
+      </div>}
+
+      {S.defaultIntensifier?.type === 'topback' && <div className="row cfgrow" style={{ marginBottom: 8, paddingLeft: 12 }}>
+        <Stepper label={t('Backoff sets')} value={S.defaultIntensifier.count} step={1} decimal={false}
+          onChange={v => update(s => { s.defaultIntensifier = { ...s.defaultIntensifier, count: Math.max(1, v) } })} />
+        <Stepper label={t('Weight drop (%)')} value={S.defaultIntensifier.pct} step={5} decimal={false}
+          onChange={v => update(s => { s.defaultIntensifier = { ...s.defaultIntensifier, pct: Math.max(5, v) } })} />
+        <Stepper label={t('Backoff reps')} value={S.defaultIntensifier.backoffReps} step={1} decimal={false}
+          onChange={v => update(s => { s.defaultIntensifier = { ...s.defaultIntensifier, backoffReps: Math.max(1, v) } })} />
+      </div>}
+
+      {S.defaultIntensifier?.type === 'restpause' && <div className="row cfgrow" style={{ marginBottom: 8, paddingLeft: 12 }}>
+        <Stepper label={t('Rest-pause reps')} value={S.defaultIntensifier.totalReps} step={1} decimal={false}
+          onChange={v => update(s => { s.defaultIntensifier = { ...s.defaultIntensifier, totalReps: Math.max(1, v) } })} />
+        <Stepper label={t('Rest (s)')} value={S.defaultIntensifier.restSec} step={5} decimal={false}
+          onChange={v => update(s => { s.defaultIntensifier = { ...s.defaultIntensifier, restSec: Math.max(5, v) } })} />
+      </div>}
+
+      <Row icon="list" iconTint="var(--blue)" title={t('Series por ejercicio (por defecto)')}>
+        <div style={{ maxWidth: 110 }}>
+          <Stepper value={S.defaultSets ?? 3} min={1} max={6} step={1} decimal={false}
+            onChange={v => update(s => { s.defaultSets = Math.max(1, Math.min(6, v)) })} />
+        </div>
+      </Row>
     </Section>
 
     {user && <NotificationsCard S={S} update={update} toast={toast} />}
