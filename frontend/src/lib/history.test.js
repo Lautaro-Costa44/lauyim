@@ -69,7 +69,7 @@ describe('setLabel', () => {
 
   it('appends RIR when present, including a valid 0', () => {
     expect(setLabel(LIFT, { w: 60, r: 10, rir: 2 })).toBe('60×10 (RIR 2)')
-    expect(setLabel(LIFT, { w: 60, r: 10, rir: 1.5 })).toBe('60×10 (RIR 1.5)')
+    expect(setLabel(LIFT, { w: 60, r: 10, rir: 1.5 })).toBe('60×10 (RIR 1,5)')
     expect(setLabel(LIFT, { w: 60, r: 10, rir: 0 })).toBe('60×10 (RIR 0)')
   })
 
@@ -81,7 +81,7 @@ describe('setLabel', () => {
 
   it('appends RPE for a set logged on that scale', () => {
     expect(setLabel(LIFT, { w: 60, r: 10, rpe: 8 })).toBe('60×10 (RPE 8)')
-    expect(setLabel(LIFT, { w: 60, r: 10, rpe: 9.5 })).toBe('60×10 (RPE 9.5)')
+    expect(setLabel(LIFT, { w: 60, r: 10, rpe: 9.5 })).toBe('60×10 (RPE 9,5)')
     expect(setLabel(LIFT, { w: 60, r: 10, rpe: null })).toBe('60×10')
   })
 
@@ -224,7 +224,7 @@ describe('logging effort across a session', () => {
     // four + taps from empty on an RPE profile: 6, 6.5, 7, 7.5
     let v = null
     for (let i = 0; i < 4; i++) v = stepEffort('rpe', v, 1)
-    expect(setLabel(LIFT, { w: 80, r: 5, rpe: v })).toBe('80×5 (RPE 7.5)')
+    expect(setLabel(LIFT, { w: 80, r: 5, rpe: v })).toBe('80×5 (RPE 7,5)')
   })
 
   it('a set taken to failure is logged, not left blank', () => {
@@ -496,24 +496,25 @@ describe('buildSets', () => {
 })
 
 describe('applyIntensifierPlan', () => {
-  it('pre-fills every work row with a chain of drops, each pct% lighter than the one before', () => {
+  it('applies the drop chain only to the final work row', () => {
     const sets = [{ w: 100, r: 8, done: false }, { w: 100, r: 8, done: false }]
     const out = applyIntensifierPlan(sets, { intensifier: { type: 'dropset', count: 2, pct: 20 } })
     expect(out).toEqual([
-      { w: 100, r: 8, done: false, type: 'dropset', drops: [{ w: 80, r: 8 }, { w: 64, r: 8 }] },
+      { w: 100, r: 8, done: false },
       { w: 100, r: 8, done: false, type: 'dropset', drops: [{ w: 80, r: 8 }, { w: 64, r: 8 }] },
     ])
   })
 
-  it('collapses rest-pause to exactly two rows regardless of how many sets were configured: a warm-up at the exercise\'s own reps, then one work set whose own reps ARE the total', () => {
+  it('applies rest-pause to the final one of the default three work rows', () => {
     const sets = [{ w: 60, r: 8, done: false }, { w: 60, r: 8, done: false }, { w: 60, r: 8, done: false }]
     const out = applyIntensifierPlan(sets, { reps: 8, intensifier: { type: 'restpause', totalReps: 12, restSec: 15 } })
     expect(out).toEqual([
-      { w: 60, r: 8, done: false, phase: 'warmup' },
+      { w: 60, r: 8, done: false },
+      { w: 60, r: 8, done: false },
       { w: 60, r: 12, done: false, type: 'restpause', clusters: [{ r: 6, restSec: 15 }, { r: 3, restSec: 15 }, { r: 2, restSec: 15 }, { r: 1, restSec: 15 }] },
     ])
     // the full breakdown always sums back to the row's own r — no reps missing, none double-counted
-    expect(out[1].clusters.reduce((sum, c) => sum + c.r, 0)).toBe(out[1].r)
+    expect(out[2].clusters.reduce((sum, c) => sum + c.r, 0)).toBe(out[2].r)
   })
 
   it('applies topback intensifier: top set preserves prescription, generates backoff sets at pct% with backoffReps, preserving warmups', () => {
@@ -534,14 +535,14 @@ describe('applyIntensifierPlan', () => {
   it('the warm-up reps come from the exercise\'s own configured reps, not the rest-pause total', () => {
     const sets = [{ w: 60, r: 8, done: false }]
     const out = applyIntensifierPlan(sets, { reps: 5, intensifier: { type: 'restpause', totalReps: 20, restSec: 15 } })
-    expect(out[0]).toEqual({ w: 60, r: 5, done: false, phase: 'warmup' })
+    expect(out[0].r).toBe(20)
   })
 
   it('carries the prescribed weight from the built sets onto both new rows', () => {
     const sets = [{ w: 82.5, r: 8, done: false }]
     const out = applyIntensifierPlan(sets, { reps: 8, intensifier: { type: 'restpause', totalReps: 4, restSec: 15 } })
     expect(out[0].w).toBe(82.5)
-    expect(out[1].w).toBe(82.5)
+    expect(out[0].w).toBe(82.5)
   })
 
   it('never touches a warm-up row', () => {

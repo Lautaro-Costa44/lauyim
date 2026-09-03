@@ -272,7 +272,7 @@ export const useStore = create((set, get) => {
         }
       } catch (e) {
         if (e.status === 401) get().setUser(null)
-        if (e.data?.error === 'license_expired' || e.status === 403) {
+        if (e.data?.error === 'license_expired') {
           set({ licenseExpired: true })
         }
       }

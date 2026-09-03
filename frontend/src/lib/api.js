@@ -17,7 +17,9 @@ export async function api(path, opts) {
     const e = new Error(data.error || ('HTTP ' + r.status))
     e.status = r.status
     e.data = data
-    if (data.error === 'license_expired' || r.status === 403) {
+    // A 403 is also used for normal business errors such as an invalid invite.
+    // Only the explicit license error must switch the whole app to the expiry view.
+    if (data.error === 'license_expired') {
       window.dispatchEvent(new CustomEvent('gym:license_expired', { detail: data }))
     }
     throw e 

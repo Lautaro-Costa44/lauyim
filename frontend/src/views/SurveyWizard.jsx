@@ -599,7 +599,11 @@ export default function SurveyWizard() {
             <OptionGrid
               opciones={intensifierOpciones}
               valor={resp.defaultIntensifier?.type || null}
-              onSelect={v => set('defaultIntensifier', v === 'none' ? { type: 'none' } : { type: v, count: 1, pct: 20, totalReps: 8, restSec: 15, backoffReps: 10 })}
+              onSelect={v => set('defaultIntensifier', v === 'none' ? { type: 'none' } : v === 'dropset'
+                ? { type: v, count: 1, pct: 80, dropRestSec: 5 }
+                : v === 'topback'
+                  ? { type: v, count: 2, pct: 80, backoffReps: 10 }
+                  : { type: v, totalReps: 10, restSec: 20 })}
             />
 
             <div style={{ height: 24 }} />

@@ -31,3 +31,8 @@ Un seguidor de entrenamiento deportivo *self-hosted*, centrado en la privacidad,
 ```bash
 git clone [https://github.com/Lautaro-Costa44/lauyim.git](https://github.com/Lautaro-Costa44/lauyim.git)
 cd lauyim
+# Desarrollo
+
+La API requiere Node.js 24. Esta versión incluye el módulo nativo `node:sqlite`
+pueda utilizar sus binarios precompilados y evitar compilaciones nativas dependientes
+del entorno. La versión está fijada en `.nvmrc`.

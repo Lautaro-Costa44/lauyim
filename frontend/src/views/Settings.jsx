@@ -333,10 +333,10 @@ export default function Settings() {
         value={S.defaultIntensifier?.type || 'none'}
         onChange={v => update(s => {
           s.defaultIntensifier = !v || v === 'none' ? { type: 'none' } : v === 'dropset'
-            ? { type: 'dropset', count: s.defaultIntensifier?.count || 1, pct: s.defaultIntensifier?.pct || 80 }
+            ? { type: 'dropset', count: 1, pct: 80, dropRestSec: 5 }
             : v === 'topback'
-            ? { type: 'topback', count: s.defaultIntensifier?.count || 2, pct: s.defaultIntensifier?.pct || 80, backoffReps: s.defaultIntensifier?.backoffReps || 10 }
-            : { type: 'restpause', totalReps: s.defaultIntensifier?.totalReps || 10, restSec: s.defaultIntensifier?.restSec || s.restPauseSec || 20 };
+            ? { type: 'topback', count: 2, pct: 80, backoffReps: 10 }
+            : { type: 'restpause', totalReps: 10, restSec: s.restPauseSec || 20 };
         })}
         options={[
           { value: 'none', label: t('Ninguno') },

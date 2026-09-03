@@ -3,7 +3,7 @@
  */
 
 import webpush from 'web-push';
-import { getDatabase, deleteSubscription } from './database.js';
+import { getDatabase, deleteSubscription, getUserState } from './database.js';
 import { dayReminderPush, gymFeePush } from './push-messages.js';
 
 const PUSH_TIMEOUT_MS = 10000;
@@ -19,7 +19,7 @@ const PUSH_TIMEOUT_MS = 10000;
  *   si el día del mes actual coincide con el día del mes de `fee_date`, y han transcurrido
  *   un número entero de meses exacto según `fee_interval` (1 para monthly, 2 para bimonthly,
  *   3 para quarterly, 12 para annual) desde la fecha base, entonces hoy corresponde el aviso de cuota.
- *   Si `fee_date` no está definido, se toma por defecto el día 1 del mes actual.
+ *   Si `fee_date` no está definido, no se envía ningún aviso: falta la fecha de vencimiento.
  */
 
 async function sendPushToUser(userId, payload) {
@@ -67,9 +67,7 @@ async function sendPushToUser(userId, payload) {
 
 function checkGymFeeDue(feeDateStr, feeInterval, localDateStr) {
   if (!feeDateStr) {
-    // Si no hay fecha de cuota configurada, por defecto se avisa el día 1 de cada mes
-    const [, , day] = localDateStr.split('-');
-    return day === '01';
+    return false;
   }
 
   try {
@@ -126,6 +124,22 @@ function getLocalParts(tz) {
   }
 }
 
+function effectiveRoutineId(state, dateStr) {
+  const override = state?.dayPlan?.[dateStr];
+  if (override === 'rest' || (override && typeof override === 'object' &&
+      ['descanso', 'completado'].includes(override.estado))) return null;
+  if (override && typeof override === 'object' && override.estado === 'rutina') {
+    return override.rutinaId || null;
+  }
+  if (typeof override === 'string' && state?.routines?.some(r => r.id === override)) return override;
+  const weekday = new Date(`${dateStr}T12:00:00`).getDay();
+  return state?.week?.[weekday] || null;
+}
+
+function hasWorkoutOnDate(state, dateStr) {
+  return (state?.workouts || []).some(workout => workout.d === dateStr);
+}
+
 export function runSchedulerTick() {
   try {
     const db = getDatabase();
@@ -172,7 +186,13 @@ export function runSchedulerTick() {
           const timeMatch = u.reminder_time === timeStr;
           console.log(`[Scheduler Diagnostic] user_id=${u.user_id} | training reminder check | configured_time=${u.reminder_time} vs local_time=${timeStr} -> match=${timeMatch ? 'MATCH' : 'NO MATCH'}`);
 
-          if (timeMatch) {
+          const state = getUserState(u.user_id) || {};
+          const routineId = effectiveRoutineId(state, dateStr);
+          const workoutAlreadyLogged = hasWorkoutOnDate(state, dateStr);
+          const hasTrainingToday = !!routineId && !workoutAlreadyLogged;
+          console.log(`[Scheduler Diagnostic] user_id=${u.user_id} | training plan check | routine=${routineId || 'none'} | workout_today=${workoutAlreadyLogged} -> eligible=${hasTrainingToday}`);
+
+          if (timeMatch && hasTrainingToday) {
             const sentToday = u.last_reminder_sent_date === dateStr;
             console.log(`[Scheduler Diagnostic] user_id=${u.user_id} | training reminder already_sent_today check | last_sent=${u.last_reminder_sent_date}, today=${dateStr} -> status=${sentToday ? 'DESCARTADO (ya enviado hoy)' : 'PASAS (enviar)'}`);
 
@@ -185,9 +205,11 @@ export function runSchedulerTick() {
                 if (stateRow && stateRow.lang) lang = stateRow.lang;
               } catch {}
 
-              // Buscar rutina activa de hoy si la hubiera (opcional, dayReminderPush maneja fallback)
               const payload = dayReminderPush(lang, null);
               sendPushToUser(u.user_id, payload).then(res => {
+                // A reminder is considered sent only when at least one subscription
+                // accepted it. This keeps a transient push outage retryable.
+                if (res.sent < 1) throw new Error('No se entregó el recordatorio a ninguna suscripción');
                 db.prepare('UPDATE users SET last_reminder_sent_date = ? WHERE id = ?').run(dateStr, u.user_id);
                 console.log(`[Scheduler Diagnostic] Guardado exitoso de last_reminder_sent_date=${dateStr} para user_id=${u.user_id}`);
                 console.log(`[Scheduler Diagnostic] user_id=${u.user_id} | training reminder sent result: sent=${res.sent}, subscriptions=${res.subCount}`);
@@ -217,6 +239,7 @@ export function runSchedulerTick() {
 
               const payload = gymFeePush(lang, u.fee_interval || 'monthly');
               sendPushToUser(u.user_id, payload).then(res => {
+                if (res.sent < 1) throw new Error('No se entregó el recordatorio de cuota a ninguna suscripción');
                 db.prepare('UPDATE users SET last_fee_reminder_sent_date = ? WHERE id = ?').run(dateStr, u.user_id);
                 console.log(`[Scheduler Diagnostic] Guardado exitoso de last_fee_reminder_sent_date=${dateStr} para user_id=${u.user_id}`);
                 console.log(`[Scheduler Diagnostic] user_id=${u.user_id} | gym fee reminder sent result: sent=${res.sent}, subscriptions=${res.subCount}`);

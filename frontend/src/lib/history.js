@@ -71,6 +71,25 @@ export const EFFORT = {
   rir: { f: 'rir', hd: 'RIR', step: 0.5, min: 0, max: 10 },
   rpe: { f: 'rpe', hd: 'RPE', step: 0.5, min: 6, max: 10 }
 }
+
+// Keep intensifier defaults in one place.  The editor, settings and onboarding all
+// create the same shape, so changing between intensifiers cannot leak fields across types.
+export const INTENSIFIER_DEFAULTS = {
+  dropset: { type: 'dropset', count: 1, pct: 80, dropRestSec: 5 },
+  topback: { type: 'topback', count: 2, pct: 80, backoffReps: 10 },
+  restpause: { type: 'restpause', totalReps: 10, restSec: 20 },
+}
+
+export function intensifierConfig(type, overrides = {}) {
+  return type && INTENSIFIER_DEFAULTS[type]
+    ? { ...INTENSIFIER_DEFAULTS[type], ...overrides, type }
+    : { type: 'none' }
+}
+
+function defaultIntensifiedEffort(cfg) {
+  const kind = effortOf(cfg)
+  return kind === 'rir' ? { rir: 1 } : kind === 'rpe' ? { rpe: 9 } : {}
+}
 // One tap of an effort stepper. Empty is not 0 — an unlogged effort must not become "went to
 // failure" from one stray tap — so − on an empty cell leaves it empty, and + starts at the
 // bottom of the scale and walks up from there in even steps. Stepping back off the bottom
@@ -365,17 +384,17 @@ export function applyIntensifierPlan(sets, cfg) {
   if (kind === 'dropset') {
     const count = Math.max(1, Math.round(cfg.intensifier.count) || 1)
     const pct = cfg.intensifier.pct
-    return sets.map(s => {
-      if (isWarmupRow(s)) return s
+    return sets.map((s, i, all) => {
+      if (isWarmupRow(s) || i !== all.length - 1) return s
       const drops = []
       let w = s.w || 0
       for (let k = 0; k < count; k++) { w = nextDropWeight(w, pct); drops.push({ w, r: s.r }) }
-      return { ...s, type: 'dropset', drops }
+      return { ...s, ...defaultIntensifiedEffort(cfg), type: 'dropset', drops }
     })
   }
   if (kind === 'topback') {
-    const count = Math.max(1, Math.round(cfg.intensifier.count) || 3)
-    const pct = cfg.intensifier.pct ?? 85
+    const count = Math.max(1, Math.round(cfg.intensifier.count) || 2)
+    const pct = cfg.intensifier.pct ?? 80
     const backoffReps = Math.max(1, Math.round(cfg.intensifier.backoffReps) || 10)
     const warmupRows = sets.filter(s => isWarmupRow(s))
     const workSets = sets.filter(s => !isWarmupRow(s))
@@ -384,24 +403,18 @@ export function applyIntensifierPlan(sets, cfg) {
     const backoffWeight = Math.round(Math.max(0, (topSet.w || 0) * pct / 100) * 2) / 2
     const backoffSets = []
     for (let k = 0; k < count; k++) {
-      backoffSets.push({ w: backoffWeight, r: backoffReps, done: false })
+      backoffSets.push({ w: backoffWeight, r: backoffReps, done: false, ...defaultIntensifiedEffort(cfg) })
     }
     return [...warmupRows, topSet, ...backoffSets]
   }
-  // Rest-pause trains as exactly two sets, not one per configured `sets` count: a warm-up at
-  // the exercise's own configured reps, then a single rest-pause work set. Doing the full
-  // activation+bursts protocol several times over isn't how rest-pause is actually trained, so
-  // planning it replaces whatever buildSets built rather than stamping each of those rows.
-  // The work row's own reps are the total — not "the total minus what the bursts carry" — and
-  // the bursts are the full breakdown of that same total, down to the last one. See
-  // extraVolumeOf/setTonnage: a rest-pause row's `clusters` are read-only display of how `r`
-  // breaks down, not extra volume on top of it, precisely so this doesn't double-count.
-  const restSec = Math.max(5, cfg.intensifier.restSec || 15)
-  const totalReps = Math.max(1, Math.round(cfg.intensifier.totalReps) || 1)
-  const w = (sets.find(s => !isWarmupRow(s)) || sets[0] || {}).w || 0
-  const warmup = { w, r: Math.max(1, Math.round(cfg.reps) || 1), done: false, phase: 'warmup' }
-  const work = { w, r: totalReps, done: false, type: 'restpause', clusters: splitBurstReps(totalReps).map(r => ({ r, restSec })) }
-  return [warmup, work]
+  const restSec = Math.max(5, cfg.intensifier.restSec || 20)
+  const totalReps = Math.max(1, Math.round(cfg.intensifier.totalReps) || 10)
+  const workSets = sets.filter(s => !isWarmupRow(s))
+  if (!workSets.length) return sets
+  const out = workSets.map((s, i) => i === workSets.length - 1
+    ? { ...s, ...defaultIntensifiedEffort(cfg), r: totalReps, type: 'restpause', clusters: splitBurstReps(totalReps).map(r => ({ r, restSec })) }
+    : s)
+  return [...sets.filter(isWarmupRow), ...out]
 }
 export function workoutVolume(w) {
   let v = 0

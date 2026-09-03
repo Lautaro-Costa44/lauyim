@@ -4,7 +4,7 @@ import { useUI } from './store/useUI.js'
 import { EXDB, EXIDX, BODYPARTS, isCardio, isStretch, isBodyweightEq, allExercises, equipmentOf, smOf, matchExercise, exOr } from './lib/exercises.js'
 import { activeProfile, exAvailable, ALL_EQUIPMENT, newProfile } from './lib/equipment.js'
 import { fmtDate, fmtNum, fmtVol, fmtDur, durPart, todayISO, uid, exCount, DAYN, MONTHS_LONG, ACCENTS } from './lib/format.js'
-import { lastEntryFor, bestWeightFor, buildSets, effectiveRoutineId, workoutVolume, setsDone, setsDoneActive, lastBW, supersetUnits, unitOf, setLabel, defaultConfig, cleanupSg, modeOf, effortOf, isBw, isPerSide, sideReps, workSetsDone, applyIntensifierPlan, MAX_PLANNED_WARMUPS, NOTE_MAX } from './lib/history.js'
+import { lastEntryFor, bestWeightFor, buildSets, effectiveRoutineId, workoutVolume, setsDone, setsDoneActive, lastBW, supersetUnits, unitOf, setLabel, defaultConfig, cleanupSg, modeOf, effortOf, isBw, isPerSide, sideReps, workSetsDone, applyIntensifierPlan, MAX_PLANNED_WARMUPS, NOTE_MAX, intensifierConfig } from './lib/history.js'
 import { beep, vibrate } from './lib/sound.js'
 import { t, instrFor, exerciseNameFor, getLang, INSTR_LANGS } from './lib/i18n.js'
 import { nav } from './lib/nav.js'
@@ -908,13 +908,13 @@ function ExConfig({ ex, existing, onSave, onDelete, close, routine, initial }) {
           onChange={v => setC(x => ({
             ...x,
             intensifier: !v ? undefined : v === 'dropset'
-              ? { type: 'dropset', count: x.intensifier?.count || 1, pct: x.intensifier?.pct || 20 }
+              ? intensifierConfig('dropset')
               : v === 'topback'
-              ? { type: 'topback', count: x.intensifier?.count || 3, pct: x.intensifier?.pct || 85, backoffReps: x.intensifier?.backoffReps || 10 }
+              ? intensifierConfig('topback')
               // The activation set's own reps are whatever "Reps" above already says — a
               // rest-pause plan only adds two new numbers: the total extra reps wanted past
               // it, and the rest between the bursts that total gets split into.
-              : { type: 'restpause', totalReps: x.intensifier?.totalReps || x.reps || 8, restSec: x.intensifier?.restSec || st.restPauseSec || 15 },
+              : intensifierConfig('restpause', { totalReps: x.reps || 10, restSec: st.restPauseSec || 20 }),
           }))}
           options={[
             { value: '', label: t('None') },

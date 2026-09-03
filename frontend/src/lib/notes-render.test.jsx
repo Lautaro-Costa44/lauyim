@@ -62,7 +62,7 @@ describe('exercise note sheet', () => {
     const [today, always] = host.querySelectorAll('textarea')
     act(() => { type(today, 'shoulder twinged'); type(always, 'seat at 4') })
     act(() => { host.querySelector('[role="switch"]').click() })
-    const save = [...host.querySelectorAll('button')].find(b => /save/i.test(b.textContent))
+    const save = host.querySelector('button.btn.primary')
     act(() => { save.click() })
 
     const S = useStore.getState().S
@@ -80,7 +80,7 @@ describe('exercise note sheet', () => {
     const host = renderSheet()
     const [today] = host.querySelectorAll('textarea')
     act(() => { type(today, '') })
-    const save = [...host.querySelectorAll('button')].find(b => /save/i.test(b.textContent))
+    const save = host.querySelector('button.btn.primary')
     act(() => { save.click() })
     const e = useStore.getState().S.active.entries[0]
     expect(e.note).toBeUndefined()

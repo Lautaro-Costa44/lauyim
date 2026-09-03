@@ -70,10 +70,13 @@ function cleanWarmupSets(v) {
 function cleanIntensifier(x) {
   const type = x && x.type
   if (type === 'dropset') {
-    return { type, count: Math.max(1, Math.round(Number(x.count)) || 1), pct: Math.max(5, Math.round(Number(x.pct)) || 20) }
+    return { type, count: Math.max(1, Math.round(Number(x.count)) || 1), pct: Math.max(5, Math.round(Number(x.pct)) || 80) }
   }
   if (type === 'restpause') {
-    return { type, totalReps: Math.max(1, Math.round(Number(x.totalReps)) || 1), restSec: Math.max(5, Math.round(Number(x.restSec)) || 15) }
+    return { type, totalReps: Math.max(1, Math.round(Number(x.totalReps)) || 10), restSec: Math.max(5, Math.round(Number(x.restSec)) || 20) }
+  }
+  if (type === 'topback') {
+    return { type, count: Math.max(1, Math.round(Number(x.count)) || 2), pct: Math.max(5, Math.round(Number(x.pct)) || 80), backoffReps: Math.max(1, Math.round(Number(x.backoffReps)) || 10) }
   }
   return null
 }

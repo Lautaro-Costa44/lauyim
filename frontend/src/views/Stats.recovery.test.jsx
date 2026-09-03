@@ -1,6 +1,5 @@
 import React, { act } from 'react'
 import { createRoot } from 'react-dom/client'
-import { Window } from 'happy-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { MUSCLES, levelsOf } from '../lib/muscles.js'
 import { FATIGUE_STATES, STRENGTH_FLOOR } from '../lib/recovery.js'
@@ -21,7 +20,9 @@ const mocks = vi.hoisted(() => ({
 }))
 
 vi.mock('../store/useStore.js', () => ({
-  useStore: selector => selector({ S: mocks.S }),
+  useStore: Object.assign(selector => selector({ S: mocks.S }), {
+    getState: () => ({ S: mocks.S })
+  }),
 }))
 vi.mock('react-router-dom', () => ({ useNavigate: () => () => {} }))
 vi.mock('../sheets.jsx', () => ({
@@ -50,7 +51,6 @@ vi.mock('../components/BodyMap.jsx', () => ({
   BodyMapLegend: () => React.createElement('div', { 'data-balance-legend': true }),
 }))
 
-let dom
 let root
 let container
 
@@ -114,13 +114,6 @@ function resetFixture(workouts = lifecycleWorkouts()) {
 }
 
 function installDom() {
-  dom = new Window({ url: 'http://localhost/' })
-  globalThis.window = dom
-  globalThis.document = dom.document
-  Object.defineProperty(globalThis, 'navigator', { configurable: true, value: dom.navigator })
-  for (const key of ['HTMLElement', 'HTMLIFrameElement', 'Node', 'Element', 'Event', 'MouseEvent']) {
-    globalThis[key] = dom[key]
-  }
   globalThis.IS_REACT_ACT_ENVIRONMENT = true
   container = document.createElement('div')
   document.body.append(container)
@@ -137,31 +130,31 @@ async function unmountStats() {
   await act(async () => { root.unmount() })
   root = null
   container = null
-  dom.close()
-  dom = null
 }
 
 function muscleCard() {
-  return [...container.querySelectorAll('.card')].find(card =>
-    [...card.querySelectorAll('.seg button')].some(button =>
-      ['Muscle balance', 'Fatigue', 'Strength'].includes(button.textContent.trim())))
+  return container.querySelector('[data-tour="muscle-card"]')
 }
 
 function buttonWithText(scope, text) {
-  return [...scope.querySelectorAll('button')].find(button => button.textContent.trim() === text)
+  const aliases = { All: 'Todo', Hard: 'Duras', 'Fatigued': 'Fatigado', Recovering: 'En recuperación', Ready: 'Listo' }
+  const labels = new Set([text, aliases[text]])
+  return [...scope.querySelectorAll('button')].find(button => labels.has(button.textContent.trim()))
 }
 
 function viewButton(text) {
-  return buttonWithText(muscleCard(), text)
+  const index = { 'Muscle balance': 0, Fatigue: 1, Strength: 2 }[text]
+  return muscleCard().querySelectorAll('.seg-range')[0]?.querySelectorAll('button')[index]
 }
 
 function balanceRangeButton(text) {
-  return buttonWithText(muscleCard().querySelectorAll('.seg')[1], text)
+  const index = { Week: 0, '30d': 1, '90d': 2, All: 3 }[text]
+  return muscleCard().querySelectorAll('.seg-range')[1]?.querySelectorAll('button')[index]
 }
 
 async function click(button) {
   expect(button, `expected a button named ${button?.textContent || 'unknown'}`).toBeTruthy()
-  await act(async () => { button.dispatchEvent(new dom.MouseEvent('click', { bubbles: true })) })
+  await act(async () => { button.dispatchEvent(new MouseEvent('click', { bubbles: true })) })
 }
 
 async function tick(milliseconds) {
@@ -198,13 +191,13 @@ describe('Stats muscle recovery view runtime', () => {
     expectPressed(viewButton('Fatigue'))
     expect(lastMap().thresholds).toBeTruthy()
     expect(lastMap().thresholds.at(-1)).toEqual({ at: 0.5, level: 4, exclusive: true })
-    expect(container.textContent).toContain('Fatigue shows how recently each muscle was trained. High means rest.')
+    expect(container.textContent).toContain('La fatiga indica cuánto tiempo ha pasado desde el último entrenamiento')
     expect(container.querySelector('[data-selected-muscle="chest"]')).toBeTruthy()
 
     await click(viewButton('Strength'))
     expectPressed(viewButton('Strength'))
     expect(lastMap().thresholds.at(-1)).toEqual({ at: 1, level: 4 })
-    expect(container.textContent).toContain('Strength shows retained muscle strength. Train again to reset it.')
+    expect(container.textContent).toContain('La fuerza muestra cuánta fuerza muscular se conserva')
 
     await click(viewButton('Muscle balance'))
     expectPressed(balanceRangeButton('30d'))
@@ -222,7 +215,7 @@ describe('Stats muscle recovery view runtime', () => {
     const mountsBeforeTick = mocks.mapMounts
     const beforeTick = lastMap().load.chest
     expect(fatigueStateOf(beforeTick)).toBe(FATIGUE_STATES.FATIGUED)
-    expect(container.textContent).toContain('Fatigued')
+    expect(container.textContent).toContain('Fatigado')
 
     await tick(60000)
 
@@ -230,7 +223,7 @@ describe('Stats muscle recovery view runtime', () => {
     expect(mocks.mapMounts).toBe(mountsBeforeTick)
     expect(afterTick).toBeLessThan(beforeTick)
     expect(fatigueStateOf(afterTick)).toBe(FATIGUE_STATES.RECOVERING)
-    expect(container.textContent).toContain('Recovering')
+    expect(container.textContent).toContain('En recuperación')
 
     await click(viewButton('Strength'))
     expect(lastMap().load.quadriceps).toBeLessThan(1)
