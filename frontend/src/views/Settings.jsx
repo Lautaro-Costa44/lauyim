@@ -260,9 +260,10 @@ export default function Settings() {
                 if (s.progressionConfig.rep_range_min == undefined) s.progressionConfig.rep_range_min = 8;
                 if (s.progressionConfig.rep_range_max == undefined) s.progressionConfig.rep_range_max = 12;
                 if (s.progressionConfig.increment_kg == undefined) s.progressionConfig.increment_kg = 2.5;
-              } else if (v === 'greyskull') {
-                if (s.progressionConfig.increment_kg == undefined) s.progressionConfig.increment_kg = 2.5;
-              } else if (v === 'dup') {
+              } else if (s.progressionConfig.increment_kg == undefined) {
+                s.progressionConfig.increment_kg = 2.5;
+              }
+              if (v === 'dup') {
                 s.progressionConfig.pattern = [
                   { day_index: 0, rep_target: 8, intensity_pct: 80 },
                   { day_index: 1, rep_target: 10, intensity_pct: 75 },
@@ -270,8 +271,31 @@ export default function Settings() {
                 ];
               }
             })}
-            options={POLICIES.map(p => ({ value: p, label: POLICY_NAME[p] }))}
+            options={POLICIES.filter(p => p !== 'time').map(p => ({ value: p, label: POLICY_NAME[p] }))}
           />
+          {POLICY_DESC[S.progressionType || 'linear'] && (
+            <div className="muted small" style={{ paddingLeft: 12, paddingRight: 12, marginBottom: 8 }}>
+              {t(POLICY_DESC[S.progressionType || 'linear'])}
+            </div>
+          )}
+          {(S.progressionType === 'linear' || S.progressionType === 'greyskull' || S.progressionType === 'double' || !S.progressionType) && (
+            <Row title={t('Incremento en kg')}>
+              <input
+                type="number"
+                step="0.5"
+                min="0.5"
+                style={{ width: 80, padding: '6px 10px', background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text)', textAlign: 'right' }}
+                value={S.progressionConfig?.increment_kg ?? 2.5}
+                onChange={e => {
+                  const val = parseFloat(e.target.value);
+                  update(s => {
+                    if (!s.progressionConfig) s.progressionConfig = {};
+                    s.progressionConfig.increment_kg = isNaN(val) ? 2.5 : val;
+                  });
+                }}
+              />
+            </Row>
+          )}
           <SelectRow icon="flame" iconTint="var(--pink)" title={t('Intensificador por defecto')} sheetTitle={t('Intensificador')}
             value={S.defaultIntensifier?.type || 'none'}
             onChange={v => update(s => {
