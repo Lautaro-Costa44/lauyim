@@ -229,10 +229,10 @@ export default function SurveyWizard() {
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }, [paso])
 
-  const progressionOpciones = useMemo(() => POLICIES.map(p => ({
+  const progressionOpciones = useMemo(() => POLICIES.filter(p => p !== 'time').map(p => ({
     value: p,
     label: POLICY_NAME[p],
-    sub: POLICY_DESC[p],
+    sub: POLICY_DESC[p] ? t(POLICY_DESC[p]) : '',
   })), [])
 
   const intensifierOpciones = useMemo(() => [

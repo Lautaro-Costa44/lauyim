@@ -552,13 +552,15 @@ export default {
   'No automatic progression': 'Sin progresión automática',
   'Linear progression': 'Progresión lineal',
   'Greyskull LP': 'Greyskull LP',
-  'Double progression': 'Progresión doble',
+  'Double progression': 'Doble progresión',
   'Add time': 'Añadir tiempo',
+  'Daily Undulating Periodization (DUP)': 'DUP (ondulante)',
   'Targets stay where you set them.': 'Los objetivos se quedan como los pongas.',
   'Hit every rep in every set and the weight goes up. Repeated misses trigger a deload.': 'Si completas todas las repeticiones de todas las series, sube el peso. Los fallos repetidos provocan una descarga.',
   'Two straight sets plus a final set taken to failure. Beat the target on that set and the weight goes up — double if you double the reps. One failure resets 10 %.': 'Dos series normales más una final al fallo. Si superas el objetivo en esa serie, sube el peso; el doble si doblas las repeticiones. Un fallo reduce un 10 %.',
   'Work up through a rep range at the same weight. Reach the top of the range in every set and the weight goes up, reps back to the bottom.': 'Sube por un rango de repeticiones con el mismo peso. Alcanza el tope del rango en todas las series y el peso sube, con las repeticiones de vuelta al mínimo.',
   'Hold every set for the full duration and the target goes up.': 'Aguanta todas las series el tiempo completo y el objetivo sube.',
+  'Daily undulating cycle: Heavy (1-5 reps) → Moderate (6-10 reps) → Light (12-15 reps). Progresses each day type independently.': 'Ciclo semanal ondulante: Pesado (1-5 reps) → Moderado (6-10 reps) → Ligero (12-15 reps). Progresa de forma independiente cada día.',
   'Nothing logged yet — this session sets the baseline.': 'Aún no hay nada registrado: esta sesión marca el punto de partida.',
   'Held every set for the full time — target up by {0}s.': 'Aguantaste todas las series el tiempo completo: objetivo +{0} s.',
   'Short {0} sessions in a row — back off to {1}s and build up again.': '{0} sesiones seguidas por debajo: baja a {1} s y vuelve a subir.',
@@ -755,5 +757,7 @@ export default {
   'Not signed in': 'No has iniciado sesión',
   'Entrenamiento parcial': 'Entrenamiento parcial',
   'Se marcó tu entrenamiento como completado parcialmente al no registrarse actividad.': 'Se marcó tu entrenamiento como completado parcialmente al no registrarse actividad.',
-  'Okey': 'Okey'
+  'Okey': 'Okey',
+  'Backoff sets': 'Series de backoff',
+  'Backoff reps': 'Repeticiones de backoff'
 }
