@@ -73,9 +73,9 @@ const OPT = {
     { value: '180+',   label: '180+ segundos', sub: 'Fuerza pesada y máxima recuperación' },
   ],
   tipoProgresion: [
-    { value: 'lineal',           label: 'Progresión lineal',       sub: 'Subir peso set a set' },
-    { value: 'doble_progresion', label: 'Doble progresión',        sub: 'Primero reps, luego peso' },
-    { value: 'ondulante',        label: 'Ondulante (DUP)',         sub: 'Variar intensidad por día' },
+    { value: 'linear',           label: 'Progresión lineal',       sub: 'Subir peso set a set' },
+    { value: 'double',           label: 'Doble progresión',        sub: 'Primero reps, luego peso' },
+    { value: 'dup',              label: 'Ondulante (DUP)',         sub: 'Variar intensidad por día' },
   ],
   metricaEsfuerzo: [
     { value: 'rir', label: 'RIR (Reps en reserva)', sub: 'RIR 1-2 (dejar 1 o 2 reps antes del fallo)' },
@@ -175,6 +175,8 @@ export default function SurveyWizard() {
 
   const [resp, setResp] = useState(() => ({
     ...DEF_RESPUESTAS,
+    tipoProgresion: S.progressionType || 'linear',
+    defaultIntensifier: S.defaultIntensifier || { type: 'none' },
     ...(S.respuestasEncuesta || {}),
   }))
   const [paso, setPaso] = useState(1)
@@ -381,9 +383,10 @@ export default function SurveyWizard() {
         st.nivel = respuestas.nivel || st.nivel || null
         st.genero = respuestas.sexoBiologico === 'femenino' ? 'femenino' : 'masculino'
         st.body = st.genero === 'femenino' ? 'female' : 'male'
+        st.progressionType = respuestas.tipoProgresion || 'linear'
+        st.defaultIntensifier = respuestas.defaultIntensifier || { type: 'none' }
         st.respuestasEncuesta = respuestas
         st.rutinaGenerada = rutinaGenerada
-        st.defaultIntensifier = respuestas.defaultIntensifier || { type: 'none' }
         st.fechaUltimaEncuesta = todayISO()
 
         if (respuestas.pesoKg && (!st.bodyweight || st.bodyweight.length === 0)) {
