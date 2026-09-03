@@ -333,10 +333,10 @@ export default function Settings() {
         value={S.defaultIntensifier?.type || 'none'}
         onChange={v => update(s => {
           s.defaultIntensifier = !v || v === 'none' ? { type: 'none' } : v === 'dropset'
-            ? { type: 'dropset', count: s.defaultIntensifier?.count || 1, pct: s.defaultIntensifier?.pct || 20 }
+            ? { type: 'dropset', count: s.defaultIntensifier?.count || 1, pct: s.defaultIntensifier?.pct || 80 }
             : v === 'topback'
-            ? { type: 'topback', count: s.defaultIntensifier?.count || 3, pct: s.defaultIntensifier?.pct || 85, backoffReps: s.defaultIntensifier?.backoffReps || 10 }
-            : { type: 'restpause', totalReps: s.defaultIntensifier?.totalReps || 8, restSec: s.defaultIntensifier?.restSec || s.restPauseSec || 15 };
+            ? { type: 'topback', count: s.defaultIntensifier?.count || 2, pct: s.defaultIntensifier?.pct || 80, backoffReps: s.defaultIntensifier?.backoffReps || 10 }
+            : { type: 'restpause', totalReps: s.defaultIntensifier?.totalReps || 10, restSec: s.defaultIntensifier?.restSec || s.restPauseSec || 20 };
         })}
         options={[
           { value: 'none', label: t('Ninguno') },
@@ -365,7 +365,7 @@ export default function Settings() {
       {S.defaultIntensifier?.type === 'restpause' && <div className="row cfgrow" style={{ marginBottom: 8, paddingLeft: 12 }}>
         <Stepper label={t('Rest-pause reps')} value={S.defaultIntensifier.totalReps ?? 10} step={1} decimal={false}
           onChange={v => update(s => { s.defaultIntensifier = { ...s.defaultIntensifier, totalReps: Math.max(1, v) } })} />
-        <Stepper label={t('Rest (s)')} value={S.defaultIntensifier.restSec ?? 30} step={5} decimal={false}
+        <Stepper label={t('Rest (s)')} value={S.defaultIntensifier.restSec ?? 20} step={5} decimal={false}
           onChange={v => update(s => { s.defaultIntensifier = { ...s.defaultIntensifier, restSec: Math.max(5, v) } })} />
       </div>}
 
