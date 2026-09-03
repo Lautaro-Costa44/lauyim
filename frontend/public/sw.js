@@ -12,8 +12,8 @@ self.addEventListener('push', e => {
   const data = e.data ? e.data.json() : {}
   e.waitUntil(self.registration.showNotification(data.title || 'lauyim', {
     body: data.body || '',
-    icon: 'logo.svg',
-    badge: 'logo.svg',
+    icon: 'logo-sin.svg',
+    badge: 'logo-sin.svg',
     tag: data.tag || 'lauyim',
     renotify: true,
     data: data.data || {}

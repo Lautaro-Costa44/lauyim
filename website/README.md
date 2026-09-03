@@ -6,7 +6,7 @@ served by nginx.
 Not in this folder (added at deploy time):
 
 - `img/` — the five screenshots from `../assets/screenshots/` plus `banner.png`
-- `logo.svg` — copied from `../frontend/public/` (the same logo the PWA uses, so
+- `logo-sin.svg` — copied from `../frontend/public/` (the same logo the PWA uses, so
   the browser tab, home screen and app all match)
 - `openGym.apk` — the signed release build (see `../docs/MOBILE.md`)
 - `demo/` — the browser-only demo build of the app, embedded in the `#demo` section and

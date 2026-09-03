@@ -124,7 +124,7 @@ export default function Login() {
   }
   const head = <>
     <div style={{ display: 'flex', justifyContent: 'center', paddingTop: 32 }}>
-      <img src="icon-login.PNG" alt="lauyim" style={{ width: 96, height: 96, objectFit: 'contain' }} />
+      <img src="logo-sin.svg?v=1" alt="lauyim" style={{ width: 96, height: 96, objectFit: 'contain' }} />
     </div>
     <h1 style={{ fontSize: 34, fontWeight: 700, letterSpacing: '-.028em', margin: '-5px 0 4px' }}>lauyim</h1>
   </>

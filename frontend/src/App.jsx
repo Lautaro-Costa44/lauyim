@@ -77,7 +77,7 @@ function Shell() {
   if (!ready) return (
     <div id="app">
       <div style={{ paddingTop: '44vh', display: 'flex', justifyContent: 'center' }}>
-        <img src="logo.svg" alt="lauyim" style={{ width: 72, height: 72 }} />
+        <img src="logo-sin.svg" alt="lauyim" style={{ width: 72, height: 72 }} />
       </div>
     </div>
   )
