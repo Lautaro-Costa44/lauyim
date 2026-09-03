@@ -8,6 +8,7 @@ import { setLang, useLang } from './lib/i18n.js'
 import { setNav } from './lib/nav.js'
 import { useWakeLock } from './lib/wakelock.js'
 import { startFlow } from './sheets.jsx'
+import { guestAllowed } from './lib/guest.js'
 import Icon from './components/Icon.jsx'
 import TabBar from './components/TabBar.jsx'
 import ErrorBoundary from './components/ErrorBoundary.jsx'
@@ -47,6 +48,7 @@ function Shell() {
   const navigate = useNavigate()
   const loc = useLocation()
   const { S, user, ready } = useStore()
+  const config = useStore(s => s.config)
   const licenseExpired = useStore(s => s.licenseExpired)
   const isGuest = useStore(s => s.isGuest())
   const langV = useLang()   // re-renders the whole shell when the language (pack) changes
@@ -69,8 +71,8 @@ function Shell() {
   // bound to the workout, not to the route — checking Stats mid-session keeps the screen on
   useWakeLock(!!S.active && S.keepAwake !== false)
 
-  // Leemos si el backend/configuracion permite invitados
-  const allowGuest = S.allowGuest !== false && S.allowGuest !== 0
+  // La configuración del backend es la única fuente de verdad para invitados.
+  const allowGuest = guestAllowed(config)
   
   // Si no se permiten invitados, estar en modo invitado NO cuenta como estar autenticado
   const authed = !!user || (allowGuest && isGuest)
