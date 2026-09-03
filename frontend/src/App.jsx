@@ -1,5 +1,5 @@
 import { HashRouter, Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom'
-import { useEffect } from 'react'
+import { lazy, Suspense, useEffect } from 'react'
 import { useStore } from './store/useStore.js'
 import { useUI } from './store/useUI.js'
 import { bindUI } from './components/ui.jsx'
@@ -22,12 +22,14 @@ import RoutineEdit from './views/RoutineEdit.jsx'
 import Workout from './views/Workout.jsx'
 import Stats from './views/Stats.jsx'
 import History from './views/History.jsx'
-import Library from './views/Library.jsx'
 import Settings from './views/Settings.jsx'
-import Admin from './views/Admin.jsx'
-import SurveyWizard from './views/SurveyWizard.jsx'
 import LicenseExpired from './views/LicenseExpired.jsx'
-import ImportPlan from './views/ImportPlan.jsx'
+// These routes are not needed to boot or navigate the main workout loop.
+// Keep their larger catalogues out of the initial offline payload.
+const Library = lazy(() => import('./views/Library.jsx'))
+const Admin = lazy(() => import('./views/Admin.jsx'))
+const SurveyWizard = lazy(() => import('./views/SurveyWizard.jsx'))
+const ImportPlan = lazy(() => import('./views/ImportPlan.jsx'))
 
 bindUI(useUI)   // lets the shared controls open sheets without importing the store at module scope
 
@@ -79,7 +81,7 @@ function Shell() {
   if (!ready) return (
     <div id="app">
       <div style={{ paddingTop: '44vh', display: 'flex', justifyContent: 'center' }}>
-        <img src="logo-sin.svg" alt="lauyim" style={{ width: 72, height: 72 }} />
+        <img src="logo-perf.svg" alt="lauyim" style={{ width: 72, height: 72 }} />
       </div>
     </div>
   )
@@ -91,6 +93,7 @@ function Shell() {
       <div id="app" className="vfade" key={loc.pathname}>
         <ErrorBoundary>
           {licenseExpired ? <LicenseExpired /> : !authed ? <Login /> : (
+            <Suspense fallback={<div className="page-loading" aria-busy="true" />}> 
             <Routes>
               <Route path="/home" element={<Home />} />
               <Route path="/plan" element={<Plan />} />
@@ -105,6 +108,7 @@ function Shell() {
               <Route path="/admin" element={user?.admin ? <Admin /> : <Navigate to="/home" replace />} />
               <Route path="*" element={<Navigate to="/home" replace />} />
             </Routes>
+            </Suspense>
           )}
         </ErrorBoundary>
       </div>

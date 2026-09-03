@@ -5,6 +5,9 @@
   "type": "module",
   "main": "server.js",
   "license": "AGPL-3.0-or-later",
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "start": "node server.js",
     "test": "node --test",
@@ -12,7 +15,6 @@
   },
   "dependencies": {
     "@simplewebauthn/server": "^13.1.1",
-    "web-push": "^3.6.7",
-    "better-sqlite3": "^11.7.0"
+    "web-push": "^3.6.7"
   }
 }

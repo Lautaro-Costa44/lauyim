@@ -30,7 +30,10 @@ const LABELS = {
 }
 // An unknown event is shown raw rather than dropped or rendered as "undefined": a dashboard
 // that is one version behind the server should still say *something* truthful.
-export const auditLabel = ev => t(LABELS[ev] || 'Unknown event')
+export const auditLabel = ev => {
+  if (!ev) return t('Unknown event')
+  return t(LABELS[ev] || String(ev))
+}
 
 const REASONS = {
   'challenge-expired': 'the sign-in took too long and expired',

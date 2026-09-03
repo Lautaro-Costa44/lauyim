@@ -3,19 +3,22 @@
  * Reemplaza las operaciones que antes usaban db.json + state-<uid>.json
  */
 
-import Database from 'better-sqlite3';
+import { DatabaseSync } from 'node:sqlite';
 import path from 'path';
 import fs from 'fs';
+import { fileURLToPath } from 'node:url';
 
 const DATA = process.env.DATA_DIR || '/data';
 const dbPath = path.join(DATA, 'gym.db');
+const schemaPath = fileURLToPath(new URL('./schema.sql', import.meta.url));
 
 let db;
 
 export function initDatabase() {
-  db = new Database(dbPath);
-  db.pragma('journal_mode = WAL');
-  db.pragma('foreign_keys = ON');
+  if (db?.isOpen) db.close();
+  db = new DatabaseSync(dbPath);
+  db.exec('PRAGMA journal_mode = WAL');
+  db.exec('PRAGMA foreign_keys = ON');
 
   // Migraciones adicionales si faltan columnas en bases existentes
   try {
@@ -104,6 +107,9 @@ export function initDatabase() {
     );
   `);
 
+  // Los tests y las bases nuevas necesitan también las tablas secundarias del schema.
+  db.exec(fs.readFileSync(schemaPath, 'utf8'));
+
   // Migración defensiva: asegurar que existan todas las columnas de la encuesta en bases de datos existentes
   const columnsToAdd = [
     ['edad', 'INTEGER'],
@@ -119,7 +125,10 @@ export function initDatabase() {
     ['auto_backup', 'INTEGER'],
     ['active_equip_id', 'TEXT'],
     ['equip_filter_on', 'INTEGER'],
-    ['onboarding_completado', 'INTEGER']
+    ['onboarding_completado', 'INTEGER'],
+    ['onboarding_stats_completado', 'INTEGER'],
+    ['progression_type', 'TEXT'],
+    ['progression_config', 'TEXT']
   ];
 
   for (const [col, type] of columnsToAdd) {
@@ -144,6 +153,11 @@ export function initDatabase() {
   } catch {}
 
   return db;
+}
+
+export function closeDatabase() {
+  if (db?.isOpen) db.close();
+  db = undefined;
 }
 
 export function getDatabase() {
@@ -750,9 +764,10 @@ function saveWorkouts(userId, workouts, validRoutineIds = null) {
     }
   }
 
-  const runTransaction = db.transaction((items) => {
+  db.exec('BEGIN');
+  try {
     deleteStmt.run(userId);
-    for (const workout of items) {
+    for (const workout of cleanWorkouts) {
       workoutStmt.run(
         workout.id,
         userId,
@@ -797,8 +812,11 @@ function saveWorkouts(userId, workouts, validRoutineIds = null) {
         }
       }
     }
-  });
-  runTransaction(cleanWorkouts);
+    db.exec('COMMIT');
+  } catch (error) {
+    db.exec('ROLLBACK');
+    throw error;
+  }
 }
 
 // ============================================================

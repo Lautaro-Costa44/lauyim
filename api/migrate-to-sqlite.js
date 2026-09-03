@@ -14,7 +14,7 @@
 
 import fs from 'fs';
 import path from 'path';
-import Database from 'better-sqlite3';
+import { DatabaseSync } from 'node:sqlite';
 import crypto from 'crypto';
 
 const DATA = process.env.DATA_DIR || '/data';
@@ -45,9 +45,9 @@ try {
 
 // Crear base SQLite
 console.log('🔨 Creando base SQLite...');
-const sqlite = new Database(sqliteFile);
-sqlite.pragma('journal_mode = WAL'); // Mejor performance
-sqlite.pragma('foreign_keys = ON');
+const sqlite = new DatabaseSync(sqliteFile);
+sqlite.exec('PRAGMA journal_mode = WAL'); // Mejor performance
+sqlite.exec('PRAGMA foreign_keys = ON');
 
 // Leer y ejecutar schema
 const schema = fs.readFileSync(path.join(process.cwd(), 'schema.sql'), 'utf8');

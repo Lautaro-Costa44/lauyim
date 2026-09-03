@@ -1,5 +1,5 @@
 /* opengym-api — passkey (WebAuthn) auth + per-user state storage for openGym
-   SQLite storage via better-sqlite3, signed session cookies.               */
+   SQLite storage via node:sqlite, signed session cookies.                  */
 import http from 'node:http';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
@@ -155,12 +155,17 @@ const DEFAULT_PRESETS = [
 ].map(r => ({ ...r, ex: r.ex.map(([id, sets, reps]) => ({ id, sets, reps, weight: 0 })) }));
 
 if (getAllPresets().length === 0) {
-  const transaction = getDatabase().transaction(() => {
+  const db = getDatabase();
+  db.exec('BEGIN');
+  try {
     for (const p of DEFAULT_PRESETS) {
       createPreset(p);
     }
-  });
-  transaction();
+    db.exec('COMMIT');
+  } catch (error) {
+    db.exec('ROLLBACK');
+    throw error;
+  }
   // saveDb(); // Eliminado: SQLite persiste automáticamente
 }
 
@@ -703,7 +708,9 @@ const routes = {
     if (invite) { user.invitedBy = invite.code; }
 
     // Uso de transacción atómica para insertar usuario, credencial y actualizar invitación
-    const transaction = getDatabase().transaction(() => {
+    const db = getDatabase();
+    db.exec('BEGIN');
+    try {
       createUser(user);
       createCredential({
         id: credential.id, userId: user.id,
@@ -714,8 +721,11 @@ const routes = {
       if (invite) {
         updateInviteUsedBy(invite.code, user.id);
       }
-    });
-    transaction();
+      db.exec('COMMIT');
+    } catch (error) {
+      db.exec('ROLLBACK');
+      throw error;
+    }
 
     // saveDb(); // Eliminado: SQLite persiste automáticamente
     audit(req, 'auth.register.ok', { user, msg: invite ? invite.code : null });
@@ -950,7 +960,9 @@ const routes = {
     
     const keys = { p256dh: String(sub.keys.p256dh), auth: String(sub.keys.auth) };
     
-    const transaction = getDatabase().transaction(() => {
+    const db = getDatabase();
+    db.exec('BEGIN');
+    try {
       deleteSubscription(sub.endpoint);
       const mine = getSubscriptionsByUserId(user.id);
       if (mine.length >= MAX_SUBS_PER_USER) {
@@ -960,8 +972,11 @@ const routes = {
         }
       }
       createSubscription({ userId: user.id, endpoint: sub.endpoint, keys, created: new Date().toISOString() });
-    });
-    transaction();
+      db.exec('COMMIT');
+    } catch (error) {
+      db.exec('ROLLBACK');
+      throw error;
+    }
 
     // saveDb(); // Eliminado: SQLite persiste automáticamente
     json(res, 200, { ok: true });

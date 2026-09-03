@@ -21,5 +21,6 @@ test('getAllSubscriptions returns all stored subscriptions', () => {
 });
 
 test.after(async () => {
+  dbMod.closeDatabase();
   await rm(tmpDir, { recursive: true, force: true });
 });

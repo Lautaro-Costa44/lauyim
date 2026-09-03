@@ -40,7 +40,7 @@ function renderWorkout(entries) {
 }
 
 function removeButton() {
-  return [...container.querySelectorAll('button')].find(button => button.textContent.includes('Remove exercise'))
+  return container.querySelector('[data-testid="remove-exercise"]')
 }
 
 beforeEach(() => {
@@ -96,7 +96,7 @@ describe('active-session exercise removal', () => {
 
   it('hides the remove control for an empty freestyle session', () => {
     renderWorkout([])
-    expect(removeButton()).toBeUndefined()
+    expect(removeButton()).toBeNull()
   })
 })
 

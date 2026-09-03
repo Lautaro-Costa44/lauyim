@@ -46,7 +46,7 @@ describe('session note', () => {
     }))
     const host = render(() => sessionNoteSheet())
     act(() => { type(host.querySelector('textarea'), 'slept badly, still hit it') })
-    act(() => { [...host.querySelectorAll('button')].find(b => /save/i.test(b.textContent)).click() })
+    act(() => { host.querySelector('button.btn.primary').click() })
 
     const A = useStore.getState().S.active
     expect(A.note).toBe('slept badly, still hit it')

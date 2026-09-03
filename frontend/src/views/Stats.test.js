@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { bestWeightForEntry, metricModeForEntry, metricRowsForEntry } from '../lib/history.js'
 
-const source = readFileSync(new URL('./Stats.jsx', import.meta.url), 'utf8')
-const uiSource = readFileSync(new URL('../components/ui.jsx', import.meta.url), 'utf8')
-const cssSource = readFileSync(new URL('../index.css', import.meta.url), 'utf8')
+const source = readFileSync(resolve(process.cwd(), 'src/views/Stats.jsx'), 'utf8')
+const uiSource = readFileSync(resolve(process.cwd(), 'src/components/ui.jsx'), 'utf8')
+const cssSource = readFileSync(resolve(process.cwd(), 'src/index.css'), 'utf8')
 
 describe('Stats mixed-entry metric contract', () => {
   it('selects authoritative reps rows before timed rows without stale topW', () => {
