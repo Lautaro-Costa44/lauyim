@@ -389,29 +389,9 @@ export default function Settings() {
                   />
                 </div>
               </Row>
-              <Row title={t('Incremento en kg')}>
-                <input
-                  type="number"
-                  step="0.5"
-                  min="0.5"
-                  style={{ width: 80, padding: '6px 10px', background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text)', textAlign: 'right' }}
-                  value={S.progressionConfig?.increment_kg ?? 2.5}
-                  onChange={e => {
-                    const val = parseFloat(e.target.value);
-                    update(s => {
-                      if (!s.progressionConfig) s.progressionConfig = {};
-                      s.progressionConfig.increment_kg = isNaN(val) ? 2.5 : val;
-                    });
-                  }}
-                />
-              </Row>
             </>
           )}
-          {S.progressionType === 'dup' && (
-            <Row title={t('Patrón DUP')}>
-              <span style={{ fontSize: 13, color: 'var(--text-dim)' }}>{t('Patrón ondulante semanal predefinido (8 reps / 10 reps / 12 reps)')}</span>
-            </Row>
-          )}
+          {S.progressionType === 'dup'}
         </>
       
     </Section>
