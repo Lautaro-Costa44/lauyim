@@ -333,7 +333,7 @@ export default function Settings() {
               onChange={v => update(s => { s.defaultIntensifier = { ...s.defaultIntensifier, restSec: Math.max(5, v) } })} />
           </div>}
           <Row icon="list" iconTint="var(--blue)" title={t('Series por ejercicio (por defecto)')}>
-            <div style={{ maxWidth: 80 }}>
+            <div style={{ maxWidth: 110 }}>
               <Stepper value={S.defaultSets ?? 3} min={1} max={6} step={1} decimal={false}
               onChange={v => update(s => { s.defaultSets = Math.max(1, Math.min(6, v)) })} />
               </div>
