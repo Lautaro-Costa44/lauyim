@@ -100,10 +100,10 @@ export function setClusterAt(set, i, patch) {
   return { ...objectOf(set), clusters }
 }
 
-/** Suggested weight for the next drop: pct% lighter than the previous weight, rounded to .5. */
+/** Suggested weight for the next drop: pct% lighter, floored to a loadable 2.5 kg increment. */
 export function nextDropWeight(prevWeight, pct = 20) {
   const p = Math.min(90, Math.max(1, Number(pct) || 20))
-  return Math.round(Math.max(0, (Number(prevWeight) || 0) * (1 - p / 100)) * 2) / 2
+  return Math.floor(Math.max(0, (Number(prevWeight) || 0) * (1 - p / 100)) / 2.5 + 1e-9) * 2.5
 }
 
 /** Suggested reps for the next rest-pause burst: roughly half the previous rep count. */

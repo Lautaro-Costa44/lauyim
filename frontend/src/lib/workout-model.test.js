@@ -130,15 +130,19 @@ describe('setDropAt / setClusterAt', () => {
 })
 
 describe('nextDropWeight / nextBurstReps', () => {
-  it('drops by the given percentage, rounded to the nearest .5', () => {
+  it('drops by the given percentage, floored to a 2.5 kg load', () => {
     expect(nextDropWeight(100, 20)).toBe(80)
-    expect(nextDropWeight(80, 20)).toBe(64)
-    expect(nextDropWeight(61, 10)).toBe(55)
+    expect(nextDropWeight(80, 20)).toBe(62.5)
+    expect(nextDropWeight(61, 10)).toBe(52.5)
   })
 
   it('defaults to 20% and never goes negative', () => {
     expect(nextDropWeight(100)).toBe(80)
     expect(nextDropWeight(0, 20)).toBe(0)
+  })
+
+  it('floors percentage drops to the next available 2.5 kg load', () => {
+    expect(nextDropWeight(22.5, 20)).toBe(17.5)
   })
 
   it('roughly halves the previous rep count, floored at 1', () => {

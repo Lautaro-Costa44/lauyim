@@ -400,7 +400,7 @@ export function applyIntensifierPlan(sets, cfg) {
     const workSets = sets.filter(s => !isWarmupRow(s))
     if (!workSets.length) return sets
     const topSet = workSets[0]
-    const backoffWeight = Math.round(Math.max(0, (topSet.w || 0) * pct / 100) * 2) / 2
+    const backoffWeight = Math.floor(Math.max(0, (topSet.w || 0) * pct / 100) / 2.5 + 1e-9) * 2.5
     const backoffSets = []
     for (let k = 0; k < count; k++) {
       backoffSets.push({ w: backoffWeight, r: backoffReps, done: false, ...defaultIntensifiedEffort(cfg) })

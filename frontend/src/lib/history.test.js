@@ -501,7 +501,7 @@ describe('applyIntensifierPlan', () => {
     const out = applyIntensifierPlan(sets, { intensifier: { type: 'dropset', count: 2, pct: 20 } })
     expect(out).toEqual([
       { w: 100, r: 8, done: false },
-      { w: 100, r: 8, done: false, type: 'dropset', drops: [{ w: 80, r: 8 }, { w: 64, r: 8 }] },
+      { w: 100, r: 8, done: false, type: 'dropset', drops: [{ w: 80, r: 8 }, { w: 62.5, r: 8 }] },
     ])
   })
 
