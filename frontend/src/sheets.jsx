@@ -743,8 +743,8 @@ function ProgressionFields({ ex, mode, c, setC, routine, unit }) {
     <h4 className="sec">{t('Progression')}</h4>
     <div className="sect-b" style={{ marginBottom: 8 }}>
       <SelectRow title={t('Rule')} sheetTitle={t('Progression')} value={c.prog || ''} onChange={v => setC(x => ({ ...x, prog: v || undefined }))}
-        options={[{ value: '', label: t('Follow the routine ({0})', t(POLICY_NAME[inherited])) },
-          ...options.map(p => ({ value: p, label: t(POLICY_NAME[p]) }))]} />
+        options={[{ value: '', label: t('Follow the routine ({0})', POLICY_NAME[inherited] ? t(POLICY_NAME[inherited]) : inherited) },
+           ...options.map(p => ({ value: p, label: POLICY_NAME[p] ? t(POLICY_NAME[p]) : p }))]} />
     </div>
     <div className="small dim" style={{ marginBottom: active === 'off' ? 18 : 10 }}>{t(POLICY_DESC[active])}</div>
     {active !== 'off' && <div className="row cfgrow" style={{ marginBottom: 18 }}>

@@ -271,7 +271,7 @@ export default function Settings() {
                 ];
               }
             })}
-            options={POLICIES.filter(p => p !== 'time').map(p => ({ value: p, label: POLICY_NAME[p] }))}
+            options={POLICIES.filter(p => p !== 'time').map(p => ({ value: p, label: t(POLICY_NAME[p]) }))}
           />
           {POLICY_DESC[S.progressionType || 'linear'] && (
             <div className="muted small" style={{ paddingLeft: 12, paddingRight: 12, marginBottom: 8 }}>

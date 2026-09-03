@@ -125,7 +125,7 @@ export default function RoutineEdit() {
           const rt = (s.routines || []).find(x => x.id === id)
           if (rt) rt.prog = v
         })}
-        options={POLICIES_FOR.reps.map(p => ({ value: p, label: t(POLICY_NAME[p]), subtitle: t(POLICY_DESC[p]) }))}
+        options={POLICIES_FOR.reps.map(p => ({ value: p, label: POLICY_NAME[p] ? t(POLICY_NAME[p]) : p, subtitle: t(POLICY_DESC[p]) }))}
       />
     </div>
 

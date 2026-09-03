@@ -233,7 +233,7 @@ export default function SurveyWizard() {
 
   const progressionOpciones = useMemo(() => POLICIES.filter(p => p !== 'time').map(p => ({
     value: p,
-    label: POLICY_NAME[p],
+    label: t(POLICY_NAME[p]),
     sub: POLICY_DESC[p] ? t(POLICY_DESC[p]) : '',
   })), [])
 
