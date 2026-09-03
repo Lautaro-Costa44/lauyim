@@ -191,10 +191,10 @@ function prepararPoolSeguro(exDB, equipamiento, preferenciaEjercicio, lesiones =
 }
 
 export const SLOTS_POR_TIEMPO = {
-  '30-40': { ejercicios: 4, series: 3 },
-  '40-60': { ejercicios: 5, series: 3 },
-  '60-90': { ejercicios: 6, series: 4 },
-  '90+':   { ejercicios: 7, series: 4 },
+  '30-40': { ejercicios: 4 },
+  '40-60': { ejercicios: 5 },
+  '60-90': { ejercicios: 6 },
+  '90+':   { ejercicios: 7 },
 }
 
 export const SERIES_POR_TIEMPO   = { '30-40': 3, '40-60': 3, '60-90': 4, '90+': 4 }
@@ -536,8 +536,8 @@ export function generarRutina(respuestas, exerciseDB, dictEs = exerciseNamesEs) 
 
   const poolSeguro = prepararPoolSeguro(exerciseDB, equipamiento, preferenciaEjercicio, tieneLesion ? lesiones : [], dictEs)
   const nSlotsNormales = calcularCantidadEjercicios(tiempoPorSesion, descansoSegundos)
-  const configTiempo = SLOTS_POR_TIEMPO[tiempoPorSesion] || SLOTS_POR_TIEMPO['40-60']
-  const nSeries = configTiempo.series
+  const nSeries = respuestas.defaultSets !== undefined ? Number(respuestas.defaultSets) : 3
+  const defaultIntensifier = respuestas.defaultIntensifier || { type: 'none' }
   const reps = objetivo === 'fuerza' ? '3-6' : objetivo === 'perder_grasa' ? '8-15' : '8-12'
 
   const routineConfigs = buildRoutineNames(split, totalDias)
@@ -559,6 +559,7 @@ export function generarRutina(respuestas, exerciseDB, dictEs = exerciseNamesEs) 
     const targetGroups = calcularDistribucionMuscular(tipo, nSlotsNormales, enfoque)
     const normales = seleccionarEjerciciosNormales(poolSeguro, targetGroups, nSlotsNormales, preferenciaEjercicio, usadosEnSemana)
 
+    const ejIntensifier = (defaultIntensifier && defaultIntensifier.type && defaultIntensifier.type !== 'none') ? defaultIntensifier : undefined
     const ejerciciosArray = normales.map(ex => ({
       id: ex.id,
       sets: nSeries,
@@ -571,6 +572,7 @@ export function generarRutina(respuestas, exerciseDB, dictEs = exerciseNamesEs) 
       metrica: metricaEsfuerzo,
       valorEsfuerzo: VALOR_ESFUERZO[metricaEsfuerzo] || null,
       progresion: tipoProgresion,
+      ...(ejIntensifier ? { intensifier: ejIntensifier } : {}),
     }))
 
     // 2. Cardio (si aplica)
@@ -635,6 +637,7 @@ export function rutinaGeneradaToRoutines(rutinaGenerada, respuestas = {}) {
       isNormal: ej.isNormal,
       isCardio: ej.isCardio,
       isStretch: ej.isStretch,
+      ...(ej.intensifier ? { intensifier: ej.intensifier } : {}),
     }))
 
     return {

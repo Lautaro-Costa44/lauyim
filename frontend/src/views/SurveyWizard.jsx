@@ -6,6 +6,7 @@ import { CATALOGUE, EXIDX } from '../lib/exercises.js'
 import { generarRutina, rutinaGeneradaToRoutines, defaultSplitRecomendado, derivarSplit } from '../lib/generarRutina.js'
 import { todayISO } from '../lib/format.js'
 import { t, exerciseNameFor } from '../lib/i18n.js'
+import { POLICIES, POLICY_NAME, POLICY_DESC } from '../lib/progression.js'
 import { confirmSheet, exerciseDetailSheetNoAdd } from '../sheets.jsx'
 import Icon from '../components/Icon.jsx'
 import { Button } from '../components/ui.jsx'
@@ -121,7 +122,8 @@ const DEF_RESPUESTAS = {
   preferenciaEjercicio: 'sin_preferencia',
   enfoque: 'balance',
   descansoSegundos: '90-120',
-  tipoProgresion: 'doble_progresion',
+  tipoProgresion: null,
+  defaultIntensifier: null,
   metricaEsfuerzo: 'rir',
   cardio: 'sin_cardio',
   movilidadEstiramientos: false,
@@ -223,6 +225,23 @@ export default function SurveyWizard() {
     return avisoFrecuencia
   }, [resp.nivel, totalDias, resp.splitPreferido, resp.enfoque])
 
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }, [paso])
+
+  const progressionOpciones = useMemo(() => POLICIES.map(p => ({
+    value: p,
+    label: POLICY_NAME[p],
+    sub: POLICY_DESC[p],
+  })), [])
+
+  const intensifierOpciones = useMemo(() => [
+    { value: 'none', label: t('Ninguno'), sub: t('Sin intensificador automático') },
+    { value: 'dropset', label: t('Drop-set'), sub: t('Series descendentes sin pausa') },
+    { value: 'topback', label: t('Top-set + Backoff'), sub: t('Serie pesada y series de retroceso') },
+    { value: 'restpause', label: t('Rest-pause'), sub: t('Bloques con mini-descansos') },
+  ], [])
+
   const avanzar = () => setPaso(p => Math.min(PASOS, p + 1))
   const retroceder = () => setPaso(p => Math.max(1, p - 1))
 
@@ -235,6 +254,7 @@ export default function SurveyWizard() {
         ...resp,
         tieneLesion: resp.lesiones.length > 0,
         diasPorSemana: resp.diasSeleccionados.length,
+        defaultIntensifier: resp.defaultIntensifier || S.defaultIntensifier || { type: 'none' },
       }
 
       const rutinaGenerada = generarRutina(respuestas, CATALOGUE)
@@ -363,6 +383,7 @@ export default function SurveyWizard() {
         st.body = st.genero === 'femenino' ? 'female' : 'male'
         st.respuestasEncuesta = respuestas
         st.rutinaGenerada = rutinaGenerada
+        st.defaultIntensifier = respuestas.defaultIntensifier || { type: 'none' }
         st.fechaUltimaEncuesta = todayISO()
 
         if (respuestas.pesoKg && (!st.bodyweight || st.bodyweight.length === 0)) {
@@ -568,7 +589,15 @@ export default function SurveyWizard() {
 
             <div style={{ height: 24 }} />
             <h2 className="survey-step-title">Tipo de progresión</h2>
-            <OptionGrid opciones={OPT.tipoProgresion} valor={resp.tipoProgresion} onSelect={v => set('tipoProgresion', v)} />
+            <OptionGrid opciones={progressionOpciones} valor={resp.tipoProgresion} onSelect={v => set('tipoProgresion', v)} />
+
+            <div style={{ height: 24 }} />
+            <h2 className="survey-step-title">Intensificador por defecto</h2>
+            <OptionGrid
+              opciones={intensifierOpciones}
+              valor={resp.defaultIntensifier?.type || null}
+              onSelect={v => set('defaultIntensifier', v === 'none' ? { type: 'none' } : { type: v, count: 1, pct: 20, totalReps: 8, restSec: 15, backoffReps: 10 })}
+            />
 
             <div style={{ height: 24 }} />
             <h2 className="survey-step-title">Cardio</h2>

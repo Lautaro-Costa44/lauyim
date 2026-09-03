@@ -5,6 +5,8 @@ import { useStore, DEF, hasData } from '../store/useStore.js'
 import { useUI } from '../store/useUI.js'
 import { ACCENTS, todayISO, localTZ } from '../lib/format.js'
 import { effortOf } from '../lib/history.js'
+import { POLICIES, POLICY_NAME, POLICY_DESC } from '../lib/progression.js'
+import Stepper from '../components/Stepper.jsx'
 import { api, webauthnOK, passkeyLogin, passkeyRegister, passkeyAddCredential, IS_ANDROID } from '../lib/api.js'
 import { supportSheet } from '../sheets.jsx'
 
@@ -250,33 +252,68 @@ export default function Settings() {
           value={effortOf(S)} onChange={v => update(s => { s.effort = v; delete s.showRir })} />
       </Row>
         <>
-          <Row title={t('Tipo de progresión')}>
-            <Segmented
-              options={[
-                { value: 'linear', label: t('Lineal') },
-                { value: 'double', label: t('Doble progresión') },
-                { value: 'dup', label: t('DUP') }
-              ]}
-              value={S.progressionType || 'linear'}
-              onChange={v => update(s => {
-                s.progressionType = v;
-                if (!s.progressionConfig) s.progressionConfig = {};
-                if (v === 'linear' && s.progressionConfig.increment_kg == undefined) {
-                  s.progressionConfig.increment_kg = 2.5;
-                } else if (v === 'double') {
-                  if (s.progressionConfig.rep_range_min == undefined) s.progressionConfig.rep_range_min = 8;
-                  if (s.progressionConfig.rep_range_max == undefined) s.progressionConfig.rep_range_max = 12;
-                  if (s.progressionConfig.increment_kg == undefined) s.progressionConfig.increment_kg = 2.5;
-                } else if (v === 'dup') {
-                  // TODO: UI para editar patrón DUP en iteración futura
-                  s.progressionConfig.pattern = [
-                    { day_index: 0, rep_target: 8, intensity_pct: 80 },
-                    { day_index: 1, rep_target: 10, intensity_pct: 75 },
-                    { day_index: 2, rep_target: 12, intensity_pct: 70 }
-                  ];
-                }
-              })}
-            />
+          <SelectRow icon="target" iconTint="var(--purple)" title={t('Tipo de progresión')} sheetTitle={t('Tipo de progresión')}
+            value={S.progressionType || 'linear'}
+            onChange={v => update(s => {
+              s.progressionType = v;
+              if (!s.progressionConfig) s.progressionConfig = {};
+              if (v === 'linear' && s.progressionConfig.increment_kg == undefined) {
+                s.progressionConfig.increment_kg = 2.5;
+              } else if (v === 'double') {
+                if (s.progressionConfig.rep_range_min == undefined) s.progressionConfig.rep_range_min = 8;
+                if (s.progressionConfig.rep_range_max == undefined) s.progressionConfig.rep_range_max = 12;
+                if (s.progressionConfig.increment_kg == undefined) s.progressionConfig.increment_kg = 2.5;
+              } else if (v === 'greyskull') {
+                if (s.progressionConfig.increment_kg == undefined) s.progressionConfig.increment_kg = 2.5;
+              } else if (v === 'dup') {
+                s.progressionConfig.pattern = [
+                  { day_index: 0, rep_target: 8, intensity_pct: 80 },
+                  { day_index: 1, rep_target: 10, intensity_pct: 75 },
+                  { day_index: 2, rep_target: 12, intensity_pct: 70 }
+                ];
+              }
+            })}
+            options={POLICIES.map(p => ({ value: p, label: POLICY_NAME[p] }))}
+          />
+          <SelectRow icon="flame" iconTint="var(--pink)" title={t('Intensificador por defecto')} sheetTitle={t('Intensificador')}
+            value={S.defaultIntensifier?.type || 'none'}
+            onChange={v => update(s => {
+              s.defaultIntensifier = !v || v === 'none' ? { type: 'none' } : v === 'dropset'
+                ? { type: 'dropset', count: s.defaultIntensifier?.count || 1, pct: s.defaultIntensifier?.pct || 20 }
+                : v === 'topback'
+                ? { type: 'topback', count: s.defaultIntensifier?.count || 3, pct: s.defaultIntensifier?.pct || 85, backoffReps: s.defaultIntensifier?.backoffReps || 10 }
+                : { type: 'restpause', totalReps: s.defaultIntensifier?.totalReps || 8, restSec: s.defaultIntensifier?.restSec || s.restPauseSec || 15 };
+            })}
+            options={[
+              { value: 'none', label: t('Ninguno') },
+              { value: 'dropset', label: t('Drop-set') },
+              { value: 'topback', label: t('Top-set + Backoff') },
+              { value: 'restpause', label: t('Rest-pause') },
+            ]}
+          />
+          {S.defaultIntensifier?.type === 'dropset' && <div className="row cfgrow" style={{ marginBottom: 8, paddingLeft: 12 }}>
+            <Stepper label={t('Drops')} value={S.defaultIntensifier.count} step={1} decimal={false}
+              onChange={v => update(s => { s.defaultIntensifier = { ...s.defaultIntensifier, count: Math.max(1, v) } })} />
+            <Stepper label={t('Weight drop (%)')} value={S.defaultIntensifier.pct} step={5} decimal={false}
+              onChange={v => update(s => { s.defaultIntensifier = { ...s.defaultIntensifier, pct: Math.max(5, v) } })} />
+          </div>}
+          {S.defaultIntensifier?.type === 'topback' && <div className="row cfgrow" style={{ marginBottom: 8, paddingLeft: 12 }}>
+            <Stepper label={t('Backoff sets')} value={S.defaultIntensifier.count} step={1} decimal={false}
+              onChange={v => update(s => { s.defaultIntensifier = { ...s.defaultIntensifier, count: Math.max(1, v) } })} />
+            <Stepper label={t('Weight drop (%)')} value={S.defaultIntensifier.pct} step={5} decimal={false}
+              onChange={v => update(s => { s.defaultIntensifier = { ...s.defaultIntensifier, pct: Math.max(5, v) } })} />
+            <Stepper label={t('Backoff reps')} value={S.defaultIntensifier.backoffReps} step={1} decimal={false}
+              onChange={v => update(s => { s.defaultIntensifier = { ...s.defaultIntensifier, backoffReps: Math.max(1, v) } })} />
+          </div>}
+          {S.defaultIntensifier?.type === 'restpause' && <div className="row cfgrow" style={{ marginBottom: 8, paddingLeft: 12 }}>
+            <Stepper label={t('Rest-pause reps')} value={S.defaultIntensifier.totalReps} step={1} decimal={false}
+              onChange={v => update(s => { s.defaultIntensifier = { ...s.defaultIntensifier, totalReps: Math.max(1, v) } })} />
+            <Stepper label={t('Rest (s)')} value={S.defaultIntensifier.restSec} step={5} decimal={false}
+              onChange={v => update(s => { s.defaultIntensifier = { ...s.defaultIntensifier, restSec: Math.max(5, v) } })} />
+          </div>}
+          <Row icon="list" iconTint="var(--blue)" title={t('Series por ejercicio (por defecto)')}>
+            <Stepper value={S.defaultSets ?? 3} min={1} max={6} step={1} decimal={false}
+              onChange={v => update(s => { s.defaultSets = Math.max(1, Math.min(6, v)) })} />
           </Row>
           {(S.progressionType === 'linear' || !S.progressionType) && (
             <Row title={t('Incremento en kg')}>
