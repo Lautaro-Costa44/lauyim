@@ -1,0 +1,245 @@
+# lauyim — Funcionalidades por tipo de usuario
+
+lauyim es una aplicación PWA para planificar, registrar y analizar entrenamientos de fuerza y acondicionamiento. Está pensada para que cada persona pueda entrenar con un plan propio y para que el dueño del gimnasio pueda administrar usuarios, plantillas y comunicaciones desde un panel central.
+
+## Roles
+
+### Cliente / usuario que entrena
+
+Es la persona que utiliza la app para organizar y registrar sus propios entrenamientos. Cada usuario tiene su perfil y sus datos de entrenamiento separados.
+
+### Dueño / coach / administrador
+
+Es un usuario con permisos administrativos. Puede utilizar todas las funciones de cliente y, además, acceder al panel `/admin` para operar la instalación completa.
+
+> Actualmente no existe un rol técnico independiente llamado “coach”. Las funciones de dueño y coach se implementan mediante el permiso de administrador.
+
+## Funciones del cliente
+
+### Acceso y perfil
+
+- Crear un perfil y acceder mediante passkey/WebAuthn.
+- Iniciar sesión con huella, Face ID, PIN del dispositivo u otro autenticador compatible.
+- Agregar otra passkey desde un dispositivo ya autenticado.
+- Cerrar la sesión actual o cerrar todas las sesiones activas.
+- Sincronizar los datos del perfil entre dispositivos compatibles.
+- Usar la app como invitado cuando la instalación lo permite; los datos del invitado quedan en el dispositivo.
+
+### Inicio y planificación semanal
+
+- Ver un resumen de bienvenida y las acciones principales.
+- Consultar el calendario semanal.
+- Asignar una rutina a cada día de la semana.
+- Marcar días como descanso.
+- Cambiar la rutina de un día puntual sin modificar la planificación semanal permanente.
+- Volver un día modificado a su planificación original.
+- Cargar el plan inicial PPL (Push / Pull / Legs).
+
+### Generación de rutinas
+
+- Completar una encuesta de onboarding paso a paso.
+- Indicar sexo biológico, edad, peso, altura, objetivo, nivel, días disponibles, tiempo, equipamiento y lesiones/restricciones según las preguntas habilitadas.
+- Generar una rutina recomendada a partir de esas respuestas.
+- Rehacer la encuesta y reemplazar la rutina recomendada sin borrar los entrenamientos ya registrados.
+
+### Creación y edición de rutinas
+
+- Crear rutinas manualmente.
+- Editar el nombre, ícono y ejercicios de una rutina.
+- Ordenar los ejercicios.
+- Configurar series, repeticiones, peso, descanso, tempo, rango de repeticiones y notas.
+- Configurar series de entrada en calor.
+- Configurar superseries y agrupaciones de ejercicios.
+- Configurar ejercicios por tiempo, peso corporal, por lado y otras modalidades disponibles.
+- Configurar intensificadores por ejercicio:
+  - Drop-set, con cantidad de drops y porcentaje de reducción de peso.
+  - Rest-pause, con repeticiones totales y descanso entre bloques.
+  - Top-set + backoff, con cantidad de series, reducción de peso y repeticiones de backoff.
+- Agregar un ejercicio a mitad de un entrenamiento.
+- Reemplazar un ejercicio por alternativas compatibles.
+- Ver más alternativas y buscar dentro del mismo grupo muscular, respetando equipamiento y restricciones aplicadas.
+
+### Entrenamiento en curso
+
+- Iniciar el entrenamiento correspondiente al día.
+- Elegir otra rutina antes de empezar.
+- Registrar peso corporal previo al entrenamiento cuando está activada esa opción.
+- Registrar peso, repeticiones y cumplimiento de cada serie en tiempo real.
+- Registrar esfuerzo mediante RIR o RPE.
+- Marcar series de calentamiento y series efectivas.
+- Registrar drops y bloques rest-pause.
+- Usar temporizador de descanso.
+- Recibir alertas del temporizador aun cuando la app esté en segundo plano o cerrada, si las notificaciones están habilitadas.
+- Agregar notas a la sesión y a los ejercicios.
+- Pausar, retomar y finalizar una sesión.
+- Guardar entrenamientos parciales cuando corresponde.
+- Ver récords personales y progresión sugerida.
+
+### Historial y progreso
+
+- Consultar el historial de entrenamientos.
+- Abrir el detalle de una sesión: ejercicios, series, repeticiones, cargas, duración, volumen y récords.
+- Consultar constancia mediante el mapa de actividad.
+- Ver balance de grupos musculares.
+- Consultar fatiga y recuperación estimadas.
+- Ver la progresión de fuerza y de cargas por ejercicio.
+- Registrar el peso corporal a lo largo del tiempo.
+- Consultar TMB, mantenimiento estimado y calorías sugeridas según objetivo, cuando los datos necesarios están cargados.
+- Usar las métricas como estimaciones de entrenamiento, no como medición clínica.
+
+### Biblioteca de ejercicios
+
+- Consultar un catálogo amplio de ejercicios en español.
+- Buscar por nombre, incluso con acentos o varias palabras.
+- Filtrar por grupo muscular, músculos implicados, equipamiento y otros criterios disponibles.
+- Ver instrucciones, descripción, músculos trabajados, equipamiento y material visual cuando existe.
+- Crear ejercicios propios.
+- Categorizar ejercicios propios para que puedan ser utilizados por el generador y el reemplazo de ejercicios.
+- Editar o eliminar ejercicios propios.
+- Conservar en el historial la información necesaria de ejercicios que ya fueron registrados.
+
+### Equipamiento
+
+- Crear perfiles de equipamiento, por ejemplo “Casa”, “Gimnasio” o “Viaje”.
+- Definir qué equipamiento existe en cada perfil.
+- Elegir el perfil activo.
+- Filtrar la biblioteca y el selector de ejercicios según el perfil activo.
+- Detectar ejercicios de una rutina que requieren equipamiento no disponible.
+
+### Importar, exportar y compartir
+
+- Importar historial desde FitNotes, Strong y Hevy.
+- Importar peso corporal desde Apple Health cuando el archivo es compatible.
+- Exportar e importar un backup completo en JSON.
+- Exportar un grupo de rutinas para compartirlo con otra persona.
+- Importar un plan recibido desde otro usuario.
+- Compartir un plan mediante código QR temporal.
+- Imprimir o guardar las rutinas como PDF.
+- Importar datos sin duplicar registros ya existentes cuando el formato permite identificarlos.
+
+### Notificaciones y preferencias
+
+- Activar o desactivar notificaciones push.
+- Enviar una notificación de prueba.
+- Activar recordatorios para días de entrenamiento.
+- Configurar la hora del recordatorio.
+- Activar recordatorios de cuota.
+- Configurar frecuencia de cuota: mensual, bimestral, trimestral o anual.
+- Definir la próxima fecha de pago.
+- Elegir tema oscuro, claro o del sistema.
+- Elegir color de acento.
+- Elegir la representación corporal para el mapa muscular.
+- Repetir los tutoriales “Primeros pasos” y “Tu progreso”.
+- Reportar un problema o enviar comentarios.
+- Restablecer todos los datos locales del dispositivo, con confirmación.
+
+## Funciones del dueño / coach / administrador
+
+Además de todas las funciones del cliente, un administrador puede:
+
+### Panel general
+
+- Acceder a un dashboard exclusivo para administradores.
+- Ver la cantidad total de usuarios.
+- Ver cuántos usuarios estuvieron activos durante los últimos 7 días.
+- Ver cuántos usuarios están deshabilitados.
+- Ver quién está entrenando en este momento.
+- Actualizar manualmente la información del panel.
+- Ver en vivo la rutina, el ejercicio, la cantidad de series realizadas y el tiempo transcurrido de cada usuario activo.
+
+### Gestión de usuarios
+
+- Consultar el listado de usuarios.
+- Ver nombre, fecha de alta, estado, origen de invitación y última sincronización.
+- Identificar usuarios administradores.
+- Identificar usuarios con notificaciones push activadas.
+- Abrir el detalle de un usuario.
+- Consultar la cantidad de rutinas, entrenamientos y registros de peso.
+- Consultar el historial de entrenamientos del usuario, incluyendo duración, series, volumen y récords.
+- Deshabilitar una cuenta.
+- Habilitar nuevamente una cuenta deshabilitada.
+- Al deshabilitar una cuenta, cerrar sus sesiones y bloquear el acceso y la sincronización hasta reactivarla.
+
+### Invitaciones y acceso controlado
+
+- Generar códigos de invitación.
+- Copiar un código generado para enviárselo a un nuevo cliente o coach.
+- Ver códigos disponibles y códigos utilizados.
+- Ver quién utilizó cada código.
+- Revocar códigos todavía no utilizados.
+- Trabajar con una instalación abierta o con registro restringido a usuarios invitados, según la configuración del servidor.
+
+### Plantillas de rutinas del gimnasio
+
+- Crear plantillas de rutinas.
+- Definir nombre e ícono de la plantilla.
+- Agregar ejercicios.
+- Configurar series, repeticiones, cargas, descansos, calentamientos, notas e intensificadores.
+- Editar plantillas existentes.
+- Eliminar plantillas.
+- Publicar plantillas para que aparezcan como planes iniciales disponibles.
+- Mantener intactas las rutinas que los usuarios ya copiaron: eliminar una plantilla no modifica planes existentes.
+
+### Comunicaciones
+
+- Enviar una notificación push general a las suscripciones activas.
+- Definir título y cuerpo del mensaje.
+- Incluir opcionalmente una URL de redirección HTTPS.
+- Ver cuántas suscripciones recibieron el envío.
+
+### Auditoría y seguridad operativa
+
+- Consultar el registro de actividad administrativa.
+- Filtrar eventos generales, accesos, acciones administrativas y fallos.
+- Ver accesos exitosos, intentos fallidos y cambios realizados por administradores.
+- Cargar más eventos históricos.
+- Limpiar el registro de actividad con confirmación; la propia acción de limpieza queda registrada.
+- Aplicar controles del lado del servidor para impedir el acceso administrativo a usuarios comunes.
+
+## Diferencias de permisos
+
+| Acción | Cliente | Administrador |
+|---|:---:|:---:|
+| Crear y editar su propio plan | Sí | Sí |
+| Registrar y analizar sus entrenamientos | Sí | Sí |
+| Importar, exportar y compartir planes | Sí | Sí |
+| Ver datos de otros usuarios | No | Sí |
+| Ver quién está entrenando | No | Sí |
+| Generar invitaciones | No | Sí |
+| Crear plantillas globales | No | Sí |
+| Enviar notificaciones generales | No | Sí |
+| Deshabilitar cuentas | No | Sí |
+| Consultar auditoría | No | Sí |
+
+## Flujo recomendado para un cliente
+
+1. Crear el perfil y completar la encuesta.
+2. Revisar la rutina generada y la planificación semanal.
+3. Configurar el equipamiento disponible y las notificaciones.
+4. Iniciar cada sesión desde “Empezar”.
+5. Registrar todas las series y finalizar el entrenamiento.
+6. Revisar historial, recuperación, constancia y progresión.
+7. Ajustar el plan cuando cambien el objetivo, la disponibilidad o el equipamiento.
+
+## Flujo recomendado para el dueño o coach
+
+1. Crear el perfil administrador y definir si el registro será abierto o por invitación.
+2. Crear plantillas de rutinas del gimnasio.
+3. Generar códigos de invitación para los clientes.
+4. Revisar actividad, adopción y entrenamientos desde el dashboard.
+5. Consultar el detalle de cada cliente cuando sea necesario para acompañar su progreso.
+6. Enviar comunicaciones generales mediante notificaciones push.
+7. Revisar la auditoría ante accesos fallidos o cambios administrativos.
+
+## Privacidad y alcance
+
+- Los datos de entrenamiento pertenecen al perfil correspondiente.
+- El administrador puede consultar información de usuarios porque la app incluye un panel de operación del gimnasio.
+- Las cuentas de invitado mantienen sus datos en el dispositivo hasta que el usuario las vincula o exporta.
+- Los backups JSON deben tratarse como información sensible.
+- Las métricas de calorías, fatiga, recuperación y progresión son estimaciones para orientar el entrenamiento.
+- La app no reemplaza la evaluación de un profesional de la salud o del entrenamiento.
+
+## Estado actual de roles
+
+La aplicación diferencia técnicamente entre usuario común y administrador. Si en el futuro se necesita que un coach pueda ver clientes pero no administrar invitaciones, plantillas globales, notificaciones o cuentas, será necesario agregar un rol intermedio con permisos específicos.

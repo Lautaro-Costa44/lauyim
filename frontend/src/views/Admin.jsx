@@ -93,13 +93,14 @@ function InvitesCard({ invites, reload }) {
 
 function PresetEditor({ existing, close, reload }) {
   const [name, setName] = useState(existing?.name || '')
+  const [groupName, setGroupName] = useState(existing?.group_name || existing?.groupName || 'General')
   const [emoji, setEmoji] = useState(existing?.emoji || 'dumbbell')
   const [ex, setEx] = useState(() => (existing?.ex || []).map(item => ({ ...item })))
   const toast = useUI(s => s.toast)
   const add = exercise => exConfigSheet(exercise, null, cfg => setEx(current => [...current, { id: exercise.id, ...cfg }]), null, { ex })
   const save = () => {
     if (!name.trim()) return toast(t('Give the routine a name'))
-    const body = JSON.stringify({ id: existing?.id, name: name.trim(), emoji: emoji.trim() || 'dumbbell', ex })
+    const body = JSON.stringify({ id: existing?.id, name: name.trim(), groupName: groupName.trim() || 'General', emoji: emoji.trim() || 'dumbbell', ex })
     api(existing ? '/api/admin/presets' : '/api/admin/presets', { method: existing ? 'PUT' : 'POST', body })
       .then(() => { toast(existing ? t('Preset updated') : t('Preset created')); close(); reload() })
       .catch(e => toast(e.message))
@@ -107,6 +108,8 @@ function PresetEditor({ existing, close, reload }) {
   return <>
     <h3>{existing ? t('Edit preset') : t('New preset')}</h3>
     <TextField value={name} onChange={e => setName(e.target.value)} placeholder={t('Routine name')} maxLength={80} />
+    <div style={{ height: 8 }} />
+    <TextField value={groupName} onChange={e => setGroupName(e.target.value)} placeholder={t('Grupo de rutinas')} maxLength={80} />
     <div style={{ height: 8 }} />
     <button className="glyph-cell on" style={{ marginBottom: 10 }} title={t('Pick an icon')}
       onClick={() => glyphPicker(emoji, setEmoji)} aria-label={t('Pick an icon')}>

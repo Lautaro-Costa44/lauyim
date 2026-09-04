@@ -36,6 +36,7 @@ export function initDatabase() {
   try {
     db.exec(`ALTER TABLE preset_exercises ADD COLUMN progression_type TEXT;`);
   } catch {}
+  try { db.exec(`ALTER TABLE presets ADD COLUMN group_name TEXT NOT NULL DEFAULT 'General';`); } catch {}
   try {
     db.exec(`ALTER TABLE preset_exercises ADD COLUMN progression_config TEXT;`);
   } catch {}
@@ -349,10 +350,10 @@ export function getPresetWithExercises(id) {
 
 export function createPreset(preset) {
   const stmt = getDatabase().prepare(`
-    INSERT INTO presets (id, name, emoji)
-    VALUES (?, ?, ?)
+    INSERT INTO presets (id, name, emoji, group_name)
+    VALUES (?, ?, ?, ?)
   `);
-  stmt.run(preset.id, preset.name, preset.emoji);
+  stmt.run(preset.id, preset.name, preset.emoji, preset.groupName || preset.group_name || 'General');
 
   const exStmt = getDatabase().prepare(`
     INSERT INTO preset_exercises (preset_id, exercise_id, sets, reps, weight, mode, min, speed, sec, bodyweight, side, progression_type, progression_config)
@@ -378,8 +379,8 @@ export function createPreset(preset) {
 }
 
 export function updatePreset(id, preset) {
-  const stmt = getDatabase().prepare('UPDATE presets SET name = ?, emoji = ? WHERE id = ?');
-  stmt.run(preset.name, preset.emoji, id);
+  const stmt = getDatabase().prepare('UPDATE presets SET name = ?, emoji = ?, group_name = ? WHERE id = ?');
+  stmt.run(preset.name, preset.emoji, preset.groupName || preset.group_name || 'General', id);
 
   // Eliminar ejercicios viejos y insertar nuevos
   const deleteExStmt = getDatabase().prepare('DELETE FROM preset_exercises WHERE preset_id = ?');
@@ -817,6 +818,10 @@ function saveWorkouts(userId, workouts, validRoutineIds = null) {
     db.exec('ROLLBACK');
     throw error;
   }
+}
+
+export function getPresetGroups() {
+  return getDatabase().prepare('SELECT group_name AS name, COUNT(*) AS count FROM presets GROUP BY group_name ORDER BY group_name').all();
 }
 
 // ============================================================

@@ -10,6 +10,8 @@ import Icon from '../components/Icon.jsx'
 import { Button } from '../components/ui.jsx'
 import { glyphOf } from '../lib/glyphs.js'
 import { startTourA } from '../lib/onboarding.js'
+import { api } from '../lib/api.js'
+import { routinesFromPresets } from '../lib/starter.js'
 
 
 // Home = what to do now + a quick glance. Deep charts & history live in Stats.
@@ -18,6 +20,10 @@ export default function Home() {
   const S = useStore(s => s.S)
   const user = useStore(s => s.user)
   const config = useStore(s => s.config)
+  const update = useStore(s => s.update)
+  const [presetGroups, setPresetGroups] = useState([])
+  useEffect(() => { if (S.routines.length === 0) api('/api/presets').then(d => setPresetGroups(d.groups || [])).catch(() => {}) }, [S.routines.length])
+  const chooseGroup = async name => { const d = await api('/api/presets'); const rs = routinesFromPresets((d.presets || []).filter(p => (p.group_name || 'General') === name)); update(s => { s.routines = rs; s.week = {}; rs.forEach((r, i) => { s.week[[1,2,3,0][i]] = r.id }) }) }
   const [weekOffset, setWeekOffset] = useState(0)
 
   useEffect(() => {
@@ -126,6 +132,10 @@ export default function Home() {
             <div style={{ height: 10 }} />
           </>
         )}
+        {presetGroups.length > 0 && <>
+          <div className="muted small" style={{ margin: '8px 0 6px' }}>{t('O elegí un grupo de rutinas')}</div>
+          <div className="list">{presetGroups.map(g => <button key={g.name} className="item" onClick={() => chooseGroup(g.name)}><span className="grow"><div className="tt">{g.name}</div><div className="ss">{g.count} {t('rutinas')}</div></span><Icon name="chevronRight" /></button>)}</div>
+        </>}
         <Button onClick={loadStarterPlan} style={{ width: '100%' }}>
           {t('Cargar plan predeterminado (PPL)')}
         </Button>

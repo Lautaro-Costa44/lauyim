@@ -59,7 +59,8 @@ CREATE INDEX IF NOT EXISTS idx_invites_revoked ON invites(revoked);
 CREATE TABLE IF NOT EXISTS presets (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
-  emoji TEXT NOT NULL
+  emoji TEXT NOT NULL,
+  group_name TEXT NOT NULL DEFAULT 'General'
 );
  
 -- Ejercicios de presets

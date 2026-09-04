@@ -38,6 +38,7 @@ import {
   getAllPresets,
   getPresetById,
   getPresetWithExercises,
+  getPresetGroups,
   createPreset,
   updatePreset,
   deletePreset,
@@ -145,7 +146,7 @@ function cleanPreset(body, existingId) {
     return out;
   });
   if (ex.some(item => !item.id || !item.sets || (item.mode === 'time' ? !item.sec : item.mode === 'cardio' ? !item.min : !item.reps))) return { error: 'invalid exercise' };
-  return { value: { id: existingId || 'p' + crypto.randomBytes(8).toString('hex'), name, emoji: String(body.emoji || 'dumbbell').slice(0, 40), ex } };
+  return { value: { id: existingId || 'p' + crypto.randomBytes(8).toString('hex'), name, emoji: String(body.emoji || 'dumbbell').slice(0, 40), groupName: String(body.groupName || 'General').trim().slice(0, 80) || 'General', ex } };
 }
 
 const DEFAULT_PRESETS = [
@@ -1035,7 +1036,7 @@ const routes = {
   'GET /api/presets': async (req, res) => {
     if (!readSession(req)) return json(res, 401, { error: 'not signed in' });
     const presets = getAllPresets().map(p => getPresetWithExercises(p.id));
-    json(res, 200, { presets });
+    json(res, 200, { presets, groups: getPresetGroups() });
   },
 
   'POST /api/admin/presets': async (req, res) => {
