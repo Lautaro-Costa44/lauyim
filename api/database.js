@@ -106,6 +106,7 @@ export function initDatabase() {
       created_at INTEGER NOT NULL,
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     );
+    CREATE TABLE IF NOT EXISTS public_custom_exercises (id TEXT PRIMARY KEY, payload TEXT NOT NULL, updated_at INTEGER NOT NULL);
   `);
 
   // Los tests y las bases nuevas necesitan también las tablas secundarias del schema.
@@ -461,7 +462,7 @@ export function getUserState(userId) {
   S.workouts = getWorkoutsByUserId(userId);
   S.exWeights = getExerciseWeightsByUserId(userId);
   S.bodyweight = getBodyweightByUserId(userId);
-  S.customEx = getCustomExercisesByUserId(userId);
+  S.customEx = [...getPublicCustomExercises(), ...getCustomExercisesByUserId(userId)];
   S.exNotes = getExerciseNotesByUserId(userId);
   S.reminder = getReminderSettingsByUserId(userId);
   S.equipProfiles = getEquipProfilesByUserId(userId);
@@ -895,6 +896,14 @@ export function getCustomExercisesByUserId(userId) {
     custom: true
   }));
 }
+
+export function getPublicCustomExercises() {
+  return getDatabase().prepare('SELECT payload FROM public_custom_exercises').all().map(r => ({ ...safeJsonParse(r.payload, {}), custom: true, shared: true }));
+}
+export function savePublicCustomExercise(ex) {
+  getDatabase().prepare('INSERT OR REPLACE INTO public_custom_exercises (id, payload, updated_at) VALUES (?, ?, ?)').run(ex.id, JSON.stringify(ex), Date.now());
+}
+export function deletePublicCustomExercise(id) { getDatabase().prepare('DELETE FROM public_custom_exercises WHERE id = ?').run(id); }
 
 function saveCustomExercises(userId, customEx) {
   const db = getDatabase();

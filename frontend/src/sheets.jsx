@@ -31,13 +31,13 @@ const toast = m => ui().toast(m)
 const snd = () => S().sound
 
 /* ============================ custom confirm dialog ============================ */
-function ConfirmDialog({ title, message, confirmText, cancelText, danger, onConfirm, close }) {
+function ConfirmDialog({ title, message, confirmText, cancelText, danger, onConfirm, onCancel, close }) {
   return <div style={{ textAlign: 'center', padding: '4px 0' }}>
     {title && <h3 style={{ marginBottom: 8 }}>{title}</h3>}
     <div className="muted" style={{ marginBottom: 18, lineHeight: 1.5 }}>{message}</div>
     <button className={'btn ' + (danger ? 'danger' : 'primary')} onClick={() => { close(); onConfirm && onConfirm() }}>{confirmText || t('Confirm')}</button>
     <div style={{ height: 8 }} />
-    <Button variant="ghost" className="dim" onClick={close}>{cancelText || t('Cancel')}</Button>
+    <Button variant="ghost" className="dim" onClick={() => { close(); onCancel && onCancel() }}>{cancelText || t('Cancel')}</Button>
   </div>
 }
 // Themed replacement for window.confirm — callback-based (no blocking).
@@ -426,6 +426,7 @@ export const addToRoutineSheet = ex => ui().openSheet(close => <AddToRoutine ex=
 // Name + body part is all it takes — the exercise then behaves like any built-in one
 // (planning, logging, PRs, stats), just without an animation.
 function CustomExForm({ existing, prefill, onDone, close }) {
+  const isAdmin = useStore(s => !!s.user?.admin)
   const [n, setN] = useState(existing ? existing.n : (prefill || ''))
   const [tipo, setTipo] = useState(existing ? (existing.tipo || (existing.bp === 'cardio' ? 'cardio' : 'fuerza')) : 'fuerza')
   const [grupoMuscular, setGrupoMuscular] = useState(existing ? (existing.grupo_muscular || existing.tg || existing.bp || '') : '')
@@ -469,9 +470,14 @@ function CustomExForm({ existing, prefill, onDone, close }) {
     if (existing) update(s => { const c = (s.customEx || []).find(x => x.id === id); if (c) {
       c.n = name; c.tipo = tipo; c.equipamiento = equipArr; c.grupo_muscular = grupoMuscular; c.bp = bpVal; c.eq = primaryEq; c.desc = d; c.tg = grupoMuscular; c.sm = sm; c.muscleGroups = groups; c.primaries = prim; c.secondaries = sm
     } })
+    if (existing?.shared) api('/api/admin/public-exercises', { method: 'POST', body: JSON.stringify({ ...existing, n: name, tipo, equipamiento: equipArr, grupo_muscular: grupoMuscular, bp: bpVal, eq: primaryEq, desc: d, tg: grupoMuscular, sm, muscleGroups: groups, primaries: prim, secondaries: sm, custom: true, shared: true }) }).catch(() => {})
     else {
       id = 'c' + uid()
-      update(s => { (s.customEx = s.customEx || []).push({ id, n: name, tipo, equipamiento: equipArr, grupo_muscular: grupoMuscular, bp: bpVal, eq: primaryEq, desc: d, tg: grupoMuscular, sm, muscleGroups: groups, primaries: prim, secondaries: sm, custom: true }) })
+      const created = { id, n: name, tipo, equipamiento: equipArr, grupo_muscular: grupoMuscular, bp: bpVal, eq: primaryEq, desc: d, tg: grupoMuscular, sm, muscleGroups: groups, primaries: prim, secondaries: sm, custom: true }
+      const finish = () => { close(); toast(t('“{0}” created', name)); onDone && onDone(EXIDX[id]) }
+      const publish = () => { update(s => { (s.customEx = s.customEx || []).push(created) }); api('/api/admin/public-exercises', { method: 'POST', body: JSON.stringify(created) }).catch(() => {}); finish() }
+      if (isAdmin) return confirmSheet({ title: t('Compartir ejercicio'), message: t('¿Querés añadirlo para que lo vean todos los usuarios, actuales y futuros?'), confirmText: t('Compartir'), onConfirm: publish, onCancel: () => { update(s => { (s.customEx = s.customEx || []).push(created) }); finish() } })
+      update(s => { (s.customEx = s.customEx || []).push(created) })
     }
     close()
     toast(existing ? t('Saved') : t('“{0}” created', name))
@@ -612,6 +618,7 @@ export function deleteCustomEx(ex, afterDelete) {
           if (!e.muscleSnapshot || !Object.keys(e.muscleSnapshot).length) e.muscleSnapshot = snapshot
         }))
         s.customEx = (s.customEx || []).filter(x => x.id !== ex.id)
+        if (ex.shared) api('/api/admin/public-exercises/delete', { method: 'POST', body: JSON.stringify({ id: ex.id }) }).catch(() => {})
         s.routines.forEach(r => { r.ex = r.ex.filter(e => e.id !== ex.id); cleanupSg(r.ex) })
         delete s.exWeights[ex.id]
       })

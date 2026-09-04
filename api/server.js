@@ -39,6 +39,7 @@ import {
   getPresetById,
   getPresetWithExercises,
   getPresetGroups,
+  getPublicCustomExercises, savePublicCustomExercise, deletePublicCustomExercise,
   createPreset,
   updatePreset,
   deletePreset,
@@ -937,6 +938,10 @@ const routes = {
     const state = getUserState(user.id);
     json(res, 200, { state });
   },
+
+  'GET /api/public-exercises': async (req, res) => json(res, 200, { exercises: getPublicCustomExercises() }),
+  'POST /api/admin/public-exercises': async (req, res) => { const admin = requireAdmin(req, res); if (!admin) return; const ex = await readBody(req); if (!ex.id || !ex.n) return json(res, 400, { error: 'invalid exercise' }); savePublicCustomExercise(ex); json(res, 200, { ok: true }); },
+  'POST /api/admin/public-exercises/delete': async (req, res) => { const admin = requireAdmin(req, res); if (!admin) return; deletePublicCustomExercise((await readBody(req)).id); json(res, 200, { ok: true }); },
 
   'PUT /api/data': async (req, res) => {
     const user = readSession(req);
