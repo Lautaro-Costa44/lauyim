@@ -156,7 +156,7 @@ export default function Settings() {
       </> : user ? <>
         <Row icon="personCircle" iconTint="var(--grey)" title={user.name} subtitle={t('Signed in with passkey — data syncs to this profile.')} />
         {user.admin && <Row icon="wrench" iconTint="var(--indigo)" title={t('Admin dashboard')} accessory="chevron" onClick={() => nav('/admin')} />}
-        <Row icon="link" iconTint="var(--blue)" title={t('Vincular otro dispositivo')} subtitle={t('Iniciar sesión en una compu ingresando su código')} accessory="chevron" onClick={() => useUI.getState().openSheet(c => <ClaimDeviceSheet close={c} />)} />
+        <Row icon="link" iconTint="var(--blue)" title={t('Vincular otro dispositivo')} subtitle={t('Iniciar sesión en otro dispositivo ingresando su código')} accessory="chevron" onClick={() => useUI.getState().openSheet(c => <ClaimDeviceSheet close={c} />)} />
         <Row icon="key" iconTint="var(--acc)" title={t('Agregar otra passkey')} subtitle={t('Registrar una passkey adicional de respaldo')} accessory="chevron" onClick={async () => {
           try {
             await passkeyAddCredential()

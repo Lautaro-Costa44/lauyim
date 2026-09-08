@@ -443,6 +443,16 @@ export function setsDoneActive(A) {
 }
 export const lastBW = S => (S.bodyweight.length ? S.bodyweight[S.bodyweight.length - 1] : null)
 
+export function calcularHorasPromedioEntreno(workouts, now = Date.now()) {
+  const cutoff = now - 30 * 86400000
+  const durations = (workouts || []).filter(w => {
+    const start = Number(w?.start)
+    const end = Number(w?.end)
+    return w?.start && w?.end && end > start && start > cutoff
+  }).map(w => (Number(w.end) - Number(w.start)) / 3600000)
+  return durations.length ? Math.round(durations.reduce((sum, hours) => sum + hours, 0) / durations.length * 10) / 10 : 0
+}
+
 // Group consecutive items sharing a superset id (sg) into "units" of indices.
 // items may be routine exercises ({sg}) or active-workout entries ({sg}).
 export function supersetUnits(items) {

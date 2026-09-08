@@ -2,10 +2,10 @@ import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useStore } from '../store/useStore.js'
 import { EXIDX } from '../lib/exercises.js'
-import { lastBW, streakWeeks, setLabel, modeOf, effortOf, metricModeForEntry, metricRowsForEntry, bestWeightForEntry, effectiveRoutine } from '../lib/history.js'
+import { streakWeeks, setLabel, modeOf, effortOf, metricModeForEntry, metricRowsForEntry, bestWeightForEntry, effectiveRoutine, calcularHorasPromedioEntreno } from '../lib/history.js'
 import { fmtNum, fmtDate, fmtVol, todayISO, weekKey } from '../lib/format.js'
 import { t, exerciseNameFor, getLang } from '../lib/i18n.js'
-import { bwSheet, goalSheet, calendarSheet, workoutDetailSheet, WorkoutRow, bwDeltaColor } from '../sheets.jsx'
+import { calendarSheet, workoutDetailSheet, WorkoutRow } from '../sheets.jsx'
 import LineChart from '../components/LineChart.jsx'
 import Heatmap from '../components/Heatmap.jsx'
 import Icon from '../components/Icon.jsx'
@@ -20,86 +20,8 @@ import {
   effortHistogram, isHardSet, HARD_RIR
 } from '../lib/effort.js'
 import { Button, Segmented, SelectRow } from '../components/ui.jsx'
-import { useUI } from '../store/useUI.js'
 import { isWarmupRow } from '../lib/workout-model.js'
-import { calcularMetasNutricionales } from '../lib/nutricion.js'
 import { startTourB } from '../lib/onboarding.js'
-
-function caloricInfoSheet(close) {
-  return <>
-    <h3>{t('¿Cómo se calcula?')}</h3>
-    <div className="muted small" style={{ lineHeight: 1.65, marginBottom: 16 }}>
-      <p style={{ marginBottom: 10 }}>
-        {t('Se usa la fórmula Mifflin-St Jeor, la más recomendada por el ACSM para estimar el metabolismo basal:')}
-      </p>
-      <p style={{ fontFamily: 'monospace', background: 'var(--surface-3)', borderRadius: 8, padding: '10px 12px', marginBottom: 10, lineHeight: 1.8 }}>
-        <b>{t('Hombres:')}</b> 10×kg + 6.25×cm − 5×edad + 5<br />
-        <b>{t('Mujeres:')}</b> 10×kg + 6.25×cm − 5×edad − 161
-      </p>
-      <p>{t('El resultado se multiplica por un factor de actividad según tus días de entrenamiento (1.2 a 1.55), y luego se ajusta según tu objetivo (+12.5% para ganar músculo, −17.5% para perder grasa).')}</p>
-    </div>
-    <Button onClick={close}>{t('Entendido')}</Button>
-  </>
-}
-
-function CaloricCard({ S }) {
-  const { peso, altura, edad, objetivo, tmb, mantenimiento, sugerido, metaProteina } = calcularMetasNutricionales(S)
-
-  const objMetaMap = {
-    hipertrofia: t('Ganar Músculo'),
-    fuerza: t('Ganar Fuerza'),
-    perder_grasa: t('Perder Grasa'),
-    fitness_general: t('Mantener Peso'),
-  }
-
-  const openInfo = () => useUI.getState().openSheet(close => caloricInfoSheet(close))
-
-  return (
-    <div style={{ marginTop: 16 }}>
-      {/* Título + info */}
-      <div className="row between" style={{ marginBottom: 10 }}>
-        <h2 style={{ margin: 0 }}>{t('Tus calorías diarias')}</h2>
-        <button className="helpbtn" aria-label={t('¿Cómo se calcula?')} onClick={openInfo}>
-          <Icon name="info" />
-        </button>
-      </div>
-
-      {/* Desglose en reposo / gasto total */}
-      <div style={{ background: 'var(--surface-2)', borderRadius: 10, overflow: 'hidden', marginBottom: 12 }}>
-        <div className="row between" style={{ padding: '11px 14px' }}>
-          <span style={{ fontSize: 15, color: 'var(--label-2)' }}>{t('En reposo')}</span>
-          <span style={{ fontWeight: 500 }}>{tmb.toLocaleString()} <span className="dim small">kcal</span></span>
-        </div>
-        <div style={{ height: 'var(--hair)', background: 'var(--sep)', margin: '0 14px' }} />
-        <div className="row between" style={{ padding: '11px 14px' }}>
-          <span style={{ fontSize: 15, color: 'var(--label-2)' }}>{t('Gasto total diario')}</span>
-          <span style={{ fontWeight: 500 }}>~{mantenimiento.toLocaleString()} <span className="dim small">kcal</span></span>
-        </div>
-      </div>
-
-      {/* Meta destacada */}
-      <div style={{ background: 'var(--acc-soft)', borderRadius: 12, padding: '14px 16px', textAlign: 'center', marginBottom: 10 }}>
-        <div style={{ fontSize: 13, color: 'var(--acc)', fontWeight: 600, marginBottom: 6, letterSpacing: '-.006em' }}>
-          🎯 {t('Meta para {0}', objMetaMap[objetivo] || objetivo)}
-        </div>
-        <div style={{ fontSize: 36, fontWeight: 700, letterSpacing: '-.028em', color: 'var(--acc)', lineHeight: 1 }}>
-          {sugerido.toLocaleString()}
-        </div>
-        <div className="dim small" style={{ marginTop: 4 }}>kcal / día</div>
-      </div>
-
-      <div className="row between" style={{ padding: '11px 14px', background: 'var(--surface-2)', borderRadius: 10, marginBottom: 12 }}>
-        <span style={{ fontSize: 15, color: 'var(--label-2)' }}>{t('Meta de proteína')}</span>
-        <span style={{ fontWeight: 500 }}>{metaProteina.toLocaleString()} <span className="dim small">g / día</span></span>
-      </div>
-
-      {/* Aclaración */}
-      <div className="small dim" style={{ lineHeight: 1.45 }}>
-        {t('Calculado para {0} kg, {1} cm, {2} años y tus días de entrenamiento.', fmtNum(peso), altura, edad)}
-      </div>
-    </div>
-  )
-}
 
 // Which muscles the training in a window actually hit — and, the point of the card,
 // which ones it keeps missing. Shading is relative within the window (lib/muscles.js).
@@ -357,7 +279,6 @@ export default function Stats() {
   const nav = useNavigate()
   const S = useStore(s => s.S)
   const workouts = S.workouts || []
-  const [range, setRange] = useState(90)
 
   useEffect(() => {
     if (!S.onboardingStatsCompletado) {
@@ -370,11 +291,8 @@ export default function Stats() {
   const kind = displayScale(S)
   const hd = scaleName(kind)
 
-  const bwPts = S.bodyweight.filter(b => range === 0 || (b.t || new Date(b.d).getTime()) > now - range * 86400000)
-    .map(b => ({ t: b.t || new Date(b.d).getTime(), y: b.w, d: b.d }))
-  const bw30 = S.bodyweight.filter(b => (b.t || new Date(b.d).getTime()) > now - 30 * 86400000)
-  const bwDelta30 = bw30.length > 1 ? bw30[bw30.length - 1].w - bw30[0].w : null
   const monthW = workouts.filter(w => String(w.d || '').slice(0, 7) === todayISO().slice(0, 7)).length
+  const avgWorkoutHours = calcularHorasPromedioEntreno(workouts, now)
 
   const nameOf = id => EXIDX[id] ? exerciseNameFor(EXIDX[id]) : (workouts.flatMap(w => w.entries).find(e => e.id === id)?.n || id)
   const currentOf = id => {
@@ -482,7 +400,7 @@ export default function Stats() {
       <div className="tile"><div className="l"><Icon name="dumbbell" />{t('Workouts')}</div><div className="v">{workouts.length}</div></div>
       <div className="tile"><div className="l"><Icon name="calendar" />{t('This month')}</div><div className="v">{monthW}</div></div>
       <div className="tile"><div className="l"><Icon name="flame" />{t('Week streak')}</div><div className="v">{streakWeeks(S)}</div></div>
-      <div className="tile"><div className="l"><Icon name="scale" />{t('Weight 30d')}</div><div className="v" style={{ fontSize: 22, color: bwDelta30 === null ? 'inherit' : bwDeltaColor(bwDelta30, (lastBW(S) || {}).w || 0) }}>{bwDelta30 === null ? '—' : (bwDelta30 > 0 ? '+' : '') + fmtNum(bwDelta30) + ' ' + S.unit}</div></div>
+      <div className="tile"><div className="l"><Icon name="clock" />{t('Horas promedio')}</div><div className="v" style={{ fontSize: 22 }}>{fmtNum(avgWorkoutHours)} <span className="dim small">h/sesión</span></div></div>
 
     </div>
 
@@ -495,20 +413,6 @@ export default function Stats() {
     {hasEffort(S) && <EffortCard S={S} />}
 
     <div className="cols">
-      <div className="card">
-        <div className="row between" style={{ marginBottom: 8 }}>
-          <h2 style={{ margin: 0 }}>{t('Body weight')}</h2>
-          <div className="row" style={{ gap: 8 }}>
-            <Button size="sm" icon="target" style={S.targetW ? { color: 'var(--yellow)' } : undefined} onClick={goalSheet}>{S.targetW ? fmtNum(S.targetW) : t('Goal')}</Button>
-            <Button size="sm" icon="plus" onClick={() => bwSheet()}>{t('Log')}</Button>
-          </div>
-        </div>
-        <Segmented className="seg-range" value={range} onChange={setRange}
-          options={[{ value: 30, label: '1M' }, { value: 90, label: '3M' }, { value: 365, label: '1Y' }, { value: 0, label: t('All') }]} />
-        <div className="chart"><LineChart points={bwPts} h={160} unit={S.unit} goal={S.targetW} /></div>
-        <CaloricCard S={S} />
-      </div>
-
       <div className="card" data-tour="progress-card">
         <h2>{t('Exercise progress')}</h2>
         {exHist.length ? <>

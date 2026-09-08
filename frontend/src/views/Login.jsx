@@ -149,7 +149,7 @@ export default function Login() {
       {webauthnOK() ? <>
         <Button variant="primary" icon="person" onClick={signIn}>{t('Ingresar con passkey')}</Button>
         <div style={{ height: 10 }} />
-        <Button variant="tinted" icon="phone" onClick={() => useUI.getState().openSheet(c => <DevicePairingSheet close={c} />)}>{t('Continuar con el celular')}</Button>
+        <Button variant="tinted" icon="phone" onClick={() => useUI.getState().openSheet(c => <DevicePairingSheet close={c} />)}>{t('Continuar con codigo de sincronizacion')}</Button>
         <div style={{ height: 10 }} />
         <Button icon="sparkles" onClick={() => useUI.getState().openSheet(close => <RegisterSheet close={close} />)}>{t('Crear nuevo perfil')}</Button>
       </> : <div className="card small muted" style={{ textAlign: 'left' }}>
