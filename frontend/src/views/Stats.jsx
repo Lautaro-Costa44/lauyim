@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useStore } from '../store/useStore.js'
 import { EXIDX } from '../lib/exercises.js'
-import { lastBW, streakWeeks, setLabel, modeOf, effortOf, metricModeForEntry, metricRowsForEntry, bestWeightForEntry } from '../lib/history.js'
+import { lastBW, streakWeeks, setLabel, modeOf, effortOf, metricModeForEntry, metricRowsForEntry, bestWeightForEntry, effectiveRoutine } from '../lib/history.js'
 import { fmtNum, fmtDate, fmtVol, todayISO, weekKey } from '../lib/format.js'
 import { t, exerciseNameFor, getLang } from '../lib/i18n.js'
 import { bwSheet, goalSheet, calendarSheet, workoutDetailSheet, WorkoutRow, bwDeltaColor } from '../sheets.jsx'
@@ -22,7 +22,7 @@ import {
 import { Button, Segmented, SelectRow } from '../components/ui.jsx'
 import { useUI } from '../store/useUI.js'
 import { isWarmupRow } from '../lib/workout-model.js'
-import { calcularTMB, calcularCaloriasSugeridas } from '../lib/calories.js'
+import { calcularMetasNutricionales } from '../lib/nutricion.js'
 import { startTourB } from '../lib/onboarding.js'
 
 function caloricInfoSheet(close) {
@@ -43,17 +43,7 @@ function caloricInfoSheet(close) {
 }
 
 function CaloricCard({ S }) {
-  const resp = S.respuestasEncuesta || {}
-  const bwObj = lastBW(S)
-  const peso = bwObj ? bwObj.w : (resp.pesoKg || 70)
-  const altura = S.altura || resp.altura || 170
-  const edad = S.edad || resp.edad || 25
-  const sexo = resp.sexoBiologico || (S.genero === 'femenino' ? 'femenino' : 'masculino')
-  const dias = resp.diasSeleccionados || Object.keys(S.week || {})
-  const objetivo = S.objetivo || resp.objetivo || 'fitness_general'
-
-  const tmb = calcularTMB(peso, altura, edad, sexo)
-  const { mantenimiento, sugerido } = calcularCaloriasSugeridas(tmb, dias, objetivo)
+  const { peso, altura, edad, objetivo, tmb, mantenimiento, sugerido, metaProteina } = calcularMetasNutricionales(S)
 
   const objMetaMap = {
     hipertrofia: t('Ganar Músculo'),
@@ -96,6 +86,11 @@ function CaloricCard({ S }) {
           {sugerido.toLocaleString()}
         </div>
         <div className="dim small" style={{ marginTop: 4 }}>kcal / día</div>
+      </div>
+
+      <div className="row between" style={{ padding: '11px 14px', background: 'var(--surface-2)', borderRadius: 10, marginBottom: 12 }}>
+        <span style={{ fontSize: 15, color: 'var(--label-2)' }}>{t('Meta de proteína')}</span>
+        <span style={{ fontWeight: 500 }}>{metaProteina.toLocaleString()} <span className="dim small">g / día</span></span>
       </div>
 
       {/* Aclaración */}

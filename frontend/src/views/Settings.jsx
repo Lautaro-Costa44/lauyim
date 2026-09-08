@@ -232,6 +232,20 @@ export default function Settings() {
         />
         <span className="dim small" style={{ marginLeft: 6 }}>cm</span>
       </Row>
+      <Row icon="scale" iconTint="var(--green)" title={t('Grasa corporal')} subtitle={t('Opcional — mejora la precisión de tu meta calórica')}>
+        <input
+          type="number" inputMode="decimal" className="timef" placeholder="—"
+          min="3" max="60" step="0.1"
+          defaultValue={S.grasaCorporal ?? ''}
+          key={S.grasaCorporal ?? 'grasaCorporal'}
+          onBlur={e => {
+            const n = parseFloat(e.target.value)
+            update(s => { s.grasaCorporal = Number.isFinite(n) ? Math.max(3, Math.min(60, n)) : null })
+          }}
+          style={{ width: 68, textAlign: 'right' }}
+        />
+        <span className="dim small" style={{ marginLeft: 6 }}>%</span>
+      </Row>
     </Section>
 
     <Section title={t('During a workout')} footer={wakeOK ? t('The screen stays on while a workout is running, so you don’t have to unlock your phone between sets.') : null}>

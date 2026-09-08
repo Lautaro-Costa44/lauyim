@@ -109,6 +109,7 @@ CREATE TABLE IF NOT EXISTS user_state (
   edad INTEGER,
   altura INTEGER,
   objetivo TEXT,
+  grasa_corporal REAL,
   nivel TEXT,
   peso_kg REAL,
   configuracion TEXT,        -- JSON

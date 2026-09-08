@@ -117,6 +117,7 @@ export function initDatabase() {
     ['edad', 'INTEGER'],
     ['altura', 'INTEGER'],
     ['objetivo', 'TEXT'],
+    ['grasa_corporal', 'REAL'],
     ['nivel', 'TEXT'],
     ['peso_kg', 'REAL'],
     ['configuracion', 'TEXT'],
@@ -441,6 +442,7 @@ export function getUserState(userId) {
     edad: row.edad,
     altura: row.altura,
     objetivo: row.objetivo,
+    grasaCorporal: row.grasa_corporal,
     nivel: row.nivel,
     pesoKg: row.peso_kg,
     configuracion: safeJsonParse(row.configuracion),
@@ -478,10 +480,10 @@ export function saveUserState(userId, S) {
   const stateStmt = db.prepare(`
     INSERT OR REPLACE INTO user_state (
       user_id, _ts, unit, rest_sec, rest_pause_sec, sound, keep_awake, lang, theme, accent,
-      body, target_w, estado_inicial, onboarding_completado, onboarding_stats_completado, edad, altura, objetivo, nivel, peso_kg, configuracion,
+      body, target_w, estado_inicial, onboarding_completado, onboarding_stats_completado, edad, altura, objetivo, grasa_corporal, nivel, peso_kg, configuracion,
       respuestas_encuesta, rutina_generada, fecha_ultima_encuesta, effort, auto_backup,
       active_equip_id, equip_filter_on, progression_type, progression_config
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
   stateStmt.run(
     userId,
@@ -502,6 +504,7 @@ export function saveUserState(userId, S) {
     S.edad || null,
     S.altura || null,
     S.objetivo || null,
+    S.grasaCorporal || null,
     S.nivel || null,
     S.pesoKg || null,
     S.configuracion ? JSON.stringify(S.configuracion) : null,

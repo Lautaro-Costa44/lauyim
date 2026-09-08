@@ -10,18 +10,15 @@ export function calcularTMB(pesoKg, alturaCm, edad, sexoBiologico = 'masculino')
   return Math.round(10 * p + 6.25 * a - 5 * e + 5)
 }
 
-export function calcularCaloriasSugeridas(tmb, diasSeleccionados = [], objetivo = 'fitness_general') {
+/**
+ * Calcula el gasto energético diario total según los días de entrenamiento.
+ *
+ * @param {number} tmb - Tasa metabólica basal, en kcal/día.
+ * @param {Array|number} diasSeleccionados - Días de entrenamiento seleccionados o su cantidad.
+ * @returns {number} Gasto energético diario total entero, en kcal/día.
+ */
+export function calcularTDEE(tmb, diasSeleccionados = []) {
   const nDias = Array.isArray(diasSeleccionados) ? diasSeleccionados.length : (+diasSeleccionados || 3)
   const factorActividad = nDias >= 5 ? 1.55 : nDias >= 3 ? 1.375 : 1.2
-  const mantenimiento = Math.round(tmb * factorActividad)
-
-  const ajuste = {
-    hipertrofia: 1.125,
-    fuerza: 1.125,
-    perder_grasa: 0.825,
-    fitness_general: 1.0,
-  }[objetivo] || 1.0
-
-  const sugerido = Math.round(mantenimiento * ajuste)
-  return { mantenimiento, sugerido }
+  return Math.round(tmb * factorActividad)
 }
