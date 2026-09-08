@@ -14,6 +14,7 @@
   "license": "AGPL-3.0-or-later",
   "dependencies": {
     "driver.js": "^1.8.0",
+    "html5-qrcode": "^2.3.8",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "react-router-dom": "^7.18.2",

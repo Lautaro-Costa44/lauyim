@@ -4,6 +4,22 @@ import { effectiveRoutine, lastBW } from './history.js'
 import { todayISO } from './format.js'
 import { calcularTMB, calcularTDEE } from './calories.js'
 
+export function porcionAGramos(porcion) {
+  return Math.max(0, Number(porcion) || 0) * 100
+}
+
+export function calcularNutrientesPorCantidad(alimento, gramos) {
+  const factor = Math.max(0, Number(gramos) || 0) / 100
+  const entero = valor => Math.round((Number(valor) || 0) * factor)
+  const decimal = valor => Math.round((Number(valor) || 0) * factor * 10) / 10
+  return {
+    calorias: entero(alimento?.caloriasPor100g),
+    proteina: decimal(alimento?.proteinaPor100g),
+    carbohidratos: decimal(alimento?.carbosPor100g),
+    grasas: decimal(alimento?.grasasPor100g),
+  }
+}
+
 /**
  * Calcula la meta calórica diaria a partir del TDEE y del objetivo del usuario.
  *
@@ -59,6 +75,26 @@ export function mapearObjetivoUI(objetivoUI) {
 export function calcularMetaProteina(pesoKg, enDeficit) {
   const factor = enDeficit ? 2.4 : 1.8
   return Math.round(pesoKg * factor * 10) / 10
+}
+
+/**
+ * Calcula las metas diarias de carbohidratos y grasas a partir de la meta
+ * calórica y proteica. La grasa usa el 30% de las calorías, dentro del rango
+ * AMDR recomendado por el Institute of Medicine (Dietary Reference Intakes)
+ * para adultos; ISSN no prescribe específicamente un reparto de carbos/grasas.
+ *
+ * @param {number} caloriasMeta - Meta calórica diaria.
+ * @param {number} proteinaMetaGramos - Meta diaria de proteína en gramos.
+ * @returns {{ grasasMeta: number, carbosMeta: number }} Metas en gramos.
+ */
+export function calcularMetasMacros(caloriasMeta, proteinaMetaGramos) {
+  const caloriasProteina = (Number(proteinaMetaGramos) || 0) * 4
+  const caloriasGrasa = (Number(caloriasMeta) || 0) * 0.3
+  const caloriasCarbos = Math.max(0, (Number(caloriasMeta) || 0) - caloriasProteina - caloriasGrasa)
+  return {
+    grasasMeta: Math.round(caloriasGrasa / 9),
+    carbosMeta: Math.round(caloriasCarbos / 4),
+  }
 }
 
 /**

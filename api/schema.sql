@@ -340,3 +340,31 @@ CREATE TABLE IF NOT EXISTS equip_profiles (
  
 -- Índices para equip_profiles
 CREATE INDEX IF NOT EXISTS idx_equip_profiles_user_id ON equip_profiles(user_id);
+
+-- Caché de búsquedas de alimentos de Open Food Facts
+CREATE TABLE IF NOT EXISTS cache_alimentos (
+  query TEXT PRIMARY KEY,
+  resultado_json TEXT NOT NULL,
+  fecha_cache TEXT NOT NULL
+);
+
+-- Comidas registradas por usuario y día
+CREATE TABLE IF NOT EXISTS comidas_registradas (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id TEXT NOT NULL,
+  fecha TEXT NOT NULL,
+  franja TEXT NOT NULL,
+  nombre_alimento TEXT NOT NULL,
+  cantidad_gramos REAL NOT NULL,
+  calorias REAL NOT NULL,
+  proteina REAL NOT NULL,
+  carbohidratos REAL NOT NULL,
+  grasas REAL NOT NULL,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  CHECK (franja IN ('desayuno', 'almuerzo', 'merienda', 'cena', 'extra'))
+);
+
+-- Índices para comidas registradas
+CREATE INDEX IF NOT EXISTS idx_comidas_registradas_user_id ON comidas_registradas(user_id);
+CREATE INDEX IF NOT EXISTS idx_comidas_registradas_fecha ON comidas_registradas(fecha);
+CREATE INDEX IF NOT EXISTS idx_comidas_registradas_user_fecha ON comidas_registradas(user_id, fecha);

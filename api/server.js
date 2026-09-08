@@ -542,6 +542,133 @@ if (AUDIT_ON) {
 const routes = {
   'GET /api/health': async (req, res) => json(res, 200, { ok: true, users: getAllUsers().length }),
 
+  'GET /api/alimentos/buscar': async (req, res) => {
+    const query = new URL(req.url, 'http://x').searchParams.get('q')?.trim().slice(0, 100) || '';
+    if (!query) return json(res, 200, []);
+
+    const db = getDatabase();
+    const cached = db.prepare('SELECT resultado_json, fecha_cache FROM cache_alimentos WHERE query = ?').get(query);
+    if (cached && Date.now() - new Date(cached.fecha_cache).getTime() < 24 * 60 * 60 * 1000) {
+      try { return json(res, 200, JSON.parse(cached.resultado_json)); } catch { /* caché inválida: actualizar */ }
+    }
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000);
+    try {
+      const offUrl = new URL('https://world.openfoodfacts.org/api/v2/search');
+      offUrl.searchParams.set('search_terms', query);
+      offUrl.searchParams.set('page_size', '15');
+      offUrl.searchParams.set('fields', 'product_name,brands,nutriments');
+      const response = await fetch(offUrl, {
+        signal: controller.signal,
+        headers: { 'User-Agent': 'LauyimGym/1.0 (food search)' }
+      });
+      if (!response.ok) throw new Error(`Open Food Facts HTTP ${response.status}`);
+      const data = await response.json();
+      const alimentos = (Array.isArray(data.products) ? data.products : []).slice(0, 15).map(product => {
+        const n = product.nutriments || {};
+        const numberOrNull = value => Number.isFinite(Number(value)) ? Number(value) : null;
+        return {
+          nombre: product.product_name || '',
+          marca: product.brands || '',
+          caloriasPor100g: numberOrNull(n['energy-kcal_100g'] ?? n['energy-kcal'] ?? n['energy-kcal_value']),
+          proteinaPor100g: numberOrNull(n.proteins_100g),
+          carbosPor100g: numberOrNull(n.carbohydrates_100g),
+          grasasPor100g: numberOrNull(n.fat_100g)
+        };
+      }).filter(item => item.nombre);
+      db.prepare(`INSERT INTO cache_alimentos (query, resultado_json, fecha_cache)
+        VALUES (?, ?, ?) ON CONFLICT(query) DO UPDATE SET resultado_json = excluded.resultado_json, fecha_cache = excluded.fecha_cache`)
+        .run(query, JSON.stringify(alimentos), new Date().toISOString());
+      return json(res, 200, alimentos);
+    } catch (error) {
+      console.error('GET /api/alimentos/buscar error:', error);
+      return json(res, 200, { alimentos: [], error: 'No se pudo consultar Open Food Facts' });
+    } finally {
+      clearTimeout(timeout);
+    }
+  },
+
+  'GET /api/alimentos/codigo/:codigo': async (req, res) => {
+    const codigo = decodeURIComponent(new URL(req.url, 'http://x').pathname.split('/').pop() || '').trim();
+    if (!codigo) return json(res, 400, { error: 'Código de barras requerido' });
+
+    const cacheKey = `codigo:${codigo}`;
+    const db = getDatabase();
+    const cached = db.prepare('SELECT resultado_json, fecha_cache FROM cache_alimentos WHERE query = ?').get(cacheKey);
+    if (cached && Date.now() - new Date(cached.fecha_cache).getTime() < 24 * 60 * 60 * 1000) {
+      try { return json(res, 200, JSON.parse(cached.resultado_json)); } catch { /* caché inválida: actualizar */ }
+    }
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000);
+    try {
+      const response = await fetch(`https://world.openfoodfacts.org/api/v2/product/${encodeURIComponent(codigo)}.json`, {
+        signal: controller.signal,
+        headers: { 'User-Agent': 'LauyimGym/1.0 (barcode lookup)' }
+      });
+      if (!response.ok) throw new Error(`Open Food Facts HTTP ${response.status}`);
+      const data = await response.json();
+      if (data.status !== 1 || !data.product) return json(res, 404, { error: 'Producto no encontrado en Open Food Facts' });
+
+      const product = data.product;
+      const n = product.nutriments || {};
+      const numberOrNull = value => Number.isFinite(Number(value)) ? Number(value) : null;
+      const alimento = {
+        nombre: product.product_name || '',
+        marca: product.brands || '',
+        caloriasPor100g: numberOrNull(n['energy-kcal_100g'] ?? n['energy-kcal'] ?? n['energy-kcal_value']),
+        proteinaPor100g: numberOrNull(n.proteins_100g),
+        carbosPor100g: numberOrNull(n.carbohydrates_100g),
+        grasasPor100g: numberOrNull(n.fat_100g)
+      };
+      if (!alimento.nombre) return json(res, 404, { error: 'Producto no encontrado en Open Food Facts' });
+
+      db.prepare(`INSERT INTO cache_alimentos (query, resultado_json, fecha_cache)
+        VALUES (?, ?, ?) ON CONFLICT(query) DO UPDATE SET resultado_json = excluded.resultado_json, fecha_cache = excluded.fecha_cache`)
+        .run(cacheKey, JSON.stringify(alimento), new Date().toISOString());
+      return json(res, 200, alimento);
+    } catch (error) {
+      console.error('GET /api/alimentos/codigo/:codigo error:', error);
+      return json(res, 502, { error: 'No se pudo consultar Open Food Facts' });
+    } finally {
+      clearTimeout(timeout);
+    }
+  },
+
+  'POST /api/comidas': async (req, res) => {
+    const user = readSession(req);
+    if (!user) return json(res, 401, { error: 'not signed in' });
+    const body = await readBody(req);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(body.fecha || '')) || !['desayuno', 'almuerzo', 'merienda', 'cena', 'extra'].includes(body.franja)) {
+      return json(res, 400, { error: 'fecha or franja invalid' });
+    }
+    const values = [body.fecha, body.franja, String(body.nombre_alimento || '').trim(), body.cantidad_gramos, body.calorias, body.proteina, body.carbohidratos, body.grasas];
+    if (!values[2] || values.slice(3).some(value => !Number.isFinite(Number(value)) || Number(value) < 0)) return json(res, 400, { error: 'invalid meal data' });
+    const result = getDatabase().prepare(`INSERT INTO comidas_registradas
+      (user_id, fecha, franja, nombre_alimento, cantidad_gramos, calorias, proteina, carbohidratos, grasas)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(user.id, ...values);
+    return json(res, 201, { id: Number(result.lastInsertRowid) });
+  },
+
+  'GET /api/comidas': async (req, res) => {
+    const user = readSession(req);
+    if (!user) return json(res, 401, { error: 'not signed in' });
+    const fecha = new URL(req.url, 'http://x').searchParams.get('fecha') || '';
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha)) return json(res, 400, { error: 'fecha invalid' });
+    const comidas = getDatabase().prepare('SELECT * FROM comidas_registradas WHERE user_id = ? AND fecha = ? ORDER BY id').all(user.id, fecha);
+    return json(res, 200, comidas);
+  },
+
+  'DELETE /api/comidas/:id': async (req, res) => {
+    const user = readSession(req);
+    if (!user) return json(res, 401, { error: 'not signed in' });
+    const id = new URL(req.url, 'http://x').pathname.split('/').pop();
+    const result = getDatabase().prepare('DELETE FROM comidas_registradas WHERE id = ? AND user_id = ?').run(id, user.id);
+    if (!result.changes) return json(res, 404, { error: 'meal not found' });
+    return json(res, 200, { ok: true });
+  },
+
 
   'POST /api/share/plan': async (req, res) => {
     const body = await readBody(req);
@@ -1279,6 +1406,11 @@ http.createServer(async (req, res) => {
   }
 
   const key = req.method + ' ' + url.pathname;
+  const routeKey = req.method === 'DELETE' && /^\/api\/comidas\/[^/]+$/.test(url.pathname)
+    ? 'DELETE /api/comidas/:id'
+    : req.method === 'GET' && /^\/api\/alimentos\/codigo\/[^/]+$/.test(url.pathname)
+      ? 'GET /api/alimentos/codigo/:codigo'
+    : key;
 
   // Verificar expiración de licencia por fecha (si está configurada y vencida)
   // Excluimos /api/health para que monitores o chequeos básicos puedan seguir funcionando si es necesario, 
@@ -1287,15 +1419,15 @@ http.createServer(async (req, res) => {
     return json(res, 403, { error: 'license_expired' });
   }
 
-  const handler = routes[key];
+  const handler = routes[routeKey];
   if (!handler) return json(res, 404, { error: 'not found' });
-  if (!csrfOk(req, key)) {
-    console.warn('refused cross-origin', key, 'origin=' + req.headers.origin, 'expected=' + ORIGIN);
+  if (!csrfOk(req, routeKey)) {
+    console.warn('refused cross-origin', routeKey, 'origin=' + req.headers.origin, 'expected=' + ORIGIN);
     return json(res, 403, { error: 'cross-origin request refused' });
   }
   try { await handler(req, res); }
   catch (e) {
-    console.error(key, e);
+    console.error(routeKey, e);
     if (!res.headersSent) json(res, 500, { error: 'server error' });
   }
 }).listen(PORT, () => {
