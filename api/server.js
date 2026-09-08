@@ -547,18 +547,23 @@ const routes = {
     if (!query) return json(res, 200, []);
 
     const db = getDatabase();
-    const cached = db.prepare('SELECT resultado_json, fecha_cache FROM cache_alimentos WHERE query = ?').get(query);
-    if (cached && Date.now() - new Date(cached.fecha_cache).getTime() < 24 * 60 * 60 * 1000) {
-      try { return json(res, 200, JSON.parse(cached.resultado_json)); } catch { /* caché inválida: actualizar */ }
-    }
+    const cacheFor = scope => `${scope}:${query}`;
+    const freshCached = key => {
+      const cached = db.prepare('SELECT resultado_json, fecha_cache FROM cache_alimentos WHERE query = ?').get(key);
+      if (!cached || Date.now() - new Date(cached.fecha_cache).getTime() >= 24 * 60 * 60 * 1000) return null;
+      try { return JSON.parse(cached.resultado_json); } catch { return null }
+    };
+    const cachedArgentina = freshCached(cacheFor('ar'));
+    if (Array.isArray(cachedArgentina) && cachedArgentina.length) return json(res, 200, cachedArgentina);
 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 5000);
     try {
-      const offUrl = new URL('https://world.openfoodfacts.org/api/v2/search');
+      const offUrl = new URL('https://ar.openfoodfacts.org/api/v2/search');
       offUrl.searchParams.set('search_terms', query);
       offUrl.searchParams.set('page_size', '15');
       offUrl.searchParams.set('fields', 'product_name,brands,nutriments');
+      offUrl.searchParams.set('lc', 'es');
       const response = await fetch(offUrl, {
         signal: controller.signal,
         headers: { 'User-Agent': 'LauyimGym/1.0 (food search)' }
@@ -579,8 +584,36 @@ const routes = {
       }).filter(item => item.nombre);
       db.prepare(`INSERT INTO cache_alimentos (query, resultado_json, fecha_cache)
         VALUES (?, ?, ?) ON CONFLICT(query) DO UPDATE SET resultado_json = excluded.resultado_json, fecha_cache = excluded.fecha_cache`)
-        .run(query, JSON.stringify(alimentos), new Date().toISOString());
-      return json(res, 200, alimentos);
+        .run(cacheFor('ar'), JSON.stringify(alimentos), new Date().toISOString());
+      if (alimentos.length) return json(res, 200, alimentos);
+
+      const cachedFallback = freshCached(cacheFor('world-ar'));
+      if (Array.isArray(cachedFallback)) return json(res, 200, cachedFallback);
+      const fallbackUrl = new URL('https://world.openfoodfacts.org/api/v2/search');
+      fallbackUrl.searchParams.set('search_terms', query);
+      fallbackUrl.searchParams.set('page_size', '15');
+      fallbackUrl.searchParams.set('fields', 'product_name,brands,nutriments');
+      fallbackUrl.searchParams.set('countries_tags_en', 'Argentina');
+      fallbackUrl.searchParams.set('lc', 'es');
+      const fallbackResponse = await fetch(fallbackUrl, {
+        signal: controller.signal,
+        headers: { 'User-Agent': 'LauyimGym/1.0 (food search)' }
+      });
+      if (!fallbackResponse.ok) throw new Error(`Open Food Facts HTTP ${fallbackResponse.status}`);
+      const fallbackData = await fallbackResponse.json();
+      const fallbackAlimentos = (Array.isArray(fallbackData.products) ? fallbackData.products : []).slice(0, 15).map(product => {
+        const n = product.nutriments || {};
+        const numberOrNull = value => Number.isFinite(Number(value)) ? Number(value) : null;
+        return {
+          nombre: product.product_name || '', marca: product.brands || '',
+          caloriasPor100g: numberOrNull(n['energy-kcal_100g'] ?? n['energy-kcal'] ?? n['energy-kcal_value']),
+          proteinaPor100g: numberOrNull(n.proteins_100g), carbosPor100g: numberOrNull(n.carbohydrates_100g), grasasPor100g: numberOrNull(n.fat_100g)
+        };
+      }).filter(item => item.nombre);
+      db.prepare(`INSERT INTO cache_alimentos (query, resultado_json, fecha_cache)
+        VALUES (?, ?, ?) ON CONFLICT(query) DO UPDATE SET resultado_json = excluded.resultado_json, fecha_cache = excluded.fecha_cache`)
+        .run(cacheFor('world-ar'), JSON.stringify(fallbackAlimentos), new Date().toISOString());
+      return json(res, 200, fallbackAlimentos);
     } catch (error) {
       console.error('GET /api/alimentos/buscar error:', error);
       return json(res, 200, { alimentos: [], error: 'No se pudo consultar Open Food Facts' });
@@ -601,9 +634,14 @@ const routes = {
     }
 
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 5000);
+    let timeoutTriggered = false;
+    const timeout = setTimeout(() => {
+      timeoutTriggered = true;
+      controller.abort();
+    }, 5000);
+    let response;
     try {
-      const response = await fetch(`https://world.openfoodfacts.org/api/v2/product/${encodeURIComponent(codigo)}.json`, {
+      response = await fetch(`https://world.openfoodfacts.org/api/v2/product/${encodeURIComponent(codigo)}.json`, {
         signal: controller.signal,
         headers: { 'User-Agent': 'LauyimGym/1.0 (barcode lookup)' }
       });
@@ -629,6 +667,16 @@ const routes = {
         .run(cacheKey, JSON.stringify(alimento), new Date().toISOString());
       return json(res, 200, alimento);
     } catch (error) {
+      const abortError = error?.name === 'AbortError' || controller.signal.aborted;
+      console.error('GET /api/alimentos/codigo/:codigo error details:', {
+        codigo,
+        openFoodFactsStatus: response?.status ?? null,
+        timeoutOrAbort: abortError,
+        timeoutTriggered,
+        networkErrorBeforeResponse: !response && !abortError,
+        errorName: error?.name ?? null,
+        errorMessage: error?.message ?? String(error)
+      });
       console.error('GET /api/alimentos/codigo/:codigo error:', error);
       return json(res, 502, { error: 'No se pudo consultar Open Food Facts' });
     } finally {

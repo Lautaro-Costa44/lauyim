@@ -9,39 +9,44 @@ const FORMATOS = [
   Html5QrcodeSupportedFormats.QR_CODE
 ]
 
+let scannerCycle = Promise.resolve()
+
 export default function ScannerCodigoBarras({ onScan, onCancel }) {
   const scannerRef = useRef(null)
   const resultadoRef = useRef(false)
   const [error, setError] = useState('')
 
   useEffect(() => {
-    const scanner = new Html5Qrcode('scanner-codigo-barras')
-    scannerRef.current = scanner
     let activo = true
-
-    scanner.start(
-      { facingMode: 'environment' },
-      { fps: 10, qrbox: { width: 280, height: 180 }, formatsToSupport: FORMATOS },
-      async (codigo) => {
-        if (!activo || resultadoRef.current) return
-        resultadoRef.current = true
-        try {
-          await scanner.stop()
-        } catch {
-          // La cámara puede haberse detenido al desmontar el componente.
-        }
-        if (activo) onScan(codigo)
-      },
-      () => {}
-    ).catch(() => {
-      if (activo) setError('No se pudo acceder a la cámara. Revisá el permiso del navegador e intentá nuevamente.')
+    let scanner = null
+    const ciclo = scannerCycle.then(async () => {
+      if (!activo) return
+      scanner = new Html5Qrcode('scanner-codigo-barras')
+      scannerRef.current = scanner
+      try {
+        await scanner.start(
+          { facingMode: 'environment' },
+          { fps: 10, qrbox: { width: 280, height: 180 }, formatsToSupport: FORMATOS },
+          async (codigo) => {
+            if (!activo || resultadoRef.current) return
+            resultadoRef.current = true
+            try { await scanner.stop() } catch { /* ya detenido al desmontar */ }
+            if (activo) onScan(codigo)
+          },
+          () => {},
+        )
+        if (activo) return
+      } catch {
+        if (activo) setError('No se pudo acceder a la cámara. Revisá el permiso del navegador e intentá nuevamente.')
+      }
     })
+    scannerCycle = ciclo.catch(() => {})
 
     return () => {
       activo = false
-      if (scannerRef.current?.isScanning) {
-        scannerRef.current.stop().catch(() => {})
-      }
+      scannerCycle = ciclo.then(async () => {
+        if (scanner?.isScanning) await scanner.stop().catch(() => {})
+      }).catch(() => {})
     }
   }, [onScan])
 
