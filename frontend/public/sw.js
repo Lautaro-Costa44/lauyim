@@ -1,6 +1,8 @@
 /* lauyim service worker — runtime caching (works with Vite's hashed asset names).
    Media (img/gif) cache-first; everything else network-first with offline fallback. */
-const CACHE = 'opengym-rt-v1'
+// Bump this whenever shell/icon assets change so installed PWAs do not keep
+// serving the previous icon from the old runtime cache.
+const CACHE = 'opengym-rt-v2'
 
 self.addEventListener('install', () => self.skipWaiting())
 self.addEventListener('activate', e => {
@@ -12,8 +14,9 @@ self.addEventListener('push', e => {
   const data = e.data ? e.data.json() : {}
   e.waitUntil(self.registration.showNotification(data.title || 'lauyim', {
     body: data.body || '',
-    icon: 'logo-perf.svg',
-    badge: 'logo-perf.svg',
+    // Notifications are more consistently rendered from PNGs on Android.
+    icon: 'icon-512.png?v=2',
+    badge: 'icon-180.png?v=2',
     tag: data.tag || 'lauyim',
     renotify: true,
     data: data.data || {}
