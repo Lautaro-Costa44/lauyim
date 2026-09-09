@@ -59,6 +59,8 @@
 
   --sab:env(safe-area-inset-bottom,0px);
   --sat:env(safe-area-inset-top,0px);
+  --viewport-height:100vh;
+  --keyboard-offset:0px;
 }
 
 :root[data-theme="light"] {
@@ -697,21 +699,23 @@ input[type="search"]::-webkit-search-cancel-button{display:none;-webkit-appearan
   touch-action:none;overscroll-behavior:none;
 }
 .sheet{
-  position:absolute;left:0;right:0;bottom:0;background:var(--bg-el);
+  position:absolute;left:0;right:0;bottom:var(--keyboard-offset);background:var(--bg-el);
   border-radius:var(--r-xl) var(--r-xl) 0 0;
   padding:8px 18px calc(20px + var(--sab));
-  max-height:90vh;overflow-y:auto;-webkit-overflow-scrolling:touch;
+  max-height:min(90vh,calc(var(--viewport-height) - var(--sat)));
+  overflow-y:auto;-webkit-overflow-scrolling:touch;
   animation:sheetup .34s var(--ease);
   overscroll-behavior:contain;touch-action:pan-y;will-change:transform;
 }
 :root[data-theme="light"] .sheet{background:var(--bg)}
 @keyframes sheetup{from{transform:translateY(100%)}to{transform:none}}
 .sheet .grab{width:36px;height:5px;border-radius:99px;background:var(--label-4);margin:6px auto 14px}
-.sheet.fullscreen{top:0;bottom:0;height:100vh;height:100dvh;max-height:none;border-radius:0}
+.sheet.fullscreen{top:0;bottom:var(--keyboard-offset);height:auto;max-height:none;border-radius:0}
 .sheet h3{font-size:20px;font-weight:600;letter-spacing:-.021em;margin-bottom:14px}
 .center{
-  position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
+  position:absolute;left:50%;top:calc(var(--viewport-height) / 2);transform:translate(-50%,-50%);
   width:min(84vw,300px);background:var(--bg-el);border-radius:var(--r-lg);padding:20px;
+  max-height:calc(var(--viewport-height) - 32px);overflow-y:auto;overscroll-behavior:contain;
   box-shadow:0 20px 60px -12px rgba(0,0,0,.5);
   animation:pop .28s var(--ease);
 }

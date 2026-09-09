@@ -162,6 +162,24 @@ describe('Modals sheet history accounting', () => {
 })
 
 describe('Modals mouse dragging', () => {
+  it('does not start sheet dragging from editable fields', async () => {
+    await setSheets([sheet('textarea', {
+      render: () => React.createElement('textarea'),
+    })])
+    const sheetEl = container.querySelector('.sheet')
+    const textarea = container.querySelector('textarea')
+    sheetEl.scrollTop = 0
+
+    await act(async () => {
+      mouse(textarea, 'mousedown', 10)
+      mouse(sheetEl, 'mousemove', 150)
+      window.dispatchEvent(new dom.Event('mouseup'))
+    })
+
+    expect(sheetEl.style.transform).toBe('')
+    expect(mocks.state.sheets).toHaveLength(1)
+  })
+
   it('leaves range sliders opted out of sheet dragging', async () => {
     await setSheets([sheet('slider', {
       render: () => React.createElement('input', { type: 'range' }),

@@ -11,7 +11,7 @@ function Sheet({ sheet }) {
     const el = ref.current
     // a gesture that begins on a slider (or opted-out control) belongs to that control,
     // not to the sheet's swipe-to-dismiss — so it keeps working while you drag
-    if (e.target.closest && e.target.closest('input[type=range], [data-nodrag]')) {
+    if (e.target.closest && e.target.closest('input, textarea, [contenteditable="true"], input[type=range], [data-nodrag]')) {
       drag.current = { startY: null, delta: 0 }
       return
     }
@@ -38,7 +38,7 @@ function Sheet({ sheet }) {
   // Mouse drag (desktop testing / trackpads): same swipe-to-dismiss behaviour.
   const onMouseDown = e => {
     if (e.button !== 0) return
-    if (e.target.closest && e.target.closest('input[type=range], [data-nodrag]')) {
+    if (e.target.closest && e.target.closest('input, textarea, [contenteditable="true"], input[type=range], [data-nodrag]')) {
       drag.current = { startY: null, delta: 0 }
       return
     }

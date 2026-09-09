@@ -15,6 +15,8 @@ import ErrorBoundary from './components/ErrorBoundary.jsx'
 import Modals from './components/Modals.jsx'
 import Toast from './components/Toast.jsx'
 import RestTimer from './components/RestTimer.jsx'
+import { installKeyboardViewport } from './lib/keyboard.js'
+import { disableKeyboardAutofill } from './lib/input-safety.js'
 import Login from './views/Login.jsx'
 import Home from './views/Home.jsx'
 import Plan from './views/Plan.jsx'
@@ -47,34 +49,6 @@ function applyPrefs(theme, accent) {
   if (meta) meta.content = de.dataset.theme === 'light' ? '#f2f2f7' : '#000000'
 }
 
-let autofillFieldSeq = 0
-const autofillFieldNames = new WeakMap()
-
-function disableKeyboardAutofill(root) {
-  root.querySelectorAll('input:not([type="file"]), textarea').forEach(field => {
-    const originalType = field.type
-    const inputMode = field.getAttribute('inputmode') || ''
-    const keyboardInput = field.tagName === 'INPUT' && !['email', 'url', 'time', 'date', 'range', 'checkbox', 'radio', 'hidden', 'submit', 'button', 'password', 'search'].includes(originalType)
-    if (keyboardInput) {
-      if (!inputMode) field.setAttribute('inputmode', originalType === 'number' ? (field.getAttribute('step')?.includes('.') ? 'decimal' : 'numeric') : 'search')
-      field.setAttribute('type', 'search')
-    }
-    field.setAttribute('autocomplete', 'off')
-    field.setAttribute('autocorrect', 'off')
-    field.setAttribute('autocapitalize', 'none')
-    field.setAttribute('spellcheck', 'false')
-    field.setAttribute('data-lpignore', 'true')
-    field.setAttribute('data-1p-ignore', 'true')
-    field.setAttribute('data-bwignore', 'true')
-    field.setAttribute('data-form-type', 'other')
-    if (!autofillFieldNames.has(field)) {
-      autofillFieldSeq += 1
-      autofillFieldNames.set(field, `app_field_${autofillFieldSeq}_${Math.random().toString(36).slice(2)}`)
-    }
-    field.setAttribute('name', autofillFieldNames.get(field))
-  })
-}
-
 function Shell() {
   const navigate = useNavigate()
   const loc = useLocation()
@@ -89,6 +63,7 @@ function Shell() {
     observer.observe(document.body, { childList: true, subtree: true })
     return () => observer.disconnect()
   }, [])
+  useEffect(() => installKeyboardViewport(), [])
   useEffect(() => { setNav(navigate) }, [navigate])
   useEffect(() => { applyPrefs(S.theme, S.accent) }, [S.theme, S.accent])
   // 'system' needs to react live if the OS theme flips while the app is open, not just on
