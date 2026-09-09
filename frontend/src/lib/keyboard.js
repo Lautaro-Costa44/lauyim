@@ -37,11 +37,12 @@ function keepFocusedFieldVisible() {
   const sheet = active.closest('.sheet, .center')
 
   if (sheet) {
-    const sheetRect = sheet.getBoundingClientRect()
-    const visibleTop = Math.max(top + margin, sheetRect.top + margin)
-    const visibleBottom = Math.min(bottom - margin, sheetRect.bottom - margin)
-    if (rect.bottom > visibleBottom) sheet.scrollTop += rect.bottom - visibleBottom
-    else if (rect.top < visibleTop) sheet.scrollTop -= visibleTop - rect.top
+    const scrollContainer = sheet.querySelector('.compound-builder-content') || sheet
+    const containerRect = scrollContainer.getBoundingClientRect()
+    const visibleTop = Math.max(top + margin, containerRect.top + margin)
+    const visibleBottom = Math.min(bottom - margin, containerRect.bottom - margin)
+    if (rect.bottom > visibleBottom) scrollContainer.scrollTop += rect.bottom - visibleBottom
+    else if (rect.top < visibleTop) scrollContainer.scrollTop -= visibleTop - rect.top
     return
   }
 
@@ -82,4 +83,3 @@ export function installKeyboardViewport() {
     if (frame !== null) cancelRaf(frame)
   }
 }
-
