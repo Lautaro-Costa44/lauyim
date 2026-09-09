@@ -139,10 +139,9 @@ function ManualFoodForm({ franja, close, onBack, onSaved, onAddIngrediente }) {
     } catch { setError('No se pudo guardar la comida. Intentá nuevamente.'); setSaving(false) }
   }
   return <form className="manual-food" onSubmit={save}>
-    <div className="row between">
+    <div className="manual-food-header">
       {onAddIngrediente && <button type="button" className="iconbtn" onClick={onBack} aria-label="Volver"><Icon name="chevronLeft" /></button>}
-      <h3 style={{ margin: 0 }}>Ingresar alimento</h3>
-      {onAddIngrediente && <span />}
+      <h3>Ingreso Manual</h3>
     </div>
     {error && <p className="small" style={{ color: 'var(--acc-2)' }}>{error}</p>}
     <label>Nombre<input {...NO_AUTOFILL} className="field" type="search" name="alimento-manual-nombre" inputMode="search" value={nombre} onChange={event => setNombre(event.target.value)} /></label>
@@ -205,6 +204,7 @@ function FoodPicker({ franja, close, onSaved, onAddIngrediente, onAdded }) {
   }, [pick])
   const addIngrediente = useCallback(ingrediente => {
     onAddIngrediente(ingrediente)
+    setSelected(null)
     setTab('buscar')
     setQuery('')
     onAdded?.()

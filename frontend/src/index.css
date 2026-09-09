@@ -1327,6 +1327,12 @@ input[type="search"]::-webkit-search-cancel-button{display:none;-webkit-appearan
 }
 .food-results{max-height:34vh;overflow-y:auto;overscroll-behavior:contain}
 .manual-food label,.scanner-manual label{display:block;color:var(--label-2);font-size:13px;margin:10px 0}
+.manual-food-header{position:relative;display:flex;align-items:center;justify-content:center;min-height:36px;margin-bottom:12px}
+.manual-food-header h3{margin:0;font-size:20px;font-weight:600;text-align:center}
+.manual-food-header .iconbtn{position:absolute;left:0}
 .manual-food label input,.scanner-manual label input{display:block;width:100%;margin-top:6px;background:var(--surface);color:var(--label)}
+.manual-food .field{border:1px solid var(--sep)}
+.manual-food .field:focus{box-shadow:inset 0 0 0 2px var(--acc)}
+.manual-food>.btn{display:flex;width:auto;margin:16px auto 0}
 .manual-food-grid{display:grid;grid-template-columns:1fr 1fr;gap:0 10px}
 .scanner-manual{margin-top:14px}.scanner-manual button{width:100%;margin-bottom:8px}
