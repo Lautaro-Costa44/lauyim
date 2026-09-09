@@ -15,6 +15,7 @@ import {
 import { dayReminderPush, gymFeePush, restTimerPush, testPush } from './push-messages.js';
 import { startScheduler } from './scheduler.js';
 import { verifyError } from './verify-error.js';
+import { ALIMENTOS_BASE } from './alimentos-base.js';
 import {
   initDatabase,
   getAllUsers,
@@ -533,6 +534,49 @@ function audit(req, ev, f = {}) {
   if (AUDIT_MAX && ++auditCount > AUDIT_MAX * 1.25) compactAudit();
 }
 
+function normalizarTexto(value) {
+  return String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+}
+
+function buscarAlimentosBase(query) {
+  const tokens = normalizarTexto(query).split(/\s+/).filter(Boolean);
+  return ALIMENTOS_BASE.filter(alimento => {
+    const texto = normalizarTexto([alimento.nombre, ...(alimento.aliases || [])].join(' '));
+    return tokens.every(token => texto.includes(token));
+  }).map(alimento => ({
+    nombre: alimento.nombre,
+    marca: '',
+    caloriasPor100g: alimento.caloriasPor100g,
+    proteinaPor100g: alimento.proteinaPor100g,
+    carbosPor100g: alimento.carbosPor100g,
+    grasasPor100g: alimento.grasasPor100g,
+  }));
+}
+
+function mapearProductoOpenFoodFacts(product) {
+  const n = product.nutriments || {};
+  const numberOrNull = value => Number.isFinite(Number(value)) ? Number(value) : null;
+  return {
+    nombre: product.product_name || product.product_name_es || product.generic_name || '',
+    marca: Array.isArray(product.brands) ? product.brands.join(', ') : product.brands || '',
+    caloriasPor100g: numberOrNull(n['energy-kcal_100g'] ?? n['energy-kcal'] ?? n['energy-kcal_value']),
+    proteinaPor100g: numberOrNull(n.proteins_100g),
+    carbosPor100g: numberOrNull(n.carbohydrates_100g),
+    grasasPor100g: numberOrNull(n.fat_100g),
+  };
+}
+
+function combinarAlimentos(...listas) {
+  const vistos = new Set();
+  return listas.flat().filter(alimento => {
+    if (!alimento.nombre) return false;
+    const clave = `${normalizarTexto(alimento.nombre)}|${normalizarTexto(alimento.marca)}`;
+    if (vistos.has(clave)) return false;
+    vistos.add(clave);
+    return true;
+  }).slice(0, 15);
+}
+
 if (AUDIT_ON) {
   compactAudit();
   setInterval(compactAudit, 3600000).unref();
@@ -543,80 +587,64 @@ const routes = {
   'GET /api/health': async (req, res) => json(res, 200, { ok: true, users: getAllUsers().length }),
 
   'GET /api/alimentos/buscar': async (req, res) => {
-    const query = new URL(req.url, 'http://x').searchParams.get('q')?.trim().slice(0, 100) || '';
+    const query = normalizarTexto(new URL(req.url, 'http://x').searchParams.get('q')).slice(0, 100);
     if (!query) return json(res, 200, []);
 
     const db = getDatabase();
-    const cacheFor = scope => `${scope}:${query}`;
+    const baseResults = buscarAlimentosBase(query);
+    const cacheFor = scope => `v2:${scope}:${query}`;
     const freshCached = key => {
       const cached = db.prepare('SELECT resultado_json, fecha_cache FROM cache_alimentos WHERE query = ?').get(key);
       if (!cached || Date.now() - new Date(cached.fecha_cache).getTime() >= 24 * 60 * 60 * 1000) return null;
       try { return JSON.parse(cached.resultado_json); } catch { return null }
     };
     const cachedArgentina = freshCached(cacheFor('ar'));
-    if (Array.isArray(cachedArgentina) && cachedArgentina.length) return json(res, 200, cachedArgentina);
+    if (Array.isArray(cachedArgentina) && cachedArgentina.length) return json(res, 200, combinarAlimentos(baseResults, cachedArgentina));
 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 5000);
     try {
-      const offUrl = new URL('https://ar.openfoodfacts.org/api/v2/search');
-      offUrl.searchParams.set('search_terms', query);
-      offUrl.searchParams.set('page_size', '15');
-      offUrl.searchParams.set('fields', 'product_name,brands,nutriments');
-      offUrl.searchParams.set('lc', 'es');
-      const response = await fetch(offUrl, {
+      const searchUrl = new URL('https://search.openfoodfacts.org/search');
+      searchUrl.searchParams.set('q', `countries_tags:"en:argentina" ${query}`);
+      searchUrl.searchParams.set('langs', 'es');
+      searchUrl.searchParams.set('page_size', '15');
+      searchUrl.searchParams.set('fields', 'product_name,brands,nutriments');
+      const response = await fetch(searchUrl, {
         signal: controller.signal,
         headers: { 'User-Agent': 'LauyimGym/1.0 (food search)' }
       });
       if (!response.ok) throw new Error(`Open Food Facts HTTP ${response.status}`);
       const data = await response.json();
-      const alimentos = (Array.isArray(data.products) ? data.products : []).slice(0, 15).map(product => {
-        const n = product.nutriments || {};
-        const numberOrNull = value => Number.isFinite(Number(value)) ? Number(value) : null;
-        return {
-          nombre: product.product_name || '',
-          marca: product.brands || '',
-          caloriasPor100g: numberOrNull(n['energy-kcal_100g'] ?? n['energy-kcal'] ?? n['energy-kcal_value']),
-          proteinaPor100g: numberOrNull(n.proteins_100g),
-          carbosPor100g: numberOrNull(n.carbohydrates_100g),
-          grasasPor100g: numberOrNull(n.fat_100g)
-        };
-      }).filter(item => item.nombre);
+      const hits = Array.isArray(data.hits) ? data.hits : [];
+      const alimentos = hits.map(mapearProductoOpenFoodFacts).filter(item => item.nombre);
       db.prepare(`INSERT INTO cache_alimentos (query, resultado_json, fecha_cache)
         VALUES (?, ?, ?) ON CONFLICT(query) DO UPDATE SET resultado_json = excluded.resultado_json, fecha_cache = excluded.fecha_cache`)
         .run(cacheFor('ar'), JSON.stringify(alimentos), new Date().toISOString());
-      if (alimentos.length) return json(res, 200, alimentos);
+      if (data.count !== 0 && hits.length) return json(res, 200, combinarAlimentos(baseResults, alimentos));
 
       const cachedFallback = freshCached(cacheFor('world-ar'));
-      if (Array.isArray(cachedFallback)) return json(res, 200, cachedFallback);
-      const fallbackUrl = new URL('https://world.openfoodfacts.org/api/v2/search');
-      fallbackUrl.searchParams.set('search_terms', query);
+      if (Array.isArray(cachedFallback)) return json(res, 200, combinarAlimentos(baseResults, cachedFallback));
+      const fallbackUrl = new URL('https://search.openfoodfacts.org/search');
+      fallbackUrl.searchParams.set('q', query);
+      fallbackUrl.searchParams.set('langs', 'es');
       fallbackUrl.searchParams.set('page_size', '15');
       fallbackUrl.searchParams.set('fields', 'product_name,brands,nutriments');
-      fallbackUrl.searchParams.set('countries_tags_en', 'Argentina');
-      fallbackUrl.searchParams.set('lc', 'es');
       const fallbackResponse = await fetch(fallbackUrl, {
         signal: controller.signal,
         headers: { 'User-Agent': 'LauyimGym/1.0 (food search)' }
       });
       if (!fallbackResponse.ok) throw new Error(`Open Food Facts HTTP ${fallbackResponse.status}`);
       const fallbackData = await fallbackResponse.json();
-      const fallbackAlimentos = (Array.isArray(fallbackData.products) ? fallbackData.products : []).slice(0, 15).map(product => {
-        const n = product.nutriments || {};
-        const numberOrNull = value => Number.isFinite(Number(value)) ? Number(value) : null;
-        return {
-          nombre: product.product_name || '', marca: product.brands || '',
-          caloriasPor100g: numberOrNull(n['energy-kcal_100g'] ?? n['energy-kcal'] ?? n['energy-kcal_value']),
-          proteinaPor100g: numberOrNull(n.proteins_100g), carbosPor100g: numberOrNull(n.carbohydrates_100g), grasasPor100g: numberOrNull(n.fat_100g)
-        };
-      }).filter(item => item.nombre);
+      const fallbackHits = Array.isArray(fallbackData.hits) ? fallbackData.hits : [];
+      const fallbackAlimentos = fallbackHits.map(mapearProductoOpenFoodFacts).filter(item => item.nombre);
       db.prepare(`INSERT INTO cache_alimentos (query, resultado_json, fecha_cache)
         VALUES (?, ?, ?) ON CONFLICT(query) DO UPDATE SET resultado_json = excluded.resultado_json, fecha_cache = excluded.fecha_cache`)
         .run(cacheFor('world-ar'), JSON.stringify(fallbackAlimentos), new Date().toISOString());
-      return json(res, 200, fallbackAlimentos);
+      return json(res, 200, combinarAlimentos(baseResults, fallbackAlimentos));
     } catch (error) {
       console.error('GET /api/alimentos/buscar error:', error);
-      return json(res, 200, { alimentos: [], error: 'No se pudo consultar Open Food Facts' });
+      if (baseResults.length) return json(res, 200, baseResults);
+      return json(res, 502, { alimentos: [], error: 'No se pudo consultar Open Food Facts' });
     } finally {
       clearTimeout(timeout);
     }
@@ -649,17 +677,7 @@ const routes = {
       const data = await response.json();
       if (data.status !== 1 || !data.product) return json(res, 404, { error: 'Producto no encontrado en Open Food Facts' });
 
-      const product = data.product;
-      const n = product.nutriments || {};
-      const numberOrNull = value => Number.isFinite(Number(value)) ? Number(value) : null;
-      const alimento = {
-        nombre: product.product_name || '',
-        marca: product.brands || '',
-        caloriasPor100g: numberOrNull(n['energy-kcal_100g'] ?? n['energy-kcal'] ?? n['energy-kcal_value']),
-        proteinaPor100g: numberOrNull(n.proteins_100g),
-        carbosPor100g: numberOrNull(n.carbohydrates_100g),
-        grasasPor100g: numberOrNull(n.fat_100g)
-      };
+      const alimento = mapearProductoOpenFoodFacts(data.product);
       if (!alimento.nombre) return json(res, 404, { error: 'Producto no encontrado en Open Food Facts' });
 
       db.prepare(`INSERT INTO cache_alimentos (query, resultado_json, fecha_cache)

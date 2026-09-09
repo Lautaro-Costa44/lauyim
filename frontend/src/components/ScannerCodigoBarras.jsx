@@ -6,6 +6,10 @@ const FORMATOS = [
   Html5QrcodeSupportedFormats.EAN_8,
   Html5QrcodeSupportedFormats.UPC_A,
   Html5QrcodeSupportedFormats.UPC_E,
+  Html5QrcodeSupportedFormats.EAN_14,
+  Html5QrcodeSupportedFormats.CODE_128,
+  Html5QrcodeSupportedFormats.CODE_39,
+  Html5QrcodeSupportedFormats.ITF,
   Html5QrcodeSupportedFormats.QR_CODE
 ]
 
@@ -15,6 +19,7 @@ export default function ScannerCodigoBarras({ onScan, onCancel }) {
   const scannerRef = useRef(null)
   const resultadoRef = useRef(false)
   const [error, setError] = useState('')
+  const [codigoManual, setCodigoManual] = useState('')
 
   useEffect(() => {
     let activo = true
@@ -58,10 +63,23 @@ export default function ScannerCodigoBarras({ onScan, onCancel }) {
     onCancel?.()
   }
 
+  const consultarManual = async event => {
+    event.preventDefault()
+    const codigo = codigoManual.trim()
+    if (!codigo) return
+    resultadoRef.current = true
+    if (scannerRef.current?.isScanning) await scannerRef.current.stop().catch(() => {})
+    onScan(codigo)
+  }
+
   return (
     <div role="dialog" aria-label="Escanear código de barras">
       <div id="scanner-codigo-barras" />
       {error && <p role="alert">{error}</p>}
+      <form className="scanner-manual" onSubmit={consultarManual}>
+        <label>Código de barras<input type="text" inputMode="numeric" autoComplete="off" value={codigoManual} onChange={event => setCodigoManual(event.target.value)} /></label>
+        <button type="submit" disabled={!codigoManual.trim()}>Consultar código</button>
+      </form>
       <button type="button" onClick={cancelar}>Cancelar</button>
     </div>
   )

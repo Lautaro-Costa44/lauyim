@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useStore } from '../store/useStore.js'
 import { t } from '../lib/i18n.js'
 import Icon from '../components/Icon.jsx'
@@ -78,29 +78,86 @@ function MealForm({ alimento, franja, close, onSaved }) {
   </>
 }
 
+function ManualFoodForm({ franja, close, onSaved }) {
+  const [nombre, setNombre] = useState('')
+  const [gramos, setGramos] = useState('100')
+  const [calorias, setCalorias] = useState('')
+  const [proteina, setProteina] = useState('')
+  const [carbohidratos, setCarbohidratos] = useState('')
+  const [grasas, setGrasas] = useState('')
+  const [error, setError] = useState('')
+  const [saving, setSaving] = useState(false)
+  const save = async event => {
+    event.preventDefault()
+    const rawValues = [gramos, calorias, proteina, carbohidratos, grasas]
+    const values = rawValues.map(Number)
+    if (!nombre.trim() || rawValues.some(value => String(value).trim() === '') || values.some(value => !Number.isFinite(value) || value < 0) || values[0] <= 0) {
+      setError('Completá el nombre y todos los valores nutricionales con números válidos.')
+      return
+    }
+    setSaving(true)
+    try {
+      await api('/api/comidas', { method: 'POST', body: JSON.stringify({
+        fecha: todayISO(), franja, nombre_alimento: nombre.trim(), cantidad_gramos: values[0],
+        calorias: values[1] * values[0] / 100, proteina: values[2] * values[0] / 100,
+        carbohidratos: values[3] * values[0] / 100, grasas: values[4] * values[0] / 100,
+      }) })
+      onSaved(); close()
+    } catch { setError('No se pudo guardar la comida. Intentá nuevamente.'); setSaving(false) }
+  }
+  return <form className="manual-food" onSubmit={save}>
+    <h3>Ingresar alimento</h3>
+    {error && <p className="small" style={{ color: 'var(--acc-2)' }}>{error}</p>}
+    <label>Nombre<input className="field" autoFocus autoComplete="off" value={nombre} onChange={event => setNombre(event.target.value)} /></label>
+    <div className="manual-food-grid">
+      <label>Gramos<input className="field" type="number" min="1" inputMode="decimal" value={gramos} onChange={event => setGramos(event.target.value)} /></label>
+      <label>Calorías / 100 g<input className="field" type="number" min="0" inputMode="decimal" value={calorias} onChange={event => setCalorias(event.target.value)} /></label>
+      <label>Proteínas / 100 g<input className="field" type="number" min="0" inputMode="decimal" value={proteina} onChange={event => setProteina(event.target.value)} /></label>
+      <label>Carbohidratos / 100 g<input className="field" type="number" min="0" inputMode="decimal" value={carbohidratos} onChange={event => setCarbohidratos(event.target.value)} /></label>
+      <label>Grasas / 100 g<input className="field" type="number" min="0" inputMode="decimal" value={grasas} onChange={event => setGrasas(event.target.value)} /></label>
+    </div>
+    <Button type="submit" variant="primary" disabled={saving}>{saving ? 'Guardando…' : 'Guardar comida'}</Button>
+  </form>
+}
+
 function FoodPicker({ franja, close, onSaved }) {
   const [tab, setTab] = useState('buscar')
   const [query, setQuery] = useState('')
   const [results, setResults] = useState([])
   const [selected, setSelected] = useState(null)
   const [error, setError] = useState('')
+  const [loading, setLoading] = useState(false)
+  const requestRef = useRef(0)
   useEffect(() => {
-    if (tab !== 'buscar' || query.trim().length < 2) { setResults([]); return undefined }
-    const timer = setTimeout(() => api('/api/alimentos/buscar?q=' + encodeURIComponent(query.trim())).then(d => setResults(Array.isArray(d) ? d : d.alimentos || [])).catch(() => setResults([])), 400)
+    if (tab !== 'buscar' || query.trim().length < 2) {
+      requestRef.current += 1
+      setResults([])
+      setLoading(false)
+      return undefined
+    }
+    const requestId = ++requestRef.current
+    setLoading(true)
+    setError('')
+    const timer = setTimeout(() => api('/api/alimentos/buscar?q=' + encodeURIComponent(query.trim())).then(d => {
+      if (requestId === requestRef.current) setResults(Array.isArray(d) ? d : d.alimentos || [])
+    }).catch(() => {
+      if (requestId === requestRef.current) { setResults([]); setError('No se pudo buscar. Podés ingresar el alimento manualmente.') }
+    }).finally(() => { if (requestId === requestRef.current) setLoading(false) }), 400)
     return () => clearTimeout(timer)
   }, [query, tab])
-  const pick = alimento => setSelected(alimento)
-  const scan = async codigo => {
+  const pick = useCallback(alimento => setSelected(alimento), [])
+  const scan = useCallback(async codigo => {
     try { setError(''); pick(await api('/api/alimentos/codigo/' + encodeURIComponent(codigo))) }
-    catch (e) { if (e.status === 404) { setError('Producto no encontrado, probá buscarlo por nombre'); setTab('buscar') } else setError('No se pudo consultar el producto') }
-  }
+    catch (e) { setError(e.status === 404 ? 'Producto no encontrado. Podés ingresar sus datos manualmente.' : 'No se pudo consultar el producto. Podés ingresarlo manualmente.') }
+  }, [pick])
   if (selected) return <MealForm alimento={selected} franja={franja} close={close} onSaved={onSaved} />
+  if (tab === 'manual') return <ManualFoodForm franja={franja} close={close} onSaved={onSaved} />
   return <>
     <h3>Agregar comida</h3>
-    <Segmented value={tab} onChange={v => { setError(''); setTab(v) }} options={[{ value: 'buscar', label: 'Buscar por nombre' }, { value: 'scan', label: 'Escanear código' }]} />
+    <Segmented value={tab} onChange={v => { setError(''); setTab(v) }} options={[{ value: 'buscar', label: 'Buscar' }, { value: 'scan', label: 'Escanear' }, { value: 'manual', label: 'Manual' }]} />
     {error && <p className="small" style={{ color: 'var(--acc-2)' }}>{error}</p>}
-    {tab === 'buscar' ? <><input className="field" autoFocus placeholder="Buscar alimento…" value={query} onChange={e => setQuery(e.target.value)} />
-      <div className="food-results">{results.map((a, i) => <Row key={`${a.nombre}-${i}`} title={a.nombre} subtitle={a.marca || 'Sin marca'} onClick={() => pick(a)} accessory="chevron" />)}</div></> : <ScannerCodigoBarras onScan={scan} onCancel={() => setTab('buscar')} />}
+    {tab === 'buscar' ? <><input className="field food-search" type="search" name="food-search" inputMode="search" autoComplete="off" autoCorrect="off" spellCheck={false} autoFocus placeholder="Buscar alimento…" value={query} onChange={e => setQuery(e.target.value)} />
+      <div className="food-results">{loading ? <div className="meal-empty">Buscando…</div> : results.length ? results.map((a, i) => <Row key={`${a.nombre}-${a.marca || ''}-${i}`} title={a.nombre} subtitle={a.marca || 'Alimento genérico'} onClick={() => pick(a)} accessory="chevron" />) : query.trim().length >= 2 ? <div className="meal-empty">Sin resultados. Podés ingresarlo manualmente.</div> : <div className="meal-empty">Escribí al menos 2 letras.</div>}</div></> : <ScannerCodigoBarras onScan={scan} onCancel={() => setTab('buscar')} />}
   </>
 }
 

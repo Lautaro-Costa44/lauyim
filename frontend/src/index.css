@@ -1289,3 +1289,8 @@ h4.sec{
 .driver-popover.gym-tour-pop.driver-popover-arrow-side-left .driver-popover-arrow:before {
   border-right-color: var(--surface-2) !important;
 }
+.food-results{max-height:34vh;overflow-y:auto;overscroll-behavior:contain}
+.manual-food label,.scanner-manual label{display:block;color:var(--label-2);font-size:13px;margin:10px 0}
+.manual-food label input,.scanner-manual label input{display:block;width:100%;margin-top:6px}
+.manual-food-grid{display:grid;grid-template-columns:1fr 1fr;gap:0 10px}
+.scanner-manual{margin-top:14px}.scanner-manual button{width:100%;margin-bottom:8px}
