@@ -816,6 +816,47 @@ const routes = {
     return json(res, 201, { id: Number(result.lastInsertRowid) });
   },
 
+  'POST /api/comidas/grupo': async (req, res) => {
+    const user = readSession(req);
+    if (!user) return json(res, 401, { error: 'not signed in' });
+    const body = await readBody(req);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(body.fecha || '')) || !['desayuno', 'almuerzo', 'merienda', 'cena', 'extra'].includes(body.franja)) {
+      return json(res, 400, { error: 'fecha or franja invalid' });
+    }
+    const grupoNombre = String(body.grupo_nombre || '').trim();
+    const ingredientes = Array.isArray(body.ingredientes) ? body.ingredientes : [];
+    if (!grupoNombre || !ingredientes.length) return json(res, 400, { error: 'grupo_nombre and ingredientes required' });
+
+    const values = ingredientes.map(item => [
+      String(item?.nombre_alimento || '').trim(),
+      item?.cantidad_gramos,
+      item?.calorias,
+      item?.proteina,
+      item?.carbohidratos,
+      item?.grasas
+    ]);
+    if (values.some(item => !item[0] || item.slice(1).some(value => !Number.isFinite(Number(value)) || Number(value) < 0))) {
+      return json(res, 400, { error: 'invalid ingredient data' });
+    }
+
+    const db = getDatabase();
+    const grupoId = 'g' + crypto.randomBytes(16).toString('hex');
+    const stmt = db.prepare(`INSERT INTO comidas_registradas
+      (user_id, grupo_id, grupo_nombre, fecha, franja, nombre_alimento, cantidad_gramos, calorias, proteina, carbohidratos, grasas)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+    db.exec('BEGIN');
+    try {
+      for (const [nombre, cantidad, calorias, proteina, carbohidratos, grasas] of values) {
+        stmt.run(user.id, grupoId, grupoNombre, body.fecha, body.franja, nombre, cantidad, calorias, proteina, carbohidratos, grasas);
+      }
+      db.exec('COMMIT');
+    } catch (error) {
+      db.exec('ROLLBACK');
+      throw error;
+    }
+    return json(res, 201, { grupo_id: grupoId });
+  },
+
   'GET /api/comidas': async (req, res) => {
     const user = readSession(req);
     if (!user) return json(res, 401, { error: 'not signed in' });
@@ -834,6 +875,14 @@ const routes = {
     return json(res, 200, { ok: true });
   },
 
+  'DELETE /api/comidas/grupo/:grupo_id': async (req, res) => {
+    const user = readSession(req);
+    if (!user) return json(res, 401, { error: 'not signed in' });
+    const grupoId = new URL(req.url, 'http://x').pathname.split('/').pop();
+    const result = getDatabase().prepare('DELETE FROM comidas_registradas WHERE grupo_id = ? AND user_id = ?').run(grupoId, user.id);
+    if (!result.changes) return json(res, 404, { error: 'meal group not found' });
+    return json(res, 200, { ok: true });
+  },
 
   'POST /api/share/plan': async (req, res) => {
     const body = await readBody(req);
@@ -1571,7 +1620,9 @@ http.createServer(async (req, res) => {
   }
 
   const key = req.method + ' ' + url.pathname;
-  const routeKey = req.method === 'DELETE' && /^\/api\/comidas\/[^/]+$/.test(url.pathname)
+  const routeKey = req.method === 'DELETE' && /^\/api\/comidas\/grupo\/[^/]+$/.test(url.pathname)
+    ? 'DELETE /api/comidas/grupo/:grupo_id'
+    : req.method === 'DELETE' && /^\/api\/comidas\/[^/]+$/.test(url.pathname)
     ? 'DELETE /api/comidas/:id'
     : req.method === 'GET' && /^\/api\/alimentos\/codigo\/[^/]+$/.test(url.pathname)
       ? 'GET /api/alimentos/codigo/:codigo'

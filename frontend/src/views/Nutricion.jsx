@@ -50,7 +50,7 @@ const FRANJAS = [
   { value: 'merienda', label: 'Merienda' }, { value: 'cena', label: 'Cena' }, { value: 'extra', label: 'Extra' },
 ]
 
-function MealForm({ alimento, franja, close, onBack, onSaved }) {
+function MealForm({ alimento, franja, close, onBack, onSaved, onAddIngrediente }) {
   const [mealFranja, setMealFranja] = useState(franja)
   const [modo, setModo] = useState('porciones')
   const [porcion, setPorcion] = useState(1)
@@ -74,8 +74,14 @@ function MealForm({ alimento, franja, close, onBack, onSaved }) {
     if (!(gramos > 0)) return
     setSaving(true)
     try {
-      await api('/api/comidas', { method: 'POST', body: JSON.stringify({ fecha: todayISO(), franja: mealFranja, nombre_alimento: alimento.nombre, cantidad_gramos: gramos, ...nutrientes }) })
-      onSaved(); close()
+      const ingrediente = { nombre_alimento: alimento.nombre, cantidad_gramos: gramos, ...nutrientes }
+      if (onAddIngrediente) {
+        onAddIngrediente(ingrediente)
+        onBack()
+      } else {
+        await api('/api/comidas', { method: 'POST', body: JSON.stringify({ fecha: todayISO(), franja: mealFranja, ...ingrediente }) })
+        onSaved(); close()
+      }
     } catch { setSaving(false) }
   }
   return <>
@@ -93,7 +99,7 @@ function MealForm({ alimento, franja, close, onBack, onSaved }) {
   </>
 }
 
-function ManualFoodForm({ franja, close, onSaved }) {
+function ManualFoodForm({ franja, close, onSaved, onAddIngrediente }) {
   const [nombre, setNombre] = useState('')
   const [gramos, setGramos] = useState('100')
   const [calorias, setCalorias] = useState('')
@@ -112,12 +118,19 @@ function ManualFoodForm({ franja, close, onSaved }) {
     }
     setSaving(true)
     try {
-      await api('/api/comidas', { method: 'POST', body: JSON.stringify({
+      const ingrediente = {
+        nombre_alimento: nombre.trim(), cantidad_gramos: values[0],
+        calorias: values[1] * values[0] / 100, proteina: values[2] * values[0] / 100,
+        carbohidratos: values[3] * values[0] / 100, grasas: values[4] * values[0] / 100,
+      }
+      if (onAddIngrediente) {
+        onAddIngrediente(ingrediente)
+      } else await api('/api/comidas', { method: 'POST', body: JSON.stringify({
         fecha: todayISO(), franja, nombre_alimento: nombre.trim(), cantidad_gramos: values[0],
         calorias: values[1] * values[0] / 100, proteina: values[2] * values[0] / 100,
         carbohidratos: values[3] * values[0] / 100, grasas: values[4] * values[0] / 100,
       }) })
-      onSaved(); close()
+      if (!onAddIngrediente) { onSaved(); close() }
     } catch { setError('No se pudo guardar la comida. Intentá nuevamente.'); setSaving(false) }
   }
   return <form className="manual-food" onSubmit={save}>
@@ -135,7 +148,7 @@ function ManualFoodForm({ franja, close, onSaved }) {
   </form>
 }
 
-function FoodPicker({ franja, close, onSaved }) {
+function FoodPicker({ franja, close, onSaved, onAddIngrediente }) {
   const [tab, setTab] = useState('buscar')
   const [query, setQuery] = useState('')
   const [results, setResults] = useState([])
@@ -165,14 +178,71 @@ function FoodPicker({ franja, close, onSaved }) {
     try { setError(''); pick(await api('/api/alimentos/codigo/' + encodeURIComponent(codigo))) }
     catch (e) { setError(e.status === 404 ? 'Producto no encontrado. Podés ingresar sus datos manualmente.' : 'No se pudo consultar el producto. Podés ingresarlo manualmente.') }
   }, [pick])
-  if (selected) return <MealForm alimento={selected} franja={franja} close={close} onBack={() => setSelected(null)} onSaved={onSaved} />
-  if (tab === 'manual') return <ManualFoodForm franja={franja} close={close} onSaved={onSaved} />
+  const addIngrediente = useCallback(ingrediente => {
+    onAddIngrediente(ingrediente)
+    setTab('buscar')
+    setQuery('')
+  }, [onAddIngrediente])
+  if (selected) return <MealForm alimento={selected} franja={franja} close={close} onBack={() => setSelected(null)} onSaved={onSaved} onAddIngrediente={onAddIngrediente} />
+  if (tab === 'manual') return <ManualFoodForm franja={franja} close={close} onSaved={onSaved} onAddIngrediente={onAddIngrediente ? addIngrediente : undefined} />
   return <>
     <h3>Agregar comida</h3>
     <Segmented value={tab} onChange={v => { setError(''); setTab(v) }} options={[{ value: 'buscar', label: 'Buscar' }, { value: 'scan', label: 'Escanear' }, { value: 'manual', label: 'Manual' }]} />
     {error && <p className="small" style={{ color: 'var(--acc-2)' }}>{error}</p>}
     {tab === 'buscar' ? <><input className="field food-search" type="search" name="food-search" inputMode="search" autoComplete="off" autoCorrect="off" spellCheck={false} autoFocus placeholder="Buscar alimento…" value={query} onChange={e => setQuery(e.target.value)} />
       <div className="food-results">{loading ? <div className="meal-empty">Buscando…</div> : results.length ? results.map((a, i) => <Row key={`${a.nombre}-${a.marca || ''}-${i}`} title={a.nombre} subtitle={a.marca || 'Alimento genérico'} onClick={() => pick(a)} accessory="chevron" />) : query.trim().length >= 2 ? <div className="meal-empty">Sin resultados. Podés ingresarlo manualmente.</div> : <div className="meal-empty">Escribí al menos 2 letras.</div>}</div></> : <ScannerCodigoBarras onScan={scan} onCancel={() => setTab('buscar')} />}
+  </>
+}
+
+function ComidaCompuestaBuilder({ close, onSaved }) {
+  const [nombreComida, setNombreComida] = useState('')
+  const [franjaSeleccionada, setFranjaSeleccionada] = useState(FRANJAS[0].value)
+  const [ingredientes, setIngredientes] = useState([])
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+  const totales = useMemo(() => ingredientes.reduce((total, ingrediente) => ({
+    calorias: total.calorias + Number(ingrediente.calorias || 0),
+    proteina: total.proteina + Number(ingrediente.proteina || 0),
+    carbohidratos: total.carbohidratos + Number(ingrediente.carbohidratos || 0),
+    grasas: total.grasas + Number(ingrediente.grasas || 0),
+  }), { calorias: 0, proteina: 0, carbohidratos: 0, grasas: 0 }), [ingredientes])
+  const requestClose = () => {
+    if (!ingredientes.length || window.confirm('¿Descartar la comida compuesta sin guardar?')) close()
+  }
+  const save = async () => {
+    if (!nombreComida.trim() || !ingredientes.length) return
+    setSaving(true)
+    setError('')
+    try {
+      await api('/api/comidas/grupo', { method: 'POST', body: JSON.stringify({
+        grupo_nombre: nombreComida.trim(), franja: franjaSeleccionada, fecha: todayISO(), ingredientes,
+      }) })
+      onSaved()
+      close()
+    } catch {
+      setError('No se pudo guardar la comida compuesta. Intentá nuevamente.')
+      setSaving(false)
+    }
+  }
+  return <>
+    <div className="row between">
+      <h3 style={{ margin: 0 }}>Crear alimento compuesto</h3>
+      <button type="button" className="iconbtn" onClick={requestClose} aria-label="Cerrar"><Icon name="xmark" /></button>
+    </div>
+    <label>Nombre de la comida<input className="field" autoFocus value={nombreComida} onChange={event => setNombreComida(event.target.value)} /></label>
+    <SelectRow title="Franja" value={franjaSeleccionada} options={FRANJAS} onChange={setFranjaSeleccionada} sheetTitle="Elegir franja" />
+    <div className="small dim" style={{ margin: '14px 0 8px' }}>Agregar ingredientes</div>
+    <FoodPicker franja={franjaSeleccionada} close={() => {}} onAddIngrediente={ingrediente => setIngredientes(prev => [...prev, ingrediente])} />
+    {ingredientes.length > 0 && <div style={{ marginTop: 14 }}>
+      <div className="small dim" style={{ marginBottom: 8 }}>Ingredientes</div>
+      {ingredientes.map((ingrediente, index) => <div className="row between" key={`${ingrediente.nombre_alimento}-${index}`} style={{ padding: '8px 0', borderBottom: '1px solid var(--sep)' }}>
+        <div><div>{ingrediente.nombre_alimento}</div><div className="dim small">{ingrediente.cantidad_gramos} g · {Math.round(ingrediente.calorias)} kcal · {Number(ingrediente.proteina).toFixed(1)} g prot. · {Number(ingrediente.carbohidratos).toFixed(1)} g carb. · {Number(ingrediente.grasas).toFixed(1)} g grasas</div></div>
+        <button type="button" className="iconbtn" onClick={() => setIngredientes(prev => prev.filter((_, itemIndex) => itemIndex !== index))} aria-label="Quitar ingrediente">×</button>
+      </div>)}
+      <div className="nutri-live row between" style={{ marginTop: 10 }}><span>Total</span><span>{Math.round(totales.calorias)} kcal · {totales.proteina.toFixed(1)} g prot. · {totales.carbohidratos.toFixed(1)} g carb. · {totales.grasas.toFixed(1)} g grasas</span></div>
+    </div>}
+    {error && <p className="small" style={{ color: 'var(--acc-2)' }}>{error}</p>}
+    <div className="row" style={{ gap: 8, marginTop: 16 }}><Button onClick={requestClose}>Cancelar</Button><Button variant="primary" disabled={saving || !nombreComida.trim() || !ingredientes.length} onClick={save}>{saving ? 'Guardando…' : 'Guardar'}</Button></div>
   </>
 }
 
@@ -189,6 +259,7 @@ export default function Nutricion() {
   useEffect(() => { loadComidas() }, [])
   const totals = useMemo(() => comidas.reduce((a, c) => ({ calorias: a.calorias + Number(c.calorias || 0), proteina: a.proteina + Number(c.proteina || 0), carbos: a.carbos + Number(c.carbohidratos || 0), grasas: a.grasas + Number(c.grasas || 0) }), { calorias: 0, proteina: 0, carbos: 0, grasas: 0 }), [comidas])
   const addMeal = franja => useUI.getState().openSheet(close => <FoodPicker franja={franja} close={close} onSaved={loadComidas} />)
+  const addComidaCompuesta = () => useUI.getState().openSheet(close => <ComidaCompuestaBuilder close={close} onSaved={loadComidas} />)
   const removeMeal = async id => { await api('/api/comidas/' + id, { method: 'DELETE' }); loadComidas() }
 
   return <>
@@ -208,11 +279,14 @@ export default function Nutricion() {
       <h2>Resumen nutricional de hoy</h2>
       <ResumenNutricional caloriasConsumidas={totals.calorias} caloriasMeta={sugerido} proteinaConsumida={totals.proteina} proteinaMeta={metaProteina} carbosConsumidos={totals.carbos} carbosMeta={carbosMeta} grasasConsumidas={totals.grasas} grasasMeta={grasasMeta} />
     </div>
-    {loadingComidas ? <div className="card muted small">Cargando comidas…</div> : FRANJAS.map(franja => {
+    {loadingComidas ? <div className="card muted small">Cargando comidas…</div> : <>
+      {FRANJAS.map(franja => {
       const rows = comidas.filter(c => c.franja === franja.value)
       return <Section key={franja.value} title={franja.label} footer={<Button size="sm" icon="plus" onClick={() => addMeal(franja.value)}>Agregar</Button>}>
         {rows.length ? rows.map(c => <Row key={c.id} title={c.nombre_alimento} subtitle={`${c.cantidad_gramos} g · ${Math.round(c.calorias)} kcal`}><button className="iconbtn meal-delete" aria-label="Eliminar comida" onClick={() => removeMeal(c.id)}>×</button></Row>) : <div className="meal-empty">Sin comidas registradas</div>}
       </Section>
-    })}
+      })}
+      <Button variant="primary" onClick={addComidaCompuesta}>Crear alimento compuesto</Button>
+    </>}
   </>
 }

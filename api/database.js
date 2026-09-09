@@ -46,6 +46,12 @@ export function initDatabase() {
   try {
     db.exec(`ALTER TABLE user_state ADD COLUMN progression_config TEXT;`);
   } catch {}
+  try {
+    db.exec(`ALTER TABLE comidas_registradas ADD COLUMN grupo_id TEXT;`);
+  } catch {}
+  try {
+    db.exec(`ALTER TABLE comidas_registradas ADD COLUMN grupo_nombre TEXT;`);
+  } catch {}
 
   // Crear tablas principales si no existen
   db.exec(`

@@ -352,6 +352,8 @@ CREATE TABLE IF NOT EXISTS cache_alimentos (
 CREATE TABLE IF NOT EXISTS comidas_registradas (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id TEXT NOT NULL,
+  grupo_id TEXT,
+  grupo_nombre TEXT,
   fecha TEXT NOT NULL,
   franja TEXT NOT NULL,
   nombre_alimento TEXT NOT NULL,
