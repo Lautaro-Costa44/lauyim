@@ -246,6 +246,50 @@ function ComidaCompuestaBuilder({ close, onSaved }) {
   </>
 }
 
+function agruparComidas(rows) {
+  const items = []
+  const grupos = new Map()
+  rows.forEach(comida => {
+    if (comida.grupo_id == null) {
+      items.push(comida)
+      return
+    }
+    let grupo = grupos.get(comida.grupo_id)
+    if (!grupo) {
+      grupo = {
+        grupo_id: comida.grupo_id,
+        grupo_nombre: comida.grupo_nombre || 'Comida compuesta',
+        ingredientes: [],
+        totales: { calorias: 0, proteina: 0, carbohidratos: 0, grasas: 0 },
+      }
+      grupos.set(comida.grupo_id, grupo)
+      items.push(grupo)
+    }
+    grupo.ingredientes.push(comida)
+    grupo.totales = grupo.ingredientes.reduce((total, ingrediente) => ({
+      calorias: total.calorias + Number(ingrediente.calorias || 0),
+      proteina: total.proteina + Number(ingrediente.proteina || 0),
+      carbohidratos: total.carbohidratos + Number(ingrediente.carbohidratos || 0),
+      grasas: total.grasas + Number(ingrediente.grasas || 0),
+    }), { calorias: 0, proteina: 0, carbohidratos: 0, grasas: 0 })
+  })
+  return items
+}
+
+function GrupoComidaRow({ grupo, onRemove }) {
+  const [expandido, setExpandido] = useState(false)
+  const { totales } = grupo
+  const subtitle = `${Math.round(totales.calorias)} kcal · ${totales.proteina.toFixed(1)} g prot. · ${totales.carbohidratos.toFixed(1)} g carb. · ${totales.grasas.toFixed(1)} g grasas`
+  return <div className="grupo-comida-row">
+    <Row title={grupo.grupo_nombre} subtitle={subtitle} onClick={() => setExpandido(value => !value)}>
+      <button type="button" className="iconbtn meal-delete" aria-label="Eliminar comida compuesta" onClick={event => { event.stopPropagation(); onRemove(grupo.grupo_id) }}>×</button>
+    </Row>
+    {expandido && <div className="grupo-comida-ingredientes">
+      {grupo.ingredientes.map(ingrediente => <Row key={ingrediente.id} title={ingrediente.nombre_alimento} subtitle={`${ingrediente.cantidad_gramos} g · ${Math.round(ingrediente.calorias)} kcal`} className="grupo-comida-ingrediente" />)}
+    </div>}
+  </div>
+}
+
 export default function Nutricion() {
   const S = useStore(s => s.S)
   const [range, setRange] = useState(90)
@@ -261,6 +305,7 @@ export default function Nutricion() {
   const addMeal = franja => useUI.getState().openSheet(close => <FoodPicker franja={franja} close={close} onSaved={loadComidas} />)
   const addComidaCompuesta = () => useUI.getState().openSheet(close => <ComidaCompuestaBuilder close={close} onSaved={loadComidas} />, { locked: true, fullScreen: true })
   const removeMeal = async id => { await api('/api/comidas/' + id, { method: 'DELETE' }); loadComidas() }
+  const removeGrupo = async grupoId => { await api('/api/comidas/grupo/' + encodeURIComponent(grupoId), { method: 'DELETE' }); loadComidas() }
 
   return <>
     <div className="hdr">
@@ -282,8 +327,11 @@ export default function Nutricion() {
     {loadingComidas ? <div className="card muted small">Cargando comidas…</div> : <>
       {FRANJAS.map(franja => {
       const rows = comidas.filter(c => c.franja === franja.value)
+      const items = agruparComidas(rows)
       return <Section key={franja.value} title={franja.label} footer={<Button size="sm" icon="plus" onClick={() => addMeal(franja.value)}>Agregar</Button>}>
-        {rows.length ? rows.map(c => <Row key={c.id} title={c.nombre_alimento} subtitle={`${c.cantidad_gramos} g · ${Math.round(c.calorias)} kcal`}><button className="iconbtn meal-delete" aria-label="Eliminar comida" onClick={() => removeMeal(c.id)}>×</button></Row>) : <div className="meal-empty">Sin comidas registradas</div>}
+        {items.length ? items.map(item => item.grupo_id != null
+          ? <GrupoComidaRow key={item.grupo_id} grupo={item} onRemove={removeGrupo} />
+          : <Row key={item.id} title={item.nombre_alimento} subtitle={`${item.cantidad_gramos} g · ${Math.round(item.calorias)} kcal`}><button className="iconbtn meal-delete" aria-label="Eliminar comida" onClick={() => removeMeal(item.id)}>×</button></Row>) : <div className="meal-empty">Sin comidas registradas</div>}
       </Section>
       })}
       <Button variant="primary" onClick={addComidaCompuesta}>Crear alimento compuesto</Button>
