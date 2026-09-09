@@ -1,5 +1,5 @@
 import { HashRouter, Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom'
-import { lazy, Suspense, useEffect } from 'react'
+import { lazy, Suspense, useEffect, useLayoutEffect } from 'react'
 import { useStore } from './store/useStore.js'
 import { useUI } from './store/useUI.js'
 import { bindUI } from './components/ui.jsx'
@@ -47,6 +47,19 @@ function applyPrefs(theme, accent) {
   if (meta) meta.content = de.dataset.theme === 'light' ? '#f2f2f7' : '#000000'
 }
 
+function disableKeyboardAutofill(root) {
+  root.querySelectorAll('input:not([type="file"]), textarea').forEach(field => {
+    field.setAttribute('autocomplete', 'new-password')
+    field.setAttribute('autocorrect', 'off')
+    field.setAttribute('autocapitalize', 'none')
+    field.setAttribute('spellcheck', 'false')
+    field.setAttribute('data-lpignore', 'true')
+    field.setAttribute('data-1p-ignore', 'true')
+    field.setAttribute('data-bwignore', 'true')
+    field.setAttribute('data-form-type', 'other')
+  })
+}
+
 function Shell() {
   const navigate = useNavigate()
   const loc = useLocation()
@@ -55,6 +68,12 @@ function Shell() {
   const licenseExpired = useStore(s => s.licenseExpired)
   const isGuest = useStore(s => s.isGuest())
   const langV = useLang()   // re-renders the whole shell when the language (pack) changes
+  useLayoutEffect(() => {
+    disableKeyboardAutofill(document)
+    const observer = new MutationObserver(() => disableKeyboardAutofill(document))
+    observer.observe(document.body, { childList: true, subtree: true })
+    return () => observer.disconnect()
+  }, [])
   useEffect(() => { setNav(navigate) }, [navigate])
   useEffect(() => { applyPrefs(S.theme, S.accent) }, [S.theme, S.accent])
   // 'system' needs to react live if the OS theme flips while the app is open, not just on
