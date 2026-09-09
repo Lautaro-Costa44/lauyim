@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode'
+import { Button, TextField } from './ui.jsx'
 
 const FORMATOS = [
   Html5QrcodeSupportedFormats.EAN_13,
@@ -20,10 +21,14 @@ export default function ScannerCodigoBarras({ onScan, onCancel }) {
   const resultadoRef = useRef(false)
   const [error, setError] = useState('')
   const [codigoManual, setCodigoManual] = useState('')
+  const [camaraActiva, setCamaraActiva] = useState(false)
+  const [intento, setIntento] = useState(0)
 
   useEffect(() => {
     let activo = true
     let scanner = null
+    resultadoRef.current = false
+    setError('')
     const ciclo = scannerCycle.then(async () => {
       if (!activo) return
       scanner = new Html5Qrcode('scanner-codigo-barras')
@@ -36,13 +41,19 @@ export default function ScannerCodigoBarras({ onScan, onCancel }) {
             if (!activo || resultadoRef.current) return
             resultadoRef.current = true
             try { await scanner.stop() } catch { /* ya detenido al desmontar */ }
-            if (activo) onScan(codigo)
+            if (activo) {
+              setCamaraActiva(false)
+              onScan(codigo)
+            }
           },
           () => {},
         )
-        if (activo) return
+        if (activo) setCamaraActiva(true)
       } catch {
-        if (activo) setError('No se pudo acceder a la cámara. Revisá el permiso del navegador e intentá nuevamente.')
+        if (activo) {
+          setCamaraActiva(false)
+          setError('No se pudo acceder a la cámara. Revisá el permiso del navegador e intentá nuevamente.')
+        }
       }
     })
     scannerCycle = ciclo.catch(() => {})
@@ -53,14 +64,21 @@ export default function ScannerCodigoBarras({ onScan, onCancel }) {
         if (scanner?.isScanning) await scanner.stop().catch(() => {})
       }).catch(() => {})
     }
-  }, [onScan])
+  }, [onScan, intento])
 
   const cancelar = async () => {
     resultadoRef.current = true
+    setCamaraActiva(false)
     if (scannerRef.current?.isScanning) {
       await scannerRef.current.stop().catch(() => {})
     }
     onCancel?.()
+  }
+
+  const escanear = () => {
+    resultadoRef.current = false
+    setError('')
+    setIntento(value => value + 1)
   }
 
   const consultarManual = async event => {
@@ -68,6 +86,7 @@ export default function ScannerCodigoBarras({ onScan, onCancel }) {
     const codigo = codigoManual.trim()
     if (!codigo) return
     resultadoRef.current = true
+    setCamaraActiva(false)
     if (scannerRef.current?.isScanning) await scannerRef.current.stop().catch(() => {})
     onScan(codigo)
   }
@@ -77,10 +96,11 @@ export default function ScannerCodigoBarras({ onScan, onCancel }) {
       <div id="scanner-codigo-barras" />
       {error && <p role="alert">{error}</p>}
       <form className="scanner-manual" onSubmit={consultarManual}>
-        <label>Código de barras<input type="text" inputMode="numeric" autoComplete="off" value={codigoManual} onChange={event => setCodigoManual(event.target.value)} /></label>
-        <button type="submit" disabled={!codigoManual.trim()}>Consultar código</button>
+        <label>Código de barras<TextField type="text" inputMode="numeric" autoComplete="off" value={codigoManual} onChange={event => setCodigoManual(event.target.value)} /></label>
+        <Button type="submit" variant="secondary" disabled={!codigoManual.trim()}>Consultar código</Button>
       </form>
-      <button type="button" onClick={cancelar}>Cancelar</button>
+      {!camaraActiva && <Button type="button" variant="secondary" onClick={escanear}>Escanear</Button>}
+      <Button type="button" onClick={cancelar}>Cancelar</Button>
     </div>
   )
 }
