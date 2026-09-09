@@ -50,7 +50,7 @@ const FRANJAS = [
   { value: 'merienda', label: 'Merienda' }, { value: 'cena', label: 'Cena' }, { value: 'extra', label: 'Extra' },
 ]
 
-function MealForm({ alimento, franja, close, onSaved }) {
+function MealForm({ alimento, franja, close, onBack, onSaved }) {
   const [mealFranja, setMealFranja] = useState(franja)
   const [modo, setModo] = useState('porciones')
   const [porcion, setPorcion] = useState(1)
@@ -79,7 +79,10 @@ function MealForm({ alimento, franja, close, onSaved }) {
     } catch { setSaving(false) }
   }
   return <>
-    <h3>{alimento.nombre}</h3>
+    <div className="row between">
+      <h3 style={{ margin: 0 }}>{alimento.nombre}</h3>
+      <button type="button" className="iconbtn" onClick={onBack} aria-label="Volver"><Icon name="xmark" /></button>
+    </div>
     {alimento.marca && <div className="dim small" style={{ marginBottom: 14 }}>{alimento.marca}</div>}
     <SelectRow title="Franja" value={mealFranja} options={FRANJAS} onChange={setMealFranja} sheetTitle="Elegir franja" />
     <div className="small dim" style={{ marginBottom: 8 }}>Cantidad</div>
@@ -162,7 +165,7 @@ function FoodPicker({ franja, close, onSaved }) {
     try { setError(''); pick(await api('/api/alimentos/codigo/' + encodeURIComponent(codigo))) }
     catch (e) { setError(e.status === 404 ? 'Producto no encontrado. Podés ingresar sus datos manualmente.' : 'No se pudo consultar el producto. Podés ingresarlo manualmente.') }
   }, [pick])
-  if (selected) return <MealForm alimento={selected} franja={franja} close={close} onSaved={onSaved} />
+  if (selected) return <MealForm alimento={selected} franja={franja} close={close} onBack={() => setSelected(null)} onSaved={onSaved} />
   if (tab === 'manual') return <ManualFoodForm franja={franja} close={close} onSaved={onSaved} />
   return <>
     <h3>Agregar comida</h3>
