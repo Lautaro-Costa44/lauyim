@@ -52,6 +52,12 @@ const autofillFieldNames = new WeakMap()
 
 function disableKeyboardAutofill(root) {
   root.querySelectorAll('input:not([type="file"]), textarea').forEach(field => {
+    const inputMode = field.getAttribute('inputmode') || ''
+    const textInput = field.tagName === 'INPUT' && field.type === 'text' && !['numeric', 'decimal', 'tel', 'email', 'url'].includes(inputMode)
+    if (textInput) {
+      field.setAttribute('type', 'search')
+      field.setAttribute('inputmode', 'search')
+    }
     field.setAttribute('autocomplete', 'off')
     field.setAttribute('autocorrect', 'off')
     field.setAttribute('autocapitalize', 'none')

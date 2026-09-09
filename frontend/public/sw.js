@@ -2,7 +2,7 @@
    Media (img/gif) cache-first; everything else network-first with offline fallback. */
 // Bump this whenever shell/icon assets change so installed PWAs do not keep
 // serving the previous icon from the old runtime cache.
-const CACHE = 'opengym-rt-v2'
+const CACHE = 'opengym-rt-v3'
 
 self.addEventListener('install', () => self.skipWaiting())
 self.addEventListener('activate', e => {
@@ -15,8 +15,8 @@ self.addEventListener('push', e => {
   e.waitUntil(self.registration.showNotification(data.title || 'lauyim', {
     body: data.body || '',
     // Notifications are more consistently rendered from PNGs on Android.
-    icon: 'icon-512.png?v=2',
-    badge: 'icon-180.png?v=2',
+    icon: 'icon-512.png?v=3',
+    badge: 'icon-180.png?v=3',
     tag: data.tag || 'lauyim',
     renotify: true,
     data: data.data || {}

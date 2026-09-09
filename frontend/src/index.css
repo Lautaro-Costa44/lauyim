@@ -415,6 +415,7 @@ h4.sec{
   padding:13px 15px;font-size:17px;letter-spacing:-.012em;outline:none;
   transition:box-shadow var(--fast);
 }
+input[type="search"]::-webkit-search-cancel-button{display:none;-webkit-appearance:none}
 .field::placeholder,.input::placeholder{color:var(--label-3)}
 .field:focus,.input:focus{box-shadow:inset 0 0 0 2px var(--acc)}
 .field.area,textarea.input{min-height:92px;resize:vertical;line-height:1.42}
