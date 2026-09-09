@@ -298,25 +298,27 @@ function ComidaCompuestaBuilder({ close, onSaved, plantillaId, initialNombre = '
     }
   }
   return <div className="compound-builder">
-    <div className="row between compound-builder-header">
-      <h3 style={{ margin: 0 }}>{esEdicion ? 'Editar alimento compuesto' : 'Crear alimento compuesto'}</h3>
-      <button type="button" className="iconbtn" onClick={() => requestClose()} aria-label="Cerrar"><Icon name="xmark" /></button>
+    <div className="compound-builder-content">
+      <div className="row between compound-builder-header">
+        <h3 style={{ margin: 0 }}>{esEdicion ? 'Editar alimento compuesto' : 'Crear alimento compuesto'}</h3>
+        <button type="button" className="iconbtn" onClick={() => requestClose()} aria-label="Cerrar"><Icon name="xmark" /></button>
+      </div>
+      <Section title="Nombre de la comida" className="compound-builder-section">
+        <label><input {...NO_AUTOFILL} className="field" type="search" name="comida-compuesta-nombre" inputMode="search" value={nombreComida} onChange={event => setNombreComida(event.target.value)} /></label>
+        {!esEdicion && <SelectRow title="Franja" value={franjaSeleccionada} options={FRANJAS} onChange={setFranjaSeleccionada} sheetTitle="Elegir franja" />}
+      </Section>
+      <Section title="Ingredientes" className="compound-builder-section">
+        {ingredientes.length ? ingredientes.map((ingrediente, index) => <div className="row between compound-ingredient" key={`${ingrediente.nombre_alimento}-${index}`}>
+          <div><div>{ingrediente.nombre_alimento}</div><div className="dim small">{ingrediente.cantidad_gramos} g · {Math.round(ingrediente.calorias)} kcal · {Number(ingrediente.proteina).toFixed(1)} g prot. · {Number(ingrediente.carbohidratos).toFixed(1)} g carb. · {Number(ingrediente.grasas).toFixed(1)} g grasas</div></div>
+          <button type="button" className="iconbtn" onClick={() => setIngredientes(prev => prev.filter((_, itemIndex) => itemIndex !== index))} aria-label="Quitar ingrediente">×</button>
+        </div>) : <div className="meal-empty">Todavía no agregaste ingredientes.</div>}
+        <div className="nutri-live row between compound-total"><span>Total</span><span>{Math.round(totales.calorias)} kcal · {totales.proteina.toFixed(1)} g prot. · {totales.carbohidratos.toFixed(1)} g carb. · {totales.grasas.toFixed(1)} g grasas</span></div>
+      </Section>
+      <Section title="Agregar ingredientes" className="compound-builder-section">
+        {!pickerOpen ? <Button variant="tinted" onClick={() => setPickerOpen(true)}>+ Agregar ingrediente</Button> : <FoodPicker franja={franjaSeleccionada} close={() => {}} onAddIngrediente={ingrediente => setIngredientes(prev => [...prev, ingrediente])} onAdded={() => setPickerOpen(false)} />}
+      </Section>
+      {error && <p className="small compound-builder-error" style={{ color: 'var(--acc-2)' }}>{error}</p>}
     </div>
-    <Section title="Nombre de la comida" className="compound-builder-section">
-      <label><input {...NO_AUTOFILL} className="field" type="search" name="comida-compuesta-nombre" inputMode="search" value={nombreComida} onChange={event => setNombreComida(event.target.value)} /></label>
-      {!esEdicion && <SelectRow title="Franja" value={franjaSeleccionada} options={FRANJAS} onChange={setFranjaSeleccionada} sheetTitle="Elegir franja" />}
-    </Section>
-    <Section title="Ingredientes" className="compound-builder-section">
-      {ingredientes.length ? ingredientes.map((ingrediente, index) => <div className="row between compound-ingredient" key={`${ingrediente.nombre_alimento}-${index}`}>
-        <div><div>{ingrediente.nombre_alimento}</div><div className="dim small">{ingrediente.cantidad_gramos} g · {Math.round(ingrediente.calorias)} kcal · {Number(ingrediente.proteina).toFixed(1)} g prot. · {Number(ingrediente.carbohidratos).toFixed(1)} g carb. · {Number(ingrediente.grasas).toFixed(1)} g grasas</div></div>
-        <button type="button" className="iconbtn" onClick={() => setIngredientes(prev => prev.filter((_, itemIndex) => itemIndex !== index))} aria-label="Quitar ingrediente">×</button>
-      </div>) : <div className="meal-empty">Todavía no agregaste ingredientes.</div>}
-      <div className="nutri-live row between compound-total"><span>Total</span><span>{Math.round(totales.calorias)} kcal · {totales.proteina.toFixed(1)} g prot. · {totales.carbohidratos.toFixed(1)} g carb. · {totales.grasas.toFixed(1)} g grasas</span></div>
-    </Section>
-    <Section title="Agregar ingredientes" className="compound-builder-section">
-      {!pickerOpen ? <Button variant="tinted" onClick={() => setPickerOpen(true)}>+ Agregar ingrediente</Button> : <FoodPicker franja={franjaSeleccionada} close={() => {}} onAddIngrediente={ingrediente => setIngredientes(prev => [...prev, ingrediente])} onAdded={() => setPickerOpen(false)} />}
-    </Section>
-    {error && <p className="small compound-builder-error" style={{ color: 'var(--acc-2)' }}>{error}</p>}
     <div className="compound-builder-actions">
       <Button onClick={() => requestClose()}>Cancelar</Button>
       <Button variant="primary" disabled={saving || !nombreComida.trim() || !ingredientes.length} onClick={save}>{saving ? 'Guardando…' : esEdicion ? 'Guardar cambios' : 'Guardar'}</Button>

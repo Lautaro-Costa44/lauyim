@@ -208,7 +208,9 @@ h4.sec{
 }
 .card .big{font-size:30px;font-weight:600;letter-spacing:-.026em;line-height:1.1}
 
-.compound-builder{padding-bottom:82px}
+.sheet.fullscreen:has(.compound-builder){overflow:hidden;padding-bottom:0;display:flex;flex-direction:column}
+.compound-builder{display:flex;flex-direction:column;min-height:0;height:100%}
+.compound-builder-content{flex:1;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;padding-bottom:16px}
 .compound-builder-header{margin-bottom:22px}
 .compound-builder-section{margin-bottom:18px}
 .compound-builder-section label{display:block;margin:0}
@@ -219,9 +221,9 @@ h4.sec{
 .compound-total{margin:10px 12px 12px}
 .compound-builder-error{margin:0 4px 12px}
 .compound-builder-actions{
-  position:sticky;bottom:0;z-index:2;display:flex;gap:8px;
+  position:relative;z-index:2;display:flex;flex:none;gap:8px;
   margin:0 -1px;padding:12px 0 calc(12px + var(--sab));
-  background:linear-gradient(to bottom,transparent,var(--bg) 18%);
+  background:var(--bg-el);border-top:1px solid var(--sep);
 }
 .compound-builder-actions .btn:first-child{width:auto;flex:0 0 auto}
 .compound-builder-actions .btn.primary{flex:1}
