@@ -836,6 +836,44 @@ const routes = {
     }
   },
 
+  'POST /api/comidas-compuestas': async (req, res) => {
+    const user = readSession(req);
+    if (!user) return json(res, 401, { error: 'not signed in' });
+    const body = await readBody(req);
+    const nombre = String(body.nombre || '').trim();
+    if (!nombre || !validarIngredientes(body.ingredientes)) return json(res, 400, { error: 'nombre and ingredientes required' });
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(body.fecha || '')) || !['desayuno', 'almuerzo', 'merienda', 'cena', 'extra'].includes(body.franja)) {
+      return json(res, 400, { error: 'fecha or franja invalid' });
+    }
+
+    const db = getDatabase();
+    const grupoId = 'g' + crypto.randomBytes(16).toString('hex');
+    db.exec('BEGIN');
+    try {
+      const plantilla = db.prepare('INSERT INTO plantillas_comida (user_id, nombre, created_at) VALUES (?, ?, ?)')
+        .run(user.id, nombre, Date.now());
+      const plantillaId = Number(plantilla.lastInsertRowid);
+      const plantillaStmt = db.prepare(`INSERT INTO plantillas_ingredientes
+        (plantilla_id, nombre_alimento, cantidad_gramos, calorias, proteina, carbohidratos, grasas)
+        VALUES (?, ?, ?, ?, ?, ?, ?)`);
+      const comidaStmt = db.prepare(`INSERT INTO comidas_registradas
+        (user_id, grupo_id, grupo_nombre, fecha, franja, nombre_alimento, cantidad_gramos, calorias, proteina, carbohidratos, grasas)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+      for (const item of body.ingredientes) {
+        const nombreIngrediente = String(item.nombre_alimento).trim();
+        plantillaStmt.run(plantillaId, nombreIngrediente, item.cantidad_gramos, item.calorias,
+          item.proteina, item.carbohidratos, item.grasas);
+        comidaStmt.run(user.id, grupoId, nombre, body.fecha, body.franja, nombreIngrediente,
+          item.cantidad_gramos, item.calorias, item.proteina, item.carbohidratos, item.grasas);
+      }
+      db.exec('COMMIT');
+      return json(res, 201, { id: plantillaId, grupo_id: grupoId });
+    } catch (error) {
+      db.exec('ROLLBACK');
+      throw error;
+    }
+  },
+
   'GET /api/plantillas': async (req, res) => {
     const user = readSession(req);
     if (!user) return json(res, 401, { error: 'not signed in' });

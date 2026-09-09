@@ -283,8 +283,8 @@ function ComidaCompuestaBuilder({ close, onSaved, plantillaId, initialNombre = '
           nombre: nombreComida.trim(), ingredientes,
         }) })
       } else {
-        await api('/api/comidas/grupo', { method: 'POST', body: JSON.stringify({
-          grupo_nombre: nombreComida.trim(), franja: franjaSeleccionada, fecha: todayISO(), ingredientes,
+        await api('/api/comidas-compuestas', { method: 'POST', body: JSON.stringify({
+          nombre: nombreComida.trim(), franja: franjaSeleccionada, fecha: todayISO(), ingredientes,
         }) })
       }
       onSaved()
