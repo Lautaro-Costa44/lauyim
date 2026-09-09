@@ -90,7 +90,7 @@ function MealForm({ alimento, franja, close, onBack, onSaved, onAddIngrediente }
       <button type="button" className="iconbtn" onClick={onBack} aria-label="Volver"><Icon name="xmark" /></button>
     </div>
     {alimento.marca && <div className="dim small" style={{ marginBottom: 14 }}>{alimento.marca}</div>}
-    <SelectRow title="Franja" value={mealFranja} options={FRANJAS} onChange={setMealFranja} sheetTitle="Elegir franja" />
+    {!onAddIngrediente && <SelectRow title="Franja" value={mealFranja} options={FRANJAS} onChange={setMealFranja} sheetTitle="Elegir franja" />}
     <div className="small dim" style={{ marginBottom: 8 }}>Cantidad</div>
     <Segmented value={modo} onChange={setMode} options={[{ value: 'porciones', label: 'Porciones' }, ...(alimento.gramosPorUnidad !== undefined ? [{ value: 'unidades', label: 'Unidades' }] : []), { value: 'manual', label: 'Manual' }]} />
     {modo === 'porciones' ? <div className="meal-quick">{[0.5, 1, 1.5, 2].map(p => <button key={p} className={porcion === p ? 'on' : ''} onClick={() => setQuick(p)}>{p} porción{p === 1 ? '' : 'es'}</button>)}</div> : modo === 'unidades' ? <div className="meal-quick meal-units"><button type="button" onClick={() => setUnitCount(unidades - 1)} aria-label="Restar unidad">-</button><span>{unidades} {unidades === 1 ? unitLabel : pluralUnitLabel}</span><button type="button" onClick={() => setUnitCount(unidades + 1)} aria-label="Sumar unidad">+</button></div> : <label className="meal-grams">Gramos<input className="field" type="number" min="0" value={gramos} onChange={e => { setModo('manual'); setGramos(Math.max(0, Number(e.target.value) || 0)) }} /></label>}
@@ -189,7 +189,7 @@ function FoodPicker({ franja, close, onSaved, onAddIngrediente }) {
     <h3>Agregar comida</h3>
     <Segmented value={tab} onChange={v => { setError(''); setTab(v) }} options={[{ value: 'buscar', label: 'Buscar' }, { value: 'scan', label: 'Escanear' }, { value: 'manual', label: 'Manual' }]} />
     {error && <p className="small" style={{ color: 'var(--acc-2)' }}>{error}</p>}
-    {tab === 'buscar' ? <><input className="field food-search" type="search" name="food-search" inputMode="search" autoComplete="off" autoCorrect="off" spellCheck={false} autoFocus placeholder="Buscar alimento…" value={query} onChange={e => setQuery(e.target.value)} />
+    {tab === 'buscar' ? <><input className="field food-search" type="search" name="food-search" inputMode="search" autoComplete="off" autoCorrect="off" spellCheck={false} placeholder="Buscar alimento…" value={query} onChange={e => setQuery(e.target.value)} />
       <div className="food-results">{loading ? <div className="meal-empty">Buscando…</div> : results.length ? results.map((a, i) => <Row key={`${a.nombre}-${a.marca || ''}-${i}`} title={a.nombre} subtitle={a.marca || 'Alimento genérico'} onClick={() => pick(a)} accessory="chevron" />) : query.trim().length >= 2 ? <div className="meal-empty">Sin resultados. Podés ingresarlo manualmente.</div> : <div className="meal-empty">Escribí al menos 2 letras.</div>}</div></> : <ScannerCodigoBarras onScan={scan} onCancel={() => setTab('buscar')} />}
   </>
 }
@@ -259,7 +259,7 @@ export default function Nutricion() {
   useEffect(() => { loadComidas() }, [])
   const totals = useMemo(() => comidas.reduce((a, c) => ({ calorias: a.calorias + Number(c.calorias || 0), proteina: a.proteina + Number(c.proteina || 0), carbos: a.carbos + Number(c.carbohidratos || 0), grasas: a.grasas + Number(c.grasas || 0) }), { calorias: 0, proteina: 0, carbos: 0, grasas: 0 }), [comidas])
   const addMeal = franja => useUI.getState().openSheet(close => <FoodPicker franja={franja} close={close} onSaved={loadComidas} />)
-  const addComidaCompuesta = () => useUI.getState().openSheet(close => <ComidaCompuestaBuilder close={close} onSaved={loadComidas} />)
+  const addComidaCompuesta = () => useUI.getState().openSheet(close => <ComidaCompuestaBuilder close={close} onSaved={loadComidas} />, { locked: true, fullScreen: true })
   const removeMeal = async id => { await api('/api/comidas/' + id, { method: 'DELETE' }); loadComidas() }
 
   return <>
