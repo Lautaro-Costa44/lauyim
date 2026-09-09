@@ -18,7 +18,7 @@ LABEL maintainer="Duarte Santos https://gitlab.com/DuarteSantos8" \
 WORKDIR /app
 COPY package.json package-lock.json* ./
 RUN npm install --omit=dev && npm cache clean --force
-COPY server.js database.js schema.sql migrate-to-sqlite.js push-messages.js verify-error.js scheduler.js alimentos-base.js ./
+COPY . .
 
 ENV NODE_ENV=production
 ENV PORT=3000
