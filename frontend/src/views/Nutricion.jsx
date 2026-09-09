@@ -54,10 +54,22 @@ function MealForm({ alimento, franja, close, onSaved }) {
   const [mealFranja, setMealFranja] = useState(franja)
   const [modo, setModo] = useState('porciones')
   const [porcion, setPorcion] = useState(1)
+  const [unidades, setUnidades] = useState(1)
   const [gramos, setGramos] = useState(porcionAGramos(1))
   const [saving, setSaving] = useState(false)
   const nutrientes = calcularNutrientesPorCantidad(alimento, gramos)
   const setQuick = p => { setModo('porciones'); setPorcion(p); setGramos(porcionAGramos(p)) }
+  const setUnitCount = value => {
+    const next = Math.max(0.1, Number(value) || 0)
+    setUnidades(next)
+    setGramos(next * alimento.gramosPorUnidad)
+  }
+  const unitLabel = alimento.unidadLabel || 'unidad'
+  const pluralUnitLabel = { huevo: 'huevos', rodaja: 'rodajas', banana: 'bananas', manzana: 'manzanas', porción: 'porciones' }[unitLabel] || `${unitLabel}s`
+  const setMode = value => {
+    setModo(value)
+    if (value === 'unidades') setGramos(unidades * alimento.gramosPorUnidad)
+  }
   const save = async () => {
     if (!(gramos > 0)) return
     setSaving(true)
@@ -71,8 +83,8 @@ function MealForm({ alimento, franja, close, onSaved }) {
     {alimento.marca && <div className="dim small" style={{ marginBottom: 14 }}>{alimento.marca}</div>}
     <SelectRow title="Franja" value={mealFranja} options={FRANJAS} onChange={setMealFranja} sheetTitle="Elegir franja" />
     <div className="small dim" style={{ marginBottom: 8 }}>Cantidad</div>
-    <Segmented value={modo} onChange={setModo} options={[{ value: 'porciones', label: 'Porciones' }, { value: 'manual', label: 'Manual' }]} />
-    {modo === 'porciones' ? <div className="meal-quick">{[0.5, 1, 1.5, 2].map(p => <button key={p} className={porcion === p ? 'on' : ''} onClick={() => setQuick(p)}>{p} porción{p === 1 ? '' : 'es'}</button>)}</div> : <label className="meal-grams">Gramos<input className="field" type="number" min="0" value={gramos} onChange={e => { setModo('manual'); setGramos(Math.max(0, Number(e.target.value) || 0)) }} /></label>}
+    <Segmented value={modo} onChange={setMode} options={[{ value: 'porciones', label: 'Porciones' }, ...(alimento.gramosPorUnidad !== undefined ? [{ value: 'unidades', label: 'Unidades' }] : []), { value: 'manual', label: 'Manual' }]} />
+    {modo === 'porciones' ? <div className="meal-quick">{[0.5, 1, 1.5, 2].map(p => <button key={p} className={porcion === p ? 'on' : ''} onClick={() => setQuick(p)}>{p} porción{p === 1 ? '' : 'es'}</button>)}</div> : modo === 'unidades' ? <div className="meal-quick"><button type="button" onClick={() => setUnitCount(unidades - 1)} aria-label="Restar unidad">-</button><span>{unidades} {unidades === 1 ? unitLabel : pluralUnitLabel}</span><button type="button" onClick={() => setUnitCount(unidades + 1)} aria-label="Sumar unidad">+</button></div> : <label className="meal-grams">Gramos<input className="field" type="number" min="0" value={gramos} onChange={e => { setModo('manual'); setGramos(Math.max(0, Number(e.target.value) || 0)) }} /></label>}
     <div className="nutri-live row between"><span>{gramos} g</span><span>{nutrientes.calorias} kcal · {nutrientes.proteina.toFixed(1)} g prot. · {nutrientes.carbohidratos.toFixed(1)} g carb. · {nutrientes.grasas.toFixed(1)} g grasas</span></div>
     <Button variant="primary" disabled={saving || !(gramos > 0)} onClick={save}>{saving ? 'Guardando…' : 'Confirmar'}</Button>
   </>

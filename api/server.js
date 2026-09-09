@@ -16,6 +16,7 @@ import { dayReminderPush, gymFeePush, restTimerPush, testPush } from './push-mes
 import { startScheduler } from './scheduler.js';
 import { verifyError } from './verify-error.js';
 import { ALIMENTOS_BASE } from './alimentos-base.js';
+import { ALIMENTOS_USDA_DICT } from './alimentos-usda-dict.js';
 import {
   initDatabase,
   getAllUsers,
@@ -538,6 +539,71 @@ function normalizarTexto(value) {
   return String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
 }
 
+const USDA_API_KEY = process.env.USDA_API_KEY || '';
+let usdaKeyWarningLogged = false;
+
+function nutrientValue(food, name, unitName) {
+  const nutrient = food?.foodNutrients?.find(item => item?.nutrientName === name && (!unitName || item.unitName === unitName));
+  if (nutrient?.value === null || nutrient?.value === undefined) return null;
+  return Number.isFinite(Number(nutrient.value)) ? Number(nutrient.value) : null;
+}
+
+async function buscarAlimentosUSDA(query, db) {
+  const tokens = normalizarTexto(query).split(/\s+/).filter(Boolean);
+  const termino = ALIMENTOS_USDA_DICT.find(item => {
+    const texto = normalizarTexto(item.es);
+    return tokens.every(token => texto.includes(token));
+  });
+  if (!termino) return [];
+
+  const cacheKey = `v2:usda:${query}`;
+  const cached = db.prepare('SELECT resultado_json, fecha_cache FROM cache_alimentos WHERE query = ?').get(cacheKey);
+  if (cached && Date.now() - new Date(cached.fecha_cache).getTime() < 24 * 60 * 60 * 1000) {
+    try { return JSON.parse(cached.resultado_json); } catch { /* caché inválida: actualizar */ }
+  }
+
+  if (!USDA_API_KEY) {
+    if (!usdaKeyWarningLogged) {
+      console.warn('USDA_API_KEY is not configured; USDA food search is disabled');
+      usdaKeyWarningLogged = true;
+    }
+    return [];
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 5000);
+  try {
+    const searchUrl = new URL('https://api.nal.usda.gov/fdc/v1/foods/search');
+    searchUrl.searchParams.set('api_key', USDA_API_KEY);
+    searchUrl.searchParams.set('query', termino.en);
+    searchUrl.searchParams.set('dataType', 'Foundation,SR Legacy');
+    searchUrl.searchParams.set('pageSize', '5');
+    const response = await fetch(searchUrl, { signal: controller.signal });
+    if (!response.ok) throw new Error(`USDA FoodData Central HTTP ${response.status}`);
+    const data = await response.json();
+    const food = Array.isArray(data.foods) ? data.foods[0] : null;
+    const alimentos = food ? [{
+      nombre: termino.label,
+      marca: '',
+      gramosPorUnidad: termino.gramosPorUnidad,
+      unidadLabel: termino.unidadLabel,
+      caloriasPor100g: nutrientValue(food, 'Energy', 'KCAL'),
+      proteinaPor100g: nutrientValue(food, 'Protein'),
+      carbosPor100g: nutrientValue(food, 'Carbohydrate, by difference'),
+      grasasPor100g: nutrientValue(food, 'Total lipid (fat)')
+    }] : [];
+    db.prepare(`INSERT INTO cache_alimentos (query, resultado_json, fecha_cache)
+      VALUES (?, ?, ?) ON CONFLICT(query) DO UPDATE SET resultado_json = excluded.resultado_json, fecha_cache = excluded.fecha_cache`)
+      .run(cacheKey, JSON.stringify(alimentos), new Date().toISOString());
+    return alimentos;
+  } catch (error) {
+    console.error('USDA food search error:', error);
+    return [];
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 function buscarAlimentosBase(query) {
   const tokens = normalizarTexto(query).split(/\s+/).filter(Boolean);
   return ALIMENTOS_BASE.filter(alimento => {
@@ -550,12 +616,41 @@ function buscarAlimentosBase(query) {
     proteinaPor100g: alimento.proteinaPor100g,
     carbosPor100g: alimento.carbosPor100g,
     grasasPor100g: alimento.grasasPor100g,
+    gramosPorUnidad: alimento.gramosPorUnidad,
+    unidadLabel: alimento.unidadLabel,
   }));
+}
+
+function parseServingSize(texto) {
+  try {
+    const text = String(texto || '').trim();
+    if (!text) return null;
+    const number = '[0-9]+(?:[.,][0-9]+)?';
+    const grouped = new RegExp(`^\\s*(${number})\\s+([^()]+?)\\s*\\(\\s*(${number})\\s*g(?:ramos?)?\\s*\\)\\s*$`, 'i').exec(text);
+    if (grouped) {
+      const count = Number(grouped[1].replace(',', '.'));
+      const grams = Number(grouped[3].replace(',', '.'));
+      if (!(count > 0) || !(grams > 0)) return null;
+      const rawLabel = grouped[2].trim();
+      const labels = {
+        slice: 'rodaja', slices: 'rodaja', rebanada: 'rodaja', rebanadas: 'rodaja',
+        portion: 'porción', portions: 'porción', porción: 'porción', porciones: 'porción'
+      };
+      return { gramosPorUnidad: grams / count, unidadLabel: labels[rawLabel.toLowerCase()] || rawLabel };
+    }
+    const simple = new RegExp(`^\\s*(${number})\\s*g(?:ramos?)?\\s*$`, 'i').exec(text);
+    if (simple) {
+      const grams = Number(simple[1].replace(',', '.'));
+      return grams > 0 ? { gramosPorUnidad: grams, unidadLabel: 'porción' } : null;
+    }
+  } catch { /* serving_size inesperado: dejar el alimento en gramos */ }
+  return null;
 }
 
 function mapearProductoOpenFoodFacts(product) {
   const n = product.nutriments || {};
   const numberOrNull = value => Number.isFinite(Number(value)) ? Number(value) : null;
+  const serving = parseServingSize(product.serving_size);
   return {
     nombre: product.product_name || product.product_name_es || product.generic_name || '',
     marca: Array.isArray(product.brands) ? product.brands.join(', ') : product.brands || '',
@@ -563,6 +658,7 @@ function mapearProductoOpenFoodFacts(product) {
     proteinaPor100g: numberOrNull(n.proteins_100g),
     carbosPor100g: numberOrNull(n.carbohydrates_100g),
     grasasPor100g: numberOrNull(n.fat_100g),
+    ...(serving || {})
   };
 }
 
@@ -592,6 +688,7 @@ const routes = {
 
     const db = getDatabase();
     const baseResults = buscarAlimentosBase(query);
+    const usdaResults = await buscarAlimentosUSDA(query, db);
     const cacheFor = scope => `v2:${scope}:${query}`;
     const freshCached = key => {
       const cached = db.prepare('SELECT resultado_json, fecha_cache FROM cache_alimentos WHERE query = ?').get(key);
@@ -599,7 +696,7 @@ const routes = {
       try { return JSON.parse(cached.resultado_json); } catch { return null }
     };
     const cachedArgentina = freshCached(cacheFor('ar'));
-    if (Array.isArray(cachedArgentina) && cachedArgentina.length) return json(res, 200, combinarAlimentos(baseResults, cachedArgentina));
+    if (Array.isArray(cachedArgentina) && cachedArgentina.length) return json(res, 200, combinarAlimentos(baseResults, usdaResults, cachedArgentina));
 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 5000);
@@ -608,7 +705,7 @@ const routes = {
       searchUrl.searchParams.set('q', `countries_tags:"en:argentina" ${query}`);
       searchUrl.searchParams.set('langs', 'es');
       searchUrl.searchParams.set('page_size', '15');
-      searchUrl.searchParams.set('fields', 'product_name,brands,nutriments');
+      searchUrl.searchParams.set('fields', 'product_name,brands,serving_size,nutriments');
       const response = await fetch(searchUrl, {
         signal: controller.signal,
         headers: { 'User-Agent': 'LauyimGym/1.0 (food search)' }
@@ -620,15 +717,15 @@ const routes = {
       db.prepare(`INSERT INTO cache_alimentos (query, resultado_json, fecha_cache)
         VALUES (?, ?, ?) ON CONFLICT(query) DO UPDATE SET resultado_json = excluded.resultado_json, fecha_cache = excluded.fecha_cache`)
         .run(cacheFor('ar'), JSON.stringify(alimentos), new Date().toISOString());
-      if (data.count !== 0 && hits.length) return json(res, 200, combinarAlimentos(baseResults, alimentos));
+      if (data.count !== 0 && hits.length) return json(res, 200, combinarAlimentos(baseResults, usdaResults, alimentos));
 
       const cachedFallback = freshCached(cacheFor('world-ar'));
-      if (Array.isArray(cachedFallback)) return json(res, 200, combinarAlimentos(baseResults, cachedFallback));
+      if (Array.isArray(cachedFallback)) return json(res, 200, combinarAlimentos(baseResults, usdaResults, cachedFallback));
       const fallbackUrl = new URL('https://search.openfoodfacts.org/search');
       fallbackUrl.searchParams.set('q', query);
       fallbackUrl.searchParams.set('langs', 'es');
       fallbackUrl.searchParams.set('page_size', '15');
-      fallbackUrl.searchParams.set('fields', 'product_name,brands,nutriments');
+      fallbackUrl.searchParams.set('fields', 'product_name,brands,serving_size,nutriments');
       const fallbackResponse = await fetch(fallbackUrl, {
         signal: controller.signal,
         headers: { 'User-Agent': 'LauyimGym/1.0 (food search)' }
@@ -640,10 +737,10 @@ const routes = {
       db.prepare(`INSERT INTO cache_alimentos (query, resultado_json, fecha_cache)
         VALUES (?, ?, ?) ON CONFLICT(query) DO UPDATE SET resultado_json = excluded.resultado_json, fecha_cache = excluded.fecha_cache`)
         .run(cacheFor('world-ar'), JSON.stringify(fallbackAlimentos), new Date().toISOString());
-      return json(res, 200, combinarAlimentos(baseResults, fallbackAlimentos));
+      return json(res, 200, combinarAlimentos(baseResults, usdaResults, fallbackAlimentos));
     } catch (error) {
       console.error('GET /api/alimentos/buscar error:', error);
-      if (baseResults.length) return json(res, 200, baseResults);
+      if (baseResults.length || usdaResults.length) return json(res, 200, combinarAlimentos(baseResults, usdaResults));
       return json(res, 502, { alimentos: [], error: 'No se pudo consultar Open Food Facts' });
     } finally {
       clearTimeout(timeout);
@@ -669,7 +766,9 @@ const routes = {
     }, 5000);
     let response;
     try {
-      response = await fetch(`https://world.openfoodfacts.org/api/v2/product/${encodeURIComponent(codigo)}.json`, {
+      const productUrl = new URL(`https://world.openfoodfacts.org/api/v2/product/${encodeURIComponent(codigo)}.json`);
+      productUrl.searchParams.set('fields', 'product_name,brands,serving_size,nutriments');
+      response = await fetch(productUrl, {
         signal: controller.signal,
         headers: { 'User-Agent': 'LauyimGym/1.0 (barcode lookup)' }
       });
