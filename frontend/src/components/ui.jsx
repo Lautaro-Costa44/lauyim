@@ -52,8 +52,8 @@ export function NumberField({ value, onChange, decimal = true, nullable = false,
 }
 
 // forwardRef so callers can focus it or read its value imperatively
-export const TextField = forwardRef(function TextField({ className = '', ...rest }, ref) {
-  return <input ref={ref} className={'field ' + className} {...rest} />
+export const TextField = forwardRef(function TextField({ className = '', type = 'search', inputMode = 'search', ...rest }, ref) {
+  return <input ref={ref} className={'field ' + className} type={type} inputMode={inputMode} {...rest} />
 })
 
 export function TextArea({ className = '', ...rest }) {

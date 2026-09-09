@@ -707,7 +707,7 @@ input[type="search"]::-webkit-search-cancel-button{display:none;-webkit-appearan
 :root[data-theme="light"] .sheet{background:var(--bg)}
 @keyframes sheetup{from{transform:translateY(100%)}to{transform:none}}
 .sheet .grab{width:36px;height:5px;border-radius:99px;background:var(--label-4);margin:6px auto 14px}
-.sheet.fullscreen{top:0;bottom:0;max-height:none;border-radius:0}
+.sheet.fullscreen{top:0;bottom:0;height:100vh;height:100dvh;max-height:none;border-radius:0}
 .sheet h3{font-size:20px;font-weight:600;letter-spacing:-.021em;margin-bottom:14px}
 .center{
   position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);

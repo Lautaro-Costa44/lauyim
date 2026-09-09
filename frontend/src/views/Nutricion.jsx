@@ -145,7 +145,7 @@ function ManualFoodForm({ franja, close, onBack, onSaved, onAddIngrediente }) {
       {onAddIngrediente && <span />}
     </div>
     {error && <p className="small" style={{ color: 'var(--acc-2)' }}>{error}</p>}
-    <label>Nombre<input {...NO_AUTOFILL} className="field" type="text" name="alimento-manual-nombre" autoFocus value={nombre} onChange={event => setNombre(event.target.value)} /></label>
+    <label>Nombre<input {...NO_AUTOFILL} className="field" type="search" name="alimento-manual-nombre" inputMode="search" value={nombre} onChange={event => setNombre(event.target.value)} /></label>
     <div className="manual-food-grid">
       <label>Gramos<input className="field" type="number" min="1" inputMode="decimal" value={gramos} onChange={event => setGramos(event.target.value)} /></label>
       <label>Calorías / 100 g<input className="field" type="number" min="0" inputMode="decimal" value={calorias} onChange={event => setCalorias(event.target.value)} /></label>
@@ -299,7 +299,7 @@ function ComidaCompuestaBuilder({ close, onSaved, plantillaId, initialNombre = '
       <h3 style={{ margin: 0 }}>{esEdicion ? 'Editar alimento compuesto' : 'Crear alimento compuesto'}</h3>
       <button type="button" className="iconbtn" onClick={() => requestClose()} aria-label="Cerrar"><Icon name="xmark" /></button>
     </div>
-    <label>Nombre de la comida<input {...NO_AUTOFILL} className="field" type="text" name="comida-compuesta-nombre" inputMode="text" autoFocus value={nombreComida} onChange={event => setNombreComida(event.target.value)} /></label>
+    <label>Nombre de la comida<input {...NO_AUTOFILL} className="field" type="search" name="comida-compuesta-nombre" inputMode="search" value={nombreComida} onChange={event => setNombreComida(event.target.value)} /></label>
     {!esEdicion && <SelectRow title="Franja" value={franjaSeleccionada} options={FRANJAS} onChange={setFranjaSeleccionada} sheetTitle="Elegir franja" />}
     <div className="small dim" style={{ margin: '14px 0 8px' }}>Agregar ingredientes</div>
     <FoodPicker franja={franjaSeleccionada} close={() => {}} onAddIngrediente={ingrediente => setIngredientes(prev => [...prev, ingrediente])} />
