@@ -222,9 +222,6 @@ function ComidaCompuestaBuilder({ close, onSaved, plantillaId, initialNombre = '
   const [ingredientes, setIngredientes] = useState(initialIngredientes)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
-  const historyEntryRef = useRef(false)
-  const closingRef = useRef(false)
-  const requestCloseRef = useRef(null)
   const initialStateRef = useRef(JSON.stringify({ nombre: initialNombre, ingredientes: initialIngredientes }))
   const totales = useMemo(() => ingredientes.reduce((total, ingrediente) => ({
     calorias: total.calorias + Number(ingrediente.calorias || 0),
@@ -232,34 +229,17 @@ function ComidaCompuestaBuilder({ close, onSaved, plantillaId, initialNombre = '
     carbohidratos: total.carbohidratos + Number(ingrediente.carbohidratos || 0),
     grasas: total.grasas + Number(ingrediente.grasas || 0),
   }), { calorias: 0, proteina: 0, carbohidratos: 0, grasas: 0 }), [ingredientes])
-  const cleanupHistory = useCallback((fromPopstate = false) => {
-    if (!historyEntryRef.current) return
-    historyEntryRef.current = false
-    if (!fromPopstate) window.history.back()
-  }, [])
-  const finishClose = useCallback((fromPopstate = false) => {
-    if (closingRef.current) return
-    closingRef.current = true
-    cleanupHistory(fromPopstate)
-    close()
-  }, [cleanupHistory, close])
   const hasUnsavedChanges = useMemo(() => JSON.stringify({ nombre: nombreComida, ingredientes }) !== initialStateRef.current, [nombreComida, ingredientes])
-  const requestClose = useCallback((fromPopstate = false) => {
-    if (closingRef.current) return
-    if (!hasUnsavedChanges || window.confirm('¿Descartar la comida compuesta sin guardar?')) finishClose(fromPopstate)
-    else if (fromPopstate) window.history.pushState({ ...(window.history.state || {}), comidaCompuestaBuilder: true }, '', window.location.href)
-  }, [hasUnsavedChanges, finishClose])
-  requestCloseRef.current = requestClose
-  useEffect(() => {
-    historyEntryRef.current = true
-    window.history.pushState({ ...(window.history.state || {}), comidaCompuestaBuilder: true }, '', window.location.href)
-    const onPopState = () => requestCloseRef.current(true)
-    window.addEventListener('popstate', onPopState)
-    return () => {
-      window.removeEventListener('popstate', onPopState)
-      if (!closingRef.current) cleanupHistory()
-    }
-  }, [cleanupHistory])
+  const requestClose = useCallback(() => {
+    if (!hasUnsavedChanges) return close()
+    confirmSheet({
+      title: '¿Salir de la comida compuesta?',
+      message: 'Se perderán los cambios que todavía no guardaste.',
+      confirmText: 'Descartar y salir',
+      danger: true,
+      onConfirm: close,
+    })
+  }, [close, hasUnsavedChanges])
   const save = async () => {
     if (!nombreComida.trim() || !ingredientes.length) return
     setSaving(true)
@@ -275,7 +255,7 @@ function ComidaCompuestaBuilder({ close, onSaved, plantillaId, initialNombre = '
         }) })
       }
       onSaved()
-      finishClose()
+      close()
     } catch {
       setError('No se pudo guardar la comida compuesta. Intentá nuevamente.')
       setSaving(false)
@@ -286,7 +266,7 @@ function ComidaCompuestaBuilder({ close, onSaved, plantillaId, initialNombre = '
       <h3 style={{ margin: 0 }}>{esEdicion ? 'Editar alimento compuesto' : 'Crear alimento compuesto'}</h3>
       <button type="button" className="iconbtn" onClick={() => requestClose()} aria-label="Cerrar"><Icon name="xmark" /></button>
     </div>
-    <label>Nombre de la comida<input className="field" autoFocus value={nombreComida} onChange={event => setNombreComida(event.target.value)} /></label>
+    <label>Nombre de la comida<input className="field" type="text" name="comida-compuesta-nombre" inputMode="text" autoFocus autoComplete="off" autoCorrect="off" autoCapitalize="sentences" spellCheck={false} data-lpignore="true" data-1p-ignore="true" data-bwignore="true" data-form-type="other" value={nombreComida} onChange={event => setNombreComida(event.target.value)} /></label>
     {!esEdicion && <SelectRow title="Franja" value={franjaSeleccionada} options={FRANJAS} onChange={setFranjaSeleccionada} sheetTitle="Elegir franja" />}
     <div className="small dim" style={{ margin: '14px 0 8px' }}>Agregar ingredientes</div>
     <FoodPicker franja={franjaSeleccionada} close={() => {}} onAddIngrediente={ingrediente => setIngredientes(prev => [...prev, ingrediente])} />
@@ -426,14 +406,14 @@ export default function Nutricion() {
   const totals = useMemo(() => comidas.reduce((a, c) => ({ calorias: a.calorias + Number(c.calorias || 0), proteina: a.proteina + Number(c.proteina || 0), carbos: a.carbos + Number(c.carbohidratos || 0), grasas: a.grasas + Number(c.grasas || 0) }), { calorias: 0, proteina: 0, carbos: 0, grasas: 0 }), [comidas])
   const addMeal = franja => useUI.getState().openSheet(close => <FoodPicker franja={franja} close={close} onSaved={loadComidas} />)
   const addComidaCompuesta = () => useUI.getState().openSheet(close => <ComidaCompuestaBuilder close={close} onSaved={loadComidas} />, { locked: true, fullScreen: true })
-  const openMisComidasCompuestas = () => useUI.getState().openSheet(close => <MisComidasCompuestas close={close} />, { locked: true, fullScreen: true })
+  const openMisComidasCompuestas = () => useUI.getState().openSheet(close => <MisComidasCompuestas close={close} />, { fullScreen: true })
   const removeMeal = async id => { await api('/api/comidas/' + id, { method: 'DELETE' }); loadComidas() }
   const removeGrupo = async grupoId => { await api('/api/comidas/grupo/' + encodeURIComponent(grupoId), { method: 'DELETE' }); loadComidas() }
 
   return <>
     <div className="hdr">
       <div><h1>{t('Nutrición')}</h1><div className="sub">{t('Tus metas diarias')}</div></div>
-      <button className="iconbtn" onClick={openMisComidasCompuestas} aria-label="Mis comidas compuestas" title="Mis comidas compuestas"><Icon name="history" /></button>
+      <button className="iconbtn" onClick={openMisComidasCompuestas} aria-label="Mis comidas compuestas" title="Mis comidas compuestas"><Icon name="plate" /></button>
     </div>
 
     <div className="card">
