@@ -50,6 +50,11 @@ const FRANJAS = [
   { value: 'merienda', label: 'Merienda' }, { value: 'cena', label: 'Cena' }, { value: 'extra', label: 'Extra' },
 ]
 
+const NO_AUTOFILL = {
+  autoComplete: 'new-password', autoCorrect: 'off', autoCapitalize: 'none', spellCheck: false,
+  'data-lpignore': 'true', 'data-1p-ignore': 'true', 'data-bwignore': 'true', 'data-form-type': 'other',
+}
+
 function MealForm({ alimento, franja, close, onBack, onSaved, onAddIngrediente }) {
   const [mealFranja, setMealFranja] = useState(franja)
   const [modo, setModo] = useState('porciones')
@@ -140,7 +145,7 @@ function ManualFoodForm({ franja, close, onBack, onSaved, onAddIngrediente }) {
       {onAddIngrediente && <span />}
     </div>
     {error && <p className="small" style={{ color: 'var(--acc-2)' }}>{error}</p>}
-    <label>Nombre<input className="field" autoFocus autoComplete="off" value={nombre} onChange={event => setNombre(event.target.value)} /></label>
+    <label>Nombre<input {...NO_AUTOFILL} className="field" type="text" name="alimento-manual-nombre" autoFocus value={nombre} onChange={event => setNombre(event.target.value)} /></label>
     <div className="manual-food-grid">
       <label>Gramos<input className="field" type="number" min="1" inputMode="decimal" value={gramos} onChange={event => setGramos(event.target.value)} /></label>
       <label>Calorías / 100 g<input className="field" type="number" min="0" inputMode="decimal" value={calorias} onChange={event => setCalorias(event.target.value)} /></label>
@@ -210,7 +215,7 @@ function FoodPicker({ franja, close, onSaved, onAddIngrediente }) {
     <h3>Agregar comida</h3>
     <Segmented value={tab} onChange={v => { setError(''); setTab(v) }} options={[{ value: 'buscar', label: 'Buscar' }, { value: 'scan', label: 'Escanear' }, { value: 'manual', label: 'Manual' }]} />
     {error && <p className="small" style={{ color: 'var(--acc-2)' }}>{error}</p>}
-    {tab === 'buscar' ? <><input className="field food-search" type="search" name="food-search-query" inputMode="search" autoComplete="new-password" autoCorrect="off" autoCapitalize="none" spellCheck={false} data-lpignore="true" data-1p-ignore="true" placeholder="Buscar alimento…" value={query} onChange={e => setQuery(e.target.value)} />
+    {tab === 'buscar' ? <><input {...NO_AUTOFILL} className="field food-search" type="search" name="food-search-query" inputMode="search" placeholder="Buscar alimento…" value={query} onChange={e => setQuery(e.target.value)} />
       <div className="food-results">{loading ? <div className="meal-empty">Buscando…</div> : visibleResults.length ? visibleResults.map((a, i) => <Row key={`${a.nombre}-${a.marca || ''}-${i}`} title={a.nombre} subtitle={a.tipo === 'plantilla_comida' ? 'Comida compuesta guardada' : (a.marca || 'Alimento genérico')} onClick={() => pick(a)} accessory="chevron" />) : query.trim().length >= 2 ? <div className="meal-empty">{results.length > visibleResults.length ? 'Hay comidas compuestas guardadas con ese nombre, pero no se pueden usar como ingrediente.' : 'Sin resultados. Podés ingresarlo manualmente.'}</div> : <div className="meal-empty">Escribí al menos 2 letras.</div>}</div></> : <ScannerCodigoBarras onScan={scan} onCancel={() => setTab('buscar')} />}
   </>
 }
@@ -222,6 +227,9 @@ function ComidaCompuestaBuilder({ close, onSaved, plantillaId, initialNombre = '
   const [ingredientes, setIngredientes] = useState(initialIngredientes)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  const historyEntryRef = useRef(false)
+  const closingRef = useRef(false)
+  const requestCloseRef = useRef(null)
   const initialStateRef = useRef(JSON.stringify({ nombre: initialNombre, ingredientes: initialIngredientes }))
   const totales = useMemo(() => ingredientes.reduce((total, ingrediente) => ({
     calorias: total.calorias + Number(ingrediente.calorias || 0),
@@ -230,16 +238,41 @@ function ComidaCompuestaBuilder({ close, onSaved, plantillaId, initialNombre = '
     grasas: total.grasas + Number(ingrediente.grasas || 0),
   }), { calorias: 0, proteina: 0, carbohidratos: 0, grasas: 0 }), [ingredientes])
   const hasUnsavedChanges = useMemo(() => JSON.stringify({ nombre: nombreComida, ingredientes }) !== initialStateRef.current, [nombreComida, ingredientes])
-  const requestClose = useCallback(() => {
-    if (!hasUnsavedChanges) return close()
+  const cleanupHistory = useCallback((fromPopstate = false) => {
+    if (!historyEntryRef.current) return
+    historyEntryRef.current = false
+    if (!fromPopstate) window.history.back()
+  }, [])
+  const finishClose = useCallback((fromPopstate = false) => {
+    if (closingRef.current) return
+    closingRef.current = true
+    cleanupHistory(fromPopstate)
+    close()
+  }, [cleanupHistory, close])
+  const requestClose = useCallback((fromPopstate = false) => {
+    if (closingRef.current) return
+    if (!hasUnsavedChanges) return finishClose(fromPopstate)
     confirmSheet({
       title: '¿Salir de la comida compuesta?',
       message: 'Se perderán los cambios que todavía no guardaste.',
       confirmText: 'Descartar y salir',
       danger: true,
-      onConfirm: close,
+      onConfirm: () => finishClose(fromPopstate),
     })
-  }, [close, hasUnsavedChanges])
+  }, [finishClose, hasUnsavedChanges])
+  requestCloseRef.current = requestClose
+  useEffect(() => {
+    historyEntryRef.current = true
+    window.history.pushState({ ...(window.history.state || {}), comidaCompuestaBuilder: true }, '', window.location.href)
+    const onPopState = event => {
+      if (event.state?.comidaCompuestaBuilder) requestCloseRef.current(true)
+    }
+    window.addEventListener('popstate', onPopState)
+    return () => {
+      window.removeEventListener('popstate', onPopState)
+      if (!closingRef.current) cleanupHistory()
+    }
+  }, [cleanupHistory])
   const save = async () => {
     if (!nombreComida.trim() || !ingredientes.length) return
     setSaving(true)
@@ -255,7 +288,7 @@ function ComidaCompuestaBuilder({ close, onSaved, plantillaId, initialNombre = '
         }) })
       }
       onSaved()
-      close()
+      finishClose()
     } catch {
       setError('No se pudo guardar la comida compuesta. Intentá nuevamente.')
       setSaving(false)
@@ -266,7 +299,7 @@ function ComidaCompuestaBuilder({ close, onSaved, plantillaId, initialNombre = '
       <h3 style={{ margin: 0 }}>{esEdicion ? 'Editar alimento compuesto' : 'Crear alimento compuesto'}</h3>
       <button type="button" className="iconbtn" onClick={() => requestClose()} aria-label="Cerrar"><Icon name="xmark" /></button>
     </div>
-    <label>Nombre de la comida<input className="field" type="text" name="comida-compuesta-nombre" inputMode="text" autoFocus autoComplete="off" autoCorrect="off" autoCapitalize="sentences" spellCheck={false} data-lpignore="true" data-1p-ignore="true" data-bwignore="true" data-form-type="other" value={nombreComida} onChange={event => setNombreComida(event.target.value)} /></label>
+    <label>Nombre de la comida<input {...NO_AUTOFILL} className="field" type="text" name="comida-compuesta-nombre" inputMode="text" autoFocus value={nombreComida} onChange={event => setNombreComida(event.target.value)} /></label>
     {!esEdicion && <SelectRow title="Franja" value={franjaSeleccionada} options={FRANJAS} onChange={setFranjaSeleccionada} sheetTitle="Elegir franja" />}
     <div className="small dim" style={{ margin: '14px 0 8px' }}>Agregar ingredientes</div>
     <FoodPicker franja={franjaSeleccionada} close={() => {}} onAddIngrediente={ingrediente => setIngredientes(prev => [...prev, ingrediente])} />
