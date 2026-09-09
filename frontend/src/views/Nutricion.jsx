@@ -55,7 +55,7 @@ const NO_AUTOFILL = {
   'data-lpignore': 'true', 'data-1p-ignore': 'true', 'data-bwignore': 'true', 'data-form-type': 'other',
 }
 
-function MealForm({ alimento, franja, close, onBack, onSaved, onAddIngrediente }) {
+function MealForm({ alimento, franja, close, onBack, onSaved, onAddIngrediente, onAdded }) {
   const [mealFranja, setMealFranja] = useState(franja)
   const [modo, setModo] = useState('porciones')
   const [porcion, setPorcion] = useState(1)
@@ -82,6 +82,7 @@ function MealForm({ alimento, franja, close, onBack, onSaved, onAddIngrediente }
       const ingrediente = { nombre_alimento: alimento.nombre, cantidad_gramos: gramos, ...nutrientes }
       if (onAddIngrediente) {
         onAddIngrediente(ingrediente)
+        onAdded?.()
         onBack()
       } else {
         await api('/api/comidas', { method: 'POST', body: JSON.stringify({ fecha: todayISO(), franja: mealFranja, ...ingrediente }) })
@@ -210,7 +211,7 @@ function FoodPicker({ franja, close, onSaved, onAddIngrediente, onAdded }) {
     onAdded?.()
   }, [onAddIngrediente, onAdded])
   const visibleResults = onAddIngrediente ? results.filter(a => a.tipo !== 'plantilla_comida') : results
-  if (selected) return <MealForm alimento={selected} franja={franja} close={close} onBack={() => setSelected(null)} onSaved={onSaved} onAddIngrediente={onAddIngrediente} />
+  if (selected) return <MealForm alimento={selected} franja={franja} close={close} onBack={() => setSelected(null)} onSaved={onSaved} onAddIngrediente={onAddIngrediente} onAdded={onAdded} />
   if (tab === 'manual') return <ManualFoodForm franja={franja} close={close} onBack={() => setTab('buscar')} onSaved={onSaved} onAddIngrediente={onAddIngrediente ? addIngrediente : undefined} />
   return <>
     <h3>Agregar comida</h3>
