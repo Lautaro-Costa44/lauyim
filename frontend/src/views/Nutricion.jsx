@@ -153,11 +153,11 @@ function ManualFoodForm({ franja, close, onBack, onSaved, onAddIngrediente }) {
     <label>Carbohidratos / 100 g<input {...NO_AUTOFILL} name="app-food-carbs" className="field" type="number" min="0" inputMode="decimal" value={carbohidratos} onChange={event => setCarbohidratos(event.target.value)} /></label>
     <label>Grasas / 100 g<input {...NO_AUTOFILL} name="app-food-fat" className="field" type="number" min="0" inputMode="decimal" value={grasas} onChange={event => setGrasas(event.target.value)} /></label>
     </div>
-    <Button type="submit" variant="primary" disabled={saving}>{saving ? 'Guardando…' : 'Guardar comida'}</Button>
+    <Button type="submit" size="sm" variant="tinted" disabled={saving}>{saving ? 'Guardando…' : 'Guardar comida'}</Button>
   </form>
 }
 
-function FoodPicker({ franja, close, onSaved, onAddIngrediente }) {
+function FoodPicker({ franja, close, onSaved, onAddIngrediente, onAdded }) {
   const [tab, setTab] = useState('buscar')
   const [query, setQuery] = useState('')
   const [results, setResults] = useState([])
@@ -207,7 +207,8 @@ function FoodPicker({ franja, close, onSaved, onAddIngrediente }) {
     onAddIngrediente(ingrediente)
     setTab('buscar')
     setQuery('')
-  }, [onAddIngrediente])
+    onAdded?.()
+  }, [onAddIngrediente, onAdded])
   const visibleResults = onAddIngrediente ? results.filter(a => a.tipo !== 'plantilla_comida') : results
   if (selected) return <MealForm alimento={selected} franja={franja} close={close} onBack={() => setSelected(null)} onSaved={onSaved} onAddIngrediente={onAddIngrediente} />
   if (tab === 'manual') return <ManualFoodForm franja={franja} close={close} onBack={() => setTab('buscar')} onSaved={onSaved} onAddIngrediente={onAddIngrediente ? addIngrediente : undefined} />
@@ -225,6 +226,7 @@ function ComidaCompuestaBuilder({ close, onSaved, plantillaId, initialNombre = '
   const [nombreComida, setNombreComida] = useState(initialNombre)
   const [franjaSeleccionada, setFranjaSeleccionada] = useState(FRANJAS[0].value)
   const [ingredientes, setIngredientes] = useState(initialIngredientes)
+  const [pickerOpen, setPickerOpen] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const historyEntryRef = useRef(false)
@@ -295,26 +297,31 @@ function ComidaCompuestaBuilder({ close, onSaved, plantillaId, initialNombre = '
       setSaving(false)
     }
   }
-  return <>
-    <div className="row between">
+  return <div className="compound-builder">
+    <div className="row between compound-builder-header">
       <h3 style={{ margin: 0 }}>{esEdicion ? 'Editar alimento compuesto' : 'Crear alimento compuesto'}</h3>
       <button type="button" className="iconbtn" onClick={() => requestClose()} aria-label="Cerrar"><Icon name="xmark" /></button>
     </div>
-    <label>Nombre de la comida<input {...NO_AUTOFILL} className="field" type="search" name="comida-compuesta-nombre" inputMode="search" value={nombreComida} onChange={event => setNombreComida(event.target.value)} /></label>
-    {!esEdicion && <SelectRow title="Franja" value={franjaSeleccionada} options={FRANJAS} onChange={setFranjaSeleccionada} sheetTitle="Elegir franja" />}
-    <div className="small dim" style={{ margin: '14px 0 8px' }}>Agregar ingredientes</div>
-    <FoodPicker franja={franjaSeleccionada} close={() => {}} onAddIngrediente={ingrediente => setIngredientes(prev => [...prev, ingrediente])} />
-    {ingredientes.length > 0 && <div style={{ marginTop: 14 }}>
-      <div className="small dim" style={{ marginBottom: 8 }}>Ingredientes</div>
-      {ingredientes.map((ingrediente, index) => <div className="row between" key={`${ingrediente.nombre_alimento}-${index}`} style={{ padding: '8px 0', borderBottom: '1px solid var(--sep)' }}>
+    <Section title="Nombre de la comida" className="compound-builder-section">
+      <label><input {...NO_AUTOFILL} className="field" type="search" name="comida-compuesta-nombre" inputMode="search" value={nombreComida} onChange={event => setNombreComida(event.target.value)} /></label>
+      {!esEdicion && <SelectRow title="Franja" value={franjaSeleccionada} options={FRANJAS} onChange={setFranjaSeleccionada} sheetTitle="Elegir franja" />}
+    </Section>
+    <Section title="Ingredientes" className="compound-builder-section">
+      {ingredientes.length ? ingredientes.map((ingrediente, index) => <div className="row between compound-ingredient" key={`${ingrediente.nombre_alimento}-${index}`}>
         <div><div>{ingrediente.nombre_alimento}</div><div className="dim small">{ingrediente.cantidad_gramos} g · {Math.round(ingrediente.calorias)} kcal · {Number(ingrediente.proteina).toFixed(1)} g prot. · {Number(ingrediente.carbohidratos).toFixed(1)} g carb. · {Number(ingrediente.grasas).toFixed(1)} g grasas</div></div>
         <button type="button" className="iconbtn" onClick={() => setIngredientes(prev => prev.filter((_, itemIndex) => itemIndex !== index))} aria-label="Quitar ingrediente">×</button>
-      </div>)}
-      <div className="nutri-live row between" style={{ marginTop: 10 }}><span>Total</span><span>{Math.round(totales.calorias)} kcal · {totales.proteina.toFixed(1)} g prot. · {totales.carbohidratos.toFixed(1)} g carb. · {totales.grasas.toFixed(1)} g grasas</span></div>
-    </div>}
-    {error && <p className="small" style={{ color: 'var(--acc-2)' }}>{error}</p>}
-    <div className="row" style={{ gap: 8, marginTop: 16 }}><Button onClick={() => requestClose()}>Cancelar</Button><Button variant="primary" disabled={saving || !nombreComida.trim() || !ingredientes.length} onClick={save}>{saving ? 'Guardando…' : esEdicion ? 'Guardar cambios' : 'Guardar'}</Button></div>
-  </>
+      </div>) : <div className="meal-empty">Todavía no agregaste ingredientes.</div>}
+      <div className="nutri-live row between compound-total"><span>Total</span><span>{Math.round(totales.calorias)} kcal · {totales.proteina.toFixed(1)} g prot. · {totales.carbohidratos.toFixed(1)} g carb. · {totales.grasas.toFixed(1)} g grasas</span></div>
+    </Section>
+    <Section title="Agregar ingredientes" className="compound-builder-section">
+      {!pickerOpen ? <Button variant="tinted" onClick={() => setPickerOpen(true)}>+ Agregar ingrediente</Button> : <FoodPicker franja={franjaSeleccionada} close={() => {}} onAddIngrediente={ingrediente => setIngredientes(prev => [...prev, ingrediente])} onAdded={() => setPickerOpen(false)} />}
+    </Section>
+    {error && <p className="small compound-builder-error" style={{ color: 'var(--acc-2)' }}>{error}</p>}
+    <div className="compound-builder-actions">
+      <Button onClick={() => requestClose()}>Cancelar</Button>
+      <Button variant="primary" disabled={saving || !nombreComida.trim() || !ingredientes.length} onClick={save}>{saving ? 'Guardando…' : esEdicion ? 'Guardar cambios' : 'Guardar'}</Button>
+    </div>
+  </div>
 }
 
 function totalesDeIngredientes(ingredientes) {
