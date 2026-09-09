@@ -51,7 +51,7 @@ const FRANJAS = [
 ]
 
 const NO_AUTOFILL = {
-  autoComplete: 'new-password', autoCorrect: 'off', autoCapitalize: 'none', spellCheck: false,
+  autoComplete: 'off', autoCorrect: 'off', autoCapitalize: 'none', spellCheck: false,
   'data-lpignore': 'true', 'data-1p-ignore': 'true', 'data-bwignore': 'true', 'data-form-type': 'other',
 }
 

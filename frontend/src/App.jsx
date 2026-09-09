@@ -47,9 +47,12 @@ function applyPrefs(theme, accent) {
   if (meta) meta.content = de.dataset.theme === 'light' ? '#f2f2f7' : '#000000'
 }
 
+let autofillFieldSeq = 0
+const autofillFieldNames = new WeakMap()
+
 function disableKeyboardAutofill(root) {
   root.querySelectorAll('input:not([type="file"]), textarea').forEach(field => {
-    field.setAttribute('autocomplete', 'new-password')
+    field.setAttribute('autocomplete', 'off')
     field.setAttribute('autocorrect', 'off')
     field.setAttribute('autocapitalize', 'none')
     field.setAttribute('spellcheck', 'false')
@@ -57,6 +60,11 @@ function disableKeyboardAutofill(root) {
     field.setAttribute('data-1p-ignore', 'true')
     field.setAttribute('data-bwignore', 'true')
     field.setAttribute('data-form-type', 'other')
+    if (!autofillFieldNames.has(field)) {
+      autofillFieldSeq += 1
+      autofillFieldNames.set(field, `app_field_${autofillFieldSeq}_${Math.random().toString(36).slice(2)}`)
+    }
+    field.setAttribute('name', autofillFieldNames.get(field))
   })
 }
 
