@@ -13,8 +13,9 @@
 //   · :active gives a scale/tint response so touch feels acknowledged
 //   · focus-visible draws a ring; pointer interaction never does
 
-import { useRef, useState, useEffect, useCallback, forwardRef } from 'react'
+import { useId, useRef, useState, useEffect, useCallback, forwardRef } from 'react'
 import Icon from './Icon.jsx'
+import { NO_AUTOFILL } from '../lib/input-safety.js'
 
 /* ============================ text ============================ */
 
@@ -24,6 +25,8 @@ import Icon from './Icon.jsx'
 // `nullable` is for fields where "nothing entered" and 0 mean different things (RIR: a
 // logged 0 is a set taken to failure). Those clear back to null instead of snapping to 0.
 export function NumberField({ value, onChange, decimal = true, nullable = false, className = '', enterKeyHint = 'next', ...rest }) {
+  const generatedName = useId().replace(/:/g, '')
+  const name = rest.name || `app-number-${generatedName}`
   const [draft, setDraft] = useState(null)
   const committed = useRef(null)
   // null and undefined are the same "empty" here — a nullable field's key is dropped once cleared.
@@ -39,6 +42,8 @@ export function NumberField({ value, onChange, decimal = true, nullable = false,
   }
   return (
     <input
+      {...NO_AUTOFILL}
+      name={name}
       type="text"
       inputMode={decimal ? 'decimal' : 'numeric'}
       enterKeyHint={enterKeyHint}
@@ -54,18 +59,21 @@ export function NumberField({ value, onChange, decimal = true, nullable = false,
 
 // forwardRef so callers can focus it or read its value imperatively
 export const TextField = forwardRef(function TextField({ className = '', type = 'search', inputMode = 'search', enterKeyHint = type === 'search' ? 'search' : 'next', ...rest }, ref) {
-  return <input ref={ref} className={'field ' + className} type={type} inputMode={inputMode} enterKeyHint={enterKeyHint} {...rest} />
+  const generatedName = useId().replace(/:/g, '')
+  return <input {...NO_AUTOFILL} name={rest.name || `app-text-${generatedName}`} ref={ref} className={'field ' + className} type={type} inputMode={inputMode} enterKeyHint={enterKeyHint} {...rest} />
 })
 
 export function TextArea({ className = '', ...rest }) {
-  return <textarea className={'field area ' + className} {...rest} />
+  const generatedName = useId().replace(/:/g, '')
+  return <textarea {...NO_AUTOFILL} name={rest.name || `app-area-${generatedName}`} className={'field area ' + className} {...rest} />
 }
 
 export function SearchField({ value, onChange, onClear, ...rest }) {
+  const generatedName = useId().replace(/:/g, '')
   return (
     <div className="searchf">
       <Icon name="magnifier" className="lead" />
-      <input className="field" value={value} onChange={onChange} {...rest} />
+      <input {...NO_AUTOFILL} name={rest.name || `app-search-${generatedName}`} className="field" value={value} onChange={onChange} {...rest} />
       {!!value && (
         <button className="clear" onClick={onClear} aria-label="Clear">
           <Icon name="xmark" />

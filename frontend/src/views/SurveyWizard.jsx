@@ -10,6 +10,7 @@ import { POLICIES, POLICY_NAME, POLICY_DESC } from '../lib/progression.js'
 import { confirmSheet, exerciseDetailSheetNoAdd } from '../sheets.jsx'
 import Icon from '../components/Icon.jsx'
 import { Button } from '../components/ui.jsx'
+import { NO_AUTOFILL } from '../lib/input-safety.js'
 import ExerciseReplacementSheet from '../components/ExerciseReplacementSheet.jsx'
 
 const PASOS = 5
@@ -460,7 +461,7 @@ export default function SurveyWizard() {
             <div className="survey-inputs-row" style={{ marginBottom: 20 }}>
               <div className="survey-input-card">
                 <span className="lbl">Edad (14 - 90)</span>
-                <input
+                <input {...NO_AUTOFILL} name="app-survey-age"
                   type="number"
                   min="14"
                   max="90"
@@ -476,7 +477,7 @@ export default function SurveyWizard() {
               </div>
               <div className="survey-input-card">
                 <span className="lbl">Peso kg (30 - 250)</span>
-                <input
+                <input {...NO_AUTOFILL} name="app-survey-weight"
                   type="number"
                   step="0.5"
                   min="30"
@@ -493,7 +494,7 @@ export default function SurveyWizard() {
               </div>
               <div className="survey-input-card">
                 <span className="lbl">Altura cm (100 - 250)</span>
-                <input
+                <input {...NO_AUTOFILL} name="app-survey-height"
                   type="number"
                   min="100"
                   max="250"

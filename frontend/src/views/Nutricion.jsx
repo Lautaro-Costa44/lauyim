@@ -98,7 +98,7 @@ function MealForm({ alimento, franja, close, onBack, onSaved, onAddIngrediente }
     {!onAddIngrediente && <SelectRow title="Franja" value={mealFranja} options={FRANJAS} onChange={setMealFranja} sheetTitle="Elegir franja" />}
     <div className="small dim" style={{ marginBottom: 8 }}>Cantidad</div>
     <Segmented value={modo} onChange={setMode} options={[{ value: 'porciones', label: 'Porciones' }, ...(alimento.gramosPorUnidad !== undefined ? [{ value: 'unidades', label: 'Unidades' }] : []), { value: 'manual', label: 'Manual' }]} />
-    {modo === 'porciones' ? <div className="meal-quick">{[0.5, 1, 1.5, 2].map(p => <button key={p} className={porcion === p ? 'on' : ''} onClick={() => setQuick(p)}>{p} porción{p === 1 ? '' : 'es'}</button>)}</div> : modo === 'unidades' ? <div className="meal-quick meal-units"><button type="button" onClick={() => setUnitCount(unidades - 1)} aria-label="Restar unidad">-</button><span>{unidades} {unidades === 1 ? unitLabel : pluralUnitLabel}</span><button type="button" onClick={() => setUnitCount(unidades + 1)} aria-label="Sumar unidad">+</button></div> : <label className="meal-grams">Gramos<input className="field" type="number" min="0" value={gramos} onChange={e => { setModo('manual'); setGramos(Math.max(0, Number(e.target.value) || 0)) }} /></label>}
+    {modo === 'porciones' ? <div className="meal-quick">{[0.5, 1, 1.5, 2].map(p => <button key={p} className={porcion === p ? 'on' : ''} onClick={() => setQuick(p)}>{p} porción{p === 1 ? '' : 'es'}</button>)}</div> : modo === 'unidades' ? <div className="meal-quick meal-units"><button type="button" onClick={() => setUnitCount(unidades - 1)} aria-label="Restar unidad">-</button><span>{unidades} {unidades === 1 ? unitLabel : pluralUnitLabel}</span><button type="button" onClick={() => setUnitCount(unidades + 1)} aria-label="Sumar unidad">+</button></div> : <label className="meal-grams">Gramos<input {...NO_AUTOFILL} name="app-meal-grams" className="field" type="number" min="0" value={gramos} onChange={e => { setModo('manual'); setGramos(Math.max(0, Number(e.target.value) || 0)) }} /></label>}
     <div className="nutri-live row between"><span>{gramos} g</span><span>{nutrientes.calorias} kcal · {nutrientes.proteina.toFixed(1)} g prot. · {nutrientes.carbohidratos.toFixed(1)} g carb. · {nutrientes.grasas.toFixed(1)} g grasas</span></div>
     <Button variant="primary" disabled={saving || !(gramos > 0)} onClick={save}>{saving ? 'Guardando…' : 'Confirmar'}</Button>
   </>
@@ -147,11 +147,11 @@ function ManualFoodForm({ franja, close, onBack, onSaved, onAddIngrediente }) {
     {error && <p className="small" style={{ color: 'var(--acc-2)' }}>{error}</p>}
     <label>Nombre<input {...NO_AUTOFILL} className="field" type="search" name="alimento-manual-nombre" inputMode="search" value={nombre} onChange={event => setNombre(event.target.value)} /></label>
     <div className="manual-food-grid">
-      <label>Gramos<input className="field" type="number" min="1" inputMode="decimal" value={gramos} onChange={event => setGramos(event.target.value)} /></label>
-      <label>Calorías / 100 g<input className="field" type="number" min="0" inputMode="decimal" value={calorias} onChange={event => setCalorias(event.target.value)} /></label>
-      <label>Proteínas / 100 g<input className="field" type="number" min="0" inputMode="decimal" value={proteina} onChange={event => setProteina(event.target.value)} /></label>
-      <label>Carbohidratos / 100 g<input className="field" type="number" min="0" inputMode="decimal" value={carbohidratos} onChange={event => setCarbohidratos(event.target.value)} /></label>
-      <label>Grasas / 100 g<input className="field" type="number" min="0" inputMode="decimal" value={grasas} onChange={event => setGrasas(event.target.value)} /></label>
+    <label>Gramos<input {...NO_AUTOFILL} name="app-food-grams" className="field" type="number" min="1" inputMode="decimal" value={gramos} onChange={event => setGramos(event.target.value)} /></label>
+    <label>Calorías / 100 g<input {...NO_AUTOFILL} name="app-food-calories" className="field" type="number" min="0" inputMode="decimal" value={calorias} onChange={event => setCalorias(event.target.value)} /></label>
+    <label>Proteínas / 100 g<input {...NO_AUTOFILL} name="app-food-protein" className="field" type="number" min="0" inputMode="decimal" value={proteina} onChange={event => setProteina(event.target.value)} /></label>
+    <label>Carbohidratos / 100 g<input {...NO_AUTOFILL} name="app-food-carbs" className="field" type="number" min="0" inputMode="decimal" value={carbohidratos} onChange={event => setCarbohidratos(event.target.value)} /></label>
+    <label>Grasas / 100 g<input {...NO_AUTOFILL} name="app-food-fat" className="field" type="number" min="0" inputMode="decimal" value={grasas} onChange={event => setGrasas(event.target.value)} /></label>
     </div>
     <Button type="submit" variant="primary" disabled={saving}>{saving ? 'Guardando…' : 'Guardar comida'}</Button>
   </form>

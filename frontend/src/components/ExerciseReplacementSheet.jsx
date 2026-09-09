@@ -4,6 +4,7 @@ import { exerciseNameFor } from '../lib/i18n.js'
 import { exerciseDetailSheetNoAdd } from '../sheets.jsx'
 import Icon from './Icon.jsx'
 import { Button } from './ui.jsx'
+import { NO_AUTOFILL } from '../lib/input-safety.js'
 import { t } from '../lib/i18n.js'
 import { obtenerAlternativas as obtenerAlternativasNormal, obtenerMasAlternativas as obtenerMasAlternativasNormal, buscarEnGrupoMuscular } from '../lib/generarRutina.js'
 import { musclesOf, MUSCLE_NAME } from '../lib/muscles.js'
@@ -114,7 +115,7 @@ function ExerciseReplacementSheet({ exActual, poolSeguro, usadosEnSemana, onReem
     )}
 
     <div style={{ marginTop: 12 }}>
-      <input
+      <input {...NO_AUTOFILL} name="app-exercise-replacement-search"
         className="input"
         type="text"
         placeholder={tipo === 'cardio' ? t('Buscar cardio...') :

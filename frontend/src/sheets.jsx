@@ -14,6 +14,7 @@ import Media, { Thumb } from './components/Media.jsx'
 import Stepper from './components/Stepper.jsx'
 import Icon from './components/Icon.jsx'
 import { Button, Slider, Switch, Segmented, SelectRow, Row, TextField, MultiSelectRow } from './components/ui.jsx'
+import { NO_AUTOFILL } from './lib/input-safety.js'
 import { glyphOf, GLYPH_GROUPS, DEFAULT_GLYPH } from './lib/glyphs.js'
 import BodyMap from './components/BodyMap.jsx'
 import { exerciseMuscleSnapshot, loadOfWorkouts, MUSCLES, MUSCLE_NAME, normalizeMuscleGroups, hasExplicitMuscleMetadata } from './lib/muscles.js'
@@ -506,7 +507,7 @@ function CustomExForm({ existing, prefill, onDone, close }) {
       </div>
     )}
     <div className="muted small" style={{ marginBottom: 12 }}>{t('Categorizá tu ejercicio para que el motor de rutinas y sustitutos pueda incluirlo.')}</div>
-    <input className="input" placeholder={t('Exercise name')} value={n} onChange={e => setN(e.target.value)} />
+    <input {...NO_AUTOFILL} name="app-exercise-name" className="input" placeholder={t('Exercise name')} value={n} onChange={e => setN(e.target.value)} />
     
     <div style={{ margin: '12px 0 6px', fontWeight: 600, fontSize: 13 }}>{t('Tipo de ejercicio')} *</div>
     <div className="chips" style={{ marginBottom: 12 }}>
@@ -593,7 +594,7 @@ function CustomExForm({ existing, prefill, onDone, close }) {
 
     {tipo === 'cardio' && <div className="small dim row" style={{ marginBottom: 10, gap: 5 }}><Icon name="figureRun" style={{ fontSize: 13 }} />{t('Cardio exercises log time + speed instead of weight × reps.')}</div>}
     
-    <textarea className="input" rows={3} maxLength={1000} placeholder={t('Description (optional) — setup, cues, anything you want to remember')}
+    <textarea {...NO_AUTOFILL} name="app-exercise-description" className="input" rows={3} maxLength={1000} placeholder={t('Description (optional) — setup, cues, anything you want to remember')}
       value={desc} onChange={e => setDesc(e.target.value)} />
     <div style={{ height: 14 }} />
     <Button variant="primary" onClick={save}>{existing ? t('Save') : t('Create exercise')}</Button>
@@ -659,7 +660,7 @@ function ExercisePicker({ onPick, close }) {
   return <>
     <h3>{t('Add exercise')}</h3>
     <div className="search"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7" /><path d="m21 21-4.3-4.3" /></svg>
-      <input className="input" placeholder={t('Search {0} exercises…', all.length)} value={q} onChange={e => { setQ(e.target.value); setShown(50) }} /></div>
+      <input {...NO_AUTOFILL} name="app-exercise-search" className="input" placeholder={t('Search {0} exercises…', all.length)} value={q} onChange={e => { setQ(e.target.value); setShown(50) }} /></div>
     {profile && <div className="small dim row" style={{ margin: '8px 0 2px', gap: 6, alignItems: 'center' }}>
       <Icon name="dumbbell" style={{ fontSize: 13 }} />
       {showAll ? t('Showing all equipment') : t('Showing what you have in "{0}"', profile.name)}
@@ -959,7 +960,7 @@ function ExConfig({ ex, existing, onSave, onDelete, close, routine, initial }) {
       </div>}
     </>}
     <ProgressionFields ex={ex} mode={mode} c={c} setC={setC} routine={routine} unit={st.unit} />
-    <textarea className="input" rows={3} maxLength={500} style={{ marginBottom: 18 }}
+    <textarea {...NO_AUTOFILL} name="app-routine-note" className="input" rows={3} maxLength={500} style={{ marginBottom: 18 }}
       placeholder={t('Note (optional) — loading cues, "bar only then +1 plate/side each set", anything worth remembering here')}
       value={c.note || ''} onChange={e => setC(x => ({ ...x, note: e.target.value }))} />
     <Button variant="primary" onClick={save}>{existing ? t('Save') : t('Add to routine')}</Button>
@@ -1110,7 +1111,8 @@ function PlanImport({ bundle, close }) {
     </div>
     <div style={{ marginBottom: 14 }}>
       <div className="dim small" style={{ marginBottom: 4 }}>{t('Nombre del grupo de rutinas')}</div>
-      <input
+      <input {...NO_AUTOFILL}
+        name="app-routine-group"
         className="input"
         type="text"
         value={groupName}
@@ -1274,7 +1276,7 @@ function WorkoutDetail({ w, close }) {
       </div>
     })}
     <div className="small muted" style={{ margin: '4px 0 6px' }}>{t('Session note')}</div>
-    <textarea className="input" rows={2} maxLength={NOTE_MAX} value={note}
+    <textarea {...NO_AUTOFILL} name="app-session-note-history" className="input" rows={2} maxLength={NOTE_MAX} value={note}
       placeholder={t('How the session went as a whole.')}
       onChange={e => setNote(e.target.value)} onBlur={saveNote} />
     <div style={{ height: 14 }} />
@@ -1459,7 +1461,7 @@ function ExerciseNote({ entryIdx, close }) {
   return <>
     <h3 className="capitalize">{exerciseNameFor(ex)}</h3>
     <div className="small muted" style={{ marginBottom: 6 }}>{t('This session')}</div>
-    <textarea className="input" rows={3} maxLength={NOTE_MAX} value={note}
+    <textarea {...NO_AUTOFILL} name="app-exercise-note" className="input" rows={3} maxLength={NOTE_MAX} value={note}
       placeholder={t('How it went, what to change — kept with today’s workout.')}
       onChange={e => setNote(e.target.value)} />
     <div style={{ height: 10 }} />
@@ -1471,7 +1473,7 @@ function ExerciseNote({ entryIdx, close }) {
     </div>
     <div style={{ height: 18 }} />
     <div className="small muted" style={{ marginBottom: 6 }}>{t('Always for this exercise')}</div>
-    <textarea className="input" rows={2} maxLength={NOTE_MAX} value={standing}
+    <textarea {...NO_AUTOFILL} name="app-exercise-standing-note" className="input" rows={2} maxLength={NOTE_MAX} value={standing}
       placeholder={t('Seat height, pin position, a form cue — shown every session.')}
       onChange={e => setStanding(e.target.value)} />
     <div style={{ height: 18 }} />
@@ -1501,7 +1503,7 @@ function SessionNote({ close }) {
 
   return <>
     <h3>{t('Session note')}</h3>
-    <textarea className="input" rows={4} maxLength={NOTE_MAX} value={note}
+    <textarea {...NO_AUTOFILL} name="app-session-note" className="input" rows={4} maxLength={NOTE_MAX} value={note}
       placeholder={t('How the session went as a whole.')}
       onChange={e => setNote(e.target.value)} />
     <div style={{ height: 18 }} />
@@ -1636,15 +1638,15 @@ export function supportSheet() {
       <div className="muted small" style={{ marginBottom: 14 }}>{t('Envianos detalles del problema o sugerencia. Te responderemos a la brevedad.')}</div>
       <div style={{ marginBottom: 10 }}>
         <div className="dim small" style={{ marginBottom: 4 }}>{t('Asunto')}</div>
-        <input className="input" placeholder={t('Ej: Error al registrar serie')} value={asunto} onChange={e => setAsunto(e.target.value)} maxLength={150} />
+        <input {...NO_AUTOFILL} name="app-support-subject" className="input" placeholder={t('Ej: Error al registrar serie')} value={asunto} onChange={e => setAsunto(e.target.value)} maxLength={150} />
       </div>
       <div style={{ marginBottom: 10 }}>
         <div className="dim small" style={{ marginBottom: 4 }}>{t('Mensaje')}</div>
-        <textarea className="input" style={{ minHeight: 100, resize: 'vertical', fontFamily: 'inherit' }} placeholder={t('Describí el problema...')} value={mensaje} onChange={e => setMensaje(e.target.value)} maxLength={2000} />
+        <textarea {...NO_AUTOFILL} name="app-support-message" className="input" style={{ minHeight: 100, resize: 'vertical', fontFamily: 'inherit' }} placeholder={t('Describí el problema...')} value={mensaje} onChange={e => setMensaje(e.target.value)} maxLength={2000} />
       </div>
       <div style={{ marginBottom: 16 }}>
         <div className="dim small" style={{ marginBottom: 4 }}>{t('Email de contacto (opcional)')}</div>
-        <input className="input" type="email" placeholder={t('tu@email.com')} value={emailContacto} onChange={e => setEmailContacto(e.target.value)} maxLength={100} />
+        <input {...NO_AUTOFILL} name="app-support-contact" className="input" type="email" placeholder={t('tu@email.com')} value={emailContacto} onChange={e => setEmailContacto(e.target.value)} maxLength={100} />
       </div>
       <Button variant="primary" disabled={loading} onClick={send}>
         {loading ? t('Enviando...') : t('Enviar reporte')}

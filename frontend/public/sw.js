@@ -2,7 +2,7 @@
    Media (img/gif) cache-first; everything else network-first with offline fallback. */
 // Bump this whenever shell/icon assets change so installed PWAs do not keep
 // serving the previous icon from the old runtime cache.
-const CACHE = 'opengym-rt-v3'
+const CACHE = 'opengym-rt-v4'
 
 self.addEventListener('install', () => self.skipWaiting())
 self.addEventListener('activate', e => {

@@ -11,6 +11,7 @@ import { glyphPicker, exercisePicker, exConfigSheet, confirmSheet } from '../she
 import Icon from '../components/Icon.jsx'
 import { glyphOf } from '../lib/glyphs.js'
 import { Button, SelectRow } from '../components/ui.jsx'
+import { NO_AUTOFILL } from '../lib/input-safety.js'
 import { POLICIES_FOR, POLICY_NAME, POLICY_DESC } from '../lib/progression.js'
 import BodyMap from '../components/BodyMap.jsx'
 import { loadOfRoutine, rankOf, MUSCLE_NAME } from '../lib/muscles.js'
@@ -93,7 +94,7 @@ export default function RoutineEdit() {
     <div className="hdr">
       <button className="iconbtn" onClick={() => nav('/plan')} aria-label={t('Plan')}><Icon name="chevronLeft" /></button>
       <div style={{ flex: 1, margin: '0 12px' }}>
-        <input
+        <input {...NO_AUTOFILL} name="app-routine-name"
           className="input"
           defaultValue={r.name || t('Routine')}
           style={{ fontWeight: 600, fontSize: 20, letterSpacing: '-.021em' }}

@@ -1,6 +1,19 @@
 let autofillFieldSeq = 0
 const autofillFieldNames = new WeakMap()
 
+// These attributes must be present in the first React render. Applying them later
+// with a MutationObserver is too late for mobile autofill providers.
+export const NO_AUTOFILL = {
+  autoComplete: 'off',
+  autoCorrect: 'off',
+  autoCapitalize: 'none',
+  spellCheck: false,
+  'data-lpignore': 'true',
+  'data-1p-ignore': 'true',
+  'data-bwignore': 'true',
+  'data-form-type': 'other',
+}
+
 export function disableKeyboardAutofill(root) {
   root.querySelectorAll('input:not([type="file"]), textarea').forEach(field => {
     // Keep the semantic input type intact. Changing text/number fields to search
@@ -27,4 +40,3 @@ export function disableKeyboardAutofill(root) {
     field.setAttribute('name', autofillFieldNames.get(field))
   })
 }
-

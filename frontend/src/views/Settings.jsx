@@ -51,6 +51,8 @@ function ClaimDeviceSheet({ close }) {
     </div>
     {!pending ? <>
       <input
+        {...NO_AUTOFILL}
+        name="app-device-code"
         className="input"
         placeholder="XXXX-XXXX"
         maxLength={9}
@@ -78,6 +80,7 @@ import { loadStarterPlan, confirmSheet, importFromApp, equipmentProfileSheet } f
 import { routinesFromPresets } from '../lib/starter.js'
 import Icon from '../components/Icon.jsx'
 import { Section, Row, SelectRow, Switch, Segmented, Button, TextField } from '../components/ui.jsx'
+import { NO_AUTOFILL } from '../lib/input-safety.js'
 import { LANGS, INSTR_LANGS, getLang, setLang, t } from '../lib/i18n.js'
 
 export default function Settings() {
@@ -208,6 +211,7 @@ export default function Settings() {
       />
       <Row icon="person" iconTint="var(--orange)" title={t('Edad')}>
         <input
+          {...NO_AUTOFILL} name="app-age"
           type="text" inputMode="numeric" className="timef" placeholder="—"
           defaultValue={S.edad ?? ''}
           key={S.edad ?? 'edad'}
@@ -221,6 +225,7 @@ export default function Settings() {
       </Row>
       <Row icon="figureStrength" iconTint="var(--purple)" title={t('Altura')}>
         <input
+          {...NO_AUTOFILL} name="app-height"
           type="text" inputMode="numeric" className="timef" placeholder="—"
           defaultValue={S.altura ?? ''}
           key={S.altura ?? 'altura'}
@@ -234,6 +239,7 @@ export default function Settings() {
       </Row>
       <Row icon="scale" iconTint="var(--green)" title={t('Grasa corporal')} subtitle={t('Opcional — mejora la precisión de tu meta calórica')}>
         <input
+          {...NO_AUTOFILL} name="app-body-fat"
           type="number" inputMode="decimal" className="timef" placeholder="—"
           min="3" max="60" step="0.1"
           defaultValue={S.grasaCorporal ?? ''}
@@ -305,6 +311,7 @@ export default function Settings() {
       {S.progressionType !== 'dup' && (
         <Row title={t('Incremento en kg')}>
           <input
+            {...NO_AUTOFILL} name="app-increment-kg"
             type="number"
             step="0.5"
             min="0.5"
@@ -325,6 +332,7 @@ export default function Settings() {
         <Row title={t('Rango de reps')}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             <input
+              {...NO_AUTOFILL} name="app-rep-range-min"
               type="number"
               min="1"
               style={{ width: 50, padding: '6px 8px', background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text)', textAlign: 'center' }}
@@ -339,6 +347,7 @@ export default function Settings() {
             />
             <span>-</span>
             <input
+              {...NO_AUTOFILL} name="app-rep-range-max"
               type="number"
               min="1"
               style={{ width: 50, padding: '6px 8px', background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text)', textAlign: 'center' }}
@@ -587,7 +596,7 @@ function PushCard({ S, update, toast }) {
       )}
       {on && (S.reminder?.on || S.reminder?.feeOn) && (
         <Row icon="clock" iconTint="var(--purple)" title={t('Reminder time')}>
-          <input type="time" className="timef" value={S.reminder?.time || DEF.reminder.time}
+          <input {...NO_AUTOFILL} name="app-reminder-time" type="time" className="timef" value={S.reminder?.time || DEF.reminder.time}
             onChange={e => update(s => { s.reminder = { ...(s.reminder || DEF.reminder), time: e.target.value, tz: localTZ() } })} />
         </Row>
       )}
@@ -599,7 +608,7 @@ function PushCard({ S, update, toast }) {
           value={S.reminder?.feeInterval || 'monthly'} onChange={v => update(s => { s.reminder = { ...(s.reminder || DEF.reminder), feeInterval: v } })}
           options={[['monthly', 'Monthly'], ['quarterly', 'Quarterly'], ['bimonthly', 'Every two months'], ['annual', 'Annual']].map(([value, label]) => ({ value, label: t(label) }))} />
         <Row icon="calendar" iconTint="var(--teal)" title={t('Next payment date')}>
-          <input type="date" className="timef" value={S.reminder?.feeDate || ''}
+          <input {...NO_AUTOFILL} name="app-payment-date" type="date" className="timef" value={S.reminder?.feeDate || ''}
             onChange={e => update(s => { s.reminder = { ...(s.reminder || DEF.reminder), feeDate: e.target.value } })} />
         </Row>
       </>}
@@ -667,7 +676,7 @@ function RegisterInline({ close, setUser, pushState, pullState, toast }) {
     <TextField ref={nameRef} placeholder={t('Your name')} maxLength={40} />
     {inviteOnly && <>
       <div style={{ height: 10 }} />
-      <input className="input" placeholder={t('Invite code')} maxLength={40} value={code}
+      <input {...NO_AUTOFILL} name="app-settings-invite-code" className="input" placeholder={t('Invite code')} maxLength={40} value={code}
         onChange={e => setCode(e.target.value.toUpperCase())} style={{ letterSpacing: '.14em', fontWeight: 600, textAlign: 'center' }} />
       <div className="dim small" style={{ marginTop: 6 }}>{t('This app is invite-only — enter the code you were given.')}</div>
     </>}

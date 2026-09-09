@@ -13,6 +13,7 @@ describe('input safety', () => {
     expect(text.type).toBe('text')
     expect(text.getAttribute('enterkeyhint')).toBe('next')
     for (const field of root.querySelectorAll('input, textarea')) {
+      expect(field.getAttribute('name')).toMatch(/^app_field_/)
       expect(field.getAttribute('autocomplete')).toBe('off')
       expect(field.getAttribute('autocorrect')).toBe('off')
       expect(field.getAttribute('data-1p-ignore')).toBe('true')
@@ -21,4 +22,3 @@ describe('input safety', () => {
     }
   })
 })
-

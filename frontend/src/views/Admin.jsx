@@ -13,6 +13,7 @@ import { glyphOf } from '../lib/glyphs.js'
 import { t, exerciseNameFor } from '../lib/i18n.js'
 import Icon from '../components/Icon.jsx'
 import { Button, TextField } from '../components/ui.jsx'
+import { NO_AUTOFILL } from '../lib/input-safety.js'
 
 // Admin-only operator dashboard (owner passkey + admin flag; guarded again server-side).
 
@@ -269,7 +270,7 @@ function PushNotificationCard() {
           <span>{t('Título')}</span>
           <span>{titulo.length}/50</span>
         </div>
-        <input
+        <input {...NO_AUTOFILL} name="app-admin-notification-title"
           className="input"
           type="text"
           maxLength={50}
@@ -284,7 +285,7 @@ function PushNotificationCard() {
           <span>{t('Texto / cuerpo')}</span>
           <span>{texto.length}/120</span>
         </div>
-        <textarea
+        <textarea {...NO_AUTOFILL} name="app-admin-notification-body"
           className="input"
           rows={3}
           maxLength={120}
@@ -297,7 +298,7 @@ function PushNotificationCard() {
 
       <div style={{ marginBottom: 14 }}>
         <div className="small dim" style={{ marginBottom: 4 }}>{t('Redirect (opcional)')}</div>
-        <input
+        <input {...NO_AUTOFILL} name="app-admin-redirect"
           className="input"
           type="url"
           placeholder="https://instagram.com/..."
