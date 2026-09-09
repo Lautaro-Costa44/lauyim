@@ -673,6 +673,53 @@ function combinarAlimentos(...listas) {
   }).slice(0, 15);
 }
 
+function obtenerPlantillas(db, userId) {
+  const rows = db.prepare(`
+    SELECT p.id AS plantilla_id, p.user_id, p.nombre AS plantilla_nombre, p.created_at,
+      i.id AS ingrediente_id, i.nombre_alimento, i.cantidad_gramos, i.calorias,
+      i.proteina, i.carbohidratos, i.grasas
+    FROM plantillas_comida p
+    LEFT JOIN plantillas_ingredientes i ON i.plantilla_id = p.id
+    WHERE p.user_id IS NULL OR p.user_id = ?
+    ORDER BY CASE WHEN p.user_id = ? THEN 0 ELSE 1 END, p.id
+  `).all(userId, userId);
+  const plantillas = new Map();
+  for (const row of rows) {
+    let plantilla = plantillas.get(row.plantilla_id);
+    if (!plantilla) {
+      plantilla = {
+        id: row.plantilla_id,
+        user_id: row.user_id,
+        nombre: row.plantilla_nombre,
+        created_at: row.created_at,
+        ingredientes: []
+      };
+      plantillas.set(row.plantilla_id, plantilla);
+    }
+    if (row.ingrediente_id !== null) {
+      plantilla.ingredientes.push({
+        id: row.ingrediente_id,
+        nombre_alimento: row.nombre_alimento,
+        cantidad_gramos: row.cantidad_gramos,
+        calorias: row.calorias,
+        proteina: row.proteina,
+        carbohidratos: row.carbohidratos,
+        grasas: row.grasas
+      });
+    }
+  }
+  return [...plantillas.values()];
+}
+
+function validarIngredientes(ingredientes) {
+  return Array.isArray(ingredientes) && ingredientes.length > 0 && ingredientes.every(item => {
+    const nombre = String(item?.nombre_alimento || '').trim();
+    return nombre && Number.isFinite(Number(item?.cantidad_gramos)) && Number(item.cantidad_gramos) > 0 &&
+      [item?.calorias, item?.proteina, item?.carbohidratos, item?.grasas]
+        .every(value => Number.isFinite(Number(value)) && Number(value) >= 0);
+  });
+}
+
 if (AUDIT_ON) {
   compactAudit();
   setInterval(compactAudit, 3600000).unref();
@@ -687,6 +734,20 @@ const routes = {
     if (!query) return json(res, 200, []);
 
     const db = getDatabase();
+    const user = readSession(req);
+    const plantillas = obtenerPlantillas(db, user?.id || null)
+      .filter(plantilla => normalizarTexto(plantilla.nombre).includes(query))
+      .map(plantilla => ({
+        nombre: plantilla.nombre,
+        marca: '',
+        caloriasPor100g: null,
+        proteinaPor100g: null,
+        carbosPor100g: null,
+        grasasPor100g: null,
+        tipo: 'plantilla_comida',
+        plantilla_id: plantilla.id,
+        ingredientes: plantilla.ingredientes
+      }));
     const baseResults = buscarAlimentosBase(query);
     const usdaResults = await buscarAlimentosUSDA(query, db);
     const cacheFor = scope => `v2:${scope}:${query}`;
@@ -696,7 +757,7 @@ const routes = {
       try { return JSON.parse(cached.resultado_json); } catch { return null }
     };
     const cachedArgentina = freshCached(cacheFor('ar'));
-    if (Array.isArray(cachedArgentina) && cachedArgentina.length) return json(res, 200, combinarAlimentos(baseResults, usdaResults, cachedArgentina));
+    if (Array.isArray(cachedArgentina) && cachedArgentina.length) return json(res, 200, combinarAlimentos(plantillas, baseResults, usdaResults, cachedArgentina));
 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 5000);
@@ -717,10 +778,10 @@ const routes = {
       db.prepare(`INSERT INTO cache_alimentos (query, resultado_json, fecha_cache)
         VALUES (?, ?, ?) ON CONFLICT(query) DO UPDATE SET resultado_json = excluded.resultado_json, fecha_cache = excluded.fecha_cache`)
         .run(cacheFor('ar'), JSON.stringify(alimentos), new Date().toISOString());
-      if (data.count !== 0 && hits.length) return json(res, 200, combinarAlimentos(baseResults, usdaResults, alimentos));
+      if (data.count !== 0 && hits.length) return json(res, 200, combinarAlimentos(plantillas, baseResults, usdaResults, alimentos));
 
       const cachedFallback = freshCached(cacheFor('world-ar'));
-      if (Array.isArray(cachedFallback)) return json(res, 200, combinarAlimentos(baseResults, usdaResults, cachedFallback));
+      if (Array.isArray(cachedFallback)) return json(res, 200, combinarAlimentos(plantillas, baseResults, usdaResults, cachedFallback));
       const fallbackUrl = new URL('https://search.openfoodfacts.org/search');
       fallbackUrl.searchParams.set('q', query);
       fallbackUrl.searchParams.set('langs', 'es');
@@ -737,14 +798,91 @@ const routes = {
       db.prepare(`INSERT INTO cache_alimentos (query, resultado_json, fecha_cache)
         VALUES (?, ?, ?) ON CONFLICT(query) DO UPDATE SET resultado_json = excluded.resultado_json, fecha_cache = excluded.fecha_cache`)
         .run(cacheFor('world-ar'), JSON.stringify(fallbackAlimentos), new Date().toISOString());
-      return json(res, 200, combinarAlimentos(baseResults, usdaResults, fallbackAlimentos));
+      return json(res, 200, combinarAlimentos(plantillas, baseResults, usdaResults, fallbackAlimentos));
     } catch (error) {
       console.error('GET /api/alimentos/buscar error:', error);
-      if (baseResults.length || usdaResults.length) return json(res, 200, combinarAlimentos(baseResults, usdaResults));
+      if (baseResults.length || usdaResults.length || plantillas.length) return json(res, 200, combinarAlimentos(plantillas, baseResults, usdaResults));
       return json(res, 502, { alimentos: [], error: 'No se pudo consultar Open Food Facts' });
     } finally {
       clearTimeout(timeout);
     }
+  },
+
+  'POST /api/plantillas': async (req, res) => {
+    const user = readSession(req);
+    if (!user) return json(res, 401, { error: 'not signed in' });
+    const body = await readBody(req);
+    const nombre = String(body.nombre || '').trim();
+    if (!nombre || !validarIngredientes(body.ingredientes)) return json(res, 400, { error: 'nombre and ingredientes required' });
+
+    const db = getDatabase();
+    db.exec('BEGIN');
+    try {
+      const plantilla = db.prepare('INSERT INTO plantillas_comida (user_id, nombre, created_at) VALUES (?, ?, ?)')
+        .run(user.id, nombre, Date.now());
+      const plantillaId = Number(plantilla.lastInsertRowid);
+      const stmt = db.prepare(`INSERT INTO plantillas_ingredientes
+        (plantilla_id, nombre_alimento, cantidad_gramos, calorias, proteina, carbohidratos, grasas)
+        VALUES (?, ?, ?, ?, ?, ?, ?)`);
+      for (const item of body.ingredientes) {
+        stmt.run(plantillaId, String(item.nombre_alimento).trim(), item.cantidad_gramos, item.calorias,
+          item.proteina, item.carbohidratos, item.grasas);
+      }
+      db.exec('COMMIT');
+      return json(res, 201, { id: plantillaId });
+    } catch (error) {
+      db.exec('ROLLBACK');
+      throw error;
+    }
+  },
+
+  'GET /api/plantillas': async (req, res) => {
+    const user = readSession(req);
+    if (!user) return json(res, 401, { error: 'not signed in' });
+    return json(res, 200, obtenerPlantillas(getDatabase(), user.id));
+  },
+
+  'PUT /api/plantillas/:id': async (req, res) => {
+    const user = readSession(req);
+    if (!user) return json(res, 401, { error: 'not signed in' });
+    const id = new URL(req.url, 'http://x').pathname.split('/').pop();
+    const db = getDatabase();
+    const plantilla = db.prepare('SELECT id, user_id FROM plantillas_comida WHERE id = ?').get(id);
+    if (!plantilla) return json(res, 404, { error: 'template not found' });
+    if (plantilla.user_id !== user.id) return json(res, 403, { error: 'forbidden' });
+    const body = await readBody(req);
+    const nombre = String(body.nombre || '').trim();
+    if (!nombre || !validarIngredientes(body.ingredientes)) return json(res, 400, { error: 'nombre and ingredientes required' });
+
+    db.exec('BEGIN');
+    try {
+      db.prepare('UPDATE plantillas_comida SET nombre = ? WHERE id = ?').run(nombre, id);
+      db.prepare('DELETE FROM plantillas_ingredientes WHERE plantilla_id = ?').run(id);
+      const stmt = db.prepare(`INSERT INTO plantillas_ingredientes
+        (plantilla_id, nombre_alimento, cantidad_gramos, calorias, proteina, carbohidratos, grasas)
+        VALUES (?, ?, ?, ?, ?, ?, ?)`);
+      for (const item of body.ingredientes) {
+        stmt.run(id, String(item.nombre_alimento).trim(), item.cantidad_gramos, item.calorias,
+          item.proteina, item.carbohidratos, item.grasas);
+      }
+      db.exec('COMMIT');
+      return json(res, 200, { ok: true });
+    } catch (error) {
+      db.exec('ROLLBACK');
+      throw error;
+    }
+  },
+
+  'DELETE /api/plantillas/:id': async (req, res) => {
+    const user = readSession(req);
+    if (!user) return json(res, 401, { error: 'not signed in' });
+    const id = new URL(req.url, 'http://x').pathname.split('/').pop();
+    const db = getDatabase();
+    const plantilla = db.prepare('SELECT id, user_id FROM plantillas_comida WHERE id = ?').get(id);
+    if (!plantilla) return json(res, 404, { error: 'template not found' });
+    if (plantilla.user_id !== user.id) return json(res, 403, { error: 'forbidden' });
+    db.prepare('DELETE FROM plantillas_comida WHERE id = ?').run(id);
+    return json(res, 200, { ok: true });
   },
 
   'GET /api/alimentos/codigo/:codigo': async (req, res) => {
@@ -1626,6 +1764,10 @@ http.createServer(async (req, res) => {
     ? 'DELETE /api/comidas/:id'
     : req.method === 'GET' && /^\/api\/alimentos\/codigo\/[^/]+$/.test(url.pathname)
       ? 'GET /api/alimentos/codigo/:codigo'
+    : req.method === 'PUT' && /^\/api\/plantillas\/[^/]+$/.test(url.pathname)
+      ? 'PUT /api/plantillas/:id'
+    : req.method === 'DELETE' && /^\/api\/plantillas\/[^/]+$/.test(url.pathname)
+      ? 'DELETE /api/plantillas/:id'
     : key;
 
   // Verificar expiración de licencia por fecha (si está configurada y vencida)

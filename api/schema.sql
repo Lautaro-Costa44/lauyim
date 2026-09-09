@@ -370,3 +370,27 @@ CREATE TABLE IF NOT EXISTS comidas_registradas (
 CREATE INDEX IF NOT EXISTS idx_comidas_registradas_user_id ON comidas_registradas(user_id);
 CREATE INDEX IF NOT EXISTS idx_comidas_registradas_fecha ON comidas_registradas(fecha);
 CREATE INDEX IF NOT EXISTS idx_comidas_registradas_user_fecha ON comidas_registradas(user_id, fecha);
+
+-- Plantillas de comidas compuestas reutilizables
+CREATE TABLE IF NOT EXISTS plantillas_comida (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id TEXT,
+  nombre TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS plantillas_ingredientes (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  plantilla_id INTEGER NOT NULL,
+  nombre_alimento TEXT NOT NULL,
+  cantidad_gramos REAL NOT NULL,
+  calorias REAL NOT NULL,
+  proteina REAL NOT NULL,
+  carbohidratos REAL NOT NULL,
+  grasas REAL NOT NULL,
+  FOREIGN KEY (plantilla_id) REFERENCES plantillas_comida(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_plantillas_comida_user_id ON plantillas_comida(user_id);
+CREATE INDEX IF NOT EXISTS idx_plantillas_ingredientes_plantilla_id ON plantillas_ingredientes(plantilla_id);

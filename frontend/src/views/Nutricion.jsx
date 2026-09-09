@@ -4,7 +4,7 @@ import { t } from '../lib/i18n.js'
 import Icon from '../components/Icon.jsx'
 import LineChart from '../components/LineChart.jsx'
 import { Button, Row, Section, Segmented, SelectRow } from '../components/ui.jsx'
-import { bwSheet, goalSheet } from '../sheets.jsx'
+import { bwSheet, goalSheet, confirmSheet } from '../sheets.jsx'
 import { fmtNum } from '../lib/format.js'
 import { calcularMetasNutricionales, calcularMetasMacros, calcularNutrientesPorCantidad, porcionAGramos } from '../lib/nutricion.js'
 import ResumenNutricional from '../components/ResumenNutricional.jsx'
@@ -99,7 +99,7 @@ function MealForm({ alimento, franja, close, onBack, onSaved, onAddIngrediente }
   </>
 }
 
-function ManualFoodForm({ franja, close, onSaved, onAddIngrediente }) {
+function ManualFoodForm({ franja, close, onBack, onSaved, onAddIngrediente }) {
   const [nombre, setNombre] = useState('')
   const [gramos, setGramos] = useState('100')
   const [calorias, setCalorias] = useState('')
@@ -134,7 +134,11 @@ function ManualFoodForm({ franja, close, onSaved, onAddIngrediente }) {
     } catch { setError('No se pudo guardar la comida. Intentá nuevamente.'); setSaving(false) }
   }
   return <form className="manual-food" onSubmit={save}>
-    <h3>Ingresar alimento</h3>
+    <div className="row between">
+      {onAddIngrediente && <button type="button" className="iconbtn" onClick={onBack} aria-label="Volver"><Icon name="chevronLeft" /></button>}
+      <h3 style={{ margin: 0 }}>Ingresar alimento</h3>
+      {onAddIngrediente && <span />}
+    </div>
     {error && <p className="small" style={{ color: 'var(--acc-2)' }}>{error}</p>}
     <label>Nombre<input className="field" autoFocus autoComplete="off" value={nombre} onChange={event => setNombre(event.target.value)} /></label>
     <div className="manual-food-grid">
@@ -173,7 +177,23 @@ function FoodPicker({ franja, close, onSaved, onAddIngrediente }) {
     }).finally(() => { if (requestId === requestRef.current) setLoading(false) }), 400)
     return () => clearTimeout(timer)
   }, [query, tab])
-  const pick = useCallback(alimento => setSelected(alimento), [])
+  const pick = useCallback(async alimento => {
+    if (alimento?.tipo === 'plantilla_comida') {
+      if (onAddIngrediente) return
+      if (!window.confirm(`Agregar "${alimento.nombre}" a ${franja}?`)) return
+      try {
+        await api('/api/comidas/grupo', { method: 'POST', body: JSON.stringify({
+          grupo_nombre: alimento.nombre, franja, fecha: todayISO(), ingredientes: alimento.ingredientes,
+        }) })
+        onSaved()
+        close()
+      } catch {
+        setError('No se pudo agregar la comida compuesta. Intentá nuevamente.')
+      }
+      return
+    }
+    setSelected(alimento)
+  }, [close, franja, onAddIngrediente, onSaved])
   const scan = useCallback(async codigo => {
     try { setError(''); pick(await api('/api/alimentos/codigo/' + encodeURIComponent(codigo))) }
     catch (e) { setError(e.status === 404 ? 'Producto no encontrado. Podés ingresar sus datos manualmente.' : 'No se pudo consultar el producto. Podés ingresarlo manualmente.') }
@@ -183,42 +203,79 @@ function FoodPicker({ franja, close, onSaved, onAddIngrediente }) {
     setTab('buscar')
     setQuery('')
   }, [onAddIngrediente])
+  const visibleResults = onAddIngrediente ? results.filter(a => a.tipo !== 'plantilla_comida') : results
   if (selected) return <MealForm alimento={selected} franja={franja} close={close} onBack={() => setSelected(null)} onSaved={onSaved} onAddIngrediente={onAddIngrediente} />
-  if (tab === 'manual') return <ManualFoodForm franja={franja} close={close} onSaved={onSaved} onAddIngrediente={onAddIngrediente ? addIngrediente : undefined} />
+  if (tab === 'manual') return <ManualFoodForm franja={franja} close={close} onBack={() => setTab('buscar')} onSaved={onSaved} onAddIngrediente={onAddIngrediente ? addIngrediente : undefined} />
   return <>
     <h3>Agregar comida</h3>
     <Segmented value={tab} onChange={v => { setError(''); setTab(v) }} options={[{ value: 'buscar', label: 'Buscar' }, { value: 'scan', label: 'Escanear' }, { value: 'manual', label: 'Manual' }]} />
     {error && <p className="small" style={{ color: 'var(--acc-2)' }}>{error}</p>}
-    {tab === 'buscar' ? <><input className="field food-search" type="search" name="food-search" inputMode="search" autoComplete="off" autoCorrect="off" spellCheck={false} placeholder="Buscar alimento…" value={query} onChange={e => setQuery(e.target.value)} />
-      <div className="food-results">{loading ? <div className="meal-empty">Buscando…</div> : results.length ? results.map((a, i) => <Row key={`${a.nombre}-${a.marca || ''}-${i}`} title={a.nombre} subtitle={a.marca || 'Alimento genérico'} onClick={() => pick(a)} accessory="chevron" />) : query.trim().length >= 2 ? <div className="meal-empty">Sin resultados. Podés ingresarlo manualmente.</div> : <div className="meal-empty">Escribí al menos 2 letras.</div>}</div></> : <ScannerCodigoBarras onScan={scan} onCancel={() => setTab('buscar')} />}
+    {tab === 'buscar' ? <><input className="field food-search" type="search" name="food-search-query" inputMode="search" autoComplete="new-password" autoCorrect="off" autoCapitalize="none" spellCheck={false} data-lpignore="true" data-1p-ignore="true" placeholder="Buscar alimento…" value={query} onChange={e => setQuery(e.target.value)} />
+      <div className="food-results">{loading ? <div className="meal-empty">Buscando…</div> : visibleResults.length ? visibleResults.map((a, i) => <Row key={`${a.nombre}-${a.marca || ''}-${i}`} title={a.nombre} subtitle={a.tipo === 'plantilla_comida' ? 'Comida compuesta guardada' : (a.marca || 'Alimento genérico')} onClick={() => pick(a)} accessory="chevron" />) : query.trim().length >= 2 ? <div className="meal-empty">{results.length > visibleResults.length ? 'Hay comidas compuestas guardadas con ese nombre, pero no se pueden usar como ingrediente.' : 'Sin resultados. Podés ingresarlo manualmente.'}</div> : <div className="meal-empty">Escribí al menos 2 letras.</div>}</div></> : <ScannerCodigoBarras onScan={scan} onCancel={() => setTab('buscar')} />}
   </>
 }
 
-function ComidaCompuestaBuilder({ close, onSaved }) {
-  const [nombreComida, setNombreComida] = useState('')
+function ComidaCompuestaBuilder({ close, onSaved, plantillaId, initialNombre = '', initialIngredientes = [] }) {
+  const esEdicion = plantillaId != null
+  const [nombreComida, setNombreComida] = useState(initialNombre)
   const [franjaSeleccionada, setFranjaSeleccionada] = useState(FRANJAS[0].value)
-  const [ingredientes, setIngredientes] = useState([])
+  const [ingredientes, setIngredientes] = useState(initialIngredientes)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  const historyEntryRef = useRef(false)
+  const closingRef = useRef(false)
+  const requestCloseRef = useRef(null)
+  const initialStateRef = useRef(JSON.stringify({ nombre: initialNombre, ingredientes: initialIngredientes }))
   const totales = useMemo(() => ingredientes.reduce((total, ingrediente) => ({
     calorias: total.calorias + Number(ingrediente.calorias || 0),
     proteina: total.proteina + Number(ingrediente.proteina || 0),
     carbohidratos: total.carbohidratos + Number(ingrediente.carbohidratos || 0),
     grasas: total.grasas + Number(ingrediente.grasas || 0),
   }), { calorias: 0, proteina: 0, carbohidratos: 0, grasas: 0 }), [ingredientes])
-  const requestClose = () => {
-    if (!ingredientes.length || window.confirm('¿Descartar la comida compuesta sin guardar?')) close()
-  }
+  const cleanupHistory = useCallback((fromPopstate = false) => {
+    if (!historyEntryRef.current) return
+    historyEntryRef.current = false
+    if (!fromPopstate) window.history.back()
+  }, [])
+  const finishClose = useCallback((fromPopstate = false) => {
+    if (closingRef.current) return
+    closingRef.current = true
+    cleanupHistory(fromPopstate)
+    close()
+  }, [cleanupHistory, close])
+  const hasUnsavedChanges = useMemo(() => JSON.stringify({ nombre: nombreComida, ingredientes }) !== initialStateRef.current, [nombreComida, ingredientes])
+  const requestClose = useCallback((fromPopstate = false) => {
+    if (closingRef.current) return
+    if (!hasUnsavedChanges || window.confirm('¿Descartar la comida compuesta sin guardar?')) finishClose(fromPopstate)
+    else if (fromPopstate) window.history.pushState({ ...(window.history.state || {}), comidaCompuestaBuilder: true }, '', window.location.href)
+  }, [hasUnsavedChanges, finishClose])
+  requestCloseRef.current = requestClose
+  useEffect(() => {
+    historyEntryRef.current = true
+    window.history.pushState({ ...(window.history.state || {}), comidaCompuestaBuilder: true }, '', window.location.href)
+    const onPopState = () => requestCloseRef.current(true)
+    window.addEventListener('popstate', onPopState)
+    return () => {
+      window.removeEventListener('popstate', onPopState)
+      if (!closingRef.current) cleanupHistory()
+    }
+  }, [cleanupHistory])
   const save = async () => {
     if (!nombreComida.trim() || !ingredientes.length) return
     setSaving(true)
     setError('')
     try {
-      await api('/api/comidas/grupo', { method: 'POST', body: JSON.stringify({
-        grupo_nombre: nombreComida.trim(), franja: franjaSeleccionada, fecha: todayISO(), ingredientes,
-      }) })
+      if (esEdicion) {
+        await api('/api/plantillas/' + encodeURIComponent(plantillaId), { method: 'PUT', body: JSON.stringify({
+          nombre: nombreComida.trim(), ingredientes,
+        }) })
+      } else {
+        await api('/api/comidas/grupo', { method: 'POST', body: JSON.stringify({
+          grupo_nombre: nombreComida.trim(), franja: franjaSeleccionada, fecha: todayISO(), ingredientes,
+        }) })
+      }
       onSaved()
-      close()
+      finishClose()
     } catch {
       setError('No se pudo guardar la comida compuesta. Intentá nuevamente.')
       setSaving(false)
@@ -226,11 +283,11 @@ function ComidaCompuestaBuilder({ close, onSaved }) {
   }
   return <>
     <div className="row between">
-      <h3 style={{ margin: 0 }}>Crear alimento compuesto</h3>
-      <button type="button" className="iconbtn" onClick={requestClose} aria-label="Cerrar"><Icon name="xmark" /></button>
+      <h3 style={{ margin: 0 }}>{esEdicion ? 'Editar alimento compuesto' : 'Crear alimento compuesto'}</h3>
+      <button type="button" className="iconbtn" onClick={() => requestClose()} aria-label="Cerrar"><Icon name="xmark" /></button>
     </div>
     <label>Nombre de la comida<input className="field" autoFocus value={nombreComida} onChange={event => setNombreComida(event.target.value)} /></label>
-    <SelectRow title="Franja" value={franjaSeleccionada} options={FRANJAS} onChange={setFranjaSeleccionada} sheetTitle="Elegir franja" />
+    {!esEdicion && <SelectRow title="Franja" value={franjaSeleccionada} options={FRANJAS} onChange={setFranjaSeleccionada} sheetTitle="Elegir franja" />}
     <div className="small dim" style={{ margin: '14px 0 8px' }}>Agregar ingredientes</div>
     <FoodPicker franja={franjaSeleccionada} close={() => {}} onAddIngrediente={ingrediente => setIngredientes(prev => [...prev, ingrediente])} />
     {ingredientes.length > 0 && <div style={{ marginTop: 14 }}>
@@ -242,8 +299,17 @@ function ComidaCompuestaBuilder({ close, onSaved }) {
       <div className="nutri-live row between" style={{ marginTop: 10 }}><span>Total</span><span>{Math.round(totales.calorias)} kcal · {totales.proteina.toFixed(1)} g prot. · {totales.carbohidratos.toFixed(1)} g carb. · {totales.grasas.toFixed(1)} g grasas</span></div>
     </div>}
     {error && <p className="small" style={{ color: 'var(--acc-2)' }}>{error}</p>}
-    <div className="row" style={{ gap: 8, marginTop: 16 }}><Button onClick={requestClose}>Cancelar</Button><Button variant="primary" disabled={saving || !nombreComida.trim() || !ingredientes.length} onClick={save}>{saving ? 'Guardando…' : 'Guardar'}</Button></div>
+    <div className="row" style={{ gap: 8, marginTop: 16 }}><Button onClick={() => requestClose()}>Cancelar</Button><Button variant="primary" disabled={saving || !nombreComida.trim() || !ingredientes.length} onClick={save}>{saving ? 'Guardando…' : esEdicion ? 'Guardar cambios' : 'Guardar'}</Button></div>
   </>
+}
+
+function totalesDeIngredientes(ingredientes) {
+  return ingredientes.reduce((total, ingrediente) => ({
+    calorias: total.calorias + Number(ingrediente.calorias || 0),
+    proteina: total.proteina + Number(ingrediente.proteina || 0),
+    carbohidratos: total.carbohidratos + Number(ingrediente.carbohidratos || 0),
+    grasas: total.grasas + Number(ingrediente.grasas || 0),
+  }), { calorias: 0, proteina: 0, carbohidratos: 0, grasas: 0 })
 }
 
 function agruparComidas(rows) {
@@ -276,18 +342,74 @@ function agruparComidas(rows) {
   return items
 }
 
-function GrupoComidaRow({ grupo, onRemove }) {
+function GrupoComidaRow({ grupo, onRemove, actions }) {
   const [expandido, setExpandido] = useState(false)
-  const { totales } = grupo
+  const totales = grupo.totales || totalesDeIngredientes(grupo.ingredientes || [])
   const subtitle = `${Math.round(totales.calorias)} kcal · ${totales.proteina.toFixed(1)} g prot. · ${totales.carbohidratos.toFixed(1)} g carb. · ${totales.grasas.toFixed(1)} g grasas`
+  const defaultActions = onRemove ? [<button key="remove" type="button" className="iconbtn meal-delete" aria-label="Eliminar comida compuesta" onClick={event => { event.stopPropagation(); onRemove(grupo.grupo_id) }}>×</button>] : []
   return <div className="grupo-comida-row">
     <Row title={grupo.grupo_nombre} subtitle={subtitle} onClick={() => setExpandido(value => !value)}>
-      <button type="button" className="iconbtn meal-delete" aria-label="Eliminar comida compuesta" onClick={event => { event.stopPropagation(); onRemove(grupo.grupo_id) }}>×</button>
+      {actions || defaultActions}
     </Row>
     {expandido && <div className="grupo-comida-ingredientes">
       {grupo.ingredientes.map(ingrediente => <Row key={ingrediente.id} title={ingrediente.nombre_alimento} subtitle={`${ingrediente.cantidad_gramos} g · ${Math.round(ingrediente.calorias)} kcal`} className="grupo-comida-ingrediente" />)}
     </div>}
   </div>
+}
+
+function MisComidasCompuestas({ close }) {
+  const [plantillas, setPlantillas] = useState([])
+  const [loading, setLoading] = useState(true)
+
+  const loadPlantillas = useCallback(() => {
+    setLoading(true)
+    api('/api/plantillas').then(setPlantillas).catch(() => setPlantillas([])).finally(() => setLoading(false))
+  }, [])
+
+  useEffect(() => { loadPlantillas() }, [loadPlantillas])
+
+  const editar = plantilla => useUI.getState().openSheet(builderClose => (
+    <ComidaCompuestaBuilder
+      close={builderClose}
+      onSaved={loadPlantillas}
+      plantillaId={plantilla.id}
+      initialNombre={plantilla.nombre}
+      initialIngredientes={plantilla.ingredientes}
+    />
+  ), { locked: true, fullScreen: true })
+
+  const borrar = plantilla => confirmSheet({
+    title: '¿Eliminar plantilla?',
+    message: `Se eliminará “${plantilla.nombre}” de tus comidas compuestas.`,
+    confirmText: 'Eliminar',
+    danger: true,
+    onConfirm: async () => {
+      try {
+        await api('/api/plantillas/' + encodeURIComponent(plantilla.id), { method: 'DELETE' })
+        loadPlantillas()
+      } catch { /* keep the current list when deletion fails */ }
+    },
+  })
+
+  return <>
+    <div className="row between">
+      <div><h3 style={{ margin: 0 }}>Mis comidas compuestas</h3><div className="dim small">Plantillas reutilizables</div></div>
+      <button type="button" className="iconbtn" onClick={close} aria-label="Cerrar"><Icon name="xmark" /></button>
+    </div>
+    {loading ? <div className="meal-empty">Cargando comidas compuestas…</div> : plantillas.length ? <div className="list">
+      {plantillas.map(plantilla => {
+        const grupo = {
+          grupo_nombre: plantilla.nombre,
+          ingredientes: plantilla.ingredientes,
+          totales: totalesDeIngredientes(plantilla.ingredientes),
+        }
+        return <GrupoComidaRow key={plantilla.id} grupo={grupo} actions={[
+          <button key="edit" type="button" className="iconbtn" aria-label="Editar comida compuesta" onClick={event => { event.stopPropagation(); editar(plantilla) }}><Icon name="pencil" /></button>,
+          <button key="delete" type="button" className="iconbtn meal-delete" aria-label="Eliminar comida compuesta" onClick={event => { event.stopPropagation(); borrar(plantilla) }}><Icon name="xmark" /></button>,
+        ]} />
+      })}
+    </div> : <div className="empty"><div className="ico"><Icon name="clipboard" /></div>No tenés comidas compuestas guardadas.</div>}
+  </>
 }
 
 export default function Nutricion() {
@@ -304,13 +426,14 @@ export default function Nutricion() {
   const totals = useMemo(() => comidas.reduce((a, c) => ({ calorias: a.calorias + Number(c.calorias || 0), proteina: a.proteina + Number(c.proteina || 0), carbos: a.carbos + Number(c.carbohidratos || 0), grasas: a.grasas + Number(c.grasas || 0) }), { calorias: 0, proteina: 0, carbos: 0, grasas: 0 }), [comidas])
   const addMeal = franja => useUI.getState().openSheet(close => <FoodPicker franja={franja} close={close} onSaved={loadComidas} />)
   const addComidaCompuesta = () => useUI.getState().openSheet(close => <ComidaCompuestaBuilder close={close} onSaved={loadComidas} />, { locked: true, fullScreen: true })
+  const openMisComidasCompuestas = () => useUI.getState().openSheet(close => <MisComidasCompuestas close={close} />, { locked: true, fullScreen: true })
   const removeMeal = async id => { await api('/api/comidas/' + id, { method: 'DELETE' }); loadComidas() }
   const removeGrupo = async grupoId => { await api('/api/comidas/grupo/' + encodeURIComponent(grupoId), { method: 'DELETE' }); loadComidas() }
 
   return <>
     <div className="hdr">
       <div><h1>{t('Nutrición')}</h1><div className="sub">{t('Tus metas diarias')}</div></div>
-      <Icon name="apple" />
+      <button className="iconbtn" onClick={openMisComidasCompuestas} aria-label="Mis comidas compuestas" title="Mis comidas compuestas"><Icon name="history" /></button>
     </div>
 
     <div className="card">
