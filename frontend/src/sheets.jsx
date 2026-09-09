@@ -32,13 +32,15 @@ const toast = m => ui().toast(m)
 const snd = () => S().sound
 
 /* ============================ custom confirm dialog ============================ */
-function ConfirmDialog({ title, message, confirmText, cancelText, danger, onConfirm, onCancel, close }) {
-  return <div style={{ textAlign: 'center', padding: '4px 0' }}>
-    {title && <h3 style={{ marginBottom: 8 }}>{title}</h3>}
-    <div className="muted" style={{ marginBottom: 18, lineHeight: 1.5 }}>{message}</div>
-    <button className={'btn ' + (danger ? 'danger' : 'primary')} onClick={() => { close(); onConfirm && onConfirm() }}>{confirmText || t('Confirm')}</button>
-    <div style={{ height: 8 }} />
-    <Button variant="ghost" className="dim" onClick={() => { close(); onCancel && onCancel() }}>{cancelText || t('Cancel')}</Button>
+function ConfirmDialog({ title, message, confirmText, cancelText, danger, variant, onConfirm, onCancel, close }) {
+  return <div className={'confirm-dialog' + (variant ? ` confirm-dialog-${variant}` : '')}>
+    {variant === 'meal' && <div className="confirm-dialog-icon"><Icon name="pencil" /></div>}
+    {title && <h3>{title}</h3>}
+    <div className="muted confirm-dialog-message">{message}</div>
+    <div className="confirm-dialog-actions">
+      <button className={'btn ' + (danger ? 'danger' : 'primary')} onClick={() => { close(); onConfirm && onConfirm() }}>{confirmText || t('Confirm')}</button>
+      <Button variant="ghost" className="dim" onClick={() => { close(); onCancel && onCancel() }}>{cancelText || t('Cancel')}</Button>
+    </div>
   </div>
 }
 // Themed replacement for window.confirm — callback-based (no blocking).

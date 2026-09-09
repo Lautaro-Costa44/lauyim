@@ -257,6 +257,7 @@ function ComidaCompuestaBuilder({ close, onSaved, plantillaId, initialNombre = '
       message: 'Se perderán los cambios que todavía no guardaste.',
       confirmText: 'Descartar y salir',
       danger: true,
+      variant: 'meal',
       onConfirm: () => finishClose(fromPopstate),
     })
   }, [finishClose, hasUnsavedChanges])
