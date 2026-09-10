@@ -33,8 +33,8 @@ function AttendanceHeatmap({ data, onStartChange }) {
   const offset = data.start === 'sunday' ? today.getDay() : (today.getDay() + 6) % 7
   const end = new Date(today); end.setDate(today.getDate() - offset)
   const start = new Date(end); start.setDate(end.getDate() - 21)
-  const values = Object.values(data.days).filter(Number.isFinite)
-  const max = Math.max(1, ...values)
+  const totalUsers = Math.max(1, Number(data.totalUsers) || 0)
+  const max = totalUsers
   const level = n => !n ? 0 : Math.min(4, Math.ceil((n / max) * 4))
   const dayCount = data.start === 'sunday' ? 7 : 6
   const weeks = []
@@ -50,14 +50,15 @@ function AttendanceHeatmap({ data, onStartChange }) {
     weeks.push(<div key={w} className="hm-col">{cells}</div>)
   }
   const labels = data.start === 'sunday'
-    ? ['Su', '', 'Tu', '', 'Th', '', 'Sa']
-    : ['Mon', '', 'Wed', '', 'Fri', '']
+    ? ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+    : ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
   return <div className="card">
     <div className="row between" style={{ gap: 10 }}>
-      <div><h2 style={{ margin: 0 }}>{t('Attendance')}</h2><div className="small muted">{t('Unique members who trained each day · last 4 weeks')}</div></div>
-      <select className="input" style={{ width: 'auto', minWidth: 118 }} value={data.start} onChange={e => onStartChange(e.target.value)} aria-label={t('Week starts')}>
-        <option value="monday">{t('Monday start')}</option><option value="sunday">{t('Sunday start')}</option>
-      </select>
+      <div><h2 style={{ margin: 0 }}>{t('Asistencia')}</h2><div className="small muted">{t('Miembros distintos que entrenaron cada día · últimas 4 semanas')}</div></div>
+      <div className="hm-sunday-toggle seg" role="group" aria-label={t('Sunday')}>
+        <button type="button" className={data.start === 'monday' ? 'on' : ''} onClick={() => onStartChange('monday')}>{t('Sin Domingo')}</button>
+        <button type="button" className={data.start === 'sunday' ? 'on' : ''} onClick={() => onStartChange('sunday')}>{t('Con Domingo')}</button>
+      </div>
     </div>
     <div className="hm-wrap" style={{ marginTop: 12 }}>
       <div className="hm-body"><div className="hm-days">{labels.map((x, i) => <span key={i}>{x ? t(x) : ''}</span>)}</div><div className="hm-grid">{weeks}</div></div>

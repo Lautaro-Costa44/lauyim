@@ -857,6 +857,16 @@ input[type="search"]::-webkit-search-cancel-button{display:none;-webkit-appearan
 .hm-sunday-toggle{flex:none;max-width:100%}
 .hm-sunday-toggle button{white-space:nowrap}
 
+/* Admin attendance: use the available card width and keep every weekday label visible. */
+.hm-sunday-toggle.seg{width:auto}
+.hm-sunday-toggle.seg button{padding-inline:10px}
+.hm-body{width:100%}
+.hm-days{width:44px}
+.hm-days span{height:18px;font-size:11px;line-height:18px;white-space:nowrap}
+.hm-grid{flex:1;justify-content:space-between;gap:8px}
+.hm-col{flex:1;max-width:72px;align-items:stretch}
+.hm-col .hm-c{width:100%;height:18px}
+
 /* --- muscle map --- */
 /* Reuses the .hm-c level ramp above, so one accent scale means one thing app-wide. */
 /* An untrained muscle is derived from the text colour rather than a fixed surface, so

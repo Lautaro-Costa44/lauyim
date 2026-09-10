@@ -1719,7 +1719,7 @@ const routes = {
     const iso = d => d.toISOString().slice(0, 10);
     const rows = getAttendanceByDate(iso(startDate), iso(endDate));
     const days = Object.fromEntries(rows.map(r => [r.date, Number(r.users) || 0]));
-    json(res, 200, { start, days, now: Date.now() });
+    json(res, 200, { start, days, totalUsers: getAllUsers().length, now: Date.now() });
   },
 
   'POST /api/admin/attendance-week-start': async (req, res) => {
