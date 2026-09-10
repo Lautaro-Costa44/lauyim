@@ -445,8 +445,8 @@ export default function Nutricion() {
   const [loadingComidas, setLoadingComidas] = useState(true)
   const { sugerido, metaProteina } = calcularMetasNutricionales(S)
   const { grasasMeta, carbosMeta } = calcularMetasMacros(sugerido, metaProteina)
-  const loadComidas = () => { setLoadingComidas(true); api('/api/comidas?fecha=' + todayISO()).then(setComidas).catch(() => setComidas([])).finally(() => setLoadingComidas(false)) }
-  useEffect(() => { loadComidas() }, [])
+  const loadComidas = (showLoading = false) => { if (showLoading) setLoadingComidas(true); api('/api/comidas?fecha=' + todayISO()).then(setComidas).catch(() => setComidas([])).finally(() => setLoadingComidas(false)) }
+  useEffect(() => { loadComidas(true) }, [])
   const totals = useMemo(() => comidas.reduce((a, c) => ({ calorias: a.calorias + Number(c.calorias || 0), proteina: a.proteina + Number(c.proteina || 0), carbos: a.carbos + Number(c.carbohidratos || 0), grasas: a.grasas + Number(c.grasas || 0) }), { calorias: 0, proteina: 0, carbos: 0, grasas: 0 }), [comidas])
   const addMeal = franja => useUI.getState().openSheet(close => <FoodPicker franja={franja} close={close} onSaved={loadComidas} />)
   const addComidaCompuesta = () => useUI.getState().openSheet(close => <ComidaCompuestaBuilder close={close} onSaved={loadComidas} />, { locked: true, fullScreen: true })
