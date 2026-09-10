@@ -13,10 +13,10 @@ const openDb = () => new Promise((resolve, reject) => {
 const fallbackRead = () => { try { return JSON.parse(localStorage.getItem(FALLBACK_KEY) || '[]') } catch { return [] } }
 const fallbackWrite = rows => localStorage.setItem(FALLBACK_KEY, JSON.stringify(rows))
 
-export async function enqueueSync(userId, changes) {
+export async function enqueueSync(userId, changes, baseTs = null) {
   if (!changes.length) return null
   const id = crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`
-  const row = { id, userId: String(userId), changes, createdAt: Date.now(), attempts: 0, nextAttemptAt: 0 }
+  const row = { id, userId: String(userId), changes, baseTs: baseTs == null ? null : Number(baseTs), createdAt: Date.now(), attempts: 0, nextAttemptAt: 0 }
   try {
     const db = await openDb()
     await new Promise((resolve, reject) => { const tx = db.transaction(STORE, 'readwrite'); tx.objectStore(STORE).put(row); tx.oncomplete = resolve; tx.onerror = () => reject(tx.error) })

@@ -32,7 +32,19 @@ test('offline sync applies an operation once and replays it without duplicating'
 test('offline sync retains a stale operation as a conflict', () => {
   const db = fakeDb();
   const state = { _ts: 500, theme: 'dark' };
-  const result = processSyncBatch({ db, userId: 'u1', operations: [operation('old', 100, [{ path: ['theme'], op: 'replace', value: 'light' }])], getUserState: () => state, saveUserState: () => { throw new Error('stale operation must not write'); } });
+  const result = processSyncBatch({ db, userId: 'u1', operations: [{ ...operation('old', 600, [{ path: ['theme'], op: 'replace', value: 'light' }]), baseTs: 100 }], getUserState: () => state, saveUserState: () => { throw new Error('stale operation must not write'); } });
   assert.equal(result.appliedIds.length, 0);
   assert.equal(result.conflicts[0].reason, 'server_newer_than_client');
+});
+
+test('offline sync applies multiple state changes from the same device in order', () => {
+  const db = fakeDb();
+  let state = { _ts: 100, theme: 'dark', routineGroups: [] };
+  const first = processSyncBatch({ db, userId: 'u1', operations: [
+    { ...operation('palette', 200, [{ path: ['theme'], op: 'replace', value: 'light' }]), baseTs: 100 },
+    { ...operation('group', 201, [{ path: ['routineGroups'], op: 'replace', value: [{ id: 'g1' }] }]), baseTs: 200 }
+  ], getUserState: () => state, saveUserState: (_id, next) => { state = { ...next, _ts: state._ts + 1 }; } });
+  assert.deepEqual(first.appliedIds, ['palette', 'group']);
+  assert.equal(state.theme, 'light');
+  assert.equal(state.routineGroups[0].id, 'g1');
 });

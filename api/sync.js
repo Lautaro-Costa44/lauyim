@@ -76,6 +76,7 @@ function applyRequest(db, userId, request) {
 
 export function processSyncBatch({ db, userId, operations, getUserState, saveUserState }) {
   const results = [], conflicts = [], appliedIds = [];
+  const batchStateVersion = Number(getUserState(userId)?._ts || 0);
   for (const operation of operations) {
     const request = operation?.changes?.find(change => change?.request)?.request;
     const opId = String(request?.opId || operation?.id || '');
@@ -84,8 +85,8 @@ export function processSyncBatch({ db, userId, operations, getUserState, saveUse
     if (previous) { results.push({ id: operation.id, opId, result: JSON.parse(previous.result_json || '{}'), replay: true }); appliedIds.push(operation.id); continue; }
     const stateChanges = request ? [] : (operation.changes || []);
     const current = getUserState(userId) || {};
-    const createdAt = Number(operation.createdAt || 0);
-    if (stateChanges.length && current._ts && createdAt && current._ts > createdAt) { conflicts.push({ id: operation.id, opId, reason: 'server_newer_than_client' }); continue; }
+    const baseTs = operation.baseTs == null ? null : Number(operation.baseTs || 0);
+    if (stateChanges.length && batchStateVersion && baseTs && batchStateVersion > baseTs) { conflicts.push({ id: operation.id, opId, reason: 'server_newer_than_client' }); continue; }
     try {
       db.exec('BEGIN');
       let result = {};

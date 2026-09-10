@@ -121,13 +121,13 @@ export const useStore = create((set, get) => {
       const before = clone(S)
       mut(S)
       persist(S, false)
-      if (push && get().user) enqueueSync(get().user.id, diffState(before, S)).then(() => scheduleSync())
+      if (push && get().user) enqueueSync(get().user.id, diffState(before, S), before._ts || null).then(() => scheduleSync())
     },
     replaceState(S, push = false) {
       const before = clone(get().S)
       const next = clone(S)
       persist(next, false)
-      if (push && get().user) enqueueSync(get().user.id, diffState(before, next)).then(() => scheduleSync())
+      if (push && get().user) enqueueSync(get().user.id, diffState(before, next), before._ts || null).then(() => scheduleSync())
     },
 
     autoBackupNow() {},
