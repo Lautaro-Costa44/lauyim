@@ -185,16 +185,23 @@ function FoodPicker({ franja, close, onSaved, onAddIngrediente, onAdded }) {
   const pick = useCallback(async alimento => {
     if (alimento?.tipo === 'plantilla_comida') {
       if (onAddIngrediente) return
-      if (!window.confirm(`Agregar "${alimento.nombre}" a ${franja}?`)) return
-      try {
-        await api('/api/comidas/grupo', { method: 'POST', body: JSON.stringify({
-          grupo_nombre: alimento.nombre, franja, fecha: todayISO(), ingredientes: alimento.ingredientes,
-        }) })
-        onSaved()
-        close()
-      } catch {
-        setError('No se pudo agregar la comida compuesta. Intentá nuevamente.')
-      }
+      confirmSheet({
+        title: '¿Agregar comida compuesta?',
+        message: `“${alimento.nombre}” se agregará a ${franja}.`,
+        confirmText: 'Agregar',
+        variant: 'meal',
+        onConfirm: async () => {
+          try {
+            await api('/api/comidas/grupo', { method: 'POST', body: JSON.stringify({
+              grupo_nombre: alimento.nombre, franja, fecha: todayISO(), ingredientes: alimento.ingredientes,
+            }) })
+            onSaved()
+            close()
+          } catch {
+            setError('No se pudo agregar la comida compuesta. Intentá nuevamente.')
+          }
+        },
+      })
       return
     }
     setSelected(alimento)
