@@ -28,6 +28,9 @@ export function initDatabase() {
     db.exec(`ALTER TABLE users ADD COLUMN last_fee_reminder_sent_date TEXT;`);
   } catch {}
   try {
+    db.exec(`ALTER TABLE users ADD COLUMN owner INTEGER NOT NULL DEFAULT 0;`);
+  } catch {}
+  try {
     db.exec(`ALTER TABLE routine_exercises ADD COLUMN progression_type TEXT;`);
   } catch {}
   try {
@@ -68,6 +71,7 @@ export function initDatabase() {
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL,
       admin INTEGER DEFAULT 0,
+      owner INTEGER NOT NULL DEFAULT 0,
       disabled INTEGER DEFAULT 0,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       last_reminder_sent_date TEXT,
@@ -146,6 +150,20 @@ export function initDatabase() {
     value TEXT NOT NULL,
     updated_at INTEGER NOT NULL
   );`);
+
+  // Enforce the single-owner invariant at the database level after all base tables exist.
+  try {
+    db.exec(`UPDATE users SET owner = 0 WHERE owner IS NULL OR owner <> 1;`);
+    const firstOwner = db.prepare('SELECT id FROM users WHERE owner = 1 ORDER BY created_at, id LIMIT 1').get();
+    if (firstOwner) {
+      db.prepare('UPDATE users SET owner = 0 WHERE owner = 1 AND id <> ?').run(firstOwner.id);
+      db.prepare('UPDATE users SET admin = 1 WHERE id = ?').run(firstOwner.id);
+    }
+    db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_users_single_owner ON users(owner) WHERE owner = 1;`);
+  } catch (error) {
+    console.error('Failed to enforce users.owner uniqueness:', error);
+    throw error;
+  }
 
   // Migración defensiva: asegurar que existan todas las columnas de la encuesta en bases de datos existentes
   const columnsToAdd = [
@@ -227,18 +245,23 @@ export function getUserById(id) {
 }
 
 export function createUser(user) {
+  const db = getDatabase();
+  const isFirstUser = Number(db.prepare('SELECT COUNT(*) AS count FROM users').get().count) === 0;
+  const owner = isFirstUser ? 1 : (user.owner ? 1 : 0);
+  const admin = owner ? 1 : (user.admin ? 1 : 0);
+  if (owner) db.prepare('UPDATE users SET owner = 0 WHERE owner = 1').run();
   const stmt = getDatabase().prepare(`
-    INSERT INTO users (id, name, admin, disabled, created_at)
-    VALUES (?, ?, ?, ?, ?)
+    INSERT INTO users (id, name, admin, owner, disabled, created_at)
+    VALUES (?, ?, ?, ?, ?, ?)
   `);
-  stmt.run(user.id, user.name, user.admin ? 1 : 0, user.disabled ? 1 : 0, user.created || Date.now());
+  stmt.run(user.id, user.name, admin, owner, user.disabled ? 1 : 0, user.created || Date.now());
 }
 
 export function updateUser(id, updates) {
   const fields = [];
   const values = [];
   for (const [key, value] of Object.entries(updates)) {
-    if (key === 'admin' || key === 'disabled') {
+    if (key === 'admin' || key === 'owner' || key === 'disabled') {
       fields.push(`${key} = ?`);
       values.push(value ? 1 : 0);
     } else {
@@ -250,6 +273,26 @@ export function updateUser(id, updates) {
   values.push(id);
   const stmt = getDatabase().prepare(`UPDATE users SET ${fields.join(', ')} WHERE id = ?`);
   stmt.run(...values);
+}
+
+// Permanent account deletion. Keep the operation transactional because invites reference
+// users without ON DELETE CASCADE, while the rest of the user's data cascades from users.id.
+export function deleteUser(id) {
+  const db = getDatabase();
+  const user = db.prepare('SELECT * FROM users WHERE id = ?').get(id);
+  if (!user) return null;
+
+  db.exec('BEGIN IMMEDIATE');
+  try {
+    db.prepare('DELETE FROM invites WHERE created_by = ? OR used_by = ?').run(id, id);
+    const result = db.prepare('DELETE FROM users WHERE id = ?').run(id);
+    if (result.changes !== 1) throw new Error('user deletion did not affect exactly one row');
+    db.exec('COMMIT');
+    return user;
+  } catch (error) {
+    try { db.exec('ROLLBACK'); } catch {}
+    throw error;
+  }
 }
 
 // ============================================================

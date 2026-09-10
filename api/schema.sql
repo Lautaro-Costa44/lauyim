@@ -4,6 +4,7 @@ CREATE TABLE IF NOT EXISTS users (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
   admin INTEGER DEFAULT 0,
+  owner INTEGER DEFAULT 0,
   disabled INTEGER DEFAULT 0,
   created_at INTEGER NOT NULL,  -- timestamp ms
   last_reminder TEXT,           -- ISO date
@@ -12,6 +13,7 @@ CREATE TABLE IF NOT EXISTS users (
  
 -- Índices para usuarios
 CREATE INDEX IF NOT EXISTS idx_users_admin ON users(admin);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_users_single_owner ON users(owner) WHERE owner = 1;
 CREATE INDEX IF NOT EXISTS idx_users_disabled ON users(disabled);
  
 -- Credenciales WebAuthn
@@ -62,6 +64,9 @@ CREATE TABLE IF NOT EXISTS presets (
   emoji TEXT NOT NULL,
   group_name TEXT NOT NULL DEFAULT 'General'
 );
+
+-- Migración para bases existentes (CREATE TABLE IF NOT EXISTS no modifica tablas ya creadas):
+-- ALTER TABLE users ADD COLUMN owner INTEGER NOT NULL DEFAULT 0;
  
 -- Ejercicios de presets
 CREATE TABLE IF NOT EXISTS preset_exercises (

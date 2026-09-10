@@ -41,6 +41,24 @@ python scripts/admin/make_admin.py ID_USUARIO --yes
 
 La operación solo cambia `users.admin`. No modifica los datos personales ni las passkeys.
 
+## Ver o reasignar el Owner
+
+El Owner es una capa adicional sobre Admin: siempre hay como máximo uno y una cuenta Owner también es administradora.
+
+Para ver el Owner actual:
+
+```powershell
+python scripts/admin/owner.py
+```
+
+Para reasignarlo por ID:
+
+```powershell
+python scripts/admin/owner.py ID_USUARIO
+```
+
+La operación crea un backup, desactiva el Owner anterior y asigna `owner=1` y `admin=1` al nuevo usuario dentro de una única transacción. Si algo falla, hace rollback y muestra el error. Para automatizaciones controladas existe `--yes`.
+
 ## Transferir una cuenta perdida a una cuenta nueva
 
 La cuenta nueva debe existir y no debe tener datos personales. Esto evita mezclar historiales o sobrescribir información accidentalmente.

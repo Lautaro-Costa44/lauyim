@@ -22,6 +22,7 @@ import {
   initDatabase,
   getAllUsers,
   getUserById,
+  deleteUser,
   createUser,
   updateUser,
   getCredentialById,
@@ -124,6 +125,7 @@ const SECRET = fs.readFileSync(secretFile, 'utf8').trim();
 
 // Funciones auxiliares para compatibilidad
 const isAdmin = user => !!user && (user.admin === 1 || user.admin === true || ADMIN_UIDS.includes(user.id));
+const isOwner = user => !!user && (user.owner === 1 || user.owner === true);
 function readState(uid) {
   return getUserState(uid);
 }
@@ -358,6 +360,13 @@ function requireAdmin(req, res) {
   const user = readSession(req);
   if (!user) { json(res, 401, { error: 'not signed in' }); return null; }
   if (!isAdmin(user)) { audit(req, 'admin.denied', { ok: false, user }); json(res, 403, { error: 'forbidden' }); return null; }
+  return user;
+}
+
+function requireOwner(req, res) {
+  const user = readSession(req);
+  if (!user) { json(res, 401, { error: 'not signed in' }); return null; }
+  if (!isOwner(user)) { audit(req, 'owner.denied', { ok: false, user }); json(res, 403, { error: 'owner required' }); return null; }
   return user;
 }
 const expireCookie = name => `${name}=; Path=/; Max-Age=0; HttpOnly;${SECURE} SameSite=Lax`;
@@ -1232,7 +1241,7 @@ const routes = {
   'GET /api/me': async (req, res) => {
     const user = readSession(req);
     if (!user) return json(res, 401, { error: 'not signed in' });
-    json(res, 200, { user: { id: user.id, name: user.name, admin: isAdmin(user) } });
+    json(res, 200, { user: { id: user.id, name: user.name, admin: isAdmin(user), owner: !!user.owner } });
   },
 
   'POST /api/register/options': async (req, res) => {
@@ -1321,7 +1330,7 @@ const routes = {
 
     // saveDb(); // Eliminado: SQLite persiste automáticamente
     audit(req, 'auth.register.ok', { user, msg: invite ? invite.code : null });
-    json(res, 200, { user: { id: user.id, name: user.name, admin: isAdmin(user) } }, { 'Set-Cookie': sessionCookie(user) });
+    json(res, 200, { user: { id: user.id, name: user.name, admin: isAdmin(user), owner: !!user.owner } }, { 'Set-Cookie': sessionCookie(user) });
   },
 
   'POST /api/login/options': async (req, res) => {
@@ -1379,7 +1388,7 @@ const routes = {
       return json(res, 403, { error: 'this account has been disabled' });
     }
     audit(req, 'auth.login.ok', { user });
-    json(res, 200, { user: { id: user.id, name: user.name, admin: isAdmin(user) } }, { 'Set-Cookie': sessionCookie(user) });
+    json(res, 200, { user: { id: user.id, name: user.name, admin: isAdmin(user), owner: !!user.owner } }, { 'Set-Cookie': sessionCookie(user) });
   },
 
   /* ---------- Device Pairing Flow ---------- */
@@ -1446,7 +1455,7 @@ const routes = {
       pendingPairings.delete(pairingId);
       manualCodeMap.delete(pairing.manualCode);
       audit(req, 'auth.device.login', { user });
-      return json(res, 200, { status: 'approved', user: { id: user.id, name: user.name, admin: isAdmin(user) } }, { 'Set-Cookie': sessionCookie(user) });
+      return json(res, 200, { status: 'approved', user: { id: user.id, name: user.name, admin: isAdmin(user), owner: !!user.owner } }, { 'Set-Cookie': sessionCookie(user) });
     }
     json(res, 400, { status: 'expired', error: 'invalid state' });
   },
@@ -1698,7 +1707,7 @@ const routes = {
       const last = workouts[workouts.length - 1];
       return {
         id: u.id, name: u.name, created: u.created || u.created_at || null,
-        disabled: !!u.disabled, admin: isAdmin(u), invitedBy: u.invited_by || u.invitedBy || null,
+        disabled: !!u.disabled, admin: isAdmin(u), owner: !!u.owner, invitedBy: u.invited_by || u.invitedBy || null,
         workouts: workouts.length,
         lastWorkout: last ? last.d : null,
         lastSync: S._ts || null,
@@ -1739,7 +1748,7 @@ const routes = {
     if (!u) return json(res, 404, { error: 'no such user' });
     const S = readState(u.id) || {};
     json(res, 200, {
-      user: { id: u.id, name: u.name, created: u.created || u.created_at || null, disabled: !!u.disabled, admin: isAdmin(u), invitedBy: u.invited_by || u.invitedBy || null },
+      user: { id: u.id, name: u.name, created: u.created || u.created_at || null, disabled: !!u.disabled, admin: isAdmin(u), owner: !!u.owner, invitedBy: u.invited_by || u.invitedBy || null },
       unit: S.unit || 'kg',
       lastSync: S._ts || null,
       routines: (S.routines || []).map(r => ({ id: r.id, name: r.name, emoji: r.emoji, count: (r.ex || []).length })),
@@ -1760,6 +1769,26 @@ const routes = {
     // saveDb(); // Eliminado: SQLite persiste automáticamente
     audit(req, newDisabled ? 'admin.user.disable' : 'admin.user.enable', { user: admin, target: u });
     json(res, 200, { ok: true, id: u.id, disabled: newDisabled });
+  },
+
+  'POST /api/owner/user/delete': async (req, res) => {
+    const owner = requireOwner(req, res); if (!owner) return;
+    const body = await readBody(req);
+    const id = String(body.id || '').trim();
+    if (!id) return json(res, 400, { error: 'user id required' });
+    const u = getUserById(id);
+    if (!u) return json(res, 404, { error: 'no such user' });
+    if (!u.disabled) return json(res, 400, { error: 'only disabled accounts can be deleted' });
+    if (isOwner(u)) return json(res, 400, { error: 'cannot delete the owner account' });
+
+    try {
+      const deleted = deleteUser(u.id);
+      audit(req, 'owner.user.delete', { user: owner, target: deleted });
+      return json(res, 200, { ok: true, id: deleted.id });
+    } catch (error) {
+      audit(req, 'owner.user.delete', { ok: false, user: owner, target: u, msg: error.message });
+      throw error;
+    }
   },
 
   'GET /api/admin/invites': async (req, res) => {

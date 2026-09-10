@@ -70,12 +70,18 @@ function AttendanceHeatmap({ data, onStartChange }) {
 function UserDetail({ id, onChanged, close }) {
   const [d, setD] = useState(null)
   const toast = useUI(s => s.toast)
+  const currentUser = useStore(s => s.user)
   useEffect(() => { api('/api/admin/user?id=' + encodeURIComponent(id)).then(setD).catch(e => toast(e.message)) }, [id])
   if (!d) return <div className="muted small">{t('Loading…')}</div>
   const u = d.user
   const setDisabled = disabled => {
     api('/api/admin/user/disable', { method: 'POST', body: JSON.stringify({ id: u.id, disabled }) })
       .then(() => { toast(disabled ? t('User disabled') : t('User enabled')); onChanged(); close() })
+      .catch(e => toast(e.message))
+  }
+  const deleteAccount = () => {
+    api('/api/owner/user/delete', { method: 'POST', body: JSON.stringify({ id: u.id }) })
+      .then(() => { toast(t('Account permanently deleted')); onChanged(); close() })
       .catch(e => toast(e.message))
   }
   return <>
@@ -96,6 +102,9 @@ function UserDetail({ id, onChanged, close }) {
       onClick={() => u.disabled ? setDisabled(false)
         : confirmSheet({ title: t('Disable {0}?', u.name), message: t('They are signed out everywhere and can no longer sync or log in until re-enabled.'), confirmText: t('Disable'), danger: true, onConfirm: () => setDisabled(true) })}>
       {u.disabled ? t('Enable account') : t('Disable account')}</button>}
+    {currentUser?.owner && u.disabled && !u.owner && <button className="btn danger" style={{ margin: '8px 0 4px' }}
+      onClick={() => confirmSheet({ title: t('Delete {0} permanently?', u.name), message: t('This permanently deletes the disabled account and all of its stored training data. This cannot be undone.'), confirmText: t('Delete permanently'), danger: true, onConfirm: deleteAccount })}>
+      {t('Delete account permanently')}</button>}
     <h4 className="sec">{t('Workout history')}</h4>
     {d.workouts.length ? <div className="list" style={{ gap: 0 }}>
       {d.workouts.slice(0, 60).map(w => <div key={w.id} className="row between" style={{ padding: '9px 2px', borderBottom: '1px solid var(--sep)' }}>
@@ -224,8 +233,7 @@ function AuditCard({ tick }) {
         onClick={clear} aria-label="clear log"><Icon name="trash" /></button></div>
     <div className="small muted" style={{ margin: '6px 0 10px' }}>
       {meta ? fmtNum(meta.total) + ' ' + t('events')
-        + (meta.retention.days ? ' · ' + t('last {0} days', meta.retention.days) : '')
-        + (meta.ip_mode === 'off' ? ' · ' + t('no IP addresses') : '') : t('Loading…')}</div>
+        + (meta.retention.days ? ' · ' + t('last {0} days', meta.retention.days) : '') : t('Loading…')}</div>
     <div className="chips" style={{ marginBottom: 10 }}>
       {[['', 'All'], ['auth', 'Sign-ins'], ['admin', 'Admin'], ['fail', 'Failed']].map(([v, l]) =>
         <button key={v} className={'chip' + (cat === v ? ' on' : '')} onClick={() => pick(v)}>{t(l)}</button>)}
@@ -365,6 +373,8 @@ export default function Admin() {
   const [inviteOnly, setInviteOnly] = useState(false)
   const [attendance, setAttendance] = useState(null)
   const [tick, setTick] = useState(0)          // the ↻ button; the activity log listens to it
+  const [userSearch, setUserSearch] = useState('')
+  const [userPage, setUserPage] = useState(1)
 
   const loadUsers = () => api('/api/admin/users').then(d => { setUsers(d.users); setInviteOnly(d.invite_only) }).catch(e => toast(e.message || t('Failed to load')))
   const loadInvites = () => api('/api/admin/invites').then(d => setInvites(d.invites)).catch(() => {})
@@ -378,6 +388,11 @@ export default function Admin() {
   const liveUsers = (users || []).filter(u => u.live)
   const activeCount = (users || []).filter(u => u.lastSync && Date.now() - u.lastSync < 7 * 86400000).length
   const disabledCount = (users || []).filter(u => u.disabled).length
+  const filteredUsers = (users || []).filter(u => u.name.toLocaleLowerCase().includes(userSearch.trim().toLocaleLowerCase()))
+  const userPageCount = Math.max(1, Math.ceil(filteredUsers.length / 6))
+  const visibleUsers = filteredUsers.slice((userPage - 1) * 6, userPage * 6)
+  const changeUserSearch = value => { setUserSearch(value); setUserPage(1) }
+  useEffect(() => { setUserPage(page => Math.min(page, userPageCount)) }, [userPageCount])
 
   return <div className="narrow">
     <div className="hdr">
@@ -408,15 +423,26 @@ export default function Admin() {
     <PushNotificationCard />
     <AttendanceHeatmap data={attendance} onStartChange={start => api('/api/admin/attendance-week-start', { method: 'POST', body: JSON.stringify({ start }) }).then(loadAttendance).catch(e => toast(e.message || t('Failed to save setting')))} />
 
-    <h4 className="sec">{t('Users')}</h4>
+    <h4 className="sec">{t('Usuarios: {0} ({1} Desactivados)', users ? users.length : 0, disabledCount)}</h4>
+    <div style={{ marginBottom: 10 }}>
+      <input {...NO_AUTOFILL} name="admin-user-search" value={userSearch} onChange={e => changeUserSearch(e.target.value)}
+        placeholder={t('Search users by name')} aria-label={t('Search users by name')} />
+    </div>
     <div className="list">
-      {(users || []).map(u => <div key={u.id} className="item" onClick={() => openUser(u.id)} style={u.disabled ? { opacity: .55 } : null}>
+      {visibleUsers.map(u => <div key={u.id} className="item" onClick={() => openUser(u.id)} style={u.disabled ? { opacity: .55 } : null}>
         <div className="grow"><div className="tt">{u.live && <Icon name="dot" style={{ fontSize: 9, color: 'var(--green)', display: 'inline-block', marginRight: 5 }} />}{u.name} {u.admin && <span className="tag acc" style={{ marginLeft: 4 }}>{t('admin')}</span>}{u.disabled && <span className="tag" style={{ marginLeft: 4, color: 'var(--red)' }}>{t('off')}</span>}</div>
           <div className="ss">{u.live ? t('training now') + ' · ' + u.live.name : u.workouts + ' ' + t('workouts') + (u.lastWorkout ? ' · ' + t('last') + ' ' + fmtDate(u.lastWorkout) : '') + ' · ' + t('synced') + ' ' + rel(u.lastSync)}</div></div>
         {u.hasPush && <Icon name="bell" title="push enabled" style={{ fontSize: 15, color: 'var(--label-3)' }} />}<Icon name="chevronRight" className="chev" />
       </div>)}
-      {users && !users.length && <div className="empty">{t('No users yet.')}</div>}
+      {users && !filteredUsers.length && <div className="empty">{userSearch ? t('No users match that name.') : t('No users yet.')}</div>}
     </div>
+    {users && filteredUsers.length > 0 && <div className="row between" style={{ marginTop: 10, gap: 6 }}>
+      <button className="btn" disabled={userPage === 1} onClick={() => setUserPage(1)}>{t('First')}</button>
+      <button className="btn" disabled={userPage === 1} onClick={() => setUserPage(p => Math.max(1, p - 1))}>{t('Previous')}</button>
+      <span className="small muted">{userPage} / {userPageCount}</span>
+      <button className="btn" disabled={userPage === userPageCount} onClick={() => setUserPage(p => Math.min(userPageCount, p + 1))}>{t('Next')}</button>
+      <button className="btn" disabled={userPage === userPageCount} onClick={() => setUserPage(userPageCount)}>{t('Last')}</button>
+    </div>}
 
     <div style={{ marginTop: 14 }}><AuditCard tick={tick} /></div>
   </div>

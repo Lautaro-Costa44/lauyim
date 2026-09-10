@@ -13,7 +13,7 @@ def main() -> int:
     args = parser.parse_args()
 
     with connect() as db:
-        query = "SELECT id, name, admin, disabled, created_at FROM users"
+        query = "SELECT id, name, admin, owner, disabled, created_at FROM users"
         params: tuple[str, ...] = ()
         if args.name:
             query += " WHERE name LIKE ? COLLATE NOCASE"
@@ -29,7 +29,7 @@ def main() -> int:
                 "SELECT MAX(start) FROM workouts WHERE user_id = ?", (user["id"],)
             ).fetchone()[0]
             print(f"{user['name']} | ID: {user['id']}")
-            print(f"  creado: {format_timestamp(user['created_at'])} | admin: {'sí' if user['admin'] else 'no'} | deshabilitado: {'sí' if user['disabled'] else 'no'}")
+            print(f"  creado: {format_timestamp(user['created_at'])} | admin: {'sí' if user['admin'] else 'no'} | owner: {'sí' if user['owner'] else 'no'} | deshabilitado: {'sí' if user['disabled'] else 'no'}")
             print(f"  entrenamientos: {summary['workouts']} | último entrenamiento: {format_timestamp(last_workout)}")
             print(f"  peso corporal: {summary['bodyweight']} | comidas: {summary['comidas_registradas']}")
     return 0
