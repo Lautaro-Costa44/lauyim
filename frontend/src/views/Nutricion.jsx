@@ -617,8 +617,11 @@ function SugerenciaComida({ close, onSaved }) {
   useEffect(() => {
     historyEntryRef.current = true
     window.history.pushState({ ...(window.history.state || {}), sugerenciaComida: true }, '', window.location.href)
-    const onPopState = event => {
-      if (!event.state?.sugerenciaComida) return
+    const onPopState = () => {
+      // Modals.jsx also pushes a history entry for the fullscreen sheet. That
+      // entry intentionally has its own state shape, so this flow must consume
+      // any back event while it is mounted instead of requiring our marker.
+      if (closingRef.current) return
       if (pasoRef.current === 2) {
         setPaso(1)
         window.history.pushState({ ...(window.history.state || {}), sugerenciaComida: true }, '', window.location.href)
