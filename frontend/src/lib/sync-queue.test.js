@@ -15,10 +15,23 @@ describe('offline sync patches', () => {
     window.removeEventListener('gym:sync_queue_changed', onChange)
   })
 
-  it('emits only changed top-level fields and never sends transient workout state', () => {
+  it('emits entity-level array operations and never sends transient workout state', () => {
     const before = { routines: [{ id: 'r1' }], workouts: [], active: { id: 'live' }, _ts: 1 }
     const after = { routines: [{ id: 'r1' }, { id: 'r2' }], workouts: [], active: { id: 'new' }, _ts: 2 }
-    expect(diffState(before, after)).toEqual([{ path: ['routines'], op: 'replace', value: after.routines }])
+    expect(diffState(before, after)).toEqual([{ path: ['routines', 'r2'], op: 'add', value: { id: 'r2' } }])
+  })
+
+  it('sends only changed fields for an existing array entity', () => {
+    expect(diffState({ routines: [{ id: 'r1', name: 'Push', note: 'old' }] }, { routines: [{ id: 'r1', name: 'Push', note: 'new' }] })).toEqual([
+      { path: ['routines', 'r1', 'note'], op: 'replace', value: 'new' },
+    ])
+  })
+
+  it('merges independent array entities and emits deletion by stable id', () => {
+    expect(diffState({ workouts: [{ id: 'w1' }, { id: 'w2' }] }, { workouts: [{ id: 'w2', done: true }] })).toEqual([
+      { path: ['workouts', 'w1'], op: 'remove' },
+      { path: ['workouts', 'w2', 'done'], op: 'add', value: true },
+    ])
   })
 
   it('represents removed fields explicitly', () => {

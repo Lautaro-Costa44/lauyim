@@ -6,6 +6,59 @@ const validIngredients = value => Array.isArray(value) && value.length > 0 && va
 
 const validDate = value => /^\d{4}-\d{2}-\d{2}$/.test(String(value || ''));
 const nextServerTimestamp = state => Math.max(Date.now(), Number(state?._ts || 0) + 1);
+const RESERVED_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
+
+function findEntityIndex(array, id) {
+  return Array.isArray(array) ? array.findIndex(item => item && typeof item === 'object' && String(item.id) === String(id)) : -1;
+}
+
+function applyStateChange(state, change) {
+  const path = Array.isArray(change?.path) ? change.path.map(String) : [];
+  if (!path.length || path.some(key => RESERVED_KEYS.has(key))) throw new Error('invalid state path');
+  const [root, entityId, ...fields] = path;
+
+  if (path.length === 1) {
+    if (change.op === 'remove') delete state[root];
+    else if ((change.op === 'replace' || change.op === 'add') && Object.prototype.hasOwnProperty.call(change, 'value')) state[root] = change.value;
+    else throw new Error('invalid state operation');
+    return;
+  }
+
+  if (Array.isArray(state[root])) {
+    const array = state[root];
+    const index = findEntityIndex(array, entityId);
+    if (fields.length === 0) {
+      if (change.op === 'remove') { if (index >= 0) array.splice(index, 1); }
+      else if (change.op === 'add') { if (index < 0) array.push(change.value); else array[index] = change.value; }
+      else if (change.op === 'replace' && index >= 0) array[index] = change.value;
+      else throw new Error('invalid array entity operation');
+      return;
+    }
+    if (index < 0) return;
+    let target = array[index];
+    for (let i = 0; i < fields.length - 1; i++) {
+      const key = fields[i];
+      if (target[key] == null || typeof target[key] !== 'object') target[key] = {};
+      target = target[key];
+    }
+    const key = fields[fields.length - 1];
+    if (change.op === 'remove') delete target[key];
+    else if ((change.op === 'replace' || change.op === 'add') && Object.prototype.hasOwnProperty.call(change, 'value')) target[key] = change.value;
+    else throw new Error('invalid nested state operation');
+    return;
+  }
+
+  let target = state;
+  for (let i = 0; i < path.length - 1; i++) {
+    const key = path[i];
+    if (target[key] == null || typeof target[key] !== 'object') target[key] = {};
+    target = target[key];
+  }
+  const key = path[path.length - 1];
+  if (change.op === 'remove') delete target[key];
+  else if ((change.op === 'replace' || change.op === 'add') && Object.prototype.hasOwnProperty.call(change, 'value')) target[key] = change.value;
+  else throw new Error('invalid nested state operation');
+}
 
 function insertTemplate(db, userId, name, ingredients) {
   const now = Date.now();
@@ -76,6 +129,7 @@ export function processSyncBatch({ db, userId, operations, getUserState, saveUse
     const byTime = Number(a?.createdAt || 0) - Number(b?.createdAt || 0);
     return byTime || String(a?.id || '').localeCompare(String(b?.id || ''));
   });
+  const operationOrder = new Map(orderedOperations.map((operation, index) => [operation.id, index]));
   let currentState = getUserState(userId) || {};
   const syncVersions = currentState._syncVersions && typeof currentState._syncVersions === 'object'
     ? { ...currentState._syncVersions }
@@ -85,20 +139,31 @@ export function processSyncBatch({ db, userId, operations, getUserState, saveUse
   for (const operation of orderedOperations) {
     if (operation?.changes?.some(change => change?.request)) continue;
     for (const change of operation?.changes || []) {
-      const path = change?.path?.length === 1 ? String(change.path[0]) : '';
-      if (path) latestStateOperationByPath.set(path, operation.id);
+      const path = Array.isArray(change?.path) ? change.path.map(String) : [];
+      if (path.length) latestStateOperationByPath.set(JSON.stringify(path), operation.id);
     }
   }
+  const isLatestStateChange = (change, operationId) => {
+    const path = Array.isArray(change?.path) ? change.path.map(String) : [];
+    if (!path.length) return false;
+    const exact = latestStateOperationByPath.get(JSON.stringify(path));
+    if (exact && exact !== operationId) return false;
+    // An add/remove/replace of an entity invalidates older field patches for that
+    // entity. Different fields of the same entity remain mergeable.
+    if (path.length > 2 && Array.isArray(currentState[path[0]])) {
+      const entityPath = JSON.stringify(path.slice(0, 2));
+      const entityLatest = latestStateOperationByPath.get(entityPath);
+      if (entityLatest && entityLatest !== operationId && (operationOrder.get(entityLatest) ?? -1) > (operationOrder.get(operationId) ?? -1)) return false;
+    }
+    return exact === operationId || (!exact && path.length <= 2) || (path.length > 2 && latestStateOperationByPath.get(JSON.stringify(path.slice(0, 2))) === operationId);
+  };
   for (const operation of orderedOperations) {
     const request = operation?.changes?.find(change => change?.request)?.request;
     const opId = String(request?.opId || operation?.id || '');
     if (!opId || opId.length > 120) { conflicts.push({ id: operation?.id, reason: 'invalid_operation_id' }); continue; }
     const previous = db.prepare('SELECT result_json FROM sync_operations WHERE user_id = ? AND op_id = ?').get(userId, opId);
     if (previous) { results.push({ id: operation.id, opId, result: JSON.parse(previous.result_json || '{}'), replay: true }); appliedIds.push(operation.id); continue; }
-    const stateChanges = request ? [] : (operation.changes || []).filter(change => {
-      const path = change?.path?.length === 1 ? String(change.path[0]) : '';
-      return !path || latestStateOperationByPath.get(path) === operation.id;
-    });
+    const stateChanges = request ? [] : (operation.changes || []).filter(change => isLatestStateChange(change, operation.id));
     const wasSuperseded = !request && stateChanges.length === 0 && (operation.changes || []).length > 0;
     if (wasSuperseded) {
       try {
@@ -121,14 +186,11 @@ export function processSyncBatch({ db, userId, operations, getUserState, saveUse
       if (request) result = applyRequest(db, userId, request);
       else {
         for (const change of stateChanges) {
-          const key = change?.path?.length === 1 ? String(change.path[0]) : '';
-          if (!key || ['__proto__', 'constructor', 'prototype'].includes(key)) throw new Error('invalid state path');
-          if (change.op === 'remove') delete current[key];
-          else if (change.op === 'replace' && Object.prototype.hasOwnProperty.call(change, 'value')) current[key] = change.value;
+          applyStateChange(current, change);
         }
         const committedAt = nextServerTimestamp(current);
         for (const change of stateChanges) {
-          const key = change?.path?.length === 1 ? String(change.path[0]) : '';
+          const key = JSON.stringify(change.path.map(String));
           syncVersions[key] = committedAt;
         }
         current._ts = committedAt;

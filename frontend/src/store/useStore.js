@@ -4,7 +4,7 @@ import { localTZ } from '../lib/format.js'
 import { registerCustom } from '../lib/exercises.js'
 import { DEMO, DEMO_SEEDED } from '../lib/demo.js'
 import { guestAllowed } from '../lib/guest.js'
-import { enqueueSync, takeSyncBatch, removeSync, deferSync, diffState, applySyncMappings } from '../lib/sync-queue.js'
+import { enqueueSync, takeSyncBatch, removeSync, deferSync, countSync, diffState, applySyncMappings } from '../lib/sync-queue.js'
 import { MAX_ROUTINE_GROUPS, canAddGroup, validateGroupName, createRoutineGroup, syncActiveGroupInState, addGroupToState, removeGroupFromState } from '../lib/routineGroups.js'
 
 const KEY = 'gym_state_v1'
@@ -198,12 +198,19 @@ export const useStore = create((set, get) => {
         const { state } = await api('/api/data')
         const S = get().S
         const dirty = localStorage.getItem('gym_dirty') === '1'
+        const pending = await countSync(get().user.id)
         if (state && (!hasData(S) || ((state._ts || 0) >= (S._ts || 0) && !dirty))) {
           const active = S.active
           const next = Object.assign(clone(DEF), state)
           if (active) next.active = active
           persist(next, false, false)
-        } else if (hasData(S) && localStorage.getItem('gym_dirty') !== '1') { await get().pushState() }
+        } else if (hasData(S) && !dirty && pending === 0) {
+          // A newer local timestamp can mean offline edits that are already queued.
+          // Never promote that snapshot with the legacy full-state PUT: nutrition is
+          // entity-synced, while the other modules need the incremental queue so that
+          // another device's unrelated changes are not overwritten.
+          await get().pushState()
+        }
       } catch (e) { /* offline — keep local */ }
     },
 

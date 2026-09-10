@@ -148,16 +148,38 @@ export function applySyncMappings(results = []) {
   }
 }
 
-export function diffState(before, after) {
-  const changes = []
+const ENTITY_ID = item => item && typeof item === 'object' && !Array.isArray(item) && item.id != null ? String(item.id) : null
+
+function diffObject(before, after, path, changes) {
   const keys = new Set([...Object.keys(before || {}), ...Object.keys(after || {})])
-  keys.forEach(key => {
-    if (key === 'active' || key === '_ts' || key === '_syncVersions') return
+  for (const key of keys) {
+    if (['__proto__', 'constructor', 'prototype'].includes(key)) continue
     const oldValue = before?.[key]
     const newValue = after?.[key]
-    if (JSON.stringify(oldValue) !== JSON.stringify(newValue)) {
-      changes.push(newValue === undefined ? { path: [key], op: 'remove' } : { path: [key], op: 'replace', value: newValue })
-    }
-  })
-  return changes
+    if (JSON.stringify(oldValue) === JSON.stringify(newValue)) continue
+    if (newValue === undefined) changes.push({ path: [...path, key], op: 'remove' })
+    else if (oldValue === undefined) changes.push({ path: [...path, key], op: 'add', value: newValue })
+    else if (Array.isArray(oldValue) && Array.isArray(newValue) && oldValue.every(ENTITY_ID) && newValue.every(ENTITY_ID)) {
+      diffEntityArray(oldValue, newValue, [...path, key], changes)
+    } else if (oldValue && newValue && typeof oldValue === 'object' && typeof newValue === 'object' && !Array.isArray(oldValue) && !Array.isArray(newValue)) {
+      diffObject(oldValue, newValue, [...path, key], changes)
+    } else changes.push({ path: [...path, key], op: 'replace', value: newValue })
+  }
+}
+
+function diffEntityArray(before, after, path, changes) {
+  const oldById = new Map(before.map(item => [ENTITY_ID(item), item]))
+  const newById = new Map(after.map(item => [ENTITY_ID(item), item]))
+  for (const [id] of oldById) if (!newById.has(id)) changes.push({ path: [...path, id], op: 'remove' })
+  for (const [id, item] of newById) {
+    const old = oldById.get(id)
+    if (!old) changes.push({ path: [...path, id], op: 'add', value: item })
+    else diffObject(old, item, [...path, id], changes)
+  }
+}
+
+export function diffState(before, after) {
+  const changes = []
+  diffObject(before || {}, after || {}, [], changes)
+  return changes.filter(change => change.path.length && !['active', '_ts', '_syncVersions'].includes(change.path[0]))
 }
