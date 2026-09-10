@@ -36,10 +36,11 @@ function AttendanceHeatmap({ data, onStartChange }) {
   const values = Object.values(data.days).filter(Number.isFinite)
   const max = Math.max(1, ...values)
   const level = n => !n ? 0 : Math.min(4, Math.ceil((n / max) * 4))
+  const dayCount = data.start === 'sunday' ? 7 : 6
   const weeks = []
   for (let w = 0; w < 4; w++) {
     const cells = []
-    for (let d = 0; d < 7; d++) {
+    for (let d = 0; d < dayCount; d++) {
       const day = new Date(start); day.setDate(start.getDate() + w * 7 + d)
       const key = day.toISOString().slice(0, 10)
       const n = Number(data.days[key] || 0)
@@ -50,7 +51,7 @@ function AttendanceHeatmap({ data, onStartChange }) {
   }
   const labels = data.start === 'sunday'
     ? ['Su', '', 'Tu', '', 'Th', '', 'Sa']
-    : ['', 'Mon', '', 'Wed', '', 'Fri', '']
+    : ['Mon', '', 'Wed', '', 'Fri', '']
   return <div className="card">
     <div className="row between" style={{ gap: 10 }}>
       <div><h2 style={{ margin: 0 }}>{t('Attendance')}</h2><div className="small muted">{t('Unique members who trained each day · last 4 weeks')}</div></div>
