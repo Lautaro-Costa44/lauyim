@@ -9,6 +9,7 @@ import { fmtNum } from '../lib/format.js'
 import { calcularMetasNutricionales, calcularMetasMacros, calcularNutrientesPorCantidad, porcionAGramos } from '../lib/nutricion.js'
 import ResumenNutricional from '../components/ResumenNutricional.jsx'
 import ScannerCodigoBarras from '../components/ScannerCodigoBarras.jsx'
+import HistorialNutricion from './HistorialNutricion.jsx'
 import { api } from '../lib/api.js'
 import { todayISO } from '../lib/format.js'
 import { useUI } from '../store/useUI.js'
@@ -570,6 +571,7 @@ export default function Nutricion() {
   const addMeal = franja => useUI.getState().openSheet(close => <FoodPicker franja={franja} close={close} onSaved={loadComidas} />)
   const addComidaCompuesta = () => useUI.getState().openSheet(close => <ComidaCompuestaBuilder close={close} onSaved={loadComidas} />, { locked: true, fullScreen: true })
   const openMisComidasCompuestas = () => useUI.getState().openSheet(close => <MisComidasCompuestas close={close} />, { fullScreen: true })
+  const openHistorialNutricion = () => useUI.getState().openSheet(close => <HistorialNutricion close={close} />, { locked: true, fullScreen: true })
   const openSugerenciaComida = () => useUI.getState().openSheet(close => <SugerenciaComida close={close} onSaved={loadComidas} />, { locked: true, fullScreen: true })
   const removeMeal = async id => { await api('/api/comidas/' + id, { method: 'DELETE' }); loadComidas() }
   const removeGrupo = async grupoId => { await api('/api/comidas/grupo/' + encodeURIComponent(grupoId), { method: 'DELETE' }); loadComidas() }
@@ -577,7 +579,10 @@ export default function Nutricion() {
   return <>
     <div className="hdr">
       <div><h1>{t('Nutrición')}</h1><div className="sub">{t('Tus metas diarias')}</div></div>
-      <button className="iconbtn" onClick={openMisComidasCompuestas} aria-label="Mis comidas compuestas" title="Mis comidas compuestas"><Icon name="plate" /></button>
+      <div className="row" style={{ gap: 8 }}>
+        <button className="iconbtn" onClick={openHistorialNutricion} aria-label="Historial de nutrición" title="Historial de nutrición"><Icon name="history" /></button>
+        <button className="iconbtn" onClick={openMisComidasCompuestas} aria-label="Mis comidas compuestas" title="Mis comidas compuestas"><Icon name="plate" /></button>
+      </div>
     </div>
 
     <div className="card">

@@ -1082,6 +1082,32 @@ const routes = {
     return json(res, 200, comidas);
   },
 
+  'GET /api/comidas/historial': async (req, res) => {
+    const user = readSession(req);
+    if (!user) return json(res, 401, { error: 'not signed in' });
+
+    const dias = Number(new URL(req.url, 'http://x').searchParams.get('dias') || 30);
+    if (!Number.isInteger(dias) || dias < 1 || dias > 365) {
+      return json(res, 400, { error: 'dias invalid' });
+    }
+
+    const desde = `-${dias - 1} days`;
+    const historial = getDatabase().prepare(`
+      SELECT
+        fecha,
+        SUM(calorias) AS calorias,
+        SUM(proteina) AS proteina,
+        SUM(carbohidratos) AS carbohidratos,
+        SUM(grasas) AS grasas
+      FROM comidas_registradas
+      WHERE user_id = ? AND fecha >= date('now', ?)
+      GROUP BY fecha
+      ORDER BY fecha DESC
+    `).all(user.id, desde);
+
+    return json(res, 200, historial);
+  },
+
   'DELETE /api/comidas/:id': async (req, res) => {
     const user = readSession(req);
     if (!user) return json(res, 401, { error: 'not signed in' });
