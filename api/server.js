@@ -673,16 +673,21 @@ function combinarAlimentos(...listas) {
   }).slice(0, 15);
 }
 
-function obtenerPlantillas(db, userId) {
+function obtenerPlantillas(db, userId, categoria = '') {
+  const soloCategoria = String(categoria || '').trim();
+  const where = soloCategoria
+    ? 'WHERE p.user_id IS NULL AND p.categoria = ?'
+    : 'WHERE p.user_id IS NULL OR p.user_id = ?';
+  const params = soloCategoria ? [soloCategoria, userId] : [userId, userId];
   const rows = db.prepare(`
     SELECT p.id AS plantilla_id, p.user_id, p.nombre AS plantilla_nombre, p.created_at,
       i.id AS ingrediente_id, i.nombre_alimento, i.cantidad_gramos, i.calorias,
       i.proteina, i.carbohidratos, i.grasas
     FROM plantillas_comida p
     LEFT JOIN plantillas_ingredientes i ON i.plantilla_id = p.id
-    WHERE p.user_id IS NULL OR p.user_id = ?
+    ${where}
     ORDER BY CASE WHEN p.user_id = ? THEN 0 ELSE 1 END, p.id
-  `).all(userId, userId);
+  `).all(...params);
   const plantillas = new Map();
   for (const row of rows) {
     let plantilla = plantillas.get(row.plantilla_id);
@@ -877,7 +882,8 @@ const routes = {
   'GET /api/plantillas': async (req, res) => {
     const user = readSession(req);
     if (!user) return json(res, 401, { error: 'not signed in' });
-    return json(res, 200, obtenerPlantillas(getDatabase(), user.id));
+    const categoria = new URL(req.url, 'http://x').searchParams.get('categoria') || '';
+    return json(res, 200, obtenerPlantillas(getDatabase(), user.id, categoria));
   },
 
   'PUT /api/plantillas/:id': async (req, res) => {

@@ -443,6 +443,101 @@ function MisComidasCompuestas({ close }) {
   </>
 }
 
+function SugerenciaComida({ close, onSaved }) {
+  const [paso, setPaso] = useState(1)
+  const [franja, setFranja] = useState(FRANJAS[0].value)
+  const [plantillas, setPlantillas] = useState([])
+  const [loading, setLoading] = useState(false)
+  const [agregando, setAgregando] = useState(null)
+  const [error, setError] = useState('')
+  const historyEntryRef = useRef(false)
+  const closingRef = useRef(false)
+  const pasoRef = useRef(paso)
+  pasoRef.current = paso
+
+  const cargarSugerencias = useCallback(() => {
+    setLoading(true)
+    setError('')
+    api('/api/plantillas?categoria=fitness').then(setPlantillas).catch(() => {
+      setPlantillas([])
+      setError('No se pudieron cargar las sugerencias.')
+    }).finally(() => setLoading(false))
+  }, [])
+
+  const irALista = useCallback(value => {
+    setFranja(value)
+    setPaso(2)
+    cargarSugerencias()
+  }, [cargarSugerencias])
+
+  const cerrar = useCallback((fromPopstate = false) => {
+    if (closingRef.current) return
+    closingRef.current = true
+    if (historyEntryRef.current) {
+      historyEntryRef.current = false
+      if (!fromPopstate) window.history.back()
+    }
+    close()
+  }, [close])
+
+  useEffect(() => {
+    historyEntryRef.current = true
+    window.history.pushState({ ...(window.history.state || {}), sugerenciaComida: true }, '', window.location.href)
+    const onPopState = event => {
+      if (!event.state?.sugerenciaComida) return
+      if (pasoRef.current === 2) {
+        setPaso(1)
+        window.history.pushState({ ...(window.history.state || {}), sugerenciaComida: true }, '', window.location.href)
+      } else {
+        cerrar(true)
+      }
+    }
+    window.addEventListener('popstate', onPopState)
+    return () => {
+      window.removeEventListener('popstate', onPopState)
+      if (!closingRef.current && historyEntryRef.current) {
+        historyEntryRef.current = false
+        window.history.back()
+      }
+    }
+  }, [cerrar])
+
+  const agregar = async plantilla => {
+    setAgregando(plantilla.id)
+    setError('')
+    try {
+      await api('/api/comidas/grupo', { method: 'POST', body: JSON.stringify({
+        grupo_nombre: plantilla.nombre, franja, fecha: todayISO(), ingredientes: plantilla.ingredientes,
+      }) })
+      onSaved()
+    } catch {
+      setError('No se pudo agregar la sugerencia. Intentá nuevamente.')
+    } finally {
+      setAgregando(null)
+    }
+  }
+
+  const franjaActual = FRANJAS.find(item => item.value === franja)
+  return <div className="compound-builder">
+    <div className="compound-builder-content">
+      <div className="row between compound-builder-header">
+        <div><h3 style={{ margin: 0 }}>Sugerencia de comida</h3><div className="dim small">{paso === 1 ? 'Elegí una franja' : franjaActual?.label}</div></div>
+        <button type="button" className="iconbtn" onClick={() => cerrar()} aria-label="Cerrar"><Icon name="xmark" /></button>
+      </div>
+      {paso === 1 ? <Section title="¿Para qué momento del día?" className="compound-builder-section">
+        <SelectRow title="Franja" value={franja} options={FRANJAS} onChange={irALista} sheetTitle="Elegir franja" />
+      </Section> : <Section title={`Sugerencias para ${franjaActual?.label.toLowerCase()}`} className="compound-builder-section">
+        {loading ? <div className="meal-empty">Cargando sugerencias…</div> : plantillas.length ? <div className="list">
+          {plantillas.map(plantilla => <GrupoComidaRow key={plantilla.id} grupo={{ grupo_nombre: plantilla.nombre, ingredientes: plantilla.ingredientes, totales: totalesDeIngredientes(plantilla.ingredientes) }} actions={[
+            <Button key="add" size="sm" variant="tinted" disabled={agregando === plantilla.id} onClick={event => { event.stopPropagation(); agregar(plantilla) }}>{agregando === plantilla.id ? 'Agregando…' : 'Agregar'}</Button>,
+          ]} />)}
+        </div> : <div className="empty"><div className="ico"><Icon name="plate" /></div>No hay sugerencias disponibles.</div>}
+      </Section>}
+      {error && <p className="small compound-builder-error" style={{ color: 'var(--acc-2)' }}>{error}</p>}
+    </div>
+  </div>
+}
+
 export default function Nutricion() {
   const S = useStore(s => s.S)
   const [range, setRange] = useState(90)
@@ -458,13 +553,17 @@ export default function Nutricion() {
   const addMeal = franja => useUI.getState().openSheet(close => <FoodPicker franja={franja} close={close} onSaved={loadComidas} />)
   const addComidaCompuesta = () => useUI.getState().openSheet(close => <ComidaCompuestaBuilder close={close} onSaved={loadComidas} />, { locked: true, fullScreen: true })
   const openMisComidasCompuestas = () => useUI.getState().openSheet(close => <MisComidasCompuestas close={close} />, { fullScreen: true })
+  const openSugerenciaComida = () => useUI.getState().openSheet(close => <SugerenciaComida close={close} onSaved={loadComidas} />, { locked: true, fullScreen: true })
   const removeMeal = async id => { await api('/api/comidas/' + id, { method: 'DELETE' }); loadComidas() }
   const removeGrupo = async grupoId => { await api('/api/comidas/grupo/' + encodeURIComponent(grupoId), { method: 'DELETE' }); loadComidas() }
 
   return <>
     <div className="hdr">
       <div><h1>{t('Nutrición')}</h1><div className="sub">{t('Tus metas diarias')}</div></div>
-      <button className="iconbtn" onClick={openMisComidasCompuestas} aria-label="Mis comidas compuestas" title="Mis comidas compuestas"><Icon name="plate" /></button>
+      <div className="row" style={{ gap: 4 }}>
+        <button className="iconbtn" onClick={openSugerenciaComida} aria-label="Sugerencia de comida" title="Sugerencia de comida"><Icon name="sparkles" /></button>
+        <button className="iconbtn" onClick={openMisComidasCompuestas} aria-label="Mis comidas compuestas" title="Mis comidas compuestas"><Icon name="plate" /></button>
+      </div>
     </div>
 
     <div className="card">
