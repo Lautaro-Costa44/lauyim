@@ -4,6 +4,7 @@ import { localTZ } from '../lib/format.js'
 import { registerCustom } from '../lib/exercises.js'
 import { DEMO, DEMO_SEEDED } from '../lib/demo.js'
 import { guestAllowed } from '../lib/guest.js'
+import { enqueueSync, takeSyncBatch, removeSync, deferSync, diffState, applySyncMappings } from '../lib/sync-queue.js'
 import { MAX_ROUTINE_GROUPS, canAddGroup, validateGroupName, createRoutineGroup, syncActiveGroupInState, addGroupToState, removeGroupFromState } from '../lib/routineGroups.js'
 
 const KEY = 'gym_state_v1'
@@ -74,7 +75,8 @@ function removeGroup(state, groupId) {
 }
 
 export const useStore = create((set, get) => {
-  let pushTm = null
+  let syncTm = null
+  let syncing = false
   let licenseExpired = false
 
   const persist = (S, push = true) => {
@@ -82,10 +84,11 @@ export const useStore = create((set, get) => {
     registerCustom(S.customEx)
     localStorage.setItem(KEY, JSON.stringify(S))
     set({ S })
-    if (push && get().user) {
-      clearTimeout(pushTm)
-      pushTm = setTimeout(() => get().pushState(), 1500)
-    }
+  }
+
+  const scheduleSync = (delay = 2000) => {
+    clearTimeout(syncTm)
+    syncTm = setTimeout(() => get().syncPending(), delay + Math.random() * 1500)
   }
 
   // A setting changed right before switching away/closing the tab must not get lost mid-debounce
@@ -94,12 +97,9 @@ export const useStore = create((set, get) => {
   // kills the app.
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState !== 'hidden') return
-    if (pushTm) {
-      clearTimeout(pushTm)
-      pushTm = null
-      get().pushState()
-    }
+    scheduleSync(0)
   })
+  window.addEventListener('online', () => scheduleSync(0))
 
   // Everything a sign-out leaves behind on this device, whichever way it was triggered.
   const clearLocalSession = () => {
@@ -118,10 +118,17 @@ export const useStore = create((set, get) => {
     // Mutate a draft of S via producer fn, then persist + schedule sync.
     update(mut, push = true) {
       const S = clone(get().S)
+      const before = clone(S)
       mut(S)
-      persist(S, push)
+      persist(S, false)
+      if (push && get().user) enqueueSync(get().user.id, diffState(before, S)).then(() => scheduleSync())
     },
-    replaceState(S, push = false) { persist(clone(S), push) },
+    replaceState(S, push = false) {
+      const before = clone(get().S)
+      const next = clone(S)
+      persist(next, false)
+      if (push && get().user) enqueueSync(get().user.id, diffState(before, next)).then(() => scheduleSync())
+    },
 
     autoBackupNow() {},
 
@@ -134,8 +141,8 @@ export const useStore = create((set, get) => {
     config: null,
     async loadConfig() {
       if (get().config) return get().config
-      try { const c = await api('/api/config'); set({ config: c }); return c }
-      catch { return null }
+      try { const c = await api('/api/config', { timeoutMs: 2500 }); localStorage.setItem('gym_config', JSON.stringify(c)); set({ config: c }); return c }
+      catch { try { return JSON.parse(localStorage.getItem('gym_config') || 'null') } catch { return null } }
     },
 
     setUser(u) {
@@ -146,9 +153,28 @@ export const useStore = create((set, get) => {
 
     async pushState() {
       if (!get().user) return
-      clearTimeout(pushTm)
       try { await api('/api/data', { method: 'PUT', body: JSON.stringify({ state: get().S }) }); localStorage.removeItem('gym_dirty') }
       catch (e) { localStorage.setItem('gym_dirty', '1') }
+    },
+    async syncPending() {
+      if (!get().user || syncing || (navigator.onLine === false)) return
+      syncing = true
+      try {
+        const batch = await takeSyncBatch(get().user.id, 25)
+        if (!batch.length) { localStorage.removeItem('gym_dirty'); return }
+        const response = await api('/api/data/sync', { method: 'POST', body: JSON.stringify({ operations: batch }) })
+        applySyncMappings(response.results || [])
+        await removeSync(response.appliedIds || [])
+        const conflicted = new Set((response.conflicts || []).map(item => item.id))
+        await deferSync(batch.filter(row => conflicted.has(row.id)))
+        if (conflicted.size) localStorage.setItem('gym_dirty', '1')
+        else localStorage.removeItem('gym_dirty')
+        if ((await takeSyncBatch(get().user.id, 1)).length) scheduleSync(500)
+      } catch {
+        const batch = await takeSyncBatch(get().user.id, 25)
+        await deferSync(batch)
+        localStorage.setItem('gym_dirty', '1')
+      } finally { syncing = false }
     },
     async pullState() {
       try {
@@ -160,7 +186,7 @@ export const useStore = create((set, get) => {
           const next = Object.assign(clone(DEF), state)
           if (active) next.active = active
           persist(next, false)
-        } else if (hasData(S)) { await get().pushState() }
+        } else if (hasData(S) && localStorage.getItem('gym_dirty') !== '1') { await get().pushState() }
       } catch (e) { /* offline — keep local */ }
     },
 
@@ -258,12 +284,17 @@ export const useStore = create((set, get) => {
       // refuse — the only way the switch reaches someone already inside is here, on their next
       // boot. Ending the session needs a positive `allow_guest: false`; see lib/guest.js for why
       // an unreachable server must not be allowed to lock anyone out (#42).
+      // Render the local session immediately. Network checks continue in the background;
+      // this is what makes a previously opened PWA usable in airplane mode.
+      set({ ready: true })
       const cfg = await get().loadConfig()
       if (!guestAllowed(cfg)) get().setGuest(false)
       try {
         const me = await api('/api/me')
         get().setUser(me.user)
         await get().pullState()
+        // Apply any local operations that were recorded while the device was offline.
+        await get().syncPending()
         // Re-stamp the reminder's timezone on every load — keeps it correct if you're travelling,
         // without needing to revisit Settings.
         const tz = localTZ()

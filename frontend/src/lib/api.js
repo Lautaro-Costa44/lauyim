@@ -11,7 +11,14 @@ export const webauthnOK = () => typeof window.PublicKeyCredential !== 'undefined
 
 export async function api(path, opts) {
   const headers = Object.assign({ 'Content-Type': 'application/json' }, opts && opts.headers)
-  const r = await fetch(path, Object.assign({}, opts, { headers }))
+  // A disconnected mobile browser may leave fetch pending for a long time instead of
+  // rejecting promptly. Keep boot and background sync responsive; callers can retry later.
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), opts?.timeoutMs || 8000)
+  const requestOpts = Object.assign({}, opts, { headers, signal: opts?.signal || controller.signal })
+  delete requestOpts.timeoutMs
+  let r
+  try { r = await fetch(path, requestOpts) } finally { clearTimeout(timer) }
   const data = await r.json().catch(() => ({}))
   if (!r.ok) { 
     const e = new Error(data.error || ('HTTP ' + r.status))

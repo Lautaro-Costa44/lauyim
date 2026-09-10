@@ -13,6 +13,45 @@ import HistorialNutricion from './HistorialNutricion.jsx'
 import { api } from '../lib/api.js'
 import { todayISO } from '../lib/format.js'
 import { useUI } from '../store/useUI.js'
+import { cancelPendingRequest, enqueueRequest, updatePendingRequest } from '../lib/sync-queue.js'
+
+const MEALS_CACHE_PREFIX = 'gym_nutrition_cache_v1:'
+const FOOD_CACHE_PREFIX = 'gym_food_cache_v1:'
+const TEMPLATES_CACHE_KEY = 'gym_nutrition_templates_v1'
+const mealsCacheKey = date => MEALS_CACHE_PREFIX + date
+const readMealsCache = date => {
+  try {
+    const cached = JSON.parse(localStorage.getItem(mealsCacheKey(date)) || 'null')
+    return Array.isArray(cached) ? cached : null
+  } catch { return null }
+}
+const writeMealsCache = (date, meals) => {
+  try {
+    localStorage.setItem(mealsCacheKey(date), JSON.stringify(meals))
+    // Keep the browser cache bounded; old history is still available from the server.
+    const cutoff = Date.now() - 120 * 86400000
+    Object.keys(localStorage).filter(key => key.startsWith(MEALS_CACHE_PREFIX)).forEach(key => {
+      const cachedDate = key.slice(MEALS_CACHE_PREFIX.length)
+      if (new Date(cachedDate).getTime() < cutoff) localStorage.removeItem(key)
+    })
+  } catch { /* storage quota: network remains usable */ }
+}
+const foodCacheKey = query => FOOD_CACHE_PREFIX + query.toLowerCase().trim()
+const readFoodCache = query => {
+  try {
+    const cached = JSON.parse(localStorage.getItem(foodCacheKey(query)) || 'null')
+    return cached && Date.now() - cached.at < 30 * 86400000 && Array.isArray(cached.items) ? cached.items : null
+  } catch { return null }
+}
+const writeFoodCache = (query, items) => {
+  try { localStorage.setItem(foodCacheKey(query), JSON.stringify({ at: Date.now(), items })) } catch { /* quota: network remains usable */ }
+}
+const barcodeKey = code => FOOD_CACHE_PREFIX + 'barcode:' + String(code).trim()
+const offlineId = () => `offline:${Date.now()}-${Math.random().toString(36).slice(2)}`
+const cacheMeal = (date, meal) => writeMealsCache(date, [...(readMealsCache(date) || []), meal])
+const removeCachedMeal = (date, predicate) => writeMealsCache(date, (readMealsCache(date) || []).filter(item => !predicate(item)))
+const readTemplatesCache = () => { try { const value = JSON.parse(localStorage.getItem(TEMPLATES_CACHE_KEY) || 'null'); return Array.isArray(value) ? value : null } catch { return null } }
+const writeTemplatesCache = value => { try { localStorage.setItem(TEMPLATES_CACHE_KEY, JSON.stringify(value)) } catch { /* quota: network remains usable */ } }
 
 function caloricInfoSheet(close) {
   return <>
@@ -59,7 +98,7 @@ function CaloricRecommendation({ S }) {
       {t('Para tu configuración actual:')} <strong style={{ color: 'var(--label)' }}>{objetivoLabel}</strong>.
     </div>
     <div style={{ fontSize: 14, marginTop: 4 }}>
-      {t('Se recomienda quemar')} <strong style={{ color: 'var(--label)' }}>{mantenimiento.toLocaleString()} kcal</strong> {t('y consumir')} <strong style={{ color: 'var(--acc)' }}>{sugerido.toLocaleString()} kcal</strong>.
+      {t('Se recomienda quemar')} <strong style={{ color: 'var(--label)' }}>{mantenimiento.toLocaleString()} kcal</strong> {t('y consumir')} <strong style={{ color: 'var(--label)' }}>{sugerido.toLocaleString()} kcal</strong>.
     </div>
   </div>
 }
@@ -104,7 +143,15 @@ function MealForm({ alimento, franja, close, onBack, onSaved, onAddIngrediente, 
         onAdded?.()
         onBack()
       } else {
-        await api('/api/comidas', { method: 'POST', body: JSON.stringify({ fecha: todayISO(), franja: mealFranja, ...ingrediente }) })
+        const payload = { fecha: todayISO(), franja: mealFranja, ...ingrediente }
+        try { await api('/api/comidas', { method: 'POST', body: JSON.stringify(payload) }) }
+        catch (error) {
+          if (error.status) throw error
+          const tempId = offlineId(); payload.tempId = tempId
+          cacheMeal(payload.fecha, { ...payload, id: tempId })
+          const user = useStore.getState().user
+          if (user) await enqueueRequest(user.id, { kind: 'meal-create', payload })
+        }
         onSaved(); close()
       }
     } catch { setSaving(false) }
@@ -150,11 +197,17 @@ function ManualFoodForm({ franja, close, onBack, onSaved, onAddIngrediente }) {
       }
       if (onAddIngrediente) {
         onAddIngrediente(ingrediente)
-      } else await api('/api/comidas', { method: 'POST', body: JSON.stringify({
-        fecha: todayISO(), franja, nombre_alimento: nombre.trim(), cantidad_gramos: values[0],
-        calorias: values[1] * values[0] / 100, proteina: values[2] * values[0] / 100,
-        carbohidratos: values[3] * values[0] / 100, grasas: values[4] * values[0] / 100,
-      }) })
+      } else {
+        const payload = { fecha: todayISO(), franja, ...ingrediente }
+        try { await api('/api/comidas', { method: 'POST', body: JSON.stringify(payload) }) }
+        catch (error) {
+          if (error.status) throw error
+          const tempId = offlineId(); payload.tempId = tempId
+          cacheMeal(payload.fecha, { ...payload, id: tempId })
+          const user = useStore.getState().user
+          if (user) await enqueueRequest(user.id, { kind: 'meal-create', payload })
+        }
+      }
       if (!onAddIngrediente) { onSaved(); close() }
     } catch { setError('No se pudo guardar la comida. Intentá nuevamente.'); setSaving(false) }
   }
@@ -192,12 +245,16 @@ function FoodPicker({ franja, close, onSaved, onAddIngrediente, onAdded }) {
       return undefined
     }
     const requestId = ++requestRef.current
-    setLoading(true)
+    const cached = readFoodCache(query)
+    if (cached) { setResults(cached); setLoading(false) }
+    else setLoading(true)
     setError('')
     const timer = setTimeout(() => api('/api/alimentos/buscar?q=' + encodeURIComponent(query.trim())).then(d => {
-      if (requestId === requestRef.current) setResults(Array.isArray(d) ? d : d.alimentos || [])
+      const items = Array.isArray(d) ? d : d.alimentos || []
+      writeFoodCache(query, items)
+      if (requestId === requestRef.current) setResults(items)
     }).catch(() => {
-      if (requestId === requestRef.current) { setResults([]); setError('No se pudo buscar. Podés ingresar el alimento manualmente.') }
+      if (requestId === requestRef.current && !cached) { setResults([]); setError('No se pudo buscar. Podés ingresar el alimento manualmente.') }
     }).finally(() => { if (requestId === requestRef.current) setLoading(false) }), 400)
     return () => clearTimeout(timer)
   }, [query, tab])
@@ -216,8 +273,15 @@ function FoodPicker({ franja, close, onSaved, onAddIngrediente, onAdded }) {
             }) })
             onSaved()
             close()
-          } catch {
-            setError('No se pudo agregar la comida compuesta. Intentá nuevamente.')
+          } catch (error) {
+            if (error.status) { setError('No se pudo agregar la comida compuesta. Intentá nuevamente.'); return }
+            const date = todayISO()
+            const grupoId = offlineId()
+            const requestPayload = { grupo_nombre: alimento.nombre, franja, fecha: date, ingredientes: alimento.ingredientes, tempGroupId: grupoId }
+            alimento.ingredientes.forEach(item => cacheMeal(date, { ...item, id: offlineId(), grupo_id: grupoId, grupo_nombre: alimento.nombre, fecha: date, franja }))
+            const user = useStore.getState().user
+            if (user) await enqueueRequest(user.id, { kind: 'meal-group-create', payload: requestPayload })
+            onSaved(); close()
           }
         },
       })
@@ -226,7 +290,16 @@ function FoodPicker({ franja, close, onSaved, onAddIngrediente, onAdded }) {
     setSelected(alimento)
   }, [close, franja, onAddIngrediente, onSaved])
   const scan = useCallback(async codigo => {
-    try { setError(''); pick(await api('/api/alimentos/codigo/' + encodeURIComponent(codigo))) }
+    try {
+      setError('')
+      let alimento = null
+      try { alimento = JSON.parse(localStorage.getItem(barcodeKey(codigo)) || 'null') } catch { /* ignore malformed cache */ }
+      if (!alimento) {
+        alimento = await api('/api/alimentos/codigo/' + encodeURIComponent(codigo))
+        try { localStorage.setItem(barcodeKey(codigo), JSON.stringify(alimento)) } catch { /* quota: network remains usable */ }
+      }
+      pick(alimento)
+    }
     catch (e) { setError(e.status === 404 ? 'Producto no encontrado. Podés ingresar sus datos manualmente.' : 'No se pudo consultar el producto. Podés ingresarlo manualmente.') }
   }, [pick])
   const addIngrediente = useCallback(ingrediente => {
@@ -309,13 +382,37 @@ function ComidaCompuestaBuilder({ close, onSaved, plantillaId, initialNombre = '
     setError('')
     try {
       if (esEdicion) {
-        await api('/api/plantillas/' + encodeURIComponent(plantillaId), { method: 'PUT', body: JSON.stringify({
-          nombre: nombreComida.trim(), ingredientes,
-        }) })
+        const cachedTemplate = (readTemplatesCache() || []).find(item => item.id === plantillaId)
+        const payload = { id: plantillaId, nombre: nombreComida.trim(), ingredientes, expectedUpdatedAt: cachedTemplate?.updated_at ?? null }
+        try { await api('/api/plantillas/' + encodeURIComponent(plantillaId), { method: 'PUT', body: JSON.stringify(payload) }) }
+        catch (error) {
+          if (error.status) throw error
+          const cached = readTemplatesCache() || []
+          writeTemplatesCache(cached.map(item => item.id === plantillaId ? { ...item, nombre: payload.nombre, ingredientes } : item))
+          const user = useStore.getState().user
+          if (user) {
+            if (String(plantillaId).startsWith('offline:')) {
+              const updated = await updatePendingRequest(user.id, (request) => request.kind === 'compound-create' && request.payload?.tempId === plantillaId,
+                request => ({ ...request, payload: { ...request.payload, nombre: payload.nombre, ingredientes: payload.ingredientes } }))
+              if (!updated) await enqueueRequest(user.id, { kind: 'template-create', payload: { nombre: payload.nombre, ingredientes: payload.ingredientes, tempId: plantillaId } })
+            } else await enqueueRequest(user.id, { kind: 'template-update', payload })
+          }
+        }
       } else {
-        await api('/api/comidas-compuestas', { method: 'POST', body: JSON.stringify({
-          nombre: nombreComida.trim(), franja: franjaSeleccionada, fecha: todayISO(), ingredientes,
-        }) })
+        const payload = { nombre: nombreComida.trim(), franja: franjaSeleccionada, fecha: todayISO(), ingredientes }
+        try { await api('/api/comidas-compuestas', { method: 'POST', body: JSON.stringify(payload) }) }
+        catch (error) {
+          if (error.status) throw error
+          const date = payload.fecha
+          const groupId = offlineId()
+          payload.tempGroupId = groupId
+          payload.tempId = offlineId()
+          ingredientes.forEach(item => cacheMeal(date, { ...item, id: offlineId(), grupo_id: groupId, grupo_nombre: payload.nombre, fecha: date, franja: payload.franja }))
+          const templates = readTemplatesCache() || []
+          writeTemplatesCache([...templates, { id: payload.tempId, nombre: payload.nombre, ingredientes: payload.ingredientes }])
+          const user = useStore.getState().user
+          if (user) await enqueueRequest(user.id, { kind: 'compound-create', payload })
+        }
       }
       onSaved()
       finishClose()
@@ -413,8 +510,9 @@ function MisComidasCompuestas({ close }) {
   const [loading, setLoading] = useState(true)
 
   const loadPlantillas = useCallback(() => {
-    setLoading(true)
-    api('/api/plantillas?scope=mine').then(setPlantillas).catch(() => setPlantillas([])).finally(() => setLoading(false))
+    const cached = readTemplatesCache()
+    if (cached) { setPlantillas(cached); setLoading(false) } else setLoading(true)
+    api('/api/plantillas?scope=mine').then(next => { const items = Array.isArray(next) ? next : []; writeTemplatesCache(items); setPlantillas(items) }).catch(() => { if (!cached) setPlantillas([]) }).finally(() => setLoading(false))
   }, [])
 
   useEffect(() => { loadPlantillas() }, [loadPlantillas])
@@ -437,8 +535,18 @@ function MisComidasCompuestas({ close }) {
     onConfirm: async () => {
       try {
         await api('/api/plantillas/' + encodeURIComponent(plantilla.id), { method: 'DELETE' })
+        writeTemplatesCache((readTemplatesCache() || []).filter(item => item.id !== plantilla.id))
         loadPlantillas()
-      } catch { /* keep the current list when deletion fails */ }
+      } catch (error) {
+        if (error.status) return
+        writeTemplatesCache((readTemplatesCache() || []).filter(item => item.id !== plantilla.id))
+        const user = useStore.getState().user
+        if (user) {
+          if (String(plantilla.id).startsWith('offline:')) await cancelPendingRequest(user.id, request => ['compound-create', 'template-create'].includes(request.kind) && request.payload?.tempId === plantilla.id)
+          else await enqueueRequest(user.id, { kind: 'template-delete', payload: { id: plantilla.id, expectedUpdatedAt: plantilla.updated_at ?? null } })
+        }
+        loadPlantillas()
+      }
     },
   })
 
@@ -536,8 +644,14 @@ function SugerenciaComida({ close, onSaved }) {
         grupo_nombre: plantilla.nombre, franja, fecha: todayISO(), ingredientes: plantilla.ingredientes,
       }) })
       onSaved()
-    } catch {
-      setError('No se pudo agregar la sugerencia. Intentá nuevamente.')
+    } catch (error) {
+      if (error.status) { setError('No se pudo agregar la sugerencia. Intentá nuevamente.'); return }
+      const date = todayISO()
+      const grupoId = offlineId()
+      plantilla.ingredientes.forEach(item => cacheMeal(date, { ...item, id: offlineId(), grupo_id: grupoId, grupo_nombre: plantilla.nombre, fecha: date, franja }))
+      const user = useStore.getState().user
+      if (user) await enqueueRequest(user.id, { kind: 'meal-group-create', payload: { grupo_nombre: plantilla.nombre, franja, fecha: date, ingredientes: plantilla.ingredientes } })
+      onSaved()
     } finally {
       setAgregando(null)
     }
@@ -583,16 +697,34 @@ export default function Nutricion() {
   const [loadingComidas, setLoadingComidas] = useState(true)
   const { sugerido, metaProteina } = calcularMetasNutricionales(S)
   const { grasasMeta, carbosMeta } = calcularMetasMacros(sugerido, metaProteina)
-  const loadComidas = (showLoading = false) => { if (showLoading) setLoadingComidas(true); api('/api/comidas?fecha=' + todayISO()).then(setComidas).catch(() => setComidas([])).finally(() => setLoadingComidas(false)) }
+  const loadComidas = (showLoading = false) => {
+    const date = todayISO()
+    const cached = readMealsCache(date)
+    if (cached) { setComidas(cached); setLoadingComidas(false) }
+    else if (showLoading) setLoadingComidas(true)
+    api('/api/comidas?fecha=' + date).then(next => {
+      const meals = Array.isArray(next) ? next : []
+      writeMealsCache(date, meals)
+      setComidas(meals)
+    }).catch(() => { if (!cached) setComidas([]) }).finally(() => setLoadingComidas(false))
+  }
   useEffect(() => { loadComidas(true) }, [])
   const totals = useMemo(() => comidas.reduce((a, c) => ({ calorias: a.calorias + Number(c.calorias || 0), proteina: a.proteina + Number(c.proteina || 0), carbos: a.carbos + Number(c.carbohidratos || 0), grasas: a.grasas + Number(c.grasas || 0) }), { calorias: 0, proteina: 0, carbos: 0, grasas: 0 }), [comidas])
   const addMeal = franja => useUI.getState().openSheet(close => <FoodPicker franja={franja} close={close} onSaved={loadComidas} />)
   const addComidaCompuesta = () => useUI.getState().openSheet(close => <ComidaCompuestaBuilder close={close} onSaved={loadComidas} />, { locked: true, fullScreen: true })
   const openMisComidasCompuestas = () => useUI.getState().openSheet(close => <MisComidasCompuestas close={close} />, { fullScreen: true })
-  const openHistorialNutricion = () => useUI.getState().openSheet(close => <HistorialNutricion close={close} />, { locked: true, fullScreen: true })
+  const openHistorialNutricion = () => useUI.getState().openSheet(close => <HistorialNutricion close={close} S={S} />, { locked: true, fullScreen: true })
   const openSugerenciaComida = () => useUI.getState().openSheet(close => <SugerenciaComida close={close} onSaved={loadComidas} />, { locked: true, fullScreen: true })
-  const removeMeal = async id => { await api('/api/comidas/' + id, { method: 'DELETE' }); loadComidas() }
-  const removeGrupo = async grupoId => { await api('/api/comidas/grupo/' + encodeURIComponent(grupoId), { method: 'DELETE' }); loadComidas() }
+  const removeMeal = async id => {
+    try { await api('/api/comidas/' + id, { method: 'DELETE' }) }
+    catch (error) { if (error.status) throw error; removeCachedMeal(todayISO(), item => item.id === id); const user = useStore.getState().user; if (user) await enqueueRequest(user.id, { kind: 'meal-delete', payload: { id } }) }
+    loadComidas()
+  }
+  const removeGrupo = async grupoId => {
+    try { await api('/api/comidas/grupo/' + encodeURIComponent(grupoId), { method: 'DELETE' }) }
+    catch (error) { if (error.status) throw error; removeCachedMeal(todayISO(), item => item.grupo_id === grupoId); const user = useStore.getState().user; if (user) await enqueueRequest(user.id, { kind: 'meal-group-delete', payload: { grupoId } }) }
+    loadComidas()
+  }
 
   return <>
     <div className="hdr">

@@ -513,8 +513,8 @@ const actualizarFranjas = db.prepare(`
 `);
 
 const insertarPlantilla = db.prepare(`
-  INSERT INTO plantillas_comida (user_id, nombre, categoria, franjas_recomendadas, created_at)
-  VALUES (?, ?, ?, ?, ?)
+  INSERT INTO plantillas_comida (user_id, nombre, categoria, franjas_recomendadas, created_at, updated_at)
+  VALUES (?, ?, ?, ?, ?, ?)
 `);
 
 const insertarIngrediente = db.prepare(`
@@ -538,12 +538,14 @@ for (const plantilla of plantillas) {
 
   db.exec('BEGIN');
   try {
+    const now = Date.now();
     const resultado = insertarPlantilla.run(
       null,
       plantilla.nombre,
       plantilla.categoria,
       JSON.stringify(plantilla.franjas_recomendadas || []),
-      Date.now()
+      now,
+      now
     );
 
     for (const ingrediente of plantilla.ingredientes) {

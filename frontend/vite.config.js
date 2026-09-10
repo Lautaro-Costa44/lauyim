@@ -29,6 +29,14 @@ const umami = {
   }
 }
 
+const precacheManifest = {
+  name: 'lauyim-precache-manifest',
+  generateBundle(_options, bundle) {
+    const files = Object.keys(bundle).filter(name => /\.(js|css|html|png|svg|woff2?)$/i.test(name))
+    this.emitFile({ type: 'asset', fileName: 'precache.json', source: JSON.stringify(files) })
+  }
+}
+
 // The version people are asked for in #install-help and on every bug report. Read from
 // package.json so it cannot drift from the release it was built in, and inlined at build
 // time so no runtime fetch is involved.
@@ -36,7 +44,7 @@ const pkgVersion = JSON.parse(readFileSync(new URL('./package.json', import.meta
 
 export default defineConfig({
   define: { __APP_VERSION__: JSON.stringify(pkgVersion) },
-  plugins: [react(), umami],
+  plugins: [react(), umami, precacheManifest],
   base: './',
   server: {
     proxy: {

@@ -3,8 +3,20 @@
 // Bump this whenever shell/icon assets change so installed PWAs do not keep
 // serving the previous icon from the old runtime cache.
 const CACHE = 'opengym-rt-v4'
+const SHELL = ['./', './index.html', './logo-perf.svg', './icon-512.png', './icon-180.png']
 
-self.addEventListener('install', () => self.skipWaiting())
+self.addEventListener('install', e => {
+  // Cache the stable shell immediately. Hashed JS chunks are cached by the fetch
+  // handler as they are requested, so a release can still change them safely.
+  e.waitUntil(caches.open(CACHE).then(async c => {
+    await c.addAll(SHELL).catch(() => {})
+    try {
+      const response = await fetch('./precache.json')
+      const files = await response.json()
+      await c.addAll(files.map(file => './' + file).filter(file => !file.includes('sw.js')))
+    } catch { /* runtime caching still provides a safe fallback */ }
+  }).then(() => self.skipWaiting()))
+})
 self.addEventListener('activate', e => {
   e.waitUntil(caches.keys().then(keys =>
     Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)))

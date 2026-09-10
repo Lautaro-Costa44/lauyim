@@ -55,6 +55,12 @@ export function initDatabase() {
   try {
     db.exec(`ALTER TABLE plantillas_comida ADD COLUMN franjas_recomendadas TEXT;`);
   } catch {}
+  try {
+    db.exec(`ALTER TABLE plantillas_comida ADD COLUMN updated_at INTEGER;`);
+  } catch {}
+  try {
+    db.prepare(`UPDATE plantillas_comida SET updated_at = COALESCE(updated_at, created_at, ?) WHERE updated_at IS NULL`).run(Date.now());
+  } catch {}
 
   // Crear tablas principales si no existen
   db.exec(`
@@ -120,6 +126,14 @@ export function initDatabase() {
 
   // Los tests y las bases nuevas necesitan también las tablas secundarias del schema.
   db.exec(fs.readFileSync(schemaPath, 'utf8'));
+  db.exec(`CREATE TABLE IF NOT EXISTS sync_operations (
+    user_id TEXT NOT NULL,
+    op_id TEXT NOT NULL,
+    result_json TEXT,
+    created_at INTEGER NOT NULL,
+    PRIMARY KEY (user_id, op_id),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  );`);
 
   // Migración defensiva: asegurar que existan todas las columnas de la encuesta en bases de datos existentes
   const columnsToAdd = [

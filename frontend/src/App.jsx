@@ -7,7 +7,6 @@ import { ACCENTS } from './lib/format.js'
 import { setLang, useLang } from './lib/i18n.js'
 import { setNav } from './lib/nav.js'
 import { useWakeLock } from './lib/wakelock.js'
-import { startFlow } from './sheets.jsx'
 import { guestAllowed } from './lib/guest.js'
 import Icon from './components/Icon.jsx'
 import TabBar from './components/TabBar.jsx'
@@ -18,23 +17,28 @@ import RestTimer from './components/RestTimer.jsx'
 import { installKeyboardViewport } from './lib/keyboard.js'
 import { disableKeyboardAutofill } from './lib/input-safety.js'
 import Login from './views/Login.jsx'
-import Home from './views/Home.jsx'
-import Plan from './views/Plan.jsx'
-import RoutineEdit from './views/RoutineEdit.jsx'
-import Workout from './views/Workout.jsx'
-import Stats from './views/Stats.jsx'
-import Nutricion from './views/Nutricion.jsx'
-import History from './views/History.jsx'
-import Settings from './views/Settings.jsx'
 import LicenseExpired from './views/LicenseExpired.jsx'
-// These routes are not needed to boot or navigate the main workout loop.
-// Keep their larger catalogues out of the initial offline payload.
+// Keep every authenticated screen out of the initial payload. The service worker
+// caches each chunk after first use, so repeat visits remain instant without
+// forcing a large first download on mobile connections.
+const Home = lazy(() => import('./views/Home.jsx'))
+const Plan = lazy(() => import('./views/Plan.jsx'))
+const RoutineEdit = lazy(() => import('./views/RoutineEdit.jsx'))
+const Workout = lazy(() => import('./views/Workout.jsx'))
+const Stats = lazy(() => import('./views/Stats.jsx'))
+const Nutricion = lazy(() => import('./views/Nutricion.jsx'))
+const History = lazy(() => import('./views/History.jsx'))
+const Settings = lazy(() => import('./views/Settings.jsx'))
 const Library = lazy(() => import('./views/Library.jsx'))
 const Admin = lazy(() => import('./views/Admin.jsx'))
 const SurveyWizard = lazy(() => import('./views/SurveyWizard.jsx'))
 const ImportPlan = lazy(() => import('./views/ImportPlan.jsx'))
 
 bindUI(useUI)   // lets the shared controls open sheets without importing the store at module scope
+
+// Keep the large sheet/workout toolset out of the entry chunk. It is fetched only when
+// the user starts a workout flow, then stays in the service-worker cache.
+const startFlow = (...args) => import('./sheets.jsx').then(module => module.startFlow(...args))
 
 // theme === 'system' follows the OS/browser preference instead of a fixed choice.
 const resolveTheme = theme => theme === 'light' || theme === 'dark'

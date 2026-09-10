@@ -379,12 +379,14 @@ CREATE TABLE IF NOT EXISTS plantillas_comida (
   categoria TEXT,
   franjas_recomendadas TEXT,
   created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
 -- COMANDO ALTER TABLE PARA BASES YA EXISTENTES (plantillas_comida):
 -- ALTER TABLE plantillas_comida ADD COLUMN categoria TEXT;
 -- ALTER TABLE plantillas_comida ADD COLUMN franjas_recomendadas TEXT;
+-- ALTER TABLE plantillas_comida ADD COLUMN updated_at INTEGER;
 
 CREATE TABLE IF NOT EXISTS plantillas_ingredientes (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -400,3 +402,13 @@ CREATE TABLE IF NOT EXISTS plantillas_ingredientes (
 
 CREATE INDEX IF NOT EXISTS idx_plantillas_comida_user_id ON plantillas_comida(user_id);
 CREATE INDEX IF NOT EXISTS idx_plantillas_ingredientes_plantilla_id ON plantillas_ingredientes(plantilla_id);
+
+-- Idempotency keys for offline mutations retried after reconnecting.
+CREATE TABLE IF NOT EXISTS sync_operations (
+  user_id TEXT NOT NULL,
+  op_id TEXT NOT NULL,
+  result_json TEXT,
+  created_at INTEGER NOT NULL,
+  PRIMARY KEY (user_id, op_id),
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);

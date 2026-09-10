@@ -81,10 +81,13 @@ import { routinesFromPresets } from '../lib/starter.js'
 import Icon from '../components/Icon.jsx'
 import { Section, Row, SelectRow, Switch, Segmented, Button, TextField } from '../components/ui.jsx'
 import { NO_AUTOFILL } from '../lib/input-safety.js'
+import { countSync } from '../lib/sync-queue.js'
 import { LANGS, INSTR_LANGS, getLang, setLang, t } from '../lib/i18n.js'
 
 export default function Settings() {
   const nav = useNavigate()
+  const [online, setOnline] = useState(() => navigator.onLine !== false)
+  const [pendingSync, setPendingSync] = useState(0)
   const S = useStore(s => s.S)
   const user = useStore(s => s.user)
   const [presetGroups, setPresetGroups] = useState([])
@@ -104,6 +107,20 @@ export default function Settings() {
   const fileRef = useRef(null)
   const importRef = useRef(null)
   const wakeOK = wakeLockSupported()
+  useEffect(() => {
+    const on = () => setOnline(true)
+    const off = () => setOnline(false)
+    window.addEventListener('online', on)
+    window.addEventListener('offline', off)
+    return () => { window.removeEventListener('online', on); window.removeEventListener('offline', off) }
+  }, [])
+  useEffect(() => {
+    let alive = true
+    const refresh = () => { const id = useStore.getState().user?.id; if (id) countSync(id).then(value => { if (alive) setPendingSync(value) }) }
+    refresh()
+    const timer = setInterval(refresh, 3000)
+    return () => { alive = false; clearInterval(timer) }
+  }, [online])
 
   const doExport = async () => {
     const json = JSON.stringify(S, null, 2)
@@ -147,6 +164,11 @@ export default function Settings() {
       <button className="iconbtn" onClick={() => nav('/home')} aria-label={t('Home')}><Icon name="chevronLeft" /></button>
       <div style={{ flex: 1, marginLeft: 10 }}><h1>{t('Settings')}</h1></div>
     </div>
+
+    {!online && <div className="card" role="status" style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16, padding: '14px 16px', border: '1px solid color-mix(in srgb, var(--yellow) 35%, transparent)', background: 'color-mix(in srgb, var(--yellow) 10%, var(--surface-2))' }}>
+      <div style={{ color: 'var(--yellow)', display: 'flex', flex: '0 0 auto' }}><Icon name="wifiOff" /></div>
+      <div className="small" style={{ lineHeight: 1.45 }}>{t('Modo Offline: tus cambios se están guardando y se sincronizaran cuando te conectes')}{pendingSync > 0 && <><br /><span className="dim">{pendingSync} {t('cambios pendientes')}</span></>}</div>
+    </div>}
 
     {/* ---------- account ---------- */}
     <Section title={DEMO ? t('Demo') : t('Account')}>

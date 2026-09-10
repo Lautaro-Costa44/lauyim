@@ -15,6 +15,7 @@ import {
 import { dayReminderPush, gymFeePush, restTimerPush, testPush } from './push-messages.js';
 import { startScheduler } from './scheduler.js';
 import { verifyError } from './verify-error.js';
+import { processSyncBatch } from './sync.js';
 import { ALIMENTOS_BASE } from './alimentos-base.js';
 import { ALIMENTOS_USDA_DICT } from './alimentos-usda-dict.js';
 import {
@@ -702,7 +703,7 @@ function obtenerPlantillas(db, userId, categoria = '', soloUsuario = false, fran
     params = soloCategoria ? [soloCategoria] : [userId];
   }
   const rows = db.prepare(`
-    SELECT p.id AS plantilla_id, p.user_id, p.nombre AS plantilla_nombre, p.categoria, p.created_at, p.franjas_recomendadas,
+    SELECT p.id AS plantilla_id, p.user_id, p.nombre AS plantilla_nombre, p.categoria, p.created_at, p.updated_at, p.franjas_recomendadas,
       i.id AS ingrediente_id, i.nombre_alimento, i.cantidad_gramos, i.calorias,
       i.proteina, i.carbohidratos, i.grasas
     FROM plantillas_comida p
@@ -719,6 +720,7 @@ function obtenerPlantillas(db, userId, categoria = '', soloUsuario = false, fran
         user_id: row.user_id,
         nombre: row.plantilla_nombre,
         created_at: row.created_at,
+        updated_at: row.updated_at || row.created_at,
         franjas_recomendadas: (() => {
           try {
             const franjas = JSON.parse(row.franjas_recomendadas || '[]');
@@ -854,8 +856,9 @@ const routes = {
     const db = getDatabase();
     db.exec('BEGIN');
     try {
-      const plantilla = db.prepare('INSERT INTO plantillas_comida (user_id, nombre, created_at) VALUES (?, ?, ?)')
-        .run(user.id, nombre, Date.now());
+      const now = Date.now();
+      const plantilla = db.prepare('INSERT INTO plantillas_comida (user_id, nombre, created_at, updated_at) VALUES (?, ?, ?, ?)')
+        .run(user.id, nombre, now, now);
       const plantillaId = Number(plantilla.lastInsertRowid);
       const stmt = db.prepare(`INSERT INTO plantillas_ingredientes
         (plantilla_id, nombre_alimento, cantidad_gramos, calorias, proteina, carbohidratos, grasas)
@@ -886,8 +889,9 @@ const routes = {
     const grupoId = 'g' + crypto.randomBytes(16).toString('hex');
     db.exec('BEGIN');
     try {
-      const plantilla = db.prepare('INSERT INTO plantillas_comida (user_id, nombre, created_at) VALUES (?, ?, ?)')
-        .run(user.id, nombre, Date.now());
+      const now = Date.now();
+      const plantilla = db.prepare('INSERT INTO plantillas_comida (user_id, nombre, created_at, updated_at) VALUES (?, ?, ?, ?)')
+        .run(user.id, nombre, now, now);
       const plantillaId = Number(plantilla.lastInsertRowid);
       const plantillaStmt = db.prepare(`INSERT INTO plantillas_ingredientes
         (plantilla_id, nombre_alimento, cantidad_gramos, calorias, proteina, carbohidratos, grasas)
@@ -925,7 +929,7 @@ const routes = {
     if (!user) return json(res, 401, { error: 'not signed in' });
     const id = new URL(req.url, 'http://x').pathname.split('/').pop();
     const db = getDatabase();
-    const plantilla = db.prepare('SELECT id, user_id FROM plantillas_comida WHERE id = ?').get(id);
+    const plantilla = db.prepare('SELECT id, user_id, updated_at FROM plantillas_comida WHERE id = ?').get(id);
     if (!plantilla) return json(res, 404, { error: 'template not found' });
     if (plantilla.user_id !== user.id) return json(res, 403, { error: 'forbidden' });
     const body = await readBody(req);
@@ -934,7 +938,7 @@ const routes = {
 
     db.exec('BEGIN');
     try {
-      db.prepare('UPDATE plantillas_comida SET nombre = ? WHERE id = ?').run(nombre, id);
+      db.prepare('UPDATE plantillas_comida SET nombre = ?, updated_at = ? WHERE id = ?').run(nombre, Date.now(), id);
       db.prepare('DELETE FROM plantillas_ingredientes WHERE plantilla_id = ?').run(id);
       const stmt = db.prepare(`INSERT INTO plantillas_ingredientes
         (plantilla_id, nombre_alimento, cantidad_gramos, calorias, proteina, carbohidratos, grasas)
@@ -1534,6 +1538,19 @@ const routes = {
     delete body.state.active;
     saveUserState(user.id, body.state);
     json(res, 200, { ok: true, ts: body.state._ts || null });
+  },
+
+  // Incremental sync endpoint. The client sends a bounded batch of top-level patches;
+  // applying them against the current server state prevents one device from replacing
+  // unrelated fields changed by another device. The operation ids are client-side and
+  // patches are idempotent, so a response lost after commit is safe to retry.
+  'POST /api/data/sync': async (req, res) => {
+    const user = readSession(req);
+    if (!user) return json(res, 401, { error: 'not signed in' });
+    const body = await readBody(req);
+    if (!Array.isArray(body.operations) || body.operations.length > 50) return json(res, 400, { error: 'invalid operations batch' });
+    const processed = processSyncBatch({ db: getDatabase(), userId: user.id, operations: body.operations, getUserState, saveUserState });
+    return json(res, 200, processed);
   },
 
   'GET /api/push/public-key': async (req, res) => json(res, 200, { key: vapid.publicKey }),

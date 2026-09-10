@@ -21,6 +21,7 @@ const P = {
   // A real cog outline (8 teeth, generated on a circle) — an earlier version drew
   // radial rays and was indistinguishable from `sun` at tab-bar size.
   gear: <><path d="M20.48 10.59 20.48 13.41 18.58 13.72 17.87 15.43 19 17 17 19 15.43 17.87 13.72 18.58 13.41 20.48 10.59 20.48 10.28 18.58 8.57 17.87 7 19 5 17 6.13 15.43 5.42 13.72 3.52 13.41 3.52 10.59 5.42 10.28 6.13 8.57 5 7 7 5 8.57 6.13 10.28 5.42 10.59 3.52 13.41 3.52 13.72 5.42 15.43 6.13 17 5 19 7 17.87 8.57 18.58 10.28Z" /><circle cx="12" cy="12" r="3.1" /></>,
+  wifiOff: <><path d="M3.8 8.8a13.3 13.3 0 0 1 12.8-1.9M7.1 12a8.2 8.2 0 0 1 6.4-.6M10.4 15.3a3.3 3.3 0 0 1 2.2-.1M12 19.1h.01" /><path d="m4 4 16 16" /></>,
 
   /* ---- training ---- */
   dumbbell: <><rect x="5.9" y="7.9" width="3.2" height="8.2" rx="1.3" /><rect x="14.9" y="7.9" width="3.2" height="8.2" rx="1.3" /><path d="M9.1 12h5.8M3.6 9.9v4.2M20.4 9.9v4.2" /></>,
