@@ -141,6 +141,11 @@ export function initDatabase() {
     PRIMARY KEY (user_id, op_id),
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
   );`);
+  db.exec(`CREATE TABLE IF NOT EXISTS admin_settings (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL,
+    updated_at INTEGER NOT NULL
+  );`);
 
   // Migración defensiva: asegurar que existan todas las columnas de la encuesta en bases de datos existentes
   const columnsToAdd = [
@@ -880,6 +885,32 @@ function saveWorkouts(userId, workouts, validRoutineIds = null) {
     if (ownsTransaction) db.exec('ROLLBACK');
     throw error;
   }
+}
+
+// ============================================================
+// Ajustes globales del panel Admin / asistencia
+// ============================================================
+
+export function getAdminSetting(key, fallback = null) {
+  const row = getDatabase().prepare('SELECT value FROM admin_settings WHERE key = ?').get(key);
+  return row ? row.value : fallback;
+}
+
+export function setAdminSetting(key, value) {
+  getDatabase().prepare(`
+    INSERT INTO admin_settings (key, value, updated_at) VALUES (?, ?, ?)
+    ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
+  `).run(key, String(value), Date.now());
+}
+
+export function getAttendanceByDate(startDate, endDate) {
+  return getDatabase().prepare(`
+    SELECT date, COUNT(DISTINCT user_id) AS users
+    FROM workouts
+    WHERE date >= ? AND date <= ?
+    GROUP BY date
+    ORDER BY date ASC
+  `).all(startDate, endDate);
 }
 
 export function getPresetGroups() {

@@ -49,6 +49,9 @@ import {
   getUserState,
   saveUserState,
   getWorkoutsByUserId,
+  getAdminSetting,
+  setAdminSetting,
+  getAttendanceByDate,
   getDatabase
 } from './database.js';
 
@@ -1704,6 +1707,29 @@ const routes = {
       };
     });
     json(res, 200, { users, invite_only: INVITE_ONLY, now: Date.now() });
+  },
+
+  'GET /api/admin/attendance-heatmap': async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    const start = getAdminSetting('attendance_week_start', 'monday') === 'sunday' ? 'sunday' : 'monday';
+    const endDate = new Date();
+    endDate.setHours(12, 0, 0, 0);
+    const startDate = new Date(endDate);
+    startDate.setDate(endDate.getDate() - 27);
+    const iso = d => d.toISOString().slice(0, 10);
+    const rows = getAttendanceByDate(iso(startDate), iso(endDate));
+    const days = Object.fromEntries(rows.map(r => [r.date, Number(r.users) || 0]));
+    json(res, 200, { start, days, now: Date.now() });
+  },
+
+  'POST /api/admin/attendance-week-start': async (req, res) => {
+    const admin = requireAdmin(req, res); if (!admin) return;
+    const body = await readBody(req);
+    const start = body.start === 'sunday' ? 'sunday' : body.start === 'monday' ? 'monday' : null;
+    if (!start) return json(res, 400, { error: 'start must be sunday or monday' });
+    setAdminSetting('attendance_week_start', start);
+    audit(req, 'admin.attendance.settings', { user: admin, msg: start });
+    json(res, 200, { ok: true, start });
   },
 
   'GET /api/admin/user': async (req, res) => {

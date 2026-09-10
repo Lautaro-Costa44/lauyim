@@ -419,3 +419,10 @@ CREATE TABLE IF NOT EXISTS sync_operations (
   PRIMARY KEY (user_id, op_id),
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
+
+-- Ajustes globales del panel Admin.
+CREATE TABLE IF NOT EXISTS admin_settings (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL,
+  updated_at INTEGER NOT NULL
+);

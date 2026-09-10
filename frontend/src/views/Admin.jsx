@@ -27,6 +27,44 @@ const rel = ts => {
 }
 const dur = ms => { const m = Math.max(0, Math.floor(ms / 60000)); return m < 60 ? m + 'm' : Math.floor(m / 60) + 'h' + (m % 60) + 'm' }
 
+function AttendanceHeatmap({ data, onStartChange }) {
+  if (!data) return <div className="card"><div className="dim small">{t('Loading…')}</div></div>
+  const today = new Date(); today.setHours(12, 0, 0, 0)
+  const offset = data.start === 'sunday' ? today.getDay() : (today.getDay() + 6) % 7
+  const end = new Date(today); end.setDate(today.getDate() - offset)
+  const start = new Date(end); start.setDate(end.getDate() - 21)
+  const values = Object.values(data.days).filter(Number.isFinite)
+  const max = Math.max(1, ...values)
+  const level = n => !n ? 0 : Math.min(4, Math.ceil((n / max) * 4))
+  const weeks = []
+  for (let w = 0; w < 4; w++) {
+    const cells = []
+    for (let d = 0; d < 7; d++) {
+      const day = new Date(start); day.setDate(start.getDate() + w * 7 + d)
+      const key = day.toISOString().slice(0, 10)
+      const n = Number(data.days[key] || 0)
+      cells.push(<div key={key} className={'hm-c l' + level(n) + (key === today.toISOString().slice(0, 10) ? ' today' : '')}
+        title={`${key} · ${t(n === 1 ? '{0} user' : '{0} users', n)}`} />)
+    }
+    weeks.push(<div key={w} className="hm-col">{cells}</div>)
+  }
+  const labels = data.start === 'sunday'
+    ? ['Su', '', 'Tu', '', 'Th', '', 'Sa']
+    : ['', 'Mon', '', 'Wed', '', 'Fri', '']
+  return <div className="card">
+    <div className="row between" style={{ gap: 10 }}>
+      <div><h2 style={{ margin: 0 }}>{t('Attendance')}</h2><div className="small muted">{t('Unique members who trained each day · last 4 weeks')}</div></div>
+      <select className="input" style={{ width: 'auto', minWidth: 118 }} value={data.start} onChange={e => onStartChange(e.target.value)} aria-label={t('Week starts')}>
+        <option value="monday">{t('Monday start')}</option><option value="sunday">{t('Sunday start')}</option>
+      </select>
+    </div>
+    <div className="hm-wrap" style={{ marginTop: 12 }}>
+      <div className="hm-body"><div className="hm-days">{labels.map((x, i) => <span key={i}>{x ? t(x) : ''}</span>)}</div><div className="hm-grid">{weeks}</div></div>
+    </div>
+    <div className="hm-legend">{t('Fewer members')} <div className="hm-c l0" /><div className="hm-c l1" /><div className="hm-c l2" /><div className="hm-c l3" /><div className="hm-c l4" /> {t('More members')}</div>
+  </div>
+}
+
 function UserDetail({ id, onChanged, close }) {
   const [d, setD] = useState(null)
   const toast = useUI(s => s.toast)
@@ -323,13 +361,15 @@ export default function Admin() {
   const [invites, setInvites] = useState(null)
   const [presets, setPresets] = useState(null)
   const [inviteOnly, setInviteOnly] = useState(false)
+  const [attendance, setAttendance] = useState(null)
   const [tick, setTick] = useState(0)          // the ↻ button; the activity log listens to it
 
   const loadUsers = () => api('/api/admin/users').then(d => { setUsers(d.users); setInviteOnly(d.invite_only) }).catch(e => toast(e.message || t('Failed to load')))
   const loadInvites = () => api('/api/admin/invites').then(d => setInvites(d.invites)).catch(() => {})
   const loadPresets = () => api('/api/presets').then(d => setPresets(d.presets)).catch(e => toast(e.message || t('Failed to load presets')))
+  const loadAttendance = () => api('/api/admin/attendance-heatmap').then(setAttendance).catch(e => toast(e.message || t('Failed to load attendance')))
   // poll every 15s so the "training now" section stays live without a manual refresh
-  useEffect(() => { if (!user?.admin) return; loadUsers(); loadInvites(); loadPresets(); const iv = setInterval(loadUsers, 15000); return () => clearInterval(iv) }, [])
+  useEffect(() => { if (!user?.admin) return; loadUsers(); loadInvites(); loadPresets(); loadAttendance(); const iv = setInterval(() => { loadUsers(); loadAttendance() }, 15000); return () => clearInterval(iv) }, [])
   if (!user?.admin) return null
 
   const openUser = id => openSheet(close => <UserDetail id={id} onChanged={loadUsers} close={close} />)
@@ -342,7 +382,7 @@ export default function Admin() {
       <button className="iconbtn" onClick={() => nav('/settings')} aria-label={t('Back')}><Icon name="chevronLeft" /></button>
       <div style={{ flex: 1, marginLeft: 8 }}><h1 style={{ margin: 0 }}>{t('Admin')}</h1>
         <div className="sub">{users ? users.length + ' ' + t('users') + ' · ' + activeCount + ' ' + t('active this week') : t('Loading…')}</div></div>
-      <button className="iconbtn" onClick={() => { loadUsers(); loadInvites(); loadPresets(); setTick(n => n + 1) }} aria-label={t('Refresh')}>↻</button>
+      <button className="iconbtn" onClick={() => { loadUsers(); loadInvites(); loadPresets(); loadAttendance(); setTick(n => n + 1) }} aria-label={t('Refresh')}>↻</button>
     </div>
 
     <div className="tiles" style={{ marginBottom: 12 }}>
@@ -364,6 +404,7 @@ export default function Admin() {
     <InvitesCard invites={invites} reload={loadInvites} />
     <PresetsCard presets={presets} openSheet={openSheet} reload={loadPresets} />
     <PushNotificationCard />
+    <AttendanceHeatmap data={attendance} onStartChange={start => api('/api/admin/attendance-week-start', { method: 'POST', body: JSON.stringify({ start }) }).then(loadAttendance).catch(e => toast(e.message || t('Failed to save setting')))} />
 
     <h4 className="sec">{t('Users')}</h4>
     <div className="list">
