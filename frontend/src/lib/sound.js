@@ -14,4 +14,7 @@ export function beep(enabled, freq, dur, when) {
     o.start(t0); o.stop(t0 + (dur || 0.18) + 0.05)
   } catch (e) { /* */ }
 }
-export function vibrate(p) { try { navigator.vibrate && navigator.vibrate(p) } catch (e) { /* */ } }
+export function vibrate(p) {
+  if (typeof navigator === 'undefined' || typeof navigator.vibrate !== 'function') return
+  try { navigator.vibrate(p) } catch (e) { console.error('Vibration failed:', e) }
+}

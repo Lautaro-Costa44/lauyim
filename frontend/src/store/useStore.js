@@ -9,7 +9,7 @@ import { MAX_ROUTINE_GROUPS, canAddGroup, validateGroupName, createRoutineGroup,
 
 const KEY = 'gym_state_v1'
 export const DEF = {
-  unit: 'kg', restSec: 90, restPauseSec: 15, sound: true, keepAwake: true, lang: 'es',
+  unit: 'kg', restSec: 90, restPauseSec: 15, sound: true, keepAwake: true, vibrateOnRest: false, lang: 'es',
   theme: 'dark', accent: 'lime', body: 'male', genero: 'masculino', targetW: null,
   bodyweight: [], routines: [], week: {}, dayPlan: {},
   exWeights: {}, workouts: [], active: null, customEx: [], gifSize: 'full',

@@ -285,6 +285,7 @@ export default {
   'The screen stays on while a workout is running, so you don’t have to unlock your phone between sets.': 'La pantalla se mantiene encendida mientras hay un entrenamiento en curso, así no tienes que desbloquear el móvil entre series.',
   'Weight unit': 'Unidad de peso',
   'Rest timer': 'Temporizador de descanso',
+  'Vibrate when rest ends': 'Vibrar al finalizar descanso',
   'Sounds': 'Sonidos',
   'Note: switching units only changes the label — logged numbers are not converted.': 'Nota: cambiar la unidad solo cambia la etiqueta — los números registrados no se convierten.',
   'Data': 'Datos',

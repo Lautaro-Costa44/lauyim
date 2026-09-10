@@ -282,6 +282,10 @@ export default function Settings() {
         value={S.restSec} onChange={v => update(s => { s.restSec = v })}
         options={[{ value: 0, label: t('Off') }, ...[60, 90, 120, 150, 180].map(v => ({ value: v, label: v + 's' }))]} />
 
+      <Row icon="vibrate" iconTint="var(--teal)" title={t('Vibrate when rest ends')}>
+        <Switch checked={S.vibrateOnRest === true} onChange={v => update(s => { s.vibrateOnRest = v })} />
+      </Row>
+
       <Row icon="sun" iconTint="var(--yellow)" title={t('Keep screen awake')}
         subtitle={wakeOK ? null : t('Not supported in this browser.')}>
         <Switch checked={wakeOK && S.keepAwake !== false} disabled={!wakeOK}
