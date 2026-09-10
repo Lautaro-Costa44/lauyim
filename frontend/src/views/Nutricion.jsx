@@ -394,7 +394,7 @@ function MisComidasCompuestas({ close }) {
 
   const loadPlantillas = useCallback(() => {
     setLoading(true)
-    api('/api/plantillas').then(setPlantillas).catch(() => setPlantillas([])).finally(() => setLoading(false))
+    api('/api/plantillas?scope=mine').then(setPlantillas).catch(() => setPlantillas([])).finally(() => setLoading(false))
   }, [])
 
   useEffect(() => { loadPlantillas() }, [loadPlantillas])
@@ -560,10 +560,7 @@ export default function Nutricion() {
   return <>
     <div className="hdr">
       <div><h1>{t('Nutrición')}</h1><div className="sub">{t('Tus metas diarias')}</div></div>
-      <div className="row" style={{ gap: 4 }}>
-        <button className="iconbtn" onClick={openSugerenciaComida} aria-label="Sugerencia de comida" title="Sugerencia de comida"><Icon name="sparkles" /></button>
-        <button className="iconbtn" onClick={openMisComidasCompuestas} aria-label="Mis comidas compuestas" title="Mis comidas compuestas"><Icon name="plate" /></button>
-      </div>
+      <button className="iconbtn" onClick={openMisComidasCompuestas} aria-label="Mis comidas compuestas" title="Mis comidas compuestas"><Icon name="plate" /></button>
     </div>
 
     <div className="card">
@@ -576,6 +573,7 @@ export default function Nutricion() {
     <div className="card">
       <h2>Resumen nutricional de hoy</h2>
       <ResumenNutricional caloriasConsumidas={totals.calorias} caloriasMeta={sugerido} proteinaConsumida={totals.proteina} proteinaMeta={metaProteina} carbosConsumidos={totals.carbos} carbosMeta={carbosMeta} grasasConsumidas={totals.grasas} grasasMeta={grasasMeta} />
+      <Button variant="primary" icon="sparkles" onClick={openSugerenciaComida} style={{ width: '100%', marginTop: 14, color: '#fff' }}>Sugerencia de comida</Button>
     </div>
     {loadingComidas ? <div className="card muted small">Cargando comidas…</div> : <>
       {FRANJAS.map(franja => {

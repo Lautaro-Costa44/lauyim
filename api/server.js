@@ -673,12 +673,19 @@ function combinarAlimentos(...listas) {
   }).slice(0, 15);
 }
 
-function obtenerPlantillas(db, userId, categoria = '') {
+function obtenerPlantillas(db, userId, categoria = '', soloUsuario = false) {
   const soloCategoria = String(categoria || '').trim();
-  const where = soloCategoria
-    ? 'WHERE p.user_id IS NULL AND p.categoria = ?'
-    : 'WHERE p.user_id IS NULL OR p.user_id = ?';
-  const params = soloCategoria ? [soloCategoria, userId] : [userId, userId];
+  let where;
+  let params;
+  if (soloUsuario) {
+    where = soloCategoria ? 'WHERE p.user_id = ? AND p.categoria = ?' : 'WHERE p.user_id = ?';
+    params = soloCategoria ? [userId, soloCategoria] : [userId];
+  } else {
+    where = soloCategoria
+      ? 'WHERE p.user_id IS NULL AND p.categoria = ?'
+      : 'WHERE p.user_id IS NULL OR p.user_id = ?';
+    params = soloCategoria ? [soloCategoria] : [userId];
+  }
   const rows = db.prepare(`
     SELECT p.id AS plantilla_id, p.user_id, p.nombre AS plantilla_nombre, p.created_at,
       i.id AS ingrediente_id, i.nombre_alimento, i.cantidad_gramos, i.calorias,
@@ -687,7 +694,7 @@ function obtenerPlantillas(db, userId, categoria = '') {
     LEFT JOIN plantillas_ingredientes i ON i.plantilla_id = p.id
     ${where}
     ORDER BY CASE WHEN p.user_id = ? THEN 0 ELSE 1 END, p.id
-  `).all(...params);
+  `).all(...params, userId);
   const plantillas = new Map();
   for (const row of rows) {
     let plantilla = plantillas.get(row.plantilla_id);
@@ -883,7 +890,8 @@ const routes = {
     const user = readSession(req);
     if (!user) return json(res, 401, { error: 'not signed in' });
     const categoria = new URL(req.url, 'http://x').searchParams.get('categoria') || '';
-    return json(res, 200, obtenerPlantillas(getDatabase(), user.id, categoria));
+    const soloUsuario = new URL(req.url, 'http://x').searchParams.get('scope') === 'mine';
+    return json(res, 200, obtenerPlantillas(getDatabase(), user.id, categoria, soloUsuario));
   },
 
   'PUT /api/plantillas/:id': async (req, res) => {
