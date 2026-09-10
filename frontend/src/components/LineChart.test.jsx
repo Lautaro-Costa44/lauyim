@@ -48,6 +48,15 @@ function hoverAt(clientX) {
 }
 
 describe('LineChart hover date', () => {
+  it('renders descending input chronologically from left to right', () => {
+    const first = point(2026, 1, 1, 70)
+    const last = point(2026, 1, 15, 71)
+    renderChart([last, first])
+
+    expect(hoverAt(0)).toBe(`${fmtDate(first.d, true)} · 70 kg`)
+    expect(hoverAt(340)).toBe(`${fmtDate(last.d, true)} · 71 kg`)
+  })
+
   it('keeps same-year points in the compact format', () => {
     const first = point(2026, 1, 15, 70)
     renderChart([first, point(2026, 2, 15, 71)])

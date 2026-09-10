@@ -4,7 +4,7 @@ import { t } from '../lib/i18n.js'
 
 const W = 340   // viewBox width; the svg stretches to its container, height comes from `h`
 
-// points: [{ t: ms, y: num, d?: iso, m?: 0..1, note?: str }] sorted by t.
+// points: [{ t: ms, y: num, d?: iso, m?: 0..1, note?: str }].
 //   m    marks the point — a second reading carried by the same dot (bigger and more solid =
 //        more of it). Used for effort on the weight curve, where the two belong on one line:
 //        the same weight with less left in the tank is not the same session.
@@ -44,10 +44,13 @@ export default function LineChart({ points, h = 150, unit = '', color = 'var(--a
   })
 
   if (!points || points.length === 0) return <div className="empty small">{t('No data yet')}</div>
+  // Render time from oldest to newest regardless of the order supplied by a caller.
+  // Keep the input untouched: callers may also use it for recent-first lists.
+  const orderedPoints = [...points].sort((a, b) => a.t - b.t)
   const H = h
   const P = { l: axes ? 34 : 8, r: 12, t: 10, b: axes ? 22 : 8 }
-  const single = points.length === 1
-  const pts = single ? [points[0], points[0]] : points
+  const single = orderedPoints.length === 1
+  const pts = single ? [orderedPoints[0], orderedPoints[0]] : orderedPoints
   const ys = pts.map(p => p.y)
   let ymin = Math.min(...ys), ymax = Math.max(...ys)
   if (goal != null && isFinite(goal)) { ymin = Math.min(ymin, goal); ymax = Math.max(ymax, goal) }
@@ -97,11 +100,11 @@ export default function LineChart({ points, h = 150, unit = '', color = 'var(--a
   const poly = pts.map(p => X(p.t).toFixed(1) + ',' + Y(p.y).toFixed(1)).join(' ')
   const last = pts[pts.length - 1]
   const gid = 'g' + Math.round(t0 % 1e7) + '_' + H
-  const hoverSource = single ? [points[0]] : points
+  const hoverSource = single ? [orderedPoints[0]] : orderedPoints
   const hoverDates = hoverSource.map(p => p.d || isoOf(new Date(p.t)))
   const showYear = new Set(hoverDates.map(iso => new Date(iso + 'T12:00:00').getFullYear())).size > 1
   const hoverPts = hoverSource.map((p, i) => ({ x: X(p.t), y: Y(p.y), iso: hoverDates[i], v: p.y, note: p.note }))
-  const marked = points.some(p => p.m != null)
+  const marked = orderedPoints.some(p => p.m != null)
 
   const onMove = e => {
     const c = e.touches ? e.touches[0] : e
