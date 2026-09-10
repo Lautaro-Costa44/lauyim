@@ -119,7 +119,8 @@ export default function Settings() {
     const refresh = () => { const id = useStore.getState().user?.id; if (id) countSync(id).then(value => { if (alive) setPendingSync(value) }) }
     refresh()
     const timer = setInterval(refresh, 3000)
-    return () => { alive = false; clearInterval(timer) }
+    window.addEventListener('gym:sync_queue_changed', refresh)
+    return () => { alive = false; clearInterval(timer); window.removeEventListener('gym:sync_queue_changed', refresh) }
   }, [online])
 
   const doExport = async () => {

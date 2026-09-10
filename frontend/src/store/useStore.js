@@ -79,8 +79,8 @@ export const useStore = create((set, get) => {
   let syncing = false
   let licenseExpired = false
 
-  const persist = (S, push = true) => {
-    S._ts = Date.now()
+  const persist = (S, push = true, stamp = true) => {
+    if (stamp) S._ts = Date.now()
     registerCustom(S.customEx)
     localStorage.setItem(KEY, JSON.stringify(S))
     set({ S })
@@ -153,23 +153,40 @@ export const useStore = create((set, get) => {
 
     async pushState() {
       if (!get().user) return
-      try { await api('/api/data', { method: 'PUT', body: JSON.stringify({ state: get().S }) }); localStorage.removeItem('gym_dirty') }
+      try {
+        const response = await api('/api/data', { method: 'PUT', body: JSON.stringify({ state: get().S }) })
+        if (response.ts) {
+          const confirmedState = clone(get().S)
+          confirmedState._ts = Number(response.ts)
+          persist(confirmedState, false, false)
+        }
+        localStorage.removeItem('gym_dirty')
+      }
       catch (e) { localStorage.setItem('gym_dirty', '1') }
     },
     async syncPending() {
       if (!get().user || syncing || (navigator.onLine === false)) return
       syncing = true
       try {
-        const batch = await takeSyncBatch(get().user.id, 25)
-        if (!batch.length) { localStorage.removeItem('gym_dirty'); return }
-        const response = await api('/api/data/sync', { method: 'POST', body: JSON.stringify({ operations: batch }) })
-        applySyncMappings(response.results || [])
-        await removeSync(response.appliedIds || [])
-        const conflicted = new Set((response.conflicts || []).map(item => item.id))
-        await deferSync(batch.filter(row => conflicted.has(row.id)))
-        if (conflicted.size) localStorage.setItem('gym_dirty', '1')
+        let rounds = 0
+        while (rounds++ < 10) {
+          const batch = await takeSyncBatch(get().user.id, 25)
+          if (!batch.length) break
+          const response = await api('/api/data/sync', { method: 'POST', body: JSON.stringify({ operations: batch }) })
+          applySyncMappings(response.results || [])
+          const confirmedTs = (response.results || []).reduce((latest, item) => Math.max(latest, Number(item.result?.ts || 0)), 0)
+          if (confirmedTs) {
+            const confirmedState = clone(get().S)
+            confirmedState._ts = confirmedTs
+            persist(confirmedState, false, false)
+          }
+          await removeSync(response.appliedIds || [])
+          const conflicted = new Set((response.conflicts || []).map(item => item.id))
+          await deferSync(batch.filter(row => conflicted.has(row.id)))
+          if (!response.appliedIds?.length && !conflicted.size) break
+        }
+        if (await countSync(get().user.id)) localStorage.setItem('gym_dirty', '1')
         else localStorage.removeItem('gym_dirty')
-        if ((await takeSyncBatch(get().user.id, 1)).length) scheduleSync(500)
       } catch {
         const batch = await takeSyncBatch(get().user.id, 25)
         await deferSync(batch)
@@ -185,7 +202,7 @@ export const useStore = create((set, get) => {
           const active = S.active
           const next = Object.assign(clone(DEF), state)
           if (active) next.active = active
-          persist(next, false)
+          persist(next, false, false)
         } else if (hasData(S) && localStorage.getItem('gym_dirty') !== '1') { await get().pushState() }
       } catch (e) { /* offline — keep local */ }
     },

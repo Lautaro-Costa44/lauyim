@@ -108,6 +108,7 @@ export function initDatabase() {
       equip_filter_on INTEGER,
       routine_groups TEXT,
       active_group_id TEXT,
+      sync_versions TEXT,
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     );
 
@@ -166,7 +167,8 @@ export function initDatabase() {
     ['genero', 'TEXT'],
     ['gif_size', 'TEXT'],
     ['default_intensifier', 'TEXT'],
-    ['default_sets', 'INTEGER']
+    ['default_sets', 'INTEGER'],
+    ['sync_versions', 'TEXT']
   ];
 
   for (const [col, type] of columnsToAdd) {
@@ -496,6 +498,7 @@ export function getUserState(userId) {
     progressionConfig: safeJsonParse(row.progression_config, null),
     routineGroups: safeJsonParse(row.routine_groups, []),
     activeGroupId: row.active_group_id || null,
+    _syncVersions: safeJsonParse(row.sync_versions, {}),
   };
 
   // Cargar relaciones
@@ -595,6 +598,8 @@ export function saveUserState(userId, S) {
   saveEquipProfiles(userId, S.equipProfiles || []);
   db.prepare('UPDATE user_state SET routine_groups = ?, active_group_id = ? WHERE user_id = ?')
     .run(JSON.stringify(S.routineGroups || []), S.activeGroupId || null, userId);
+  db.prepare('UPDATE user_state SET sync_versions = ? WHERE user_id = ?')
+    .run(JSON.stringify(S._syncVersions || {}), userId);
 }
 
 // ============================================================
@@ -816,7 +821,13 @@ function saveWorkouts(userId, workouts, validRoutineIds = null) {
     }
   }
 
-  db.exec('BEGIN');
+  let ownsTransaction = false;
+  try {
+    db.exec('BEGIN');
+    ownsTransaction = true;
+  } catch (error) {
+    if (!String(error?.message || '').toLowerCase().includes('within a transaction')) throw error;
+  }
   try {
     deleteStmt.run(userId);
     for (const workout of cleanWorkouts) {
@@ -864,9 +875,9 @@ function saveWorkouts(userId, workouts, validRoutineIds = null) {
         }
       }
     }
-    db.exec('COMMIT');
+    if (ownsTransaction) db.exec('COMMIT');
   } catch (error) {
-    db.exec('ROLLBACK');
+    if (ownsTransaction) db.exec('ROLLBACK');
     throw error;
   }
 }

@@ -1536,6 +1536,14 @@ const routes = {
     const body = await readBody(req);
     if (!body.state || typeof body.state !== 'object') return json(res, 400, { error: 'state required' });
     delete body.state.active;
+    const currentState = getUserState(user.id) || {};
+    const stateVersion = Math.max(Date.now(), Number(currentState._ts || 0) + 1);
+    body.state._ts = stateVersion;
+    const versions = {};
+    for (const key of Object.keys(body.state)) {
+      if (!['_ts', '_syncVersions'].includes(key)) versions[key] = stateVersion;
+    }
+    body.state._syncVersions = versions;
     saveUserState(user.id, body.state);
     json(res, 200, { ok: true, ts: body.state._ts || null });
   },

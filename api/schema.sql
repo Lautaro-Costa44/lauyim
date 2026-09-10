@@ -126,6 +126,7 @@ CREATE TABLE IF NOT EXISTS user_state (
   equip_filter_on INTEGER DEFAULT 0,
   routine_groups TEXT,
   active_group_id TEXT,
+  sync_versions TEXT,
   progression_tips INTEGER DEFAULT 1,
   progression_type TEXT NULL,
   progression_config TEXT NULL,

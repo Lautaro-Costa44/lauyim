@@ -12,6 +12,7 @@ const openDb = () => new Promise((resolve, reject) => {
 
 const fallbackRead = () => { try { return JSON.parse(localStorage.getItem(FALLBACK_KEY) || '[]') } catch { return [] } }
 const fallbackWrite = rows => localStorage.setItem(FALLBACK_KEY, JSON.stringify(rows))
+const notifyQueueChanged = () => { try { window.dispatchEvent(new CustomEvent('gym:sync_queue_changed')) } catch {} }
 
 export async function enqueueSync(userId, changes, baseTs = null) {
   if (!changes.length) return null
@@ -21,6 +22,7 @@ export async function enqueueSync(userId, changes, baseTs = null) {
     const db = await openDb()
     await new Promise((resolve, reject) => { const tx = db.transaction(STORE, 'readwrite'); tx.objectStore(STORE).put(row); tx.oncomplete = resolve; tx.onerror = () => reject(tx.error) })
   } catch { const rows = fallbackRead(); rows.push(row); fallbackWrite(rows) }
+  notifyQueueChanged()
   return id
 }
 
@@ -112,6 +114,7 @@ export async function removeSync(ids) {
     const db = await openDb()
     await new Promise((resolve, reject) => { const tx = db.transaction(STORE, 'readwrite'); const s = tx.objectStore(STORE); ids.forEach(id => s.delete(id)); tx.oncomplete = resolve; tx.onerror = () => reject(tx.error) })
   } catch { const gone = new Set(ids); fallbackWrite(fallbackRead().filter(r => !gone.has(r.id))) }
+  notifyQueueChanged()
 }
 
 export async function deferSync(rows) {
@@ -121,6 +124,7 @@ export async function deferSync(rows) {
     const db = await openDb()
     await new Promise((resolve, reject) => { const tx = db.transaction(STORE, 'readwrite'); const s = tx.objectStore(STORE); updated.forEach(row => s.put(row)); tx.oncomplete = resolve; tx.onerror = () => reject(tx.error) })
   } catch { const byId = new Map(updated.map(row => [row.id, row])); fallbackWrite(fallbackRead().map(row => byId.get(row.id) || row)) }
+  notifyQueueChanged()
 }
 
 export function applySyncMappings(results = []) {
@@ -148,7 +152,7 @@ export function diffState(before, after) {
   const changes = []
   const keys = new Set([...Object.keys(before || {}), ...Object.keys(after || {})])
   keys.forEach(key => {
-    if (key === 'active' || key === '_ts') return
+    if (key === 'active' || key === '_ts' || key === '_syncVersions') return
     const oldValue = before?.[key]
     const newValue = after?.[key]
     if (JSON.stringify(oldValue) !== JSON.stringify(newValue)) {

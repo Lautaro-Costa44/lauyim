@@ -1,7 +1,20 @@
 import { describe, expect, it } from 'vitest'
-import { applySyncMappings, diffState } from './sync-queue.js'
+import { applySyncMappings, countSync, diffState, enqueueSync, removeSync } from './sync-queue.js'
 
 describe('offline sync patches', () => {
+  it('updates the pending count when an operation is queued and removed', async () => {
+    localStorage.removeItem('gym_sync_queue_v1')
+    const events = []
+    const onChange = () => events.push(true)
+    window.addEventListener('gym:sync_queue_changed', onChange)
+    const id = await enqueueSync('queue-test', [{ path: ['theme'], op: 'replace', value: 'light' }])
+    expect(await countSync('queue-test')).toBe(1)
+    await removeSync([id])
+    expect(await countSync('queue-test')).toBe(0)
+    expect(events.length).toBeGreaterThanOrEqual(2)
+    window.removeEventListener('gym:sync_queue_changed', onChange)
+  })
+
   it('emits only changed top-level fields and never sends transient workout state', () => {
     const before = { routines: [{ id: 'r1' }], workouts: [], active: { id: 'live' }, _ts: 1 }
     const after = { routines: [{ id: 'r1' }, { id: 'r2' }], workouts: [], active: { id: 'new' }, _ts: 2 }

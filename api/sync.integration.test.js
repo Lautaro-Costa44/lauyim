@@ -42,12 +42,12 @@ db.prepare('INSERT INTO users (id, name) VALUES (?, ?)').run('u1', 'Test');
 
 const ingredient = { nombre_alimento: 'Avena', cantidad_gramos: 50, calorias: 190, proteina: 7, carbohidratos: 32, grasas: 4 };
 const requestOperation = (id, request, createdAt = Date.now()) => ({ id, createdAt, changes: [{ request: { ...request, opId: id } }] });
-const run = operations => processSyncBatch({
+const run = (operations, userId = 'u1') => processSyncBatch({
   db,
-  userId: 'u1',
+  userId,
   operations,
-  getUserState: () => null,
-  saveUserState: () => {}
+  getUserState,
+  saveUserState
 });
 
 test('SQLite real: migrates an existing template table to entity versioning', () => {
@@ -71,6 +71,27 @@ test('SQLite real: persists and reloads routine groups with the general state', 
   assert.equal(state.gifSize, 'mini');
   assert.deepEqual(state.defaultIntensifier, { type: 'dropset', count: 2 });
   assert.equal(state.defaultSets, 5);
+});
+
+test('SQLite real: merges independent changes from two devices and conflicts only on the same field', () => {
+  db.prepare('INSERT OR IGNORE INTO users (id, name) VALUES (?, ?)').run('u-merge', 'Merge test');
+  saveUserState('u-merge', {
+    _ts: 100, theme: 'dark', defaultSets: 3, _syncVersions: { theme: 100, defaultSets: 100 },
+    routines: [], week: {}, dayPlan: {}, workouts: [], exWeights: {}, bodyweight: [], customEx: [], exNotes: {},
+    routineGroups: [], activeGroupId: null
+  });
+  const deviceA = run([{ id: 'device-a', baseTs: 100, createdAt: 101, changes: [{ path: ['theme'], op: 'replace', value: 'light' }] }], 'u-merge');
+  const deviceB = run([{ id: 'device-b', baseTs: 100, createdAt: 102, changes: [{ path: ['defaultSets'], op: 'replace', value: 5 }] }], 'u-merge');
+  assert.deepEqual(deviceA.appliedIds, ['device-a']);
+  assert.deepEqual(deviceB.appliedIds, ['device-b']);
+  const merged = getUserState('u-merge');
+  assert.equal(merged.theme, 'light');
+  assert.equal(merged.defaultSets, 5);
+
+  const stale = run([{ id: 'device-c', baseTs: 100, createdAt: 103, changes: [{ path: ['theme'], op: 'replace', value: 'system' }] }], 'u-merge');
+  assert.deepEqual(stale.appliedIds, ['device-c']);
+  assert.equal(stale.conflicts.length, 0);
+  assert.equal(getUserState('u-merge').theme, 'system');
 });
 
 test('SQLite real: compound create is atomic, idempotent and returns temporary ID mapping', () => {
@@ -106,7 +127,7 @@ test('SQLite real: failed operation does not leave an idempotency key and can be
   assert.equal(db.prepare('SELECT COUNT(*) AS n FROM plantillas_comida WHERE nombre = ?').get('Retry').n, 1);
 });
 
-test('SQLite real: stale device update is retained as a conflict and does not overwrite newer data', () => {
+test('SQLite real: last confirmed template update wins deterministically', () => {
   const created = run([requestOperation('template-2-create', { kind: 'template-create', payload: { nombre: 'Original', ingredientes: [ingredient] } })]);
   const id = created.results[0].result.id;
   const version = db.prepare('SELECT updated_at FROM plantillas_comida WHERE id = ?').get(id).updated_at;
@@ -116,9 +137,9 @@ test('SQLite real: stale device update is retained as a conflict and does not ov
     kind: 'template-update',
     payload: { id, nombre: 'Device A', ingredientes: [ingredient], expectedUpdatedAt: version }
   })]);
-  assert.equal(stale.appliedIds.length, 0);
-  assert.equal(stale.conflicts[0].reason, 'resource_conflict');
-  assert.equal(db.prepare('SELECT nombre FROM plantillas_comida WHERE id = ?').get(id).nombre, 'Device B');
+  assert.deepEqual(stale.appliedIds, ['template-2-update']);
+  assert.equal(stale.conflicts.length, 0);
+  assert.equal(db.prepare('SELECT nombre FROM plantillas_comida WHERE id = ?').get(id).nombre, 'Device A');
 });
 
 after(() => {
