@@ -40,4 +40,11 @@ describe('rest timer set to Off', () => {
     vi.advanceTimersByTime(1000)
     expect(navigator.vibrate).not.toHaveBeenCalled()
   })
+
+  it('attempts the native vibration API exactly once at rest completion', () => {
+    useStore.setState({ S: { ...useStore.getState().S, vibrateOnRest: true } })
+    useUI.getState().startRest(1)
+    vi.advanceTimersByTime(1000)
+    expect(navigator.vibrate).toHaveBeenCalledTimes(1)
+  })
 })

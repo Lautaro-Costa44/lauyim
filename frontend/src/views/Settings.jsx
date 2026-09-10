@@ -282,7 +282,7 @@ export default function Settings() {
         value={S.restSec} onChange={v => update(s => { s.restSec = v })}
         options={[{ value: 0, label: t('Off') }, ...[60, 90, 120, 150, 180].map(v => ({ value: v, label: v + 's' }))]} />
 
-      <Row icon="vibrate" iconTint="var(--teal)" title={t('Vibrate when rest ends')}>
+      <Row icon="vibrate" iconTint="var(--teal)" title={t('Vibrate when rest ends')} subtitle="Solo funcional en android">
         <Switch checked={S.vibrateOnRest === true} onChange={v => update(s => { s.vibrateOnRest = v })} />
       </Row>
 

@@ -15,6 +15,16 @@ export function beep(enabled, freq, dur, when) {
   } catch (e) { /* */ }
 }
 export function vibrate(p) {
-  if (typeof navigator === 'undefined' || typeof navigator.vibrate !== 'function') return
-  try { navigator.vibrate(p) } catch (e) { console.error('Vibration failed:', e) }
+  if (typeof navigator === 'undefined' || typeof navigator.vibrate !== 'function') {
+    console.warn('Vibration unavailable: this browser/device does not expose the Vibration API')
+    return false
+  }
+  try {
+    const accepted = navigator.vibrate(p)
+    if (accepted === false) console.warn('Vibration rejected by the browser or device')
+    return accepted !== false
+  } catch (e) {
+    console.error('Vibration failed:', e)
+    return false
+  }
 }
