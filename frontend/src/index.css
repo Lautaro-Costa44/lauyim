@@ -222,6 +222,18 @@ h4.sec{
 .compound-ingredient .iconbtn{background:none;color:var(--label-3);font-size:22px}
 .compound-total{margin:10px 12px 12px}
 .compound-builder-error{margin:0 4px 12px}
+.grupo-comida-row>.lrow .lrow-t{font-weight:500}
+.grupo-comida-ingredientes{
+  margin:0 12px 10px 24px;padding:4px 0 4px 8px;
+  background:var(--surface-2);border-left:2px solid var(--acc-line);
+  border-radius:0 var(--r-sm) var(--r-sm) 0;
+}
+.grupo-comida-ingredientes .lrow{
+  min-height:0;padding:8px 10px;gap:8px;color:var(--label-2);
+}
+.grupo-comida-ingredientes .lrow+.lrow::before{left:10px;background:var(--sep)}
+.grupo-comida-ingredientes .lrow-t{font-size:15px;line-height:1.25}
+.grupo-comida-ingredientes .lrow-s{font-size:12px;color:var(--label-3);line-height:1.35}
 .compound-builder-actions{
   position:relative;z-index:2;display:flex;flex:none;gap:8px;
   margin:0 -1px;padding:12px 0 calc(12px + var(--sab));
