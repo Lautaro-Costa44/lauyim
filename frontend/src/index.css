@@ -840,9 +840,9 @@ input[type="search"]::-webkit-search-cancel-button{display:none;-webkit-appearan
 .hm-body{display:flex}
 .hm-days{display:flex;flex-direction:column;gap:3px;flex:none;width:28px}
 .hm-days span{height:11px;font-size:10px;color:var(--label-2);line-height:11px}
-.hm-grid{display:flex;gap:3px}
+.hm-grid{display:flex;gap:4px}
 .hm-col{display:flex;flex-direction:column;gap:3px}
-.hm-c{width:11px;height:11px;border-radius:3px;background:var(--surface-2);flex:none}
+.hm-c{width:14px;height:14px;border-radius:3px;background:var(--surface-2);flex:none}
 .hm-c.l1{background:color-mix(in srgb,var(--acc) 30%,var(--surface-2))}
 .hm-c.l2{background:color-mix(in srgb,var(--acc) 55%,var(--surface-2))}
 .hm-c.l3{background:color-mix(in srgb,var(--acc) 78%,var(--surface-2))}
@@ -854,6 +854,8 @@ input[type="search"]::-webkit-search-cancel-button{display:none;-webkit-appearan
   font-size:11px;color:var(--label-3);
 }
 .hm-legend .hm-c{width:10px;height:10px}
+.hm-sunday-toggle{flex:none;max-width:100%}
+.hm-sunday-toggle button{white-space:nowrap}
 
 /* --- muscle map --- */
 /* Reuses the .hm-c level ramp above, so one accent scale means one thing app-wide. */

@@ -287,6 +287,7 @@ export default function Stats() {
   }, [S.onboardingStatsCompletado])
   const [exId, setExId] = useState(null)
   const [exMetric, setExMetric] = useState('top')
+  const [includeSunday, setIncludeSunday] = useState(false)
   const now = Date.now()
   const kind = displayScale(S)
   const hd = scaleName(kind)
@@ -393,7 +394,7 @@ export default function Stats() {
   if (showEff) exOpts.push({ value: 'effort', label: t('Effort') })
 
   return <>
-    <div className="hdr"><div><h1>{t('Stats')}</h1><div className="sub">{t('Progress & history')}</div></div>
+    <div className="hdr"><div><h1>{t('Asistencia')}</h1><div className="sub">{t('Configuración')} · {t('Progress & history')}</div></div>
       <button className="iconbtn" onClick={() => nav('/history')} aria-label={t('History')}><Icon name="history" /></button></div>
 
     <div className="tiles">
@@ -405,8 +406,12 @@ export default function Stats() {
     </div>
 
     <div className="card" data-tour="activity-card">
-      <h2>{t('Activity — last 12 months')} <span className="dim" style={{ textTransform: 'none', letterSpacing: 0 }}>· {t('by time trained')}</span></h2>
-      <Heatmap S={S} onDay={iso => { const ws = workouts.filter(w => w.d === iso); if (ws.length === 1) workoutDetailSheet(ws[0]); else if (ws.length) calendarSheet(iso) }} />
+      <div className="row between" style={{ alignItems: 'center', gap: 12 }}>
+        <h2 style={{ margin: 0 }}>{t('Activity — last 12 months')} <span className="dim" style={{ textTransform: 'none', letterSpacing: 0 }}>· {t('by time trained')}</span></h2>
+        <Segmented className="seg-range hm-sunday-toggle" value={includeSunday ? 'with' : 'without'} onChange={v => setIncludeSunday(v === 'with')}
+          options={[{ value: 'without', label: t('Sin Domingo') }, { value: 'with', label: t('Con Domingo') }]} />
+      </div>
+      <Heatmap includeSunday={includeSunday} S={S} onDay={iso => { const ws = workouts.filter(w => w.d === iso); if (ws.length === 1) workoutDetailSheet(ws[0]); else if (ws.length) calendarSheet(iso) }} />
     </div>
 
     {workouts.length > 0 && <MuscleBalance S={S} />}

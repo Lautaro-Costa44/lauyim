@@ -3,7 +3,7 @@ import { fmtVol, isoOf, todayISO, MONTHS } from '../lib/format.js'
 import { t } from '../lib/i18n.js'
 
 // GitHub-style activity heatmap, shaded by time trained per day.
-export default function Heatmap({ S, onDay }) {
+export default function Heatmap({ S, onDay, includeSunday = false }) {
   const wrapRef = useRef(null)
   useEffect(() => { if (wrapRef.current) wrapRef.current.scrollLeft = wrapRef.current.scrollWidth }, [])
 
@@ -16,7 +16,11 @@ export default function Heatmap({ S, onDay }) {
   const mins = Object.values(agg).map(a => a.min).filter(v => v > 0).sort((a, b) => a - b)
   const q = p => (mins.length ? mins[Math.min(mins.length - 1, Math.floor(p * mins.length))] : 0)
   const t1 = q(0.25), t2 = q(0.5), t3 = q(0.75)
-  const level = a => !a ? 0 : !a.min ? 1 : a.min >= t3 ? 4 : a.min >= t2 ? 3 : a.min >= t1 ? 2 : 1
+  // Keep the visual scale proportional to the actual range: a day at 25% of the
+  // busiest day should look like ~25% of the intensity, rather than depending on
+  // how many days happen to be populated.
+  const maxMin = mins.length ? Math.max(...mins) : 0
+  const level = a => !a ? 0 : !a.min ? 1 : maxMin ? Math.min(4, Math.max(1, Math.ceil(a.min / maxMin * 4))) : 1
 
   const today = new Date(); today.setHours(12, 0, 0, 0)
   const end = new Date(today); end.setDate(today.getDate() - ((today.getDay() + 6) % 7))
@@ -31,7 +35,7 @@ export default function Heatmap({ S, onDay }) {
     months.push(<span key={wk}>{showM ? t(MONTHS[mo]) : ''}</span>)
     if (colStart.getDate() <= 7) lastMonth = mo
     const cells = []
-    for (let d = 0; d < 7; d++) {
+    for (let d = 0; d < (includeSunday ? 7 : 6); d++) {
       const day = new Date(colStart); day.setDate(colStart.getDate() + d)
       const key = isoOf(day)
       const a = agg[key]
@@ -47,7 +51,7 @@ export default function Heatmap({ S, onDay }) {
     <div className="hm-wrap" ref={wrapRef}>
       <div className="hm-months" style={{ marginLeft: 30 }}>{months}</div>
       <div className="hm-body">
-        <div className="hm-days"><span>{t('Mon')}</span><span /><span>{t('Wed')}</span><span /><span>{t('Fri')}</span><span /><span /></div>
+        <div className="hm-days">{[t('Mon'), t('Tue'), t('Wed'), t('Thu'), t('Fri'), t('Sat'), ...(includeSunday ? [t('Sun')] : [])].map(day => <span key={day}>{day}</span>)}</div>
         <div className="hm-grid">{cols}</div>
       </div>
     </div>
