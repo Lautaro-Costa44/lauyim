@@ -30,7 +30,7 @@ function caloricInfoSheet(close) {
 }
 
 function CaloricCard({ S }) {
-  const { peso, altura, edad, objetivo, tmb, mantenimiento, sugerido, metaProteina } = calcularMetasNutricionales(S)
+  const { peso, altura, edad, objetivo, tmb, mantenimiento, sugerido } = calcularMetasNutricionales(S)
   const objMetaMap = { hipertrofia: t('Ganar Músculo'), fuerza: t('Ganar Fuerza'), perder_grasa: t('Perder Grasa'), fitness_general: t('Mantener Peso') }
   const openInfo = () => useUI.getState().openSheet(close => caloricInfoSheet(close))
   return <div style={{ marginTop: 16 }}>
@@ -41,8 +41,26 @@ function CaloricCard({ S }) {
       <div className="row between" style={{ padding: '11px 14px' }}><span style={{ fontSize: 15, color: 'var(--label-2)' }}>{t('Gasto total diario')}</span><span style={{ fontWeight: 500 }}>~{mantenimiento.toLocaleString()} <span className="dim small">kcal</span></span></div>
     </div>
     <div style={{ background: 'var(--acc-soft)', borderRadius: 12, padding: '14px 16px', textAlign: 'center', marginBottom: 10 }}><div style={{ fontSize: 13, color: 'var(--acc)', fontWeight: 600, marginBottom: 6, letterSpacing: '-.006em' }}>🎯 {t('Meta para {0}', objMetaMap[objetivo] || objetivo)}</div><div style={{ fontSize: 36, fontWeight: 700, letterSpacing: '-.028em', color: 'var(--acc)', lineHeight: 1 }}>{sugerido.toLocaleString()}</div><div className="dim small" style={{ marginTop: 4 }}>kcal / día</div></div>
-    <div className="row between" style={{ padding: '11px 14px', background: 'var(--surface-2)', borderRadius: 10, marginBottom: 12 }}><span style={{ fontSize: 15, color: 'var(--label-2)' }}>{t('Meta de proteína')}</span><span style={{ fontWeight: 500 }}>{metaProteina.toLocaleString()} <span className="dim small">g / día</span></span></div>
     <div className="small dim" style={{ lineHeight: 1.45 }}>{t('Calculado para {0} kg, {1} cm, {2} años y tus días de entrenamiento.', fmtNum(peso), altura, edad)}</div>
+  </div>
+}
+
+function CaloricRecommendation({ S }) {
+  const { objetivo, mantenimiento, sugerido } = calcularMetasNutricionales(S)
+  const objetivoLabel = {
+    hipertrofia: t('Ganar Músculo'),
+    fuerza: t('Ganar Fuerza'),
+    perder_grasa: t('Perder Grasa'),
+    fitness_general: t('Mantener Peso'),
+  }[objetivo] || objetivo
+
+  return <div style={{ background: 'var(--surface-2)', borderRadius: 12, padding: '14px 16px', marginBottom: 12, color: 'var(--label-2)', lineHeight: 1.5 }}>
+    <div style={{ fontSize: 14 }}>
+      {t('Para tu configuración actual:')} <strong style={{ color: 'var(--label)' }}>{objetivoLabel}</strong>.
+    </div>
+    <div style={{ fontSize: 14, marginTop: 4 }}>
+      {t('Se recomienda quemar')} <strong style={{ color: 'var(--label)' }}>{mantenimiento.toLocaleString()} kcal</strong> {t('y consumir')} <strong style={{ color: 'var(--acc)' }}>{sugerido.toLocaleString()} kcal</strong>.
+    </div>
   </div>
 }
 
@@ -584,6 +602,8 @@ export default function Nutricion() {
         <button className="iconbtn" onClick={openMisComidasCompuestas} aria-label="Mis comidas compuestas" title="Mis comidas compuestas"><Icon name="plate" /></button>
       </div>
     </div>
+
+    <CaloricRecommendation S={S} />
 
     <div className="card">
       <div className="row between" style={{ marginBottom: 8 }}><h2 style={{ margin: 0 }}>{t('Body weight')}</h2><div className="row" style={{ gap: 8 }}><Button size="sm" icon="target" style={S.targetW ? { color: 'var(--yellow)' } : undefined} onClick={goalSheet}>{S.targetW ? fmtNum(S.targetW) : t('Goal')}</Button><Button size="sm" icon="plus" onClick={() => bwSheet()}>{t('Log')}</Button></div></div>
