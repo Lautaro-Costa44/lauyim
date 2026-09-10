@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import Icon from '../components/Icon.jsx'
 import { api } from '../lib/api.js'
 import { calcularMetasNutricionales, calcularMetasMacros } from '../lib/nutricion.js'
@@ -52,6 +52,8 @@ function MacroBar({ label, actual, target }) {
 export default function HistorialNutricion({ close, S }) {
   const [dias, setDias] = useState([])
   const [loading, setLoading] = useState(true)
+  const historyEntryRef = useRef(false)
+  const closingRef = useRef(false)
 
   const { sugerido, metaProteina } = calcularMetasNutricionales(S)
   const { grasasMeta, carbosMeta } = calcularMetasMacros(sugerido, metaProteina)
@@ -69,6 +71,34 @@ export default function HistorialNutricion({ close, S }) {
     grasas: total.grasas / 30
   }
 
+  const cerrar = useCallback((fromPopstate = false) => {
+    if (closingRef.current) return
+    closingRef.current = true
+    if (historyEntryRef.current) {
+      historyEntryRef.current = false
+      if (!fromPopstate) window.history.back()
+    }
+    close()
+  }, [close])
+
+  useEffect(() => {
+    historyEntryRef.current = true
+    window.history.pushState({ ...(window.history.state || {}), historialNutricion: true }, '', window.location.href)
+    const onPopState = () => {
+      // The global sheet manager ignores locked sheets on back. This screen
+      // owns the next back action and must close before the page can navigate.
+      cerrar(true)
+    }
+    window.addEventListener('popstate', onPopState)
+    return () => {
+      window.removeEventListener('popstate', onPopState)
+      if (!closingRef.current && historyEntryRef.current) {
+        historyEntryRef.current = false
+        window.history.back()
+      }
+    }
+  }, [cerrar])
+
   useEffect(() => {
     const cached = readHistoryCache()
     if (cached) { setDias(cached); setLoading(false) }
@@ -84,7 +114,7 @@ export default function HistorialNutricion({ close, S }) {
         <h1>Historial de nutrición</h1>
         <div className="sub">Últimos 30 días</div>
       </div>
-      <button className="iconbtn" onClick={close} aria-label="Cerrar">
+      <button className="iconbtn" onClick={() => cerrar()} aria-label="Cerrar">
         <Icon name="xmark" />
       </button>
     </div>

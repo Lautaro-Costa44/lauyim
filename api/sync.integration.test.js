@@ -8,7 +8,7 @@ import { DatabaseSync } from 'node:sqlite';
 const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lauyim-sync-'));
 process.env.DATA_DIR = dataDir;
 
-const [{ initDatabase, getDatabase, closeDatabase }, { processSyncBatch }] = await Promise.all([
+const [{ initDatabase, getDatabase, closeDatabase, getUserState, saveUserState }, { processSyncBatch }] = await Promise.all([
   import('./database.js'),
   import('./sync.js')
 ]);
@@ -54,6 +54,23 @@ test('SQLite real: migrates an existing template table to entity versioning', ()
   const columns = db.prepare('PRAGMA table_info(plantillas_comida)').all().map(row => row.name);
   assert.ok(columns.includes('updated_at'));
   assert.equal(db.prepare('SELECT updated_at FROM plantillas_comida WHERE nombre = ?').get('Legacy').updated_at, 1234);
+});
+
+test('SQLite real: persists and reloads routine groups with the general state', () => {
+  saveUserState('u1', {
+    _ts: 100,
+    body: 'female', genero: 'femenino', gifSize: 'mini', defaultIntensifier: { type: 'dropset', count: 2 }, defaultSets: 5,
+    routines: [], week: {}, dayPlan: {}, workouts: [], exWeights: {}, bodyweight: [], customEx: [], exNotes: {},
+    routineGroups: [{ id: 'group-1', name: 'Fuerza', routines: [], week: {} }],
+    activeGroupId: 'group-1'
+  });
+  const state = getUserState('u1');
+  assert.equal(state.activeGroupId, 'group-1');
+  assert.equal(state.routineGroups[0].name, 'Fuerza');
+  assert.equal(state.genero, 'femenino');
+  assert.equal(state.gifSize, 'mini');
+  assert.deepEqual(state.defaultIntensifier, { type: 'dropset', count: 2 });
+  assert.equal(state.defaultSets, 5);
 });
 
 test('SQLite real: compound create is atomic, idempotent and returns temporary ID mapping', () => {

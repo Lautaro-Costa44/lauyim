@@ -86,6 +86,10 @@ export function initDatabase() {
       theme TEXT,
       accent TEXT,
       body TEXT,
+      genero TEXT,
+      gif_size TEXT,
+      default_intensifier TEXT,
+      default_sets INTEGER,
       target_w REAL,
       estado_inicial TEXT,
       onboarding_completado INTEGER,
@@ -102,6 +106,8 @@ export function initDatabase() {
       auto_backup INTEGER,
       active_equip_id TEXT,
       equip_filter_on INTEGER,
+      routine_groups TEXT,
+      active_group_id TEXT,
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     );
 
@@ -154,7 +160,13 @@ export function initDatabase() {
     ['onboarding_completado', 'INTEGER'],
     ['onboarding_stats_completado', 'INTEGER'],
     ['progression_type', 'TEXT'],
-    ['progression_config', 'TEXT']
+    ['progression_config', 'TEXT'],
+    ['routine_groups', 'TEXT'],
+    ['active_group_id', 'TEXT'],
+    ['genero', 'TEXT'],
+    ['gif_size', 'TEXT'],
+    ['default_intensifier', 'TEXT'],
+    ['default_sets', 'INTEGER']
   ];
 
   for (const [col, type] of columnsToAdd) {
@@ -458,6 +470,10 @@ export function getUserState(userId) {
     theme: row.theme,
     accent: row.accent,
     body: row.body,
+    genero: row.genero || (row.body === 'female' ? 'femenino' : 'masculino'),
+    gifSize: row.gif_size || 'full',
+    defaultIntensifier: safeJsonParse(row.default_intensifier, { type: 'none' }),
+    defaultSets: row.default_sets || 3,
     targetW: row.target_w,
     estadoInicial: row.estado_inicial,
     onboardingCompletado: row.onboarding_completado === 1,
@@ -478,6 +494,8 @@ export function getUserState(userId) {
     equipFilterOn: row.equip_filter_on === 1,
     progressionType: row.progression_type || null,
     progressionConfig: safeJsonParse(row.progression_config, null),
+    routineGroups: safeJsonParse(row.routine_groups, []),
+    activeGroupId: row.active_group_id || null,
   };
 
   // Cargar relaciones
@@ -503,10 +521,10 @@ export function saveUserState(userId, S) {
   const stateStmt = db.prepare(`
     INSERT OR REPLACE INTO user_state (
       user_id, _ts, unit, rest_sec, rest_pause_sec, sound, keep_awake, lang, theme, accent,
-      body, target_w, estado_inicial, onboarding_completado, onboarding_stats_completado, edad, altura, objetivo, grasa_corporal, nivel, peso_kg, configuracion,
+      body, genero, gif_size, default_intensifier, default_sets, target_w, estado_inicial, onboarding_completado, onboarding_stats_completado, edad, altura, objetivo, grasa_corporal, nivel, peso_kg, configuracion,
       respuestas_encuesta, rutina_generada, fecha_ultima_encuesta, effort, auto_backup,
       active_equip_id, equip_filter_on, progression_type, progression_config
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
   stateStmt.run(
     userId,
@@ -520,6 +538,10 @@ export function saveUserState(userId, S) {
     S.theme || 'dark',
     S.accent || 'lime',
     S.body || 'male',
+    S.genero || (S.body === 'female' ? 'femenino' : 'masculino'),
+    S.gifSize || 'full',
+    S.defaultIntensifier ? JSON.stringify(S.defaultIntensifier) : JSON.stringify({ type: 'none' }),
+    Number.isFinite(Number(S.defaultSets)) ? Number(S.defaultSets) : 3,
     S.targetW || null,
     S.estadoInicial || 'pendiente',
     S.onboardingCompletado ? 1 : 0,
@@ -571,6 +593,8 @@ export function saveUserState(userId, S) {
 
   // Guardar equipment profiles
   saveEquipProfiles(userId, S.equipProfiles || []);
+  db.prepare('UPDATE user_state SET routine_groups = ?, active_group_id = ? WHERE user_id = ?')
+    .run(JSON.stringify(S.routineGroups || []), S.activeGroupId || null, userId);
 }
 
 // ============================================================

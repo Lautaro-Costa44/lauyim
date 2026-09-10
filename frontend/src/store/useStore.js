@@ -222,45 +222,40 @@ export const useStore = create((set, get) => {
     },
     getActiveGroupId: () => get().S.activeGroupId,
     setActiveGroupId: (groupId) => {
-      const S = get().S
-      syncActiveGroupInState(S)
-      S.activeGroupId = groupId
-      const targetGroup = S.routineGroups.find(g => g.id === groupId)
-      if (targetGroup) {
-        S.routines = JSON.parse(JSON.stringify(targetGroup.routines || []))
-        S.week = JSON.parse(JSON.stringify(targetGroup.week || {}))
-      }
-      set({ S })
+      get().update(S => {
+        syncActiveGroupInState(S)
+        S.activeGroupId = groupId
+        const targetGroup = S.routineGroups.find(g => g.id === groupId)
+        if (targetGroup) {
+          S.routines = JSON.parse(JSON.stringify(targetGroup.routines || []))
+          S.week = JSON.parse(JSON.stringify(targetGroup.week || {}))
+        }
+      })
     },
     addGroup: (name, routines, week, setAsActive) => {
-      const S = get().S
-      const newGroup = addGroupToState(S, name, routines || [], week || {}, setAsActive)
-      set({ S: { ...S, routineGroups: S.routineGroups || [], ...newGroup } })
+      let newGroup = null
+      get().update(S => {
+        newGroup = addGroupToState(S, name, routines || [], week || {}, setAsActive)
+      })
       return newGroup
     },
     removeGroup: (groupId) => {
-      const S = get().S
-      const newGroups = (S.routineGroups || []).filter(g => g.id !== groupId)
-      set({ S: { ...S, routineGroups: newGroups } })
-      // If we removed the active group, activate the first remaining
-      if (S.activeGroupId === groupId && newGroups.length > 0) {
-        const nextGroup = newGroups[0]
-        setActiveGroupId(nextGroup.id)
-      } else if (S.activeGroupId === groupId && newGroups.length === 0) {
-        setActiveGroupId(null)
-      }
+      get().update(S => removeGroupFromState(S, groupId))
     },
     renameGroup: (groupId, newName) => {
       const S = get().S
-      const group = S.routineGroups.find(g => g.id === groupId)
+      const group = (S.routineGroups || []).find(g => g.id === groupId)
       if (!group) return null
-      const validated = validateGroupName(newName, S.routineGroups, groupId)
+      const validated = validateGroupName(newName, S.routineGroups || [], groupId)
       if (!validated.valid) {
         throw new Error(validated.error || t('Nombre de grupo inválido'))
       }
-      group.name = newName.trim()
-      set({ S })
-      return group
+      let renamed = null
+      get().update(next => {
+        renamed = next.routineGroups.find(g => g.id === groupId)
+        if (renamed) renamed.name = newName.trim()
+      })
+      return renamed
     },
 
     // Boot: ask the server who we are, then pull.
