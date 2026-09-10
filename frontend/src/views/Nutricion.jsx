@@ -373,17 +373,18 @@ function agruparComidas(rows) {
   return items
 }
 
-function GrupoComidaRow({ grupo, onRemove, actions }) {
-  const [expandido, setExpandido] = useState(false)
+function GrupoComidaRow({ grupo, onRemove, actions, expandido, onToggle }) {
+  const [expandidoLocal, setExpandidoLocal] = useState(false)
+  const estaExpandido = expandido !== undefined ? expandido : expandidoLocal
   const totales = grupo.totales || totalesDeIngredientes(grupo.ingredientes || [])
   const subtitle = `${Math.round(totales.calorias)} kcal · ${totales.proteina.toFixed(1)} g prot. · ${totales.carbohidratos.toFixed(1)} g carb. · ${totales.grasas.toFixed(1)} g grasas`
   const defaultActions = onRemove ? [<button key="remove" type="button" className="iconbtn meal-delete" aria-label="Eliminar comida compuesta" onClick={event => { event.stopPropagation(); onRemove(grupo.grupo_id) }}>×</button>] : []
   return <div className="grupo-comida-row">
-    <Row title={grupo.grupo_nombre} subtitle={subtitle} onClick={() => setExpandido(value => !value)}>
+    <Row title={grupo.grupo_nombre} subtitle={subtitle} onClick={() => onToggle ? onToggle() : setExpandidoLocal(value => !value)}>
       {actions || defaultActions}
     </Row>
-    {expandido && <div className="grupo-comida-ingredientes">
-      {grupo.ingredientes.map(ingrediente => <Row key={ingrediente.id} title={ingrediente.nombre_alimento} subtitle={`${ingrediente.cantidad_gramos} g · ${Math.round(ingrediente.calorias)} kcal`} className="grupo-comida-ingrediente" />)}
+    {estaExpandido && <div className="grupo-comida-ingredientes">
+      {grupo.ingredientes.map(ingrediente => <Row key={ingrediente.id} title={ingrediente.nombre_alimento} subtitle={`${ingrediente.cantidad_gramos} g · ${Math.round(ingrediente.calorias)} kcal · ${Number(ingrediente.proteina || 0).toFixed(1)} g prot. · ${Number(ingrediente.carbohidratos || 0).toFixed(1)} g carb. · ${Number(ingrediente.grasas || 0).toFixed(1)} g grasas`} className="grupo-comida-ingrediente" />)}
     </div>}
   </div>
 }
@@ -450,26 +451,30 @@ function SugerenciaComida({ close, onSaved }) {
   const [plantillas, setPlantillas] = useState([])
   const [loading, setLoading] = useState(false)
   const [agregando, setAgregando] = useState(null)
+  const [plantillaExpandida, setPlantillaExpandida] = useState(null)
   const [error, setError] = useState('')
   const historyEntryRef = useRef(false)
   const closingRef = useRef(false)
   const pasoRef = useRef(paso)
   pasoRef.current = paso
 
-  const cargarSugerencias = useCallback(() => {
+  const cargarSugerencias = useCallback(franjaSeleccionada => {
     setLoading(true)
     setError('')
-    api('/api/plantillas?categoria=fitness').then(setPlantillas).catch(() => {
+    api('/api/plantillas?categoria=fitness&franja=' + encodeURIComponent(franjaSeleccionada)).then(setPlantillas).catch(() => {
       setPlantillas([])
       setError('No se pudieron cargar las sugerencias.')
-    }).finally(() => setLoading(false))
+    }).finally(() => {
+      setPlantillaExpandida(null)
+      setLoading(false)
+    })
   }, [])
 
   const irALista = useCallback(value => {
     setFranja(value)
     setMenuFranjaAbierto(false)
     setPaso(2)
-    cargarSugerencias()
+    cargarSugerencias(value)
   }, [cargarSugerencias])
 
   const cerrar = useCallback((fromPopstate = false) => {
@@ -540,7 +545,7 @@ function SugerenciaComida({ close, onSaved }) {
         </div>
       </Section> : <Section title={`Sugerencias para ${franjaActual?.label.toLowerCase()}`} className="compound-builder-section">
         {loading ? <div className="meal-empty">Cargando sugerencias…</div> : plantillas.length ? <div className="list">
-          {plantillas.map(plantilla => <GrupoComidaRow key={plantilla.id} grupo={{ grupo_nombre: plantilla.nombre, ingredientes: plantilla.ingredientes, totales: totalesDeIngredientes(plantilla.ingredientes) }} actions={[
+          {plantillas.map(plantilla => <GrupoComidaRow key={plantilla.id} expandido={plantillaExpandida === plantilla.id} onToggle={() => setPlantillaExpandida(current => current === plantilla.id ? null : plantilla.id)} grupo={{ grupo_nombre: plantilla.nombre, ingredientes: plantilla.ingredientes, totales: totalesDeIngredientes(plantilla.ingredientes) }} actions={[
             <Button key="add" size="sm" variant="tinted" disabled={agregando === plantilla.id} onClick={event => { event.stopPropagation(); agregar(plantilla) }}>{agregando === plantilla.id ? 'Agregando…' : 'Agregar'}</Button>,
           ]} />)}
         </div> : <div className="empty"><div className="ico"><Icon name="plate" /></div>No hay sugerencias disponibles.</div>}

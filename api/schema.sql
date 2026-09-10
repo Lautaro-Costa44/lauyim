@@ -377,12 +377,14 @@ CREATE TABLE IF NOT EXISTS plantillas_comida (
   user_id TEXT,
   nombre TEXT NOT NULL,
   categoria TEXT,
+  franjas_recomendadas TEXT,
   created_at INTEGER NOT NULL,
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
 -- COMANDO ALTER TABLE PARA BASES YA EXISTENTES (plantillas_comida):
 -- ALTER TABLE plantillas_comida ADD COLUMN categoria TEXT;
+-- ALTER TABLE plantillas_comida ADD COLUMN franjas_recomendadas TEXT;
 
 CREATE TABLE IF NOT EXISTS plantillas_ingredientes (
   id INTEGER PRIMARY KEY AUTOINCREMENT,

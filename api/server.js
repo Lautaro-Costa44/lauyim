@@ -673,8 +673,23 @@ function combinarAlimentos(...listas) {
   }).slice(0, 15);
 }
 
-function obtenerPlantillas(db, userId, categoria = '', soloUsuario = false) {
+function inferirFranjasPlantilla(nombre, categoria) {
+  if (categoria !== 'fitness') return [];
+  const texto = String(nombre || '').toLowerCase();
+  const franjas = new Set();
+  if (/omelette|tostad|avena|yogur|huevo.*revuelt|panqueque|batido/.test(texto)) franjas.add('desayuno');
+  if (/yogur|batido|galleta|panqueque|manzana|tostad|banana|mantequilla de maní/.test(texto)) franjas.add('merienda');
+  if (/pollo|arroz|salmón|salmon|ensalada|bowl|wrap|bife|fideo|tofu|merluza|solomillo|lenteja|huevo.*arroz/.test(texto)) {
+    franjas.add('almuerzo');
+    franjas.add('cena');
+  }
+  if (/galleta|batido|manzana|yogur|atún con galletas|atun con galletas/.test(texto)) franjas.add('extra');
+  return franjas.size ? [...franjas] : ['extra'];
+}
+
+function obtenerPlantillas(db, userId, categoria = '', soloUsuario = false, franja = '') {
   const soloCategoria = String(categoria || '').trim();
+  const soloFranja = String(franja || '').trim();
   let where;
   let params;
   if (soloUsuario) {
@@ -687,7 +702,7 @@ function obtenerPlantillas(db, userId, categoria = '', soloUsuario = false) {
     params = soloCategoria ? [soloCategoria] : [userId];
   }
   const rows = db.prepare(`
-    SELECT p.id AS plantilla_id, p.user_id, p.nombre AS plantilla_nombre, p.created_at,
+    SELECT p.id AS plantilla_id, p.user_id, p.nombre AS plantilla_nombre, p.categoria, p.created_at, p.franjas_recomendadas,
       i.id AS ingrediente_id, i.nombre_alimento, i.cantidad_gramos, i.calorias,
       i.proteina, i.carbohidratos, i.grasas
     FROM plantillas_comida p
@@ -704,6 +719,12 @@ function obtenerPlantillas(db, userId, categoria = '', soloUsuario = false) {
         user_id: row.user_id,
         nombre: row.plantilla_nombre,
         created_at: row.created_at,
+        franjas_recomendadas: (() => {
+          try {
+            const franjas = JSON.parse(row.franjas_recomendadas || '[]');
+            return franjas.length ? franjas : inferirFranjasPlantilla(row.plantilla_nombre, row.categoria);
+          } catch { return inferirFranjasPlantilla(row.plantilla_nombre, row.categoria); }
+        })(),
         ingredientes: []
       };
       plantillas.set(row.plantilla_id, plantilla);
@@ -720,7 +741,10 @@ function obtenerPlantillas(db, userId, categoria = '', soloUsuario = false) {
       });
     }
   }
-  return [...plantillas.values()];
+  const resultado = [...plantillas.values()];
+  return soloFranja
+    ? resultado.filter(plantilla => plantilla.franjas_recomendadas.includes(soloFranja))
+    : resultado;
 }
 
 function validarIngredientes(ingredientes) {
@@ -890,8 +914,10 @@ const routes = {
     const user = readSession(req);
     if (!user) return json(res, 401, { error: 'not signed in' });
     const categoria = new URL(req.url, 'http://x').searchParams.get('categoria') || '';
-    const soloUsuario = new URL(req.url, 'http://x').searchParams.get('scope') === 'mine';
-    return json(res, 200, obtenerPlantillas(getDatabase(), user.id, categoria, soloUsuario));
+    const requestUrl = new URL(req.url, 'http://x');
+    const soloUsuario = requestUrl.searchParams.get('scope') === 'mine';
+    const franja = requestUrl.searchParams.get('franja') || '';
+    return json(res, 200, obtenerPlantillas(getDatabase(), user.id, categoria, soloUsuario, franja));
   },
 
   'PUT /api/plantillas/:id': async (req, res) => {

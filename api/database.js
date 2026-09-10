@@ -52,6 +52,9 @@ export function initDatabase() {
   try {
     db.exec(`ALTER TABLE comidas_registradas ADD COLUMN grupo_nombre TEXT;`);
   } catch {}
+  try {
+    db.exec(`ALTER TABLE plantillas_comida ADD COLUMN franjas_recomendadas TEXT;`);
+  } catch {}
 
   // Crear tablas principales si no existen
   db.exec(`

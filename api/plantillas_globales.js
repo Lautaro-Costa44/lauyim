@@ -484,6 +484,22 @@ const plantillas = [...[
   }
 ]];
 
+function franjasDePlantilla(plantilla) {
+  if (plantilla.categoria !== 'fitness') return [];
+  const nombre = String(plantilla.nombre || '').toLowerCase();
+  const franjas = new Set();
+  if (/omelette|tostad|avena|yogur|huevo.*revuelt|panqueque|batido/.test(nombre)) franjas.add('desayuno');
+  if (/yogur|batido|galleta|panqueque|manzana|tostad|banana|mantequilla de maní/.test(nombre)) franjas.add('merienda');
+  if (/pollo|arroz|salmón|salmon|ensalada|bowl|wrap|bife|fideo|tofu|merluza|solomillo|lenteja|huevo.*arroz/.test(nombre)) {
+    franjas.add('almuerzo');
+    franjas.add('cena');
+  }
+  if (/galleta|batido|manzana|yogur|atún con galletas|atun con galletas/.test(nombre)) franjas.add('extra');
+  return franjas.size ? [...franjas] : ['extra'];
+}
+
+for (const plantilla of plantillas) plantilla.franjas_recomendadas = franjasDePlantilla(plantilla);
+
 const db = getDatabase();
 
 const buscarPlantilla = db.prepare(`
@@ -492,9 +508,13 @@ const buscarPlantilla = db.prepare(`
   WHERE user_id IS NULL AND nombre = ? AND categoria = ?
 `);
 
+const actualizarFranjas = db.prepare(`
+  UPDATE plantillas_comida SET franjas_recomendadas = ? WHERE id = ?
+`);
+
 const insertarPlantilla = db.prepare(`
-  INSERT INTO plantillas_comida (user_id, nombre, categoria, created_at)
-  VALUES (?, ?, ?, ?)
+  INSERT INTO plantillas_comida (user_id, nombre, categoria, franjas_recomendadas, created_at)
+  VALUES (?, ?, ?, ?, ?)
 `);
 
 const insertarIngrediente = db.prepare(`
@@ -510,6 +530,7 @@ for (const plantilla of plantillas) {
   const existente = buscarPlantilla.get(plantilla.nombre, plantilla.categoria);
 
   if (existente) {
+    actualizarFranjas.run(JSON.stringify(plantilla.franjas_recomendadas || []), existente.id);
     omitidas += 1;
     console.log(`Ya existe: ${plantilla.nombre} (${plantilla.categoria}), omitida`);
     continue;
@@ -521,6 +542,7 @@ for (const plantilla of plantillas) {
       null,
       plantilla.nombre,
       plantilla.categoria,
+      JSON.stringify(plantilla.franjas_recomendadas || []),
       Date.now()
     );
 
@@ -547,4 +569,3 @@ for (const plantilla of plantillas) {
 
 console.log(`Total insertadas: ${insertadas}`);
 console.log(`Total omitidas por duplicado: ${omitidas}`);
-
