@@ -445,7 +445,8 @@ function MisComidasCompuestas({ close }) {
 
 function SugerenciaComida({ close, onSaved }) {
   const [paso, setPaso] = useState(1)
-  const [franja, setFranja] = useState(FRANJAS[0].value)
+  const [franja, setFranja] = useState(null)
+  const [menuFranjaAbierto, setMenuFranjaAbierto] = useState(false)
   const [plantillas, setPlantillas] = useState([])
   const [loading, setLoading] = useState(false)
   const [agregando, setAgregando] = useState(null)
@@ -466,6 +467,7 @@ function SugerenciaComida({ close, onSaved }) {
 
   const irALista = useCallback(value => {
     setFranja(value)
+    setMenuFranjaAbierto(false)
     setPaso(2)
     cargarSugerencias()
   }, [cargarSugerencias])
@@ -525,7 +527,17 @@ function SugerenciaComida({ close, onSaved }) {
         <button type="button" className="iconbtn" onClick={() => cerrar()} aria-label="Cerrar"><Icon name="xmark" /></button>
       </div>
       {paso === 1 ? <Section title="¿Para qué momento del día?" className="compound-builder-section">
-        <SelectRow title="Franja" value={franja} options={FRANJAS} onChange={irALista} sheetTitle="Elegir franja" />
+        <div style={{ maxWidth: 420, margin: '0 auto' }}>
+          <button type="button" className="btn tinted" style={{ width: '100%', justifyContent: 'center' }} onClick={() => setMenuFranjaAbierto(value => !value)} aria-expanded={menuFranjaAbierto}>
+            <span>{franja ? FRANJAS.find(item => item.value === franja)?.label : 'Seleccionar franja'}</span>
+            <Icon name={menuFranjaAbierto ? 'chevronUp' : 'chevronDown'} />
+          </button>
+          {menuFranjaAbierto && <div className="sect-b" style={{ marginTop: 8 }}>
+            {FRANJAS.map(item => <button key={item.value} type="button" className="lrow tap" onClick={() => irALista(item.value)}>
+              <span className="lrow-m"><span className="lrow-t">{item.label}</span></span>
+            </button>)}
+          </div>}
+        </div>
       </Section> : <Section title={`Sugerencias para ${franjaActual?.label.toLowerCase()}`} className="compound-builder-section">
         {loading ? <div className="meal-empty">Cargando sugerencias…</div> : plantillas.length ? <div className="list">
           {plantillas.map(plantilla => <GrupoComidaRow key={plantilla.id} grupo={{ grupo_nombre: plantilla.nombre, ingredientes: plantilla.ingredientes, totales: totalesDeIngredientes(plantilla.ingredientes) }} actions={[
@@ -573,7 +585,9 @@ export default function Nutricion() {
     <div className="card">
       <h2>Resumen nutricional de hoy</h2>
       <ResumenNutricional caloriasConsumidas={totals.calorias} caloriasMeta={sugerido} proteinaConsumida={totals.proteina} proteinaMeta={metaProteina} carbosConsumidos={totals.carbos} carbosMeta={carbosMeta} grasasConsumidas={totals.grasas} grasasMeta={grasasMeta} />
-      <Button variant="primary" icon="sparkles" onClick={openSugerenciaComida} style={{ width: '100%', marginTop: 14, color: '#fff' }}>Sugerencia de comida</Button>
+    </div>
+    <div className="card" style={{ marginTop: 12 }}>
+      <Button variant="primary" icon="sparkles" onClick={openSugerenciaComida} style={{ width: '100%', color: '#fff' }}>Sugerencia de comida</Button>
     </div>
     {loadingComidas ? <div className="card muted small">Cargando comidas…</div> : <>
       {FRANJAS.map(franja => {
