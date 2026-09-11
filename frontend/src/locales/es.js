@@ -641,7 +641,7 @@ export default {
   'Make superset with next': 'Hacer superserie con siguiente',
   // --- administration ---
   'Disable': 'Desactivar',
-  'Make admin': 'Hacer administrador', 'Remove admin role': 'Quitar rol de administrador',
+  'Make admin': 'Hacer administrador', 'Remove admin': 'Quitar administrador', 'Remove admin role': 'Quitar rol de administrador',
   'Make {0} an admin?': '¿Hacer administrador a {0}?', 'Remove admin from {0}?': '¿Quitar administrador a {0}?',
   'User promoted to admin': 'Usuario promovido a administrador', 'Admin role removed': 'Rol de administrador quitado',
   'This gives the user access to the admin dashboard and administrative tools.': 'Esto le da acceso al panel y a las herramientas de administración.',
