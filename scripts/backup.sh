@@ -57,7 +57,7 @@ for entry in "${INSTANCES[@]}"; do
     continue
   fi
 
-  if docker exec "$container" sqlite3 /data/gym.db "VACUUM INTO '/tmp/backup_tmp.db'"; then
+  if docker exec "$container" node -e "const {DatabaseSync}=require('node:sqlite'); const db=new DatabaseSync('/data/gym.db'); db.exec(\"VACUUM INTO '/tmp/backup_tmp.db'\"); db.close();"; then
     log "${instance}: consistent SQLite dump created."
   else
     fail "${instance}: docker exec/VACUUM INTO failed; skipping instance."
