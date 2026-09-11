@@ -99,6 +99,7 @@ const MAX_BODY = 5 * 1024 * 1024;
 const RATE_LIMIT_WINDOW_MS = 5 * 60 * 1000;
 const RATE_LIMIT_AUTH_MAX = 10;
 const RATE_LIMIT_SHARE_MAX = 20;
+const RATE_LIMIT_SUPPORT_MAX = 5;
 // Secure cookies require HTTPS; over plain http://localhost the flag would drop the cookie
 const SECURE = /^https:/i.test(ORIGIN) ? ' Secure;' : '';
 
@@ -2024,7 +2025,8 @@ http.createServer(async (req, res) => {
     || routeKey === 'POST /api/login/options'
     || routeKey === 'POST /api/login/verify'
     ? RATE_LIMIT_AUTH_MAX
-    : routeKey === 'POST /api/share/plan' ? RATE_LIMIT_SHARE_MAX : null;
+    : routeKey === 'POST /api/share/plan' ? RATE_LIMIT_SHARE_MAX
+    : routeKey === 'POST /api/support' ? RATE_LIMIT_SUPPORT_MAX : null;
   if (rateLimitMax !== null && !rateLimit(req, res, routeKey, rateLimitMax)) return;
 
   // Verificar expiración de licencia por fecha (si está configurada y vencida)
