@@ -52,7 +52,7 @@ function AttendanceHeatmap({ data, onStartChange }) {
   const labels = data.start === 'sunday'
     ? ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
     : ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
-  return <div className="card">
+  return <div className="card admin-attendance-heatmap">
     <div className="row between" style={{ gap: 10 }}>
       <div><h2 style={{ margin: 0 }}>{t('Asistencia')}</h2><div className="small muted">{t('Miembros distintos que entrenaron cada día · últimas 4 semanas')}</div></div>
       <div className="hm-sunday-toggle seg" role="group" aria-label={t('Sunday')}>
