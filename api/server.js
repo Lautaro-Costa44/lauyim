@@ -1771,6 +1771,20 @@ const routes = {
     json(res, 200, { ok: true, id: u.id, disabled: newDisabled });
   },
 
+  'POST /api/owner/user/admin': async (req, res) => {
+    const owner = requireOwner(req, res); if (!owner) return;
+    const body = await readBody(req);
+    const id = String(body.id || '').trim();
+    if (!id) return json(res, 400, { error: 'user id required' });
+    const u = getUserById(id);
+    if (!u) return json(res, 404, { error: 'no such user' });
+    if (isOwner(u)) return json(res, 400, { error: 'cannot change the owner role' });
+    const admin = !!body.admin;
+    updateUser(u.id, { admin });
+    audit(req, admin ? 'owner.user.promote' : 'owner.user.demote', { user: owner, target: u });
+    json(res, 200, { ok: true, id: u.id, admin });
+  },
+
   'POST /api/owner/user/delete': async (req, res) => {
     const owner = requireOwner(req, res); if (!owner) return;
     const body = await readBody(req);

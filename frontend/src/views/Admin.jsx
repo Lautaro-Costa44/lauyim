@@ -84,10 +84,15 @@ function UserDetail({ id, onChanged, close }) {
       .then(() => { toast(t('Account permanently deleted')); onChanged(); close() })
       .catch(e => toast(e.message))
   }
+  const setAdmin = admin => {
+    api('/api/owner/user/admin', { method: 'POST', body: JSON.stringify({ id: u.id, admin }) })
+      .then(() => { toast(admin ? t('User promoted to admin') : t('Admin role removed')); onChanged(); close() })
+      .catch(e => toast(e.message))
+  }
   return <>
     <h3 className="capitalize">{u.name}</h3>
     <div className="row" style={{ gap: 6, flexWrap: 'wrap', margin: '8px 0 12px' }}>
-      {u.admin && <span className="tag acc">{t('admin')}</span>}
+      {(u.owner || u.admin) && <span className="tag acc">{u.owner ? t('owner') : t('admin')}</span>}
       {u.disabled && <span className="tag" style={{ color: 'var(--red)' }}>{t('disabled')}</span>}
       {u.invitedBy && <span className="tag">{t('invite')} {u.invitedBy}</span>}
       <span className="tag">{t('joined')} {u.created ? fmtDate(u.created.slice(0, 10)) : '—'}</span>
@@ -98,7 +103,10 @@ function UserDetail({ id, onChanged, close }) {
       <div className="tile"><div className="l">{t('Routines')}</div><div className="v" style={{ fontSize: '1.1rem' }}>{d.routines.length}</div></div>
       <div className="tile"><div className="l">{t('Last sync')}</div><div className="v" style={{ fontSize: '.95rem' }}>{rel(d.lastSync)}</div></div>
     </div>
-    {!u.admin && <button className={'btn ' + (u.disabled ? 'primary' : 'danger')} style={{ margin: '12px 0 4px' }}
+    {currentUser?.owner && !u.owner && <button className="btn primary" style={{ margin: '12px 0 4px' }}
+      onClick={() => confirmSheet({ title: u.admin ? t('Remove admin from {0}?', u.name) : t('Make {0} an admin?', u.name), message: u.admin ? t('They will keep access to normal administrative tools only if promoted again.') : t('This gives the user access to the admin dashboard and administrative tools.'), confirmText: u.admin ? t('Remove admin') : t('Make admin'), danger: false, onConfirm: () => setAdmin(!u.admin) })}>
+      {u.admin ? t('Remove admin role') : t('Make admin')}</button>}
+    {!u.admin && !u.owner && <button className={'btn ' + (u.disabled ? 'primary' : 'danger')} style={{ margin: '8px 0 4px' }}
       onClick={() => u.disabled ? setDisabled(false)
         : confirmSheet({ title: t('Disable {0}?', u.name), message: t('They are signed out everywhere and can no longer sync or log in until re-enabled.'), confirmText: t('Disable'), danger: true, onConfirm: () => setDisabled(true) })}>
       {u.disabled ? t('Enable account') : t('Disable account')}</button>}
@@ -425,23 +433,23 @@ export default function Admin() {
 
     <h4 className="sec">{t('Usuarios: {0} ({1} Desactivados)', users ? users.length : 0, disabledCount)}</h4>
     <div style={{ marginBottom: 10 }}>
-      <input {...NO_AUTOFILL} name="admin-user-search" value={userSearch} onChange={e => changeUserSearch(e.target.value)}
+      <TextField name="admin-user-search" value={userSearch} onChange={e => changeUserSearch(e.target.value)}
         placeholder={t('Search users by name')} aria-label={t('Search users by name')} />
     </div>
     <div className="list">
       {visibleUsers.map(u => <div key={u.id} className="item" onClick={() => openUser(u.id)} style={u.disabled ? { opacity: .55 } : null}>
-        <div className="grow"><div className="tt">{u.live && <Icon name="dot" style={{ fontSize: 9, color: 'var(--green)', display: 'inline-block', marginRight: 5 }} />}{u.name} {u.admin && <span className="tag acc" style={{ marginLeft: 4 }}>{t('admin')}</span>}{u.disabled && <span className="tag" style={{ marginLeft: 4, color: 'var(--red)' }}>{t('off')}</span>}</div>
+        <div className="grow"><div className="tt">{u.live && <Icon name="dot" style={{ fontSize: 9, color: 'var(--green)', display: 'inline-block', marginRight: 5 }} />}{u.name} {(u.owner || u.admin) && <span className="tag acc" style={{ marginLeft: 4 }}>{u.owner ? t('owner') : t('admin')}</span>}{u.disabled && <span className="tag" style={{ marginLeft: 4, color: 'var(--red)' }}>{t('off')}</span>}</div>
           <div className="ss">{u.live ? t('training now') + ' · ' + u.live.name : u.workouts + ' ' + t('workouts') + (u.lastWorkout ? ' · ' + t('last') + ' ' + fmtDate(u.lastWorkout) : '') + ' · ' + t('synced') + ' ' + rel(u.lastSync)}</div></div>
         {u.hasPush && <Icon name="bell" title="push enabled" style={{ fontSize: 15, color: 'var(--label-3)' }} />}<Icon name="chevronRight" className="chev" />
       </div>)}
       {users && !filteredUsers.length && <div className="empty">{userSearch ? t('No users match that name.') : t('No users yet.')}</div>}
     </div>
     {users && filteredUsers.length > 0 && <div className="row between" style={{ marginTop: 10, gap: 6 }}>
-      <button className="btn" disabled={userPage === 1} onClick={() => setUserPage(1)}>{t('First')}</button>
-      <button className="btn" disabled={userPage === 1} onClick={() => setUserPage(p => Math.max(1, p - 1))}>{t('Previous')}</button>
-      <span className="small muted">{userPage} / {userPageCount}</span>
-      <button className="btn" disabled={userPage === userPageCount} onClick={() => setUserPage(p => Math.min(userPageCount, p + 1))}>{t('Next')}</button>
-      <button className="btn" disabled={userPage === userPageCount} onClick={() => setUserPage(userPageCount)}>{t('Last')}</button>
+      <button className="btn" style={{ padding: '11px 14px', fontSize: '13.6px', borderRadius: 'calc(var(--r) * .8)' }} disabled={userPage === 1} onClick={() => setUserPage(1)}>{t('First')}</button>
+      <button className="btn" style={{ padding: '11px 14px', fontSize: '13.6px', borderRadius: 'calc(var(--r) * .8)' }} disabled={userPage === 1} onClick={() => setUserPage(p => Math.max(1, p - 1))}>{t('Previous')}</button>
+      <span className="muted" style={{ fontSize: '1.08rem', fontWeight: 600, whiteSpace: 'nowrap' }}>{userPage} / {userPageCount}</span>
+      <button className="btn" style={{ padding: '11px 14px', fontSize: '13.6px', borderRadius: 'calc(var(--r) * .8)' }} disabled={userPage === userPageCount} onClick={() => setUserPage(p => Math.min(userPageCount, p + 1))}>{t('Next')}</button>
+      <button className="btn" style={{ padding: '11px 14px', fontSize: '13.6px', borderRadius: 'calc(var(--r) * .8)' }} disabled={userPage === userPageCount} onClick={() => setUserPage(userPageCount)}>{t('Last')}</button>
     </div>}
 
     <div style={{ marginTop: 14 }}><AuditCard tick={tick} /></div>
