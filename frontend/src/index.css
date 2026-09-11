@@ -533,6 +533,7 @@ input[type="search"]::-webkit-search-cancel-button{display:none;-webkit-appearan
 .seg-inline button{padding:5px 10px;font-size:13px;min-height:28px}
 .seg-inline button .icn{font-size:14px}
 .plan-tabs{width:100%;margin-bottom:14px}
+.plan-tabs button.on{color:var(--acc)}
 .plan-exercises>.hdr{display:none}
 
 /* native time input, restyled to sit in a row like a value label */

@@ -479,7 +479,7 @@ function CustomExForm({ existing, prefill, onDone, close }) {
       const created = { id, n: name, tipo, equipamiento: equipArr, grupo_muscular: grupoMuscular, bp: bpVal, eq: primaryEq, desc: d, tg: grupoMuscular, sm, muscleGroups: groups, primaries: prim, secondaries: sm, custom: true }
       const finish = () => { close(); toast(t('“{0}” created', name)); onDone && onDone(EXIDX[id]) }
       const publish = () => { update(s => { (s.customEx = s.customEx || []).push(created) }); api('/api/admin/public-exercises', { method: 'POST', body: JSON.stringify(created) }).catch(() => {}); finish() }
-      if (isAdmin) return confirmSheet({ title: t('Compartir ejercicio'), message: t('¿Querés añadirlo para que lo vean todos los usuarios, actuales y futuros?'), confirmText: t('Compartir'), onConfirm: publish, onCancel: () => { update(s => { (s.customEx = s.customEx || []).push(created) }); finish() } })
+      if (isAdmin) return confirmSheet({ title: t('Compartir ejercicio'), message: t('¿Querés añadirlo para que lo vean todos los usuarios, actuales y futuros?'), confirmText: t('Compartir'), cancelText: t('No'), onConfirm: publish, onCancel: () => { update(s => { (s.customEx = s.customEx || []).push(created) }); finish() } })
       update(s => { (s.customEx = s.customEx || []).push(created) })
     }
     close()

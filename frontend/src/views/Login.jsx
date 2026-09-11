@@ -118,7 +118,7 @@ export default function Login() {
   const { setUser, pullState, setGuest } = useStore()
   const signIn = async () => {
     try { const u = await passkeyLogin(); setUser(u); await pullState(); useUI.getState().toast(t('Welcome back, {0}', u.name)) }
-    catch (e) { if (e.name !== 'NotAllowedError' && e.name !== 'AbortError') useUI.getState().toast(e.message || t('Sign-in failed')) }
+    catch (e) { if (e.name !== 'NotAllowedError' && e.name !== 'AbortError') useUI.getState().toast(e.message || t('SIGN_IN_FAILED_LOGIN')) }
   }
   const head = <>
     <div style={{ display: 'flex', justifyContent: 'center', paddingTop: 32 }}>
