@@ -1,4 +1,4 @@
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { useStore } from '../store/useStore.js'
 import { useUI } from '../store/useUI.js'
 import { DAYN, uid, exCount } from '../lib/format.js'
@@ -6,11 +6,14 @@ import { t } from '../lib/i18n.js'
 import { dayAssignSheet, loadStarterPlan, planToolsSheet, confirmSheet, inputSheet } from '../sheets.jsx'
 import { MAX_ROUTINE_GROUPS } from '../lib/routineGroups.js'
 import Icon from '../components/Icon.jsx'
-import { Button } from '../components/ui.jsx'
+import { Button, Segmented } from '../components/ui.jsx'
 import { glyphOf, DEFAULT_GLYPH } from '../lib/glyphs.js'
+import Library from './Library.jsx'
 
 export default function Plan() {
   const nav = useNavigate()
+  const loc = useLocation()
+  const exercisesTab = loc.pathname === '/plan/ejercicios'
   const S = useStore(s => s.S)
   const update = useStore(s => s.update)
   const toast = useUI(s => s.toast)
@@ -80,7 +83,13 @@ export default function Plan() {
       <div><h1>{t('Plan')}</h1><div className="sub">{t('Your weekly routine')}</div></div>
       <button className="iconbtn" onClick={planToolsSheet} aria-label={t('Share your plan')} title={t('Share your plan')}><Icon name="upload" /></button>
     </div>
-    <div className="cols"><div>
+    <Segmented
+      className="plan-tabs"
+      value={exercisesTab ? 'exercises' : 'routine'}
+      onChange={tab => nav(tab === 'exercises' ? '/plan/ejercicios' : '/plan')}
+      options={[{ value: 'routine', label: t('Routine') }, { value: 'exercises', label: t('Exercises') }]}
+    />
+    {exercisesTab ? <div className="plan-exercises"><Library /></div> : <div className="cols"><div>
       <h4 className="sec">{t('Week schedule')}</h4>
       <div className="list" style={{ display: 'flex', flexDirection: 'column' }}>
         {[1, 2, 3, 4, 5, 6, 0].map(d => {
@@ -167,6 +176,6 @@ export default function Plan() {
           </div>
         )}
       </div>
-    </div></div>
+    </div></div>}
   </>
 }

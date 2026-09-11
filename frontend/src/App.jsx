@@ -29,7 +29,6 @@ const Stats = lazy(() => import('./views/Stats.jsx'))
 const Nutricion = lazy(() => import('./views/Nutricion.jsx'))
 const History = lazy(() => import('./views/History.jsx'))
 const Settings = lazy(() => import('./views/Settings.jsx'))
-const Library = lazy(() => import('./views/Library.jsx'))
 const Admin = lazy(() => import('./views/Admin.jsx'))
 const SurveyWizard = lazy(() => import('./views/SurveyWizard.jsx'))
 const ImportPlan = lazy(() => import('./views/ImportPlan.jsx'))
@@ -111,12 +110,13 @@ function Shell() {
             <Routes>
               <Route path="/home" element={<Home />} />
               <Route path="/plan" element={<Plan />} />
+              <Route path="/plan/ejercicios" element={<Plan />} />
               <Route path="/plan/r/:id" element={<RoutineEdit />} />
               <Route path="/workout" element={<Workout />} />
               <Route path="/stats" element={<Stats />} />
               <Route path="/nutricion" element={<Nutricion />} />
               <Route path="/history" element={<History />} />
-              <Route path="/library" element={<Library />} />
+              <Route path="/library" element={<Navigate to="/plan/ejercicios" replace />} />
               <Route path="/settings" element={<Settings />} />
               <Route path="/import" element={<ImportPlan />} />
               <Route path="/onboarding/encuesta" element={<SurveyWizard />} />

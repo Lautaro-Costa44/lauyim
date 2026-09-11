@@ -42,7 +42,7 @@ export default {
   'Week starts': 'Inicio de semana', 'Monday start': 'Empieza lunes', 'Sunday start': 'Empieza domingo',
   'Fewer members': 'Menos miembros', 'More members': 'Más miembros', 'user': 'usuario', 'users': 'usuarios',
   'Su': 'Do', 'Mo': 'Lu', 'Tu': 'Ma', 'We': 'Mi', 'Th': 'Ju', 'Fr': 'Vi', 'Sa': 'Sá',
-  'Mon': 'Lun', 'Wed': 'Mié', 'Fri': 'Vie',
+  'Mon': 'Lun', 'Tue': 'Mar', 'Wed': 'Mié', 'Thu': 'Jue', 'Fri': 'Vie', 'Sat': 'Sáb',
   'Jan': 'Ene', 'Feb': 'Feb', 'Mar': 'Mar', 'Apr': 'Abr', 'May': 'May', 'Jun': 'Jun',
   'Jul': 'Jul', 'Aug': 'Ago', 'Sep': 'Sep', 'Oct': 'Oct', 'Nov': 'Nov', 'Dec': 'Dic',
   'January': 'Enero', 'February': 'Febrero', 'March': 'Marzo', 'April': 'Abril',
