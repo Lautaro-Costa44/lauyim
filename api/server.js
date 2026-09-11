@@ -77,6 +77,16 @@ const INVITE_ONLY = /^(1|true|yes|on)$/i.test(process.env.INVITE_ONLY || '');
 // out of is still the wrong front door (#42). Default ON, so existing instances are unchanged;
 // the polarity is inverted from INVITE_ONLY because the safe default here is the permissive one.
 const ALLOW_GUEST = !/^(0|false|no|off)$/i.test(process.env.ALLOW_GUEST || '');
+
+function escapeHtml(value) {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 // Motor de encuesta de onboarding y generación de rutinas. Default true; poner SURVEY_ENABLED=false
 // para ocultar completamente la opción en el frontend sin afectar rutinas ya generadas.
 const SURVEY_ENABLED = !/^(0|false|no|off)$/i.test(process.env.SURVEY_ENABLED || 'true');
@@ -86,6 +96,9 @@ const SURVEY_ENABLED = !/^(0|false|no|off)$/i.test(process.env.SURVEY_ENABLED ||
 // baked into each cookie when it's issued, so lowering this never cuts an existing session short.
 const SESSION_DAYS = Math.max(1, +(process.env.SESSION_DAYS || 90) || 90);
 const MAX_BODY = 5 * 1024 * 1024;
+const RATE_LIMIT_WINDOW_MS = 5 * 60 * 1000;
+const RATE_LIMIT_AUTH_MAX = 10;
+const RATE_LIMIT_SHARE_MAX = 20;
 // Secure cookies require HTTPS; over plain http://localhost the flag would drop the cookie
 const SECURE = /^https:/i.test(ORIGIN) ? ' Secure;' : '';
 
@@ -489,18 +502,46 @@ const auditFile = path.join(DATA, 'audit.log');
 let auditSeq = 0;
 let auditCount = 0;
 
-function clientIp(req) {
-  if (AUDIT_IP === 'off') return null;
+function rawClientIp(req) {
   const raw = String(req.headers['cf-connecting-ip'] || '').trim()
     || String(req.headers['x-forwarded-for'] || '').split(',')[0].trim()
     || String(req.headers['x-real-ip'] || '').trim()
     || String(req.socket?.remoteAddress || '').replace(/^::ffff:/, '').trim();
   const ip = raw.replace(/^\[|\]$/g, '').slice(0, 45);
   if (!/^[0-9a-fA-F:.]{3,45}$/.test(ip)) return null;
+  return ip;
+}
+
+function clientIp(req) {
+  if (AUDIT_IP === 'off') return null;
+  const ip = rawClientIp(req);
+  if (!ip) return null;
   if (AUDIT_IP === 'full') return ip;
   if (/^\d{1,3}(\.\d{1,3}){3}$/.test(ip)) return ip.replace(/\.\d{1,3}$/, '.0/24');
   const g = ip.split(':').filter(Boolean).slice(0, 3).join(':');
   return g ? g + '::/48' : null;
+}
+
+const rateLimits = new Map();
+function rateLimit(req, res, routeKey, max) {
+  const ip = rawClientIp(req);
+  if (!ip) return true;
+  const now = Date.now();
+  const key = ip + ' ' + routeKey;
+  let entry = rateLimits.get(key);
+  if (!entry || now - entry.windowStart >= RATE_LIMIT_WINDOW_MS) {
+    for (const [k, value] of rateLimits) {
+      if (now - value.windowStart >= RATE_LIMIT_WINDOW_MS) rateLimits.delete(k);
+    }
+    entry = { count: 0, windowStart: now };
+    rateLimits.set(key, entry);
+  }
+  entry.count += 1;
+  if (entry.count > max) {
+    json(res, 429, { error: 'Demasiados intentos, intentá de nuevo más tarde.' });
+    return false;
+  }
+  return true;
 }
 
 function auditLines() {
@@ -1186,22 +1227,30 @@ const routes = {
     const userAgent = req.headers['user-agent'] || 'Desconocido';
     const appVersion = apiVersion;
     const user = readSession(req);
-    const userInfo = user ? `Usuario: ${user.name} (ID: ${user.id})` : 'Usuario: Invitado / No autenticado';
+    const userInfo = user
+      ? `Usuario: ${escapeHtml(user.name)} (ID: ${escapeHtml(user.id)})`
+      : 'Usuario: Invitado / No autenticado';
+
+    const safeInstanceName = escapeHtml(instanceName);
+    const safeAsunto = escapeHtml(asunto);
+    const safeMensaje = escapeHtml(mensaje).replace(/\n/g, '<br/>');
+    const safeEmailContacto = escapeHtml(emailContacto);
+    const safeUserAgent = escapeHtml(userAgent);
 
     const htmlContent = `
       <h2>Nuevo reporte de soporte / problema</h2>
-      <p><strong>Instancia / Origen:</strong> ${instanceName}</p>
-      <p><strong>Asunto:</strong> ${asunto}</p>
-      <p><strong>Mensaje:</strong><br/>${mensaje.replace(/\n/g, '<br/>')}</p>
+      <p><strong>Instancia / Origen:</strong> ${safeInstanceName}</p>
+      <p><strong>Asunto:</strong> ${safeAsunto}</p>
+      <p><strong>Mensaje:</strong><br/>${safeMensaje}</p>
       <hr/>
       <h3>Datos de diagnóstico:</h3>
       <ul>
-        <li><strong>Instancia:</strong> ${instanceName}</li>
-        <li><strong>Email de contacto:</strong> ${emailContacto || 'No provisto'}</li>
+        <li><strong>Instancia:</strong> ${safeInstanceName}</li>
+        <li><strong>Email de contacto:</strong> ${safeEmailContacto || 'No provisto'}</li>
         <li>${userInfo}</li>
         <li><strong>Versión de la app:</strong> v${appVersion}</li>
         <li><strong>PWA instalada:</strong> ${pwaInstalled ? 'Sí' : 'No'}</li>
-        <li><strong>User Agent:</strong> ${userAgent}</li>
+        <li><strong>User Agent:</strong> ${safeUserAgent}</li>
       </ul>
     `;
 
@@ -1947,6 +1996,7 @@ http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://x');
 
   if (req.method === 'GET' && url.pathname.startsWith('/api/share/plan/')) {
+    if (!rateLimit(req, res, 'GET /api/share/plan/:code', RATE_LIMIT_SHARE_MAX)) return;
     const code = url.pathname.replace('/api/share/plan/', '').trim().toUpperCase();
     const item = sharedPlans.get(code);
     if (!item || Date.now() > item.expiresAt) {
@@ -1968,6 +2018,14 @@ http.createServer(async (req, res) => {
     : req.method === 'DELETE' && /^\/api\/plantillas\/[^/]+$/.test(url.pathname)
       ? 'DELETE /api/plantillas/:id'
     : key;
+
+  const rateLimitMax = routeKey === 'POST /api/register/options'
+    || routeKey === 'POST /api/register/verify'
+    || routeKey === 'POST /api/login/options'
+    || routeKey === 'POST /api/login/verify'
+    ? RATE_LIMIT_AUTH_MAX
+    : routeKey === 'POST /api/share/plan' ? RATE_LIMIT_SHARE_MAX : null;
+  if (rateLimitMax !== null && !rateLimit(req, res, routeKey, rateLimitMax)) return;
 
   // Verificar expiración de licencia por fecha (si está configurada y vencida)
   // Excluimos /api/health para que monitores o chequeos básicos puedan seguir funcionando si es necesario, 
