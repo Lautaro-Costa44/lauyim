@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs'
+import { createHash } from 'node:crypto'
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
@@ -33,7 +34,18 @@ const precacheManifest = {
   name: 'lauyim-precache-manifest',
   generateBundle(_options, bundle) {
     const files = Object.keys(bundle).filter(name => /\.(js|css|html|png|svg|woff2?)$/i.test(name))
-    this.emitFile({ type: 'asset', fileName: 'precache.json', source: JSON.stringify(files) })
+    const buildFingerprint = createHash('sha256')
+      .update(pkgVersion)
+      .update(readFileSync(new URL('./public/sw.js', import.meta.url)))
+    for (const file of files.sort()) {
+      buildFingerprint.update(file).update(String(bundle[file].source ?? bundle[file].code ?? ''))
+    }
+    const release = `${pkgVersion}-${buildFingerprint.digest('hex').slice(0, 12)}`
+    this.emitFile({
+      type: 'asset',
+      fileName: 'precache.json',
+      source: JSON.stringify({ release, files })
+    })
   }
 }
 
