@@ -1,13 +1,11 @@
 // Rendering for the admin activity log (GET /api/admin/audit).
 //
 // The server stores reason codes, not sentences — `{ ev: 'auth.login.fail', msg: 'unknown-credential' }`
-// rather than "someone tried a passkey we don't know". Turning those into English
+// rather than "someone tried a passkey we don't know". Turning those into readable labels
 // belongs here and not in Admin.jsx: it is the only part of the feature that can be wrong in a way
 // a person sees, and as a plain module it is testable without mounting the dashboard.
 //
-// Like the rest of the admin screen this is English-only — the operator surface deliberately
-// stays out of the per-language string packs (see the header of views/Admin.jsx). Times still
-// follow the UI language, the way numbers and dates already do.
+// Labels are source strings passed through t(), so the operator surface follows the active locale.
 import { dateLocale, t } from './i18n-core.js'
 
 // The first segment of an event name is also the filter chip it belongs to.
@@ -21,18 +19,38 @@ const LABELS = {
   'auth.register.denied': 'Signup refused',
   'auth.logout': 'Signed out',
   'auth.logout.all': 'Signed out everywhere',
+  'auth.device.approved': 'Approved a device',
+  'auth.device.login': 'Signed in from a paired device',
+  'auth.cred.added': 'Added a passkey',
   'admin.user.disable': 'Disabled an account',
   'admin.user.enable': 'Re-enabled an account',
+  'admin.preset.create': 'Created a preset',
+  'admin.preset.update': 'Updated a preset',
+  'admin.preset.delete': 'Deleted a preset',
+  'admin.attendance.settings': 'Changed attendance settings',
   'admin.invite.create': 'Created an invite code',
   'admin.invite.revoke': 'Revoked an invite code',
+  'admin.push.send': 'Sent a push notification',
   'admin.audit.clear': 'Cleared the activity log',
-  'admin.denied': 'Blocked from the admin dashboard'
+  'admin.denied': 'Blocked from the admin dashboard',
+  'owner.denied': 'Blocked: owner access required',
+  'owner.user.promote': 'Promoted to Admin',
+  'owner.user.demote': 'Removed as Admin',
+  'owner.user.delete': 'Deleted an account'
 }
-// An unknown event is shown raw rather than dropped or rendered as "undefined": a dashboard
-// that is one version behind the server should still say *something* truthful.
+
+const UNKNOWN_EVENT = 'Unknown activity'
+
+// Never expose a technical event identifier to an operator. Keep a console warning in
+// development so a newly added server event is easy to catch during development.
 export const auditLabel = ev => {
-  if (!ev) return t('Unknown event')
-  return t(LABELS[ev] || String(ev))
+  if (!ev) return t(UNKNOWN_EVENT)
+  const label = LABELS[ev]
+  if (!label) {
+    if (import.meta.env?.DEV) console.warn('[audit] Missing label for event:', ev)
+    return t(UNKNOWN_EVENT)
+  }
+  return t(label)
 }
 
 const REASONS = {

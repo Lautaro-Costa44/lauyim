@@ -253,7 +253,7 @@ function AuditCard({ tick }) {
           <div className="small" style={{ fontWeight: 600 }}>{line.title}
             {/* a red pill, not a red row: twenty fumbled Face IDs in a row shouldn't read as an incident */}
             {!e.ok && <span className="tag" style={{ marginLeft: 6, color: 'var(--red)' }}>{t('failed')}</span>}
-            {auditCat(e.ev) === 'admin' && <span className="tag acc" style={{ marginLeft: 6 }}>{t('admin')}</span>}</div>
+            {(auditCat(e.ev) === 'admin' || auditCat(e.ev) === 'owner') && <span className="tag acc" style={{ marginLeft: 6 }}>{t('admin')}</span>}</div>
           {line.sub && <div className="dim" style={{ fontSize: '.72rem' }}>{line.sub}</div>}
         </div>
         <span className="small muted" style={{ flex: 'none', marginLeft: 8 }}>{fmtWhen(e.ts, meta?.now)}</span>

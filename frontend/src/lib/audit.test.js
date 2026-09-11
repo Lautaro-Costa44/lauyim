@@ -6,9 +6,12 @@ import { auditCat, auditLabel, auditReason, auditLine, fmtWhen } from './audit.j
 // dashboard quietly printing a dotted identifier at a person.
 const EVENTS = [
   'auth.login.ok', 'auth.login.fail', 'auth.register.ok', 'auth.register.fail',
-  'auth.register.denied', 'auth.logout', 'auth.logout.all',
-  'admin.user.disable', 'admin.user.enable', 'admin.invite.create',
-  'admin.invite.revoke', 'admin.audit.clear', 'admin.denied'
+  'auth.register.denied', 'auth.logout', 'auth.logout.all', 'auth.device.approved',
+  'auth.device.login', 'auth.cred.added', 'admin.user.disable', 'admin.user.enable',
+  'admin.preset.create', 'admin.preset.update', 'admin.preset.delete',
+  'admin.attendance.settings', 'admin.invite.create', 'admin.invite.revoke',
+  'admin.push.send', 'admin.audit.clear', 'admin.denied', 'owner.denied',
+  'owner.user.promote', 'owner.user.demote', 'owner.user.delete'
 ]
 const REASONS = [
   'challenge-expired', 'unknown-credential', 'verify-error', 'not-verified',
@@ -23,11 +26,10 @@ describe('auditLabel', () => {
     }
   })
 
-  it('shows an unknown event raw instead of rendering undefined', () => {
-    // A dashboard one version behind the server must still say something truthful.
-    expect(auditLabel('auth.something.new')).toBe('auth.something.new')
-    expect(auditLabel(undefined)).toBe('Unknown event')
-    expect(auditLabel('')).toBe('Unknown event')
+  it('uses a readable fallback instead of exposing a technical event name', () => {
+    expect(auditLabel('auth.something.new')).toBe('Unknown activity')
+    expect(auditLabel(undefined)).toBe('Unknown activity')
+    expect(auditLabel('')).toBe('Unknown activity')
   })
 })
 
@@ -40,7 +42,13 @@ describe('auditCat', () => {
     expect(auditCat(undefined)).toBe('')
   })
   it('puts every known event in exactly auth or admin', () => {
-    expect([...new Set(EVENTS.map(auditCat))].sort()).toEqual(['admin', 'auth'])
+    expect([...new Set(EVENTS.map(auditCat))].sort()).toEqual(['admin', 'auth', 'owner'])
+  })
+
+  it('keeps owner actions identifiable for the administration filter', () => {
+    expect(auditCat('owner.user.promote')).toBe('owner')
+    expect(auditCat('owner.user.demote')).toBe('owner')
+    expect(auditCat('owner.user.delete')).toBe('owner')
   })
 })
 
@@ -67,6 +75,12 @@ describe('auditLine', () => {
     const l = auditLine({ ev: 'admin.user.disable', ok: true, uid: 'a', name: 'Duarte', tgt: 'b', tname: 'Ana' })
     expect(l.title).toBe('Disabled an account')
     expect(l.sub).toBe('Duarte · → Ana')
+  })
+
+  it('shows both sides of owner actions', () => {
+    const l = auditLine({ ev: 'owner.user.promote', ok: true, name: 'doctora', tname: 'santiago miano' })
+    expect(l.title).toBe('Promoted to Admin')
+    expect(l.sub).toBe('doctora · → santiago miano')
   })
 
   it('translates the reason on a failure but not the invite code on a success', () => {

@@ -1912,6 +1912,7 @@ const routes = {
     const cat = q.get('cat') || '';
     let rows = auditKeep(auditLines()).reverse();
     if (cat === 'fail') rows = rows.filter(r => !r.ok);
+    else if (cat === 'admin') rows = rows.filter(r => String(r.ev).startsWith('admin.') || String(r.ev).startsWith('owner.'));
     else if (cat) rows = rows.filter(r => String(r.ev).startsWith(cat + '.'));
     const page = rows.filter(r => r.id < before).slice(0, limit);
     json(res, 200, {
