@@ -19,6 +19,8 @@ data/
 
 # Build output / deps
 frontend/dist/
+.idea/
+.pnpm-store/
 node_modules/
 *.log
 .DS_Store
