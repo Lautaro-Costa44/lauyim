@@ -826,5 +826,17 @@ export default {
   'Error al agregar passkey': 'Error al agregar passkey',
   'Hubo un error al generar tu rutina. Intentá de nuevo.': 'Hubo un error al generar tu rutina. Intentá de nuevo.',
   'Ejercicio reemplazado': 'Ejercicio reemplazado',
-  '¡Tu rutina personalizada está lista!': '¡Tu rutina personalizada está lista!'
+  '¡Tu rutina personalizada está lista!': '¡Tu rutina personalizada está lista!',
+  'Load pre-built plans': 'Cargar planes pre-creados',
+  'Add a plan as a new group. Your current groups are not replaced.': 'Agregá un plan como un nuevo grupo. Tus grupos actuales no se reemplazan.',
+  'Add a plan without replacing your current groups.': 'Agregá un plan sin reemplazar tus grupos actuales.',
+  'Loaded': 'Cargado',
+  'Load': 'Cargar',
+  'Close': 'Cerrar',
+  'You cannot load more than 5 routine groups.': 'No podés cargar más de 5 grupos de rutinas.',
+  'This group is already loaded.': 'Este grupo ya está cargado.',
+  'Group loaded successfully.': 'Grupo cargado correctamente.',
+  'Could not load this group.': 'No se pudo cargar el grupo.',
+  'You have reached the maximum of 5 routine groups.': 'Llegaste al máximo de 5 grupos de rutinas.',
+  'No pre-built plans are available.': 'No hay planes pre-creados disponibles.'
 }

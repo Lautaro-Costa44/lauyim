@@ -92,6 +92,62 @@ export default function Settings() {
   const user = useStore(s => s.user)
   const [presetGroups, setPresetGroups] = useState([])
   useEffect(() => { api('/api/presets').then(d => setPresetGroups(d.groups || [])).catch(() => {}) }, [])
+  const routineGroups = useStore(s => s.S.routineGroups || [])
+  const addGroup = useStore(s => s.addGroup)
+  const openPresetPlans = () => useUI.getState().openSheet(close => {
+    const loadedNames = new Set(routineGroups.map(g => (g.name || '').trim().toLowerCase()))
+    const atLimit = routineGroups.length >= 5
+    const loadPreset = async group => {
+      try {
+        const name = String(group.name || '').trim()
+        if (!name) return
+        if (useStore.getState().S.routineGroups?.length >= 5) {
+          toast(t('You cannot load more than 5 routine groups.'))
+          return
+        }
+        if ((useStore.getState().S.routineGroups || []).some(g => (g.name || '').trim().toLowerCase() === name.toLowerCase())) {
+          toast(t('This group is already loaded.'))
+          return
+        }
+        const d = await api('/api/presets')
+        const routines = routinesFromPresets((d.presets || []).filter(p => (p.group_name || p.groupName || 'General') === name))
+        const week = {}
+        routines.forEach((r, i) => { week[[1, 2, 3, 4, 5, 6, 0][i]] = r.id })
+        addGroup(name, routines, week, true)
+        loadedNames.add(name.toLowerCase())
+        toast(t('Group loaded successfully.'))
+        close()
+      } catch (e) {
+        toast(e.message || t('Could not load this group.'))
+      }
+    }
+
+    return <>
+      <div className="row" style={{ marginBottom: 10 }}>
+        <div className="grow">
+          <h3 style={{ marginBottom: 4 }}>{t('Load pre-built plans')}</h3>
+          <div className="muted small">{t('Add a plan as a new group. Your current groups are not replaced.')}</div>
+        </div>
+        <button className="iconbtn" onClick={close} aria-label={t('Close')}><Icon name="x" /></button>
+      </div>
+      <div className="list">
+        {presetGroups.map(group => {
+          const loaded = loadedNames.has(String(group.name || '').trim().toLowerCase())
+          return <div key={group.name} className="item" style={{ gap: 12 }}>
+            <span className="grow">
+              <div className="tt">{group.name}</div>
+              <div className="ss">{group.count || 0} {t('rutinas')}</div>
+            </span>
+            <Button variant={loaded ? 'ghost' : 'primary'} disabled={loaded || atLimit} onClick={() => loadPreset(group)}>
+              {loaded ? t('Loaded') : t('Load')}
+            </Button>
+          </div>
+        })}
+      </div>
+      {atLimit && <div className="muted small" style={{ marginTop: 12 }}>{t('You have reached the maximum of 5 routine groups.')}</div>}
+      {!presetGroups.length && <div className="dim small">{t('No pre-built plans are available.')}</div>}
+    </>
+  })
   const selectDefaultGroup = () => useUI.getState().openSheet(close => <>
     <h3>{t('Seleccionar rutina predeterminada')}</h3>
     <div className="list">{presetGroups.map(g => <button key={g.name} className="item" onClick={async () => {
@@ -496,6 +552,7 @@ export default function Settings() {
         />
       )}
       <Row icon="folder" iconTint="var(--acc)" title={t('Seleccionar rutina predeterminada')} subtitle={t('Elegí un grupo creado por los administradores.')} accessory="chevron" onClick={selectDefaultGroup} />
+      <Row icon="folder" iconTint="var(--acc)" title={t('Load pre-built plans')} subtitle={t('Add a plan without replacing your current groups.')} accessory="chevron" onClick={openPresetPlans} />
       <Row icon="sparkles" iconTint="var(--acc)" title={t('Load starter plan (PPL)')} accessory="chevron" onClick={loadStarterPlan} />
       <Row icon="shuffle" iconTint="var(--teal)" title={t('Import from another app')}
         subtitle={t('FitNotes, Strong, Hevy — or body weight from Apple Health')}

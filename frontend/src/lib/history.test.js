@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { modeOf, isTimed, fmtSec, setLabel, defaultConfig, buildSets, freestyleConfig, exLine, workoutVolume, bestWeightFor, bestWeightForEntry, effortOf, stepEffort, capEffort, isBw, isPerSide, sideReps, repStep, cascadeWeight, insertWarmupRow, removeRowAt, workSetsDone, pairAdjacent, unpairSuperset, supersetUnits, applyIntensifierPlan, pinnedNoteFor, exNoteFor } from './history.js'
+import { modeOf, isTimed, fmtSec, setLabel, defaultConfig, buildSets, freestyleConfig, exLine, workoutVolume, bestWeightFor, bestWeightForEntry, effortOf, stepEffort, capEffort, isBw, isPerSide, sideReps, repStep, cascadeWeight, insertWarmupRow, removeRowAt, workSetsDone, pairAdjacent, unpairSuperset, supersetUnits, applyIntensifierPlan, pinnedNoteFor, exNoteFor, evalWeek } from './history.js'
 import { EXDB } from './exercises.js'
 
 // Real ids out of the shipped catalogue, so the body-part fallback is exercised for real.
@@ -8,6 +8,44 @@ const CARDIO = EXDB.find(e => e.bp === 'cardio').id
 // defaults to bodyweight and would quietly send every label test down the other path.
 const LIFT = EXDB.find(e => e.bp !== 'cardio' && e.eq !== 'body weight').id
 const BW = EXDB.find(e => e.eq === 'body weight').id
+
+const monday = iso => new Date(iso + 'T12:00:00')
+const workoutOn = d => ({ d, entries: [] })
+
+describe('weekly streak evaluation', () => {
+  it('completes a week when the number of workouts reaches the plan frequency, even on different weekdays', () => {
+    const S = {
+      week: { 1: 'r1', 3: 'r2', 5: 'r3' },
+      routines: [{ id: 'r1' }, { id: 'r2' }, { id: 'r3' }],
+      dayPlan: {},
+      workouts: [workoutOn('2026-09-07'), workoutOn('2026-09-09'), workoutOn('2026-09-12')],
+    }
+
+    const info = evalWeek(S, monday('2026-09-07'))
+    expect(info.objetivoSemanal).toBe(3)
+    expect(info.rutinasCompletadas).toBe(3)
+    expect(info.completa).toBe(true)
+  })
+
+  it('does not let rest/reschedule overrides reduce the weekly target', () => {
+    const S = {
+      week: { 1: 'r1', 3: 'r2', 5: 'r3', 6: 'r4' },
+      routines: [{ id: 'r1' }, { id: 'r2' }, { id: 'r3' }, { id: 'r4' }],
+      dayPlan: { '2026-09-09': 'rest' },
+      workouts: [workoutOn('2026-09-07'), workoutOn('2026-09-10'), workoutOn('2026-09-13')],
+    }
+
+    const info = evalWeek(S, monday('2026-09-07'))
+    expect(info.objetivoSemanal).toBe(4)
+    expect(info.rutinasCompletadas).toBe(3)
+    expect(info.completa).toBe(false)
+  })
+
+  it('falls back to one completed workout when there is no weekly plan', () => {
+    const S = { week: {}, routines: [], dayPlan: {}, workouts: [workoutOn('2026-09-11')] }
+    expect(evalWeek(S, monday('2026-09-07')).completa).toBe(true)
+  })
+})
 
 describe('modeOf', () => {
   it('falls back to the body part when a plan has no mode — every existing plan keeps working', () => {

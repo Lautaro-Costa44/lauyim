@@ -484,23 +484,28 @@ export function evalWeek(S, mondayDate) {
     }
   }
 
-  let completa = false
-  if (diasProgramados.length > 0) {
-    completa = diasCompletados.length >= diasProgramados.length
-  } else {
-    let doneCount = 0
-    for (let i = 0; i < 7; i++) {
-      const d = new Date(mondayDate)
-      d.setDate(mondayDate.getDate() + i)
-      if ((S.workouts || []).some(w => w.d === isoOf(d))) doneCount++
-    }
-    completa = doneCount > 0
+  // A weekly streak is earned by hitting the plan's weekly frequency, regardless of which
+  // weekdays those sessions landed on. A reschedule/rest override changes what is shown for a
+  // particular date, but it must not lower the plan's X-session target for the week.
+  const target = Object.keys(S?.week || {}).filter(k => S.week[k]).length
+  let rutinasCompletadas = 0
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(mondayDate)
+    d.setDate(mondayDate.getDate() + i)
+    const iso = isoOf(d)
+    rutinasCompletadas += (S.workouts || []).filter(w => w.d === iso).length
   }
+
+  const completa = target > 0
+    ? rutinasCompletadas >= target
+    : rutinasCompletadas > 0
 
   return {
     semanaId: weekKey(isoOf(mondayDate)),
     diasProgramados,
     diasCompletados,
+    rutinasCompletadas,
+    objetivoSemanal: target,
     completa,
   }
 }
