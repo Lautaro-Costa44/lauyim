@@ -466,6 +466,28 @@ export function supersetUnits(items) {
 }
 export function unitOf(units, idx) { return units.find(u => u.includes(idx)) || [idx] }
 
+/**
+ * Weekly frequency target, stable across group switches.
+ *
+ * When routine groups exist the target is the MINIMUM active-day count across all groups
+ * (only groups that have at least one scheduled day count). This makes the streak
+ * independent of which group is currently loaded into S.week — a switch cannot inflate or
+ * deflate the bar retroactively.
+ *
+ * Without groups the current S.week is the only source of truth, which is the pre-groups
+ * behaviour and keeps every existing profile working unchanged.
+ */
+export function weeklyTarget(S) {
+  const groups = S?.routineGroups
+  if (Array.isArray(groups) && groups.length > 0) {
+    const targets = groups
+      .map(g => Object.keys(g.week || {}).filter(k => g.week[k]).length)
+      .filter(n => n > 0)
+    return targets.length > 0 ? Math.min(...targets) : 0
+  }
+  return Object.keys(S?.week || {}).filter(k => S.week[k]).length
+}
+
 export function evalWeek(S, mondayDate) {
   const diasProgramados = []
   const diasCompletados = []
@@ -485,9 +507,9 @@ export function evalWeek(S, mondayDate) {
   }
 
   // A weekly streak is earned by hitting the plan's weekly frequency, regardless of which
-  // weekdays those sessions landed on. A reschedule/rest override changes what is shown for a
-  // particular date, but it must not lower the plan's X-session target for the week.
-  const target = Object.keys(S?.week || {}).filter(k => S.week[k]).length
+  // weekdays those sessions landed on. The target is derived from ALL routine groups so that
+  // switching the active group does not retroactively change past weeks' pass/fail status.
+  const target = weeklyTarget(S)
   let rutinasCompletadas = 0
   for (let i = 0; i < 7; i++) {
     const d = new Date(mondayDate)

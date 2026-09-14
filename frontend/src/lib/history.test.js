@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { modeOf, isTimed, fmtSec, setLabel, defaultConfig, buildSets, freestyleConfig, exLine, workoutVolume, bestWeightFor, bestWeightForEntry, effortOf, stepEffort, capEffort, isBw, isPerSide, sideReps, repStep, cascadeWeight, insertWarmupRow, removeRowAt, workSetsDone, pairAdjacent, unpairSuperset, supersetUnits, applyIntensifierPlan, pinnedNoteFor, exNoteFor, evalWeek } from './history.js'
+import { modeOf, isTimed, fmtSec, setLabel, defaultConfig, buildSets, freestyleConfig, exLine, workoutVolume, bestWeightFor, bestWeightForEntry, effortOf, stepEffort, capEffort, isBw, isPerSide, sideReps, repStep, cascadeWeight, insertWarmupRow, removeRowAt, workSetsDone, pairAdjacent, unpairSuperset, supersetUnits, applyIntensifierPlan, pinnedNoteFor, exNoteFor, evalWeek, weeklyTarget } from './history.js'
 import { EXDB } from './exercises.js'
 
 // Real ids out of the shipped catalogue, so the body-part fallback is exercised for real.
@@ -44,6 +44,56 @@ describe('weekly streak evaluation', () => {
   it('falls back to one completed workout when there is no weekly plan', () => {
     const S = { week: {}, routines: [], dayPlan: {}, workouts: [workoutOn('2026-09-11')] }
     expect(evalWeek(S, monday('2026-09-07')).completa).toBe(true)
+  })
+
+  it('keeps weekly target and streak stable when switching routine groups with different schedules', () => {
+    const group3Days = {
+      id: 'g3',
+      name: 'Push Pull Legs',
+      week: { 1: 'r1', 3: 'r2', 5: 'r3' },
+    }
+    const group5Days = {
+      id: 'g5',
+      name: 'Bro Split',
+      week: { 1: 'r1', 2: 'r2', 3: 'r3', 4: 'r4', 5: 'r5' },
+    }
+    const emptyGroup = {
+      id: 'g0',
+      name: 'Off-season',
+      week: {},
+    }
+
+    // State with group 3 active
+    const S_activeGroup3 = {
+      routineGroups: [group3Days, group5Days, emptyGroup],
+      activeGroupId: 'g3',
+      week: group3Days.week,
+      workouts: [
+        workoutOn('2026-09-07'),
+        workoutOn('2026-09-09'),
+        workoutOn('2026-09-11'),
+      ],
+    }
+
+    // State with group 5 active (simulating user switching active group)
+    const S_activeGroup5 = {
+      routineGroups: [group3Days, group5Days, emptyGroup],
+      activeGroupId: 'g5',
+      week: group5Days.week,
+      workouts: S_activeGroup3.workouts,
+    }
+
+    // Both should yield target 3 (the minimum among non-empty groups)
+    expect(weeklyTarget(S_activeGroup3)).toBe(3)
+    expect(weeklyTarget(S_activeGroup5)).toBe(3)
+
+    // evalWeek should produce the exact same result regardless of active group
+    const eval3 = evalWeek(S_activeGroup3, monday('2026-09-07'))
+    const eval5 = evalWeek(S_activeGroup5, monday('2026-09-07'))
+    expect(eval3.objetivoSemanal).toBe(3)
+    expect(eval5.objetivoSemanal).toBe(3)
+    expect(eval3.completa).toBe(true)
+    expect(eval5.completa).toBe(true)
   })
 })
 

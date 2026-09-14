@@ -128,7 +128,9 @@ export default function Settings() {
           <h3 style={{ marginBottom: 4 }}>{t('Load pre-built plans')}</h3>
           <div className="muted small">{t('Add a plan as a new group. Your current groups are not replaced.')}</div>
         </div>
-        <button className="iconbtn" onClick={close} aria-label={t('Close')}><Icon name="x" /></button>
+        <button className="iconbtn" type="button" onClick={close} aria-label={t('Close')} title={t('Close')}>
+          <Icon name="xmark" size={20} />
+        </button>
       </div>
       <div className="list">
         {presetGroups.map(group => {
