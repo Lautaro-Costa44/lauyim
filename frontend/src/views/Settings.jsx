@@ -76,7 +76,7 @@ function ClaimDeviceSheet({ close }) {
 import { pushSupported, enablePush, disablePush, sendTestPush } from '../lib/push.js'
 import { wakeLockSupported } from '../lib/wakelock.js'
 import { DEMO, REPO } from '../lib/demo.js'
-import { loadStarterPlan, confirmSheet, importFromApp, equipmentProfileSheet } from '../sheets.jsx'
+import { confirmSheet, importFromApp, equipmentProfileSheet } from '../sheets.jsx'
 import { routinesFromPresets } from '../lib/starter.js'
 import Icon from '../components/Icon.jsx'
 import { Section, Row, SelectRow, Switch, Segmented, Button, TextField } from '../components/ui.jsx'
@@ -138,7 +138,7 @@ export default function Settings() {
               <div className="tt">{group.name}</div>
               <div className="ss">{group.count || 0} {t('rutinas')}</div>
             </span>
-            <Button variant={loaded ? 'ghost' : 'primary'} disabled={loaded || atLimit} onClick={() => loadPreset(group)}>
+            <Button size="sm" variant={loaded ? 'ghost' : 'primary'} disabled={loaded || atLimit} onClick={() => loadPreset(group)}>
               {loaded ? t('Loaded') : t('Load')}
             </Button>
           </div>
@@ -148,15 +148,6 @@ export default function Settings() {
       {!presetGroups.length && <div className="dim small">{t('No pre-built plans are available.')}</div>}
     </>
   })
-  const selectDefaultGroup = () => useUI.getState().openSheet(close => <>
-    <h3>{t('Seleccionar rutina predeterminada')}</h3>
-    <div className="list">{presetGroups.map(g => <button key={g.name} className="item" onClick={async () => {
-      const d = await api('/api/presets'); const routines = routinesFromPresets((d.presets || []).filter(p => (p.group_name || p.groupName || 'General') === g.name))
-      update(s => { s.routines = routines; s.week = {}; routines.forEach((r, i) => { s.week[[1,2,3,4,5,6,0][i]] = r.id }); s.configuracion = { ...(s.configuracion || {}), rutinaPredeterminadaGrupo: g.name } })
-      close()
-    }}><span className="grow"><div className="tt">{g.name}</div><div className="ss">{g.count} {t('rutinas')}</div></span><Icon name="chevronRight" /></button>)}</div>
-    {!presetGroups.length && <div className="dim small">{t('No hay grupos de rutinas creados.')}</div>}
-  </>)
   const config = useStore(s => s.config)
   const { update, replaceState, setUser, pullState, pushState, signOut, signOutAll, resetDemo } = useStore()
   const toast = useUI(s => s.toast)
@@ -551,9 +542,7 @@ export default function Settings() {
           })}
         />
       )}
-      <Row icon="folder" iconTint="var(--acc)" title={t('Seleccionar rutina predeterminada')} subtitle={t('Elegí un grupo creado por los administradores.')} accessory="chevron" onClick={selectDefaultGroup} />
       <Row icon="folder" iconTint="var(--acc)" title={t('Load pre-built plans')} subtitle={t('Add a plan without replacing your current groups.')} accessory="chevron" onClick={openPresetPlans} />
-      <Row icon="sparkles" iconTint="var(--acc)" title={t('Load starter plan (PPL)')} accessory="chevron" onClick={loadStarterPlan} />
       <Row icon="shuffle" iconTint="var(--teal)" title={t('Import from another app')}
         subtitle={t('FitNotes, Strong, Hevy — or body weight from Apple Health')}
         accessory="chevron" onClick={() => importRef.current.click()} />
