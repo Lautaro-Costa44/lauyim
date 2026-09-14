@@ -71,6 +71,7 @@ try {
 // Admin dashboard (issue): admins are matched by uid; INVITE_ONLY gates new signups behind a
 // code the admin generates. Both default off so a fresh self-hosted instance stays open.
 const ADMIN_UIDS = (process.env.ADMIN_UIDS || '').split(',').map(s => s.trim()).filter(Boolean);
+const DEMO_ADMIN_ALL_USERS = /^(1|true|yes|on)$/i.test(process.env.DEMO_ADMIN_ALL_USERS || '');
 const INVITE_ONLY = /^(1|true|yes|on)$/i.test(process.env.INVITE_ONLY || '');
 // Guest mode ("Continue without account") keeps everything in the browser and never touches this
 // server — but on an instance meant for a known set of people, an entrance nobody can walk back
@@ -138,7 +139,7 @@ if (!fs.existsSync(secretFile)) fs.writeFileSync(secretFile, crypto.randomBytes(
 const SECRET = fs.readFileSync(secretFile, 'utf8').trim();
 
 // Funciones auxiliares para compatibilidad
-const isAdmin = user => !!user && (user.admin === 1 || user.admin === true || ADMIN_UIDS.includes(user.id));
+const isAdmin = user => !!user && (DEMO_ADMIN_ALL_USERS || user.admin === 1 || user.admin === true || ADMIN_UIDS.includes(user.id));
 const isOwner = user => !!user && (user.owner === 1 || user.owner === true);
 function readState(uid) {
   return getUserState(uid);

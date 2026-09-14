@@ -109,9 +109,14 @@ If you'd rather control who gets in, three optional settings in `.env` turn that
 
 ```bash
 ADMIN_UIDS=youruserid      # comma-separated; these users get the admin dashboard
+DEMO_ADMIN_ALL_USERS=1     # demo only: every signed-in user gets the admin dashboard
 INVITE_ONLY=1              # new profiles need an invite code
 ALLOW_GUEST=0              # remove "Continue without account"
 ```
+
+`DEMO_ADMIN_ALL_USERS` is intended only for demo instances. It grants admin access at runtime to
+every signed-in user without changing the roles stored in the database. Leave it unset or disabled
+for normal/self-hosted deployments. It does not grant Owner permissions.
 
 Register your own passkey profile first, then find your id in `./data/db.json` under `users[].id`
 and put it in `ADMIN_UIDS`. You'll get an **Admin dashboard** link in Settings: who's training

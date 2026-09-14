@@ -122,6 +122,7 @@ docker compose up -d</code></pre>
     <tr><td><code>INVITE_ONLY</code></td><td>Set <code>1</code> and new profiles need an invite code you generate.</td></tr>
     <tr><td><code>ALLOW_GUEST</code></td><td>Set <code>0</code> to remove <b>Continue without account</b>, so everyone using the instance has a profile.</td></tr>
     <tr><td><code>ADMIN_UIDS</code></td><td>Which user ids get the admin dashboard.</td></tr>
+    <tr><td><code>DEMO_ADMIN_ALL_USERS</code></td><td>Demo-only switch: every signed-in user gets the admin dashboard at runtime; stored roles are unchanged.</td></tr>
     <tr><td><code>SESSION_DAYS</code></td><td>How long a sign-in lasts. Default <code>90</code>.</td></tr>
     <tr><td><code>BACKEND</code> / <code>PORT</code> / <code>NGINX_PORT</code></td><td>For fitting openGym into a stack that already has an <code>api</code> service, or putting it behind your own proxy on another port. The web container renders its nginx config at start-up, so these work on a prebuilt image.</td></tr>
   </table>
