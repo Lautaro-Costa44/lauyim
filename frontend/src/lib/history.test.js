@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { modeOf, isTimed, fmtSec, setLabel, defaultConfig, buildSets, freestyleConfig, exLine, workoutVolume, bestWeightFor, bestWeightForEntry, effortOf, stepEffort, capEffort, isBw, isPerSide, sideReps, repStep, cascadeWeight, insertWarmupRow, removeRowAt, workSetsDone, pairAdjacent, unpairSuperset, supersetUnits, applyIntensifierPlan, pinnedNoteFor, exNoteFor, evalWeek, weeklyTarget } from './history.js'
+import { buildCompletedWorkout } from './finish-workout.js'
 import { EXDB } from './exercises.js'
 
 // Real ids out of the shipped catalogue, so the body-part fallback is exercised for real.
@@ -84,8 +85,8 @@ describe('weekly streak evaluation', () => {
     }
 
     // Both should yield target 3 (the minimum among non-empty groups)
-    expect(weeklyTarget(S_activeGroup3)).toBe(3)
-    expect(weeklyTarget(S_activeGroup5)).toBe(3)
+    expect(weeklyTarget(S_activeGroup3, monday('2026-09-07'))).toBe(3)
+    expect(weeklyTarget(S_activeGroup5, monday('2026-09-07'))).toBe(3)
 
     // evalWeek should produce the exact same result regardless of active group
     const eval3 = evalWeek(S_activeGroup3, monday('2026-09-07'))
@@ -94,6 +95,40 @@ describe('weekly streak evaluation', () => {
     expect(eval5.objetivoSemanal).toBe(3)
     expect(eval3.completa).toBe(true)
     expect(eval5.completa).toBe(true)
+  })
+
+  it('locks a started week to the first workout group even after switching groups', () => {
+    const g3 = { id: 'g3', week: { 1: 'a', 3: 'b', 5: 'c' }, routines: [{ id: 'a' }, { id: 'b' }, { id: 'c' }] }
+    const g5 = { id: 'g5', week: { 1: 'd', 2: 'e', 3: 'f', 4: 'g', 5: 'h' }, routines: [{ id: 'd' }, { id: 'e' }, { id: 'f' }, { id: 'g' }, { id: 'h' }] }
+    const workouts = [
+      { d: '2026-09-07', start: 100, routineId: 'a', routineGroupId: 'g3', entries: [] },
+      { d: '2026-09-09', start: 200, routineId: 'f', routineGroupId: 'g5', entries: [] },
+      { d: '2026-09-11', start: 300, routineId: 'h', routineGroupId: 'g5', entries: [] },
+    ]
+    const S = { routineGroups: [g3, g5], activeGroupId: 'g5', week: g5.week, workouts }
+    const info = evalWeek(S, monday('2026-09-07'))
+    expect(info.objetivoSemanal).toBe(3)
+    expect(info.completa).toBe(true)
+    expect(info.diasProgramados).toEqual([0, 2, 4])
+  })
+
+  it('associates legacy history by an unambiguous routine id, but does not guess when ambiguous', () => {
+    const g3 = { id: 'g3', week: { 1: 'a', 3: 'b', 5: 'c' }, routines: [{ id: 'a' }] }
+    const g5 = { id: 'g5', week: { 1: 'd', 2: 'e', 3: 'f', 4: 'g', 5: 'h' }, routines: [{ id: 'd' }] }
+    const legacy = { routineGroups: [g3, g5], week: g5.week, workouts: [{ d: '2026-09-07', routineId: 'a', entries: [] }] }
+    expect(weeklyTarget(legacy, monday('2026-09-07'))).toBe(3)
+    const ambiguous = { routineGroups: [g3, { ...g5, routines: [{ id: 'a' }] }], week: g5.week, workouts: [{ d: '2026-09-07', routineId: 'a', entries: [] }] }
+    expect(weeklyTarget(ambiguous, monday('2026-09-07'))).toBe(3)
+  })
+})
+
+describe('completed workout group association', () => {
+  it('persists the active routine group on future workouts', () => {
+    const out = buildCompletedWorkout({
+      id: 'w1', d: '2026-09-07', start: 1, routineId: 'a', routineGroupId: 'g3',
+      entries: [{ id: LIFT, sets: [{ w: 50, r: 5, done: true }] }],
+    })
+    expect(out.routineGroupId).toBe('g3')
   })
 })
 

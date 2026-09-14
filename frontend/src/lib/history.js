@@ -466,23 +466,51 @@ export function supersetUnits(items) {
 }
 export function unitOf(units, idx) { return units.find(u => u.includes(idx)) || [idx] }
 
-/**
- * Weekly frequency target, stable across group switches.
- *
- * When routine groups exist the target is the MINIMUM active-day count across all groups
- * (only groups that have at least one scheduled day count). This makes the streak
- * independent of which group is currently loaded into S.week — a switch cannot inflate or
- * deflate the bar retroactively.
- *
- * Without groups the current S.week is the only source of truth, which is the pre-groups
- * behaviour and keeps every existing profile working unchanged.
- */
-export function weeklyTarget(S) {
+function scheduledCount(group) {
+  return Object.keys(group?.week || {}).filter(k => group.week[k]).length
+}
+
+function groupById(S, id) {
+  return (S?.routineGroups || []).find(g => g.id === id) || null
+}
+
+// A legacy workout can be associated with a group when its routine belongs to exactly one
+// group. If the same routine id exists in multiple groups we deliberately refuse to guess.
+function groupForWorkout(S, workout) {
+  if (workout?.routineGroupId) return groupById(S, workout.routineGroupId)
+  const matches = (S?.routineGroups || []).filter(g =>
+    (g.routines || []).some(r => r.id === workout?.routineId) ||
+    Object.values(g.week || {}).includes(workout?.routineId)
+  )
+  return matches.length === 1 ? matches[0] : null
+}
+
+function weekWorkouts(S, mondayDate) {
+  const mondayIso = isoOf(mondayDate)
+  const start = new Date(mondayIso + 'T12:00:00')
+  const dates = new Set()
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(start)
+    d.setDate(start.getDate() + i)
+    dates.add(isoOf(d))
+  }
+  return (S?.workouts || [])
+    .filter(w => dates.has(w.d))
+    .slice()
+    .sort((a, b) => String(a.d || '').localeCompare(String(b.d || '')) ||
+      Number(a.start || 0) - Number(b.start || 0) || Number(a.end || 0) - Number(b.end || 0))
+}
+
+/** Weekly frequency target. A started week is locked to the group of its first workout. */
+export function weeklyTarget(S, mondayDate) {
   const groups = S?.routineGroups
   if (Array.isArray(groups) && groups.length > 0) {
-    const targets = groups
-      .map(g => Object.keys(g.week || {}).filter(k => g.week[k]).length)
-      .filter(n => n > 0)
+    const first = mondayDate ? weekWorkouts(S, mondayDate)[0] : null
+    const startedGroup = first ? groupForWorkout(S, first) : null
+    if (startedGroup) return scheduledCount(startedGroup)
+    // No workout yet, or a legacy workout whose group is genuinely ambiguous: use the
+    // conservative baseline rather than attributing the week to whichever group is active.
+    const targets = groups.map(scheduledCount).filter(n => n > 0)
     return targets.length > 0 ? Math.min(...targets) : 0
   }
   return Object.keys(S?.week || {}).filter(k => S.week[k]).length
@@ -492,13 +520,21 @@ export function evalWeek(S, mondayDate) {
   const diasProgramados = []
   const diasCompletados = []
 
+  const workouts = weekWorkouts(S, mondayDate)
+  const groups = S?.routineGroups
+  const firstGroup = Array.isArray(groups) && groups.length > 0
+    ? groupForWorkout(S, workouts[0])
+    : null
+  const weekPlan = firstGroup ? firstGroup.week || {} : S?.week || {}
+
   for (let i = 0; i < 7; i++) {
     const d = new Date(mondayDate)
     d.setDate(mondayDate.getDate() + i)
     const iso = isoOf(d)
-    const effId = effectiveRoutineId(S, iso)
+    const wd = d.getDay()
+    const effId = firstGroup ? weekPlan[wd] : effectiveRoutineId(S, iso)
     const isScheduled = !!effId && effId !== 'rest'
-    const isDone = (S.workouts || []).some(w => w.d === iso)
+    const isDone = workouts.some(w => w.d === iso)
 
     if (isScheduled) {
       diasProgramados.push(i)
@@ -506,17 +542,9 @@ export function evalWeek(S, mondayDate) {
     }
   }
 
-  // A weekly streak is earned by hitting the plan's weekly frequency, regardless of which
-  // weekdays those sessions landed on. The target is derived from ALL routine groups so that
-  // switching the active group does not retroactively change past weeks' pass/fail status.
-  const target = weeklyTarget(S)
-  let rutinasCompletadas = 0
-  for (let i = 0; i < 7; i++) {
-    const d = new Date(mondayDate)
-    d.setDate(mondayDate.getDate() + i)
-    const iso = isoOf(d)
-    rutinasCompletadas += (S.workouts || []).filter(w => w.d === iso).length
-  }
+  // Once the first session identifies a group, later group switches cannot change this week.
+  const target = weeklyTarget(S, mondayDate)
+  const rutinasCompletadas = workouts.length
 
   const completa = target > 0
     ? rutinasCompletadas >= target

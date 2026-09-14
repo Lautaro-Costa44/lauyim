@@ -31,6 +31,7 @@ export function buildCompletedWorkout(active, { end = Date.now(), prs = [], snap
     start: active.start,
     end,
     routineId: active.routineId,
+    ...(active.routineGroupId ? { routineGroupId: active.routineGroupId } : {}),
     name: active.name,
     bw: active.bw,
     entries,
