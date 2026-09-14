@@ -867,7 +867,7 @@ input[type="search"]::-webkit-search-cancel-button{display:none;-webkit-appearan
 .admin-attendance-heatmap .hm-body{width:100%}
 .admin-attendance-heatmap .hm-days{width:44px}
 .admin-attendance-heatmap .hm-days span{height:18px;font-size:11px;line-height:18px;white-space:nowrap}
-.admin-attendance-heatmap .hm-grid{flex:1;justify-content:space-between;gap:8px}
+.admin-attendance-heatmap .hm-grid{flex:1;justify-content:space-between;gap:8px;padding-inline:2px}
 .admin-attendance-heatmap .hm-col{flex:1;max-width:72px;align-items:stretch}
 .admin-attendance-heatmap .hm-col .hm-c{width:100%;height:18px}
 
