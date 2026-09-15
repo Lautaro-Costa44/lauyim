@@ -33,27 +33,55 @@ export default function ScannerCodigoBarras({ onScan, onCancel }) {
       if (!activo) return
       scanner = new Html5Qrcode('scanner-codigo-barras')
       scannerRef.current = scanner
-      try {
-        await scanner.start(
-          { facingMode: 'environment' },
-          { fps: 10, qrbox: { width: 280, height: 180 }, formatsToSupport: FORMATOS },
-          async (codigo) => {
-            if (!activo || resultadoRef.current) return
-            resultadoRef.current = true
-            try { await scanner.stop() } catch { /* ya detenido al desmontar */ }
-            if (activo) {
-              setCamaraActiva(false)
-              onScan(codigo)
-            }
-          },
-          () => {},
-        )
-        if (activo) setCamaraActiva(true)
-      } catch {
+      const config = { fps: 10, qrbox: { width: 280, height: 180 }, formatsToSupport: FORMATOS }
+      const onSuccess = async codigo => {
+        if (!activo || resultadoRef.current) return
+        resultadoRef.current = true
+        try { await scanner.stop() } catch { /* ya detenido al desmontar */ }
         if (activo) {
           setCamaraActiva(false)
-          setError('No se pudo acceder a la cámara. Revisá el permiso del navegador e intentá nuevamente.')
+          onScan(codigo)
         }
+      }
+      const onError = () => {}
+      let iniciado = false
+
+      try {
+        const cameras = await Html5Qrcode.getCameras()
+        if (!cameras.length) throw new Error('No se encontraron cámaras disponibles')
+        const conLabel = cameras.filter(camera => camera.label)
+        const camaraTrasera = conLabel.find(camera => {
+          const label = camera.label.toLowerCase()
+          return label.includes('back') && !label.includes('ultra wide') && !label.includes('telephoto') && !label.includes('0.5')
+        }) ?? conLabel.find(camera => camera.label.toLowerCase().includes('back')) ?? cameras[cameras.length - 1]
+        await scanner.start({ deviceId: { exact: camaraTrasera.id } }, config, onSuccess, onError)
+        iniciado = true
+      } catch (errorPrimerIntento) {
+        console.warn('[ScannerCodigoBarras] Fallo intento 1; probando facingMode exacto:', errorPrimerIntento?.name || errorPrimerIntento)
+      }
+
+      if (!iniciado) {
+        try {
+          await scanner.start({ facingMode: { exact: 'environment' } }, config, onSuccess, onError)
+          iniciado = true
+        } catch (errorSegundoIntento) {
+          console.warn('[ScannerCodigoBarras] Fallo intento 2; probando facingMode soft:', errorSegundoIntento?.name || errorSegundoIntento)
+        }
+      }
+
+      if (!iniciado) {
+        try {
+          await scanner.start({ facingMode: 'environment' }, config, onSuccess, onError)
+          iniciado = true
+        } catch (errorTercerIntento) {
+          console.warn('[ScannerCodigoBarras] Fallo intento 3:', errorTercerIntento?.name || errorTercerIntento)
+        }
+      }
+
+      if (iniciado && activo) setCamaraActiva(true)
+      if (!iniciado && activo) {
+        setCamaraActiva(false)
+        setError('No se pudo acceder a la cámara. Revisá el permiso del navegador e intentá nuevamente.')
       }
     })
     scannerCycle = ciclo.catch(() => {})
