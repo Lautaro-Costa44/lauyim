@@ -14,6 +14,7 @@ import { api } from '../lib/api.js'
 import { todayISO } from '../lib/format.js'
 import { useUI } from '../store/useUI.js'
 import { cancelPendingRequest, enqueueRequest, updatePendingRequest } from '../lib/sync-queue.js'
+import { startTourNutrition } from '../lib/onboarding.js'
 
 const MEALS_CACHE_PREFIX = 'gym_nutrition_cache_v1:'
 const FOOD_CACHE_PREFIX = 'gym_food_cache_v1:'
@@ -693,6 +694,7 @@ function SugerenciaComida({ close, onSaved }) {
 
 export default function Nutricion() {
   const S = useStore(s => s.S)
+  const onboardingNutritionCompletado = useStore(s => s.S.onboardingNutritionCompletado)
   const [range, setRange] = useState(90)
   const now = Date.now()
   const bwPts = (S.bodyweight || []).filter(b => range === 0 || (b.t || new Date(b.d).getTime()) > now - range * 86400000).map(b => ({ t: b.t || new Date(b.d).getTime(), y: b.w, d: b.d }))
@@ -718,6 +720,11 @@ export default function Nutricion() {
   const openMisComidasCompuestas = () => useUI.getState().openSheet(close => <MisComidasCompuestas close={close} />, { fullScreen: true })
   const openHistorialNutricion = () => useUI.getState().openSheet(close => <HistorialNutricion close={close} S={S} />, { locked: true, fullScreen: true })
   const openSugerenciaComida = () => useUI.getState().openSheet(close => <SugerenciaComida close={close} onSaved={loadComidas} />, { locked: true, fullScreen: true })
+  useEffect(() => {
+    if (onboardingNutritionCompletado) return undefined
+    const timer = setTimeout(() => startTourNutrition(), 600)
+    return () => clearTimeout(timer)
+  }, [onboardingNutritionCompletado])
   const removeMeal = async id => {
     try { await api('/api/comidas/' + id, { method: 'DELETE' }) }
     catch (error) { if (error.status) throw error; removeCachedMeal(todayISO(), item => item.id === id); const user = useStore.getState().user; if (user) await enqueueRequest(user.id, { kind: 'meal-delete', payload: { id } }) }
@@ -732,28 +739,29 @@ export default function Nutricion() {
   return <>
     <div className="hdr">
       <div><h1>{t('Nutrición')}</h1><div className="sub">{t('Tus metas diarias')}</div></div>
-      <div className="row" style={{ gap: 8 }}>
+      <div className="row" style={{ gap: 8 }} data-tour="nutrition-tools">
         <button className="iconbtn" onClick={openHistorialNutricion} aria-label="Historial de nutrición" title="Historial de nutrición"><Icon name="history" /></button>
         <button className="iconbtn" onClick={openMisComidasCompuestas} aria-label="Mis comidas compuestas" title="Mis comidas compuestas"><Icon name="plate" /></button>
       </div>
     </div>
 
-    <CaloricRecommendation S={S} />
+    <div data-tour="nutrition-goals"><CaloricRecommendation S={S} /></div>
 
-    <div className="card">
+    <div className="card" data-tour="nutrition-weight">
       <div className="row between" style={{ marginBottom: 8 }}><h2 style={{ margin: 0 }}>{t('Body weight')}</h2><div className="row" style={{ gap: 8 }}><Button size="sm" icon="target" style={S.targetW ? { color: 'var(--yellow)' } : undefined} onClick={goalSheet}>{S.targetW ? fmtNum(S.targetW) : t('Goal')}</Button><Button size="sm" icon="plus" onClick={() => bwSheet()}>{t('Log')}</Button></div></div>
       <Segmented className="seg-range" value={range} onChange={setRange} options={[{ value: 30, label: '1M' }, { value: 90, label: '3M' }, { value: 365, label: '1Y' }, { value: 0, label: t('All') }]} />
       <div className="chart"><LineChart points={bwPts} h={160} unit={S.unit} goal={S.targetW} /></div>
       <CaloricCard S={S} />
     </div>
 
-    <div className="card">
+    <div className="card" data-tour="nutrition-summary">
       <h2>Resumen nutricional de hoy</h2>
       <ResumenNutricional caloriasConsumidas={totals.calorias} caloriasMeta={sugerido} proteinaConsumida={totals.proteina} proteinaMeta={metaProteina} carbosConsumidos={totals.carbos} carbosMeta={carbosMeta} grasasConsumidas={totals.grasas} grasasMeta={grasasMeta} />
     </div>
     <div className="card" style={{ marginTop: 12 }}>
       <Button variant="primary" icon="sparkles" onClick={openSugerenciaComida} style={{ width: '100%', color: '#fff' }}>Sugerencia de comida</Button>
     </div>
+    <div data-tour="nutrition-meals">
     {loadingComidas ? <div className="card muted small">Cargando comidas…</div> : <>
       {FRANJAS.map(franja => {
       const rows = comidas.filter(c => c.franja === franja.value)
@@ -766,5 +774,6 @@ export default function Nutricion() {
       })}
       <Button variant="primary" onClick={addComidaCompuesta}>Crear alimento compuesto</Button>
     </>}
+    </div>
   </>
 }

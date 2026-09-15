@@ -155,3 +155,84 @@ export function startTourB(force = false) {
 
   driverObj.drive()
 }
+
+let nutritionTourActive = false
+
+export function startTourNutrition(force = false) {
+  const S = useStore.getState().S
+  if (nutritionTourActive || (!force && S.onboardingNutritionCompletado)) return
+  nutritionTourActive = true
+
+  const steps = [
+    {
+      element: '[data-tour="nutrition-goals"]',
+      popover: {
+        title: t('Paso 1 de 5 · Metas diarias'),
+        description: t('Consultá las calorías recomendadas para tu objetivo y los datos de tu perfil que se usan para calcularlas.'),
+        side: 'bottom',
+        align: 'start',
+      },
+    },
+    {
+      element: '[data-tour="nutrition-weight"]',
+      popover: {
+        title: t('Paso 2 de 5 · Peso corporal'),
+        description: t('Registrá tu peso, definí una meta y revisá su evolución en el gráfico.'),
+        side: 'bottom',
+        align: 'start',
+      },
+    },
+    {
+      element: '[data-tour="nutrition-summary"]',
+      popover: {
+        title: t('Paso 3 de 5 · Resumen de hoy'),
+        description: t('Compará lo que consumiste hoy con tus metas de calorías, proteína, carbohidratos y grasas.'),
+        side: 'bottom',
+        align: 'start',
+      },
+    },
+    {
+      element: '[data-tour="nutrition-meals"]',
+      popover: {
+        title: t('Paso 4 de 5 · Registrar comidas'),
+        description: t('Agregá alimentos a cada momento del día buscando, escaneando un código de barras o ingresando sus datos manualmente.'),
+        side: 'top',
+        align: 'start',
+      },
+    },
+    {
+      element: '[data-tour="nutrition-tools"]',
+      popover: {
+        title: t('Paso 5 de 5 · Herramientas'),
+        description: t('Usá las sugerencias de comida y guardá comidas compuestas para repetirlas. También podés consultar tu historial de los últimos 30 días.'),
+        side: 'bottom',
+        align: 'end',
+      },
+    },
+  ]
+
+  let driverObj = null
+
+  const finish = () => {
+    nutritionTourActive = false
+    useStore.getState().update(s => { s.onboardingNutritionCompletado = true })
+    if (driverObj) driverObj.destroy()
+  }
+
+  driverObj = driver({
+    popoverClass: POPOVER_CLASS,
+    showProgress: false,
+    animate: true,
+    allowClose: true,
+    overlayColor: 'rgba(0,0,0,0.72)',
+    nextBtnText: t('Siguiente →'),
+    prevBtnText: t('← Atrás'),
+    doneBtnText: t('¡Listo!'),
+    closeBtnText: t('Saltar'),
+    steps,
+    onCloseClick: finish,
+    onDestroyed: finish,
+  })
+
+  driverObj.drive()
+}

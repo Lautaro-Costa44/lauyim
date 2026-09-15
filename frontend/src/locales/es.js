@@ -433,6 +433,12 @@ export default {
   'Monthly': 'Mensual', 'Quarterly': 'Trimestral', 'Every two months': 'Bimensual', 'Annual': 'Anual', 'Next payment date': 'Próxima fecha de pago',
   'Tutorial: Primeros pasos': 'Tutorial: Primeros pasos', 'Repasá las funciones principales de la app.': 'Repasá las funciones principales de la app.',
   'Tutorial: Tu progreso': 'Tutorial: Tu progreso', 'Repasá las gráficas de progreso y balance muscular.': 'Repasá las gráficas de progreso y balance muscular.',
+  'Tutorial: Nutrición': 'Tutorial: Nutrición', 'Repasá tus metas y cómo registrar tus comidas.': 'Repasá tus metas y cómo registrar tus comidas.',
+  'Paso 1 de 5 · Metas diarias': 'Paso 1 de 5 · Metas diarias', 'Consultá las calorías recomendadas para tu objetivo y los datos de tu perfil que se usan para calcularlas.': 'Consultá las calorías recomendadas para tu objetivo y los datos de tu perfil que se usan para calcularlas.',
+  'Paso 2 de 5 · Peso corporal': 'Paso 2 de 5 · Peso corporal', 'Registrá tu peso, definí una meta y revisá su evolución en el gráfico.': 'Registrá tu peso, definí una meta y revisá su evolución en el gráfico.',
+  'Paso 3 de 5 · Resumen de hoy': 'Paso 3 de 5 · Resumen de hoy', 'Compará lo que consumiste hoy con tus metas de calorías, proteína, carbohidratos y grasas.': 'Compará lo que consumiste hoy con tus metas de calorías, proteína, carbohidratos y grasas.',
+  'Paso 4 de 5 · Registrar comidas': 'Paso 4 de 5 · Registrar comidas', 'Agregá alimentos a cada momento del día buscando, escaneando un código de barras o ingresando sus datos manualmente.': 'Agregá alimentos a cada momento del día buscando, escaneando un código de barras o ingresando sus datos manualmente.',
+  'Paso 5 de 5 · Herramientas': 'Paso 5 de 5 · Herramientas', 'Usá las sugerencias de comida y guardá comidas compuestas para repetirlas. También podés consultar tu historial de los últimos 30 días.': 'Usá las sugerencias de comida y guardá comidas compuestas para repetirlas. También podés consultar tu historial de los últimos 30 días.',
   // --- muscle map ---
   'Muscle balance': 'Equilibrio muscular',
   'Fatigue': 'Fatiga',

@@ -35,6 +35,7 @@ export const DEF = {
   estadoInicial: 'pendiente',
   onboardingCompletado: false,
   onboardingStatsCompletado: false,
+  onboardingNutritionCompletado: false,
   respuestasEncuesta: null,
   rutinaGenerada: null,
   fechaUltimaEncuesta: null,
