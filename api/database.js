@@ -41,6 +41,7 @@ export function initDatabase() {
     db.exec(`ALTER TABLE preset_exercises ADD COLUMN progression_type TEXT;`);
   } catch {}
   try { db.exec(`ALTER TABLE presets ADD COLUMN group_name TEXT NOT NULL DEFAULT 'General';`); } catch {}
+  try { db.exec(`ALTER TABLE presets ADD COLUMN planned_day INTEGER;`); } catch {}
   try {
     db.exec(`ALTER TABLE preset_exercises ADD COLUMN progression_config TEXT;`);
   } catch {}
@@ -438,10 +439,10 @@ export function getPresetWithExercises(id) {
 
 export function createPreset(preset) {
   const stmt = getDatabase().prepare(`
-    INSERT INTO presets (id, name, emoji, group_name)
-    VALUES (?, ?, ?, ?)
+    INSERT INTO presets (id, name, emoji, group_name, planned_day)
+    VALUES (?, ?, ?, ?, ?)
   `);
-  stmt.run(preset.id, preset.name, preset.emoji, preset.groupName || preset.group_name || 'General');
+  stmt.run(preset.id, preset.name, preset.emoji, preset.groupName || preset.group_name || 'General', Number.isInteger(preset.plannedDay) ? preset.plannedDay : null);
 
   const exStmt = getDatabase().prepare(`
     INSERT INTO preset_exercises (preset_id, exercise_id, sets, reps, weight, mode, min, speed, sec, bodyweight, side, progression_type, progression_config)
@@ -467,8 +468,8 @@ export function createPreset(preset) {
 }
 
 export function updatePreset(id, preset) {
-  const stmt = getDatabase().prepare('UPDATE presets SET name = ?, emoji = ?, group_name = ? WHERE id = ?');
-  stmt.run(preset.name, preset.emoji, preset.groupName || preset.group_name || 'General', id);
+  const stmt = getDatabase().prepare('UPDATE presets SET name = ?, emoji = ?, group_name = ?, planned_day = ? WHERE id = ?');
+  stmt.run(preset.name, preset.emoji, preset.groupName || preset.group_name || 'General', Number.isInteger(preset.plannedDay) ? preset.plannedDay : null, id);
 
   // Eliminar ejercicios viejos y insertar nuevos
   const deleteExStmt = getDatabase().prepare('DELETE FROM preset_exercises WHERE preset_id = ?');

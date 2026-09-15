@@ -157,6 +157,11 @@ function readState(uid) {
 function cleanPreset(body, existingId) {
   const name = String(body.name || '').trim().slice(0, 80);
   if (!name) return { error: 'name required' };
+  const rawPlannedDay = body.plannedDay ?? body.planned_day;
+  const plannedDay = rawPlannedDay === '' || rawPlannedDay === null || rawPlannedDay === undefined
+    ? null
+    : Number(rawPlannedDay);
+  if (plannedDay !== null && (!Number.isInteger(plannedDay) || plannedDay < 0 || plannedDay > 6)) return { error: 'invalid planned day' };
   const exercises = Array.isArray(body.ex) ? body.ex : [];
   if (exercises.length > 100) return { error: 'too many exercises' };
   const ex = exercises.map(item => {
@@ -179,13 +184,13 @@ function cleanPreset(body, existingId) {
     return out;
   });
   if (ex.some(item => !item.id || !item.sets || (item.mode === 'time' ? !item.sec : item.mode === 'cardio' ? !item.min : !item.reps))) return { error: 'invalid exercise' };
-  return { value: { id: existingId || 'p' + crypto.randomBytes(8).toString('hex'), name, emoji: String(body.emoji || 'dumbbell').slice(0, 40), groupName: String(body.groupName || 'General').trim().slice(0, 80) || 'General', ex } };
+  return { value: { id: existingId || 'p' + crypto.randomBytes(8).toString('hex'), name, emoji: String(body.emoji || 'dumbbell').slice(0, 40), groupName: String(body.groupName || 'General').trim().slice(0, 80) || 'General', plannedDay, ex } };
 }
 
 const DEFAULT_PRESETS = [
-  { id: 'starter-push', name: 'Push Day', emoji: 'barbell', ex: [['0025', 4, 8], ['0047', 3, 10], ['0426', 3, 10], ['0334', 3, 12], ['0241', 3, 12], ['0251', 3, 10]] },
-  { id: 'starter-pull', name: 'Pull Day', emoji: 'pullup', ex: [['2330', 4, 10], ['0027', 4, 8], ['1323', 3, 10], ['0031', 3, 10], ['0313', 3, 12]] },
-  { id: 'starter-legs', name: 'Leg Day', emoji: 'legs', ex: [['0043', 4, 8], ['0085', 3, 10], ['0739', 3, 12], ['0585', 3, 12], ['0586', 3, 12], ['0605', 4, 15]] }
+  { id: 'starter-push', name: 'Push Day', emoji: 'barbell', plannedDay: 1, ex: [['0025', 4, 8], ['0047', 3, 10], ['0426', 3, 10], ['0334', 3, 12], ['0241', 3, 12], ['0251', 3, 10]] },
+  { id: 'starter-pull', name: 'Pull Day', emoji: 'pullup', plannedDay: 3, ex: [['2330', 4, 10], ['0027', 4, 8], ['1323', 3, 10], ['0031', 3, 10], ['0313', 3, 12]] },
+  { id: 'starter-legs', name: 'Leg Day', emoji: 'legs', plannedDay: 5, ex: [['0043', 4, 8], ['0085', 3, 10], ['0739', 3, 12], ['0585', 3, 12], ['0586', 3, 12], ['0605', 4, 15]] }
 ].map(r => ({ ...r, ex: r.ex.map(([id, sets, reps]) => ({ id, sets, reps, weight: 0 })) }));
 
 if (getAllPresets().length === 0) {
@@ -200,7 +205,12 @@ if (getAllPresets().length === 0) {
     db.exec('ROLLBACK');
     throw error;
   }
-  // saveDb(); // Eliminado: SQLite persiste automáticamente
+} else {
+  // Existing installations predate planned_day. Seed only the built-in presets that have
+  // never been assigned a day, preserving an admin's explicit null/custom choice.
+  const db = getDatabase();
+  const stmt = db.prepare('UPDATE presets SET planned_day = ? WHERE id = ? AND planned_day IS NULL');
+  for (const p of DEFAULT_PRESETS) stmt.run(p.plannedDay, p.id);
 }
 
 /* ---------- push notifications (Web Push / VAPID) ---------- */

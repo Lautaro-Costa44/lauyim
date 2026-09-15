@@ -62,11 +62,13 @@ CREATE TABLE IF NOT EXISTS presets (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
   emoji TEXT NOT NULL,
-  group_name TEXT NOT NULL DEFAULT 'General'
+  group_name TEXT NOT NULL DEFAULT 'General',
+  planned_day INTEGER
 );
 
 -- Migración para bases existentes (CREATE TABLE IF NOT EXISTS no modifica tablas ya creadas):
 -- ALTER TABLE users ADD COLUMN owner INTEGER NOT NULL DEFAULT 0;
+-- ALTER TABLE presets ADD COLUMN planned_day INTEGER;
  
 -- Ejercicios de presets
 CREATE TABLE IF NOT EXISTS preset_exercises (

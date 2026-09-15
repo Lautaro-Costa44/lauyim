@@ -77,12 +77,14 @@ export async function loadStarterPlan() {
     } catch (e) { /* use the built-in fallback when the server is unavailable */ }
   }
   if (!routines?.length) routines = starterRoutines()
-  const [push, pull, legs] = routines
   update(st => {
     st.routines.push(...routines)
-    if (push) st.week[1] = push.id
-    if (pull) st.week[3] = pull.id
-    if (legs) st.week[5] = legs.id
+    // A preset day is only an initial suggestion: never replace an existing manual
+    // assignment for that weekday. Presets without a day leave the weekly plan alone.
+    for (const routine of routines) {
+      const day = Number.isInteger(routine.plannedDay) ? routine.plannedDay : null
+      if (day !== null && !st.week[day]) st.week[day] = routine.id
+    }
     st.estadoInicial = 'plan_predeterminado'
   })
   toast(t('Starter plan loaded'))
