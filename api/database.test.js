@@ -69,6 +69,16 @@ test('first user becomes owner and owner implies admin', () => {
   assert.equal(dbMod.getUserById('user2').owner, 0);
 });
 
+test('QR access token is generated once and persisted in admin_settings', () => {
+  dbMod.initDatabase();
+  const first = dbMod.getOrCreateQrAccessToken();
+  const second = dbMod.getOrCreateQrAccessToken();
+
+  assert.match(first, /^[A-Za-z0-9_-]{43}$/);
+  assert.equal(second, first);
+  assert.equal(dbMod.getAdminSetting('qr_access_token'), first);
+});
+
 test('deleteUser removes a disabled user and cascades their data', () => {
   dbMod.initDatabase();
   const db = dbMod.getDatabase();

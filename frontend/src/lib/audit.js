@@ -17,6 +17,7 @@ const LABELS = {
   'auth.register.ok': 'Created a profile',
   'auth.register.fail': 'Profile creation failed',
   'auth.register.denied': 'Signup refused',
+  'auth.qr.validate.fail': 'QR access validation failed',
   'auth.logout': 'Signed out',
   'auth.logout.all': 'Signed out everywhere',
   'auth.device.approved': 'Approved a device',
@@ -36,7 +37,8 @@ const LABELS = {
   'owner.denied': 'Blocked: owner access required',
   'owner.user.promote': 'Promoted to Admin',
   'owner.user.demote': 'Removed as Admin',
-  'owner.user.delete': 'Deleted an account'
+  'owner.user.delete': 'Deleted an account',
+  'owner.qr.regenerate': 'Regenerated the QR access token'
 }
 
 const UNKNOWN_EVENT = 'Unknown activity'
@@ -62,7 +64,8 @@ const REASONS = {
   'account-disabled': 'the account is disabled',
   'credential-exists': 'that passkey already belongs to a profile',
   'invite-invalid': 'the invite code was used or revoked in the meantime',
-  'invite-rejected': 'wrong or already-used invite code'
+  'invite-rejected': 'wrong or already-used invite code',
+  'qr-invalid': 'invalid or outdated QR access token'
 }
 export const auditReason = msg => t(REASONS[msg] || (msg ? String(msg) : ''))
 

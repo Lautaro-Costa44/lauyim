@@ -734,13 +734,19 @@ function RegisterInline({ close, setUser, pushState, pullState, toast }) {
   const nameRef = useRef(null)
   const [code, setCode] = useState('')
   const [inviteOnly, setInviteOnly] = useState(false)
-  useEffect(() => { api('/api/config').then(c => setInviteOnly(!!c.invite_only)).catch(() => {}) }, [])
+  const [qrToken, setQrToken] = useState(null)
+  useEffect(() => {
+    api('/api/config').then(c => setInviteOnly(!!c.invite_only)).catch(() => {})
+    const token = new URLSearchParams(window.location.search).get('qr') || ''
+    if (!token) return
+    api('/api/access/qr', { method: 'POST', body: JSON.stringify({ token }) }).then(({ valid }) => { if (valid) setQrToken(token) }).catch(() => {})
+  }, [])
   const go = async () => {
     const n = (nameRef.current.value || '').trim()
     if (!n) { toast(t('Enter a name')); return }
-    if (inviteOnly && !code.trim()) { toast(t('An invite code is required')); return }
+    if (inviteOnly && !qrToken && !code.trim()) { toast(t('An invite code is required')); return }
     try {
-      const u = await passkeyRegister(n, code.trim()); setUser(u); close()
+      const u = await passkeyRegister(n, code.trim(), qrToken); setUser(u); close()
       if (hasData(useStore.getState().S)) { await pushState(); toast(t('Profile created — data moved into it')) }
       else { await pullState(); toast(t('Welcome, {0}', u.name)) }
     } catch (e) { if (e.name !== 'NotAllowedError' && e.name !== 'AbortError') toast(e.message || t('Registration failed')) }
@@ -749,7 +755,7 @@ function RegisterInline({ close, setUser, pushState, pullState, toast }) {
     <h3>{t('Create your profile')}</h3>
     <div className="muted small" style={{ marginBottom: 14 }}>{t('Pick a name, then confirm with your device.')}</div>
     <TextField ref={nameRef} placeholder={t('Your name')} maxLength={40} />
-    {inviteOnly && <>
+    {inviteOnly && !qrToken && <>
       <div style={{ height: 10 }} />
       <input {...NO_AUTOFILL} name="app-settings-invite-code" className="input" placeholder={t('Invite code')} maxLength={40} value={code}
         onChange={e => setCode(e.target.value.toUpperCase())} style={{ letterSpacing: '.14em', fontWeight: 600, textAlign: 'center' }} />

@@ -6,6 +6,7 @@
 import { DatabaseSync } from 'node:sqlite';
 import path from 'path';
 import fs from 'fs';
+import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 
 const DATA = process.env.DATA_DIR || '/data';
@@ -944,6 +945,14 @@ export function setAdminSetting(key, value) {
     INSERT INTO admin_settings (key, value, updated_at) VALUES (?, ?, ?)
     ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
   `).run(key, String(value), Date.now());
+}
+
+export function getOrCreateQrAccessToken() {
+  const existing = getAdminSetting('qr_access_token');
+  if (existing) return existing;
+  const token = crypto.randomBytes(32).toString('base64url');
+  setAdminSetting('qr_access_token', token);
+  return token;
 }
 
 export function getAttendanceByDate(startDate, endDate) {

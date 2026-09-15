@@ -13,18 +13,27 @@ function RegisterSheet({ close }) {
   const config = useStore(s => s.config)
   const [name, setName] = useState('')
   const [code, setCode] = useState('')
+  const [qrToken, setQrToken] = useState(null)
+  const [qrChecked, setQrChecked] = useState(false)
   const inviteOnly = !!config?.invite_only
   const ref = useRef(null)
   useEffect(() => { /* no autofocus */ }, [])
   // Boot already fetched this; retry here only if that attempt failed, so the invite field still
   // appears on an instance whose config arrived late rather than never.
-  useEffect(() => { loadConfig() }, [loadConfig])
+  useEffect(() => {
+    loadConfig()
+    const token = new URLSearchParams(window.location.search).get('qr') || ''
+    if (!token) { setQrChecked(true); return }
+    api('/api/access/qr', { method: 'POST', body: JSON.stringify({ token }) })
+      .then(({ valid }) => { setQrToken(valid ? token : null); setQrChecked(true) })
+      .catch(() => setQrChecked(true))
+  }, [loadConfig])
   const go = async () => {
     const n = name.trim()
     if (!n) { useUI.getState().toast(t('Enter a name')); return }
-    if (inviteOnly && !code.trim()) { useUI.getState().toast(t('An invite code is required')); return }
+    if (inviteOnly && !qrToken && !code.trim()) { useUI.getState().toast(t('An invite code is required')); return }
     try {
-      const u = await passkeyRegister(n, code.trim())
+      const u = await passkeyRegister(n, code.trim(), qrToken)
       setUser(u); close()
       if (hasData(useStore.getState().S)) { await pushState(); useUI.getState().toast(t('Profile created — data from this device moved into it')) }
       else { await pullState(); useUI.getState().toast(t('Welcome, {0}', u.name)) }
@@ -34,7 +43,7 @@ function RegisterSheet({ close }) {
     <h3>{t('Create your profile')}</h3>
     <div className="muted small" style={{ marginBottom: 14 }}>{t('Pick a name, then confirm with {0}. The passkey is saved in your device — no password needed.', BIO)}</div>
     <input {...NO_AUTOFILL} name="app-profile-name" ref={ref} className="input" placeholder={t('Your name')} maxLength={40} value={name} onChange={e => setName(e.target.value)} />
-    {inviteOnly && <>
+    {inviteOnly && qrChecked && !qrToken && <>
       <div style={{ height: 10 }} />
       <input {...NO_AUTOFILL} name="app-invite-code" className="input" placeholder={t('Invite code')} maxLength={40} value={code}
         onChange={e => setCode(e.target.value.toUpperCase())} style={{ letterSpacing: '.14em', fontWeight: 600, textAlign: 'center' }} />

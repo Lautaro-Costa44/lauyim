@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useStore } from '../store/useStore.js'
 import { useUI } from '../store/useUI.js'
@@ -14,6 +14,7 @@ import { t, exerciseNameFor } from '../lib/i18n.js'
 import Icon from '../components/Icon.jsx'
 import { Button, TextField } from '../components/ui.jsx'
 import { NO_AUTOFILL } from '../lib/input-safety.js'
+import * as ZXing from 'html5-qrcode/third_party/zxing-js.umd.js'
 
 // Admin-only operator dashboard (owner passkey + admin flag; guarded again server-side).
 
@@ -146,6 +147,58 @@ function InvitesCard({ invites, reload }) {
       <span style={{ fontFamily: 'monospace' }}>{i.code}</span><span>→ {i.usedByName || t('used')}</span>
     </div>)}
     {!open.length && !used.length && <div className="dim small">{t('No codes yet — generate one to invite someone.')}</div>}
+  </div>
+}
+
+function QrCanvas({ value }) {
+  const ref = useRef(null)
+  useEffect(() => {
+    if (!value || !ref.current) return
+    const matrix = new ZXing.QRCodeWriter().encode(value, ZXing.BarcodeFormat.QR_CODE, 280, 280, new Map())
+    const canvas = ref.current
+    const size = matrix.getWidth()
+    const scale = 4
+    canvas.width = size * scale
+    canvas.height = size * scale
+    const ctx = canvas.getContext('2d')
+    ctx.fillStyle = '#fff'
+    ctx.fillRect(0, 0, canvas.width, canvas.height)
+    ctx.fillStyle = '#000'
+    for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
+      if (matrix.get(x, y)) ctx.fillRect(x * scale, y * scale, scale, scale)
+    }
+  }, [value])
+  return <canvas ref={ref} aria-label={t('QR access code')} style={{ width: 280, height: 280, maxWidth: '100%', imageRendering: 'pixelated', borderRadius: 8 }} />
+}
+
+function QrAccessCard({ data, reload }) {
+  const toast = useUI(s => s.toast)
+  const link = data?.token ? window.location.origin + '/?qr=' + encodeURIComponent(data.token) : ''
+  const copy = () => link && navigator.clipboard?.writeText(link).then(() => toast(t('QR link copied'))).catch(() => toast(t('Could not copy the QR link')))
+  const regenerate = () => confirmSheet({
+    title: t('Regenerate QR access?'),
+    message: t('This immediately invalidates the QR currently printed or shared. A new QR link will be generated.'),
+    confirmText: t('Regenerate'), danger: true,
+    onConfirm: () => api('/api/owner/qr/regenerate', { method: 'POST', body: '{}' })
+      .then(d => { reload(d); toast(t('QR access regenerated')) })
+      .catch(e => toast(e.message || t('Failed to regenerate QR access')))
+  })
+  return <div className="card">
+    <h2 style={{ margin: 0 }}>{t('QR access')}</h2>
+    <div className="small muted" style={{ margin: '6px 0 12px' }}>{t('Anyone who opens this link can register without an invite code. The QR itself does not expire; regenerating it invalidates the previous one.')}</div>
+    {data?.token ? <>
+      <div className="row" style={{ alignItems: 'flex-start', gap: 14, flexWrap: 'wrap' }}>
+        <QrCanvas value={link} />
+        <div className="grow" style={{ minWidth: 220 }}>
+          <div className="small dim" style={{ marginBottom: 5 }}>{t('Current link')}</div>
+          <div style={{ wordBreak: 'break-all', fontFamily: 'ui-monospace,SFMono-Regular,Menlo,monospace', fontSize: '.78rem', padding: 10, background: 'var(--surface-2)', borderRadius: 8 }}>{link}</div>
+          <div className="row" style={{ gap: 8, marginTop: 10 }}>
+            <Button size="sm" onClick={copy}>{t('Copy link')}</Button>
+            <Button size="sm" variant="danger" onClick={regenerate}>{t('Regenerate')}</Button>
+          </div>
+        </div>
+      </div>
+    </> : <div className="dim small">{t('Loading…')}</div>}
   </div>
 }
 
@@ -380,6 +433,7 @@ export default function Admin() {
   const [presets, setPresets] = useState(null)
   const [inviteOnly, setInviteOnly] = useState(false)
   const [attendance, setAttendance] = useState(null)
+  const [qrAccess, setQrAccess] = useState(null)
   const [tick, setTick] = useState(0)          // the ↻ button; the activity log listens to it
   const [userSearch, setUserSearch] = useState('')
   const [userPage, setUserPage] = useState(1)
@@ -388,8 +442,9 @@ export default function Admin() {
   const loadInvites = () => api('/api/admin/invites').then(d => setInvites(d.invites)).catch(() => {})
   const loadPresets = () => api('/api/presets').then(d => setPresets(d.presets)).catch(e => toast(e.message || t('Failed to load presets')))
   const loadAttendance = () => api('/api/admin/attendance-heatmap').then(setAttendance).catch(e => toast(e.message || t('Failed to load attendance')))
+  const loadQrAccess = () => { if (user?.owner) api('/api/owner/qr').then(setQrAccess).catch(e => toast(e.message || t('Failed to load QR access'))) }
   // poll every 15s so the "training now" section stays live without a manual refresh
-  useEffect(() => { if (!user?.admin) return; loadUsers(); loadInvites(); loadPresets(); loadAttendance(); const iv = setInterval(() => { loadUsers(); loadAttendance() }, 15000); return () => clearInterval(iv) }, [])
+  useEffect(() => { if (!user?.admin) return; loadUsers(); loadInvites(); loadPresets(); loadAttendance(); loadQrAccess(); const iv = setInterval(() => { loadUsers(); loadAttendance() }, 15000); return () => clearInterval(iv) }, [user?.owner])
   if (!user?.admin) return null
 
   const openUser = id => openSheet(close => <UserDetail id={id} onChanged={loadUsers} close={close} />)
@@ -407,7 +462,7 @@ export default function Admin() {
       <button className="iconbtn" onClick={() => nav('/settings')} aria-label={t('Back')}><Icon name="chevronLeft" /></button>
       <div style={{ flex: 1, marginLeft: 8 }}><h1 style={{ margin: 0 }}>{t('Admin')}</h1>
         <div className="sub">{users ? users.length + ' ' + t('users') + ' · ' + activeCount + ' ' + t('active this week') : t('Loading…')}</div></div>
-      <button className="iconbtn" onClick={() => { loadUsers(); loadInvites(); loadPresets(); loadAttendance(); setTick(n => n + 1) }} aria-label={t('Refresh')}>↻</button>
+      <button className="iconbtn" onClick={() => { loadUsers(); loadInvites(); loadPresets(); loadAttendance(); loadQrAccess(); setTick(n => n + 1) }} aria-label={t('Refresh')}>↻</button>
     </div>
 
     <div className="tiles" style={{ marginBottom: 12 }}>
@@ -427,6 +482,7 @@ export default function Admin() {
     </div>}
 
     <InvitesCard invites={invites} reload={loadInvites} />
+    {user?.owner && <QrAccessCard data={qrAccess} reload={setQrAccess} />}
     <PresetsCard presets={presets} openSheet={openSheet} reload={loadPresets} />
     <PushNotificationCard />
     <AttendanceHeatmap data={attendance} onStartChange={start => api('/api/admin/attendance-week-start', { method: 'POST', body: JSON.stringify({ start }) }).then(loadAttendance).catch(e => toast(e.message || t('Failed to save setting')))} />

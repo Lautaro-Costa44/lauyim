@@ -6,16 +6,16 @@ import { auditCat, auditLabel, auditReason, auditLine, fmtWhen } from './audit.j
 // dashboard quietly printing a dotted identifier at a person.
 const EVENTS = [
   'auth.login.ok', 'auth.login.fail', 'auth.register.ok', 'auth.register.fail',
-  'auth.register.denied', 'auth.logout', 'auth.logout.all', 'auth.device.approved',
+  'auth.register.denied', 'auth.qr.validate.fail', 'auth.logout', 'auth.logout.all', 'auth.device.approved',
   'auth.device.login', 'auth.cred.added', 'admin.user.disable', 'admin.user.enable',
   'admin.preset.create', 'admin.preset.update', 'admin.preset.delete',
   'admin.attendance.settings', 'admin.invite.create', 'admin.invite.revoke',
   'admin.push.send', 'admin.audit.clear', 'admin.denied', 'owner.denied',
-  'owner.user.promote', 'owner.user.demote', 'owner.user.delete'
+  'owner.user.promote', 'owner.user.demote', 'owner.user.delete', 'owner.qr.regenerate'
 ]
 const REASONS = [
   'challenge-expired', 'unknown-credential', 'verify-error', 'not-verified',
-  'user-missing', 'account-disabled', 'credential-exists', 'invite-invalid', 'invite-rejected'
+  'user-missing', 'account-disabled', 'credential-exists', 'invite-invalid', 'invite-rejected', 'qr-invalid'
 ]
 
 describe('auditLabel', () => {

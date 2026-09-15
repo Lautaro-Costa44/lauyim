@@ -52,6 +52,7 @@ import {
   getWorkoutsByUserId,
   getAdminSetting,
   setAdminSetting,
+  getOrCreateQrAccessToken,
   getAttendanceByDate,
   getDatabase
 } from './database.js';
@@ -111,6 +112,14 @@ fs.mkdirSync(DATA, { recursive: true });
 
 // Inicializar base de datos SQLite
 initDatabase();
+getOrCreateQrAccessToken();
+
+function qrTokenMatches(candidate) {
+  const raw = String(candidate || '');
+  const current = getOrCreateQrAccessToken();
+  if (!raw || raw.length !== current.length) return false;
+  return crypto.timingSafeEqual(Buffer.from(raw), Buffer.from(current));
+}
 
 /* LEGACY DB CODE (db.json) - Comentado para preservar compatibilidad / rollback rápido:
 let db = { users: [], creds: [], subs: [], invites: [], presets: [] };
@@ -395,6 +404,7 @@ const clearCookie = COOKIE === LEGACY_COOKIE
 
 /* ---------- CSRF ---------- */
 const CSRF_EXEMPT = new Set([
+  'POST /api/access/qr',
   'POST /api/register/options', 'POST /api/register/verify',
   'POST /api/login/options', 'POST /api/login/verify',
   'POST /api/auth/device/start', 'GET /api/auth/device/poll',
@@ -1289,6 +1299,27 @@ const routes = {
     json(res, 200, { invite_only: INVITE_ONLY, allow_guest: ALLOW_GUEST });
   },
 
+  'POST /api/access/qr': async (req, res) => {
+    const body = await readBody(req);
+    const token = String(body.token || '');
+    const valid = qrTokenMatches(token);
+    if (!valid && token) audit(req, 'auth.qr.validate.fail', { ok: false, msg: 'qr-invalid' });
+    json(res, 200, { valid });
+  },
+
+  'GET /api/owner/qr': async (req, res) => {
+    const owner = requireOwner(req, res); if (!owner) return;
+    json(res, 200, { token: getOrCreateQrAccessToken() });
+  },
+
+  'POST /api/owner/qr/regenerate': async (req, res) => {
+    const owner = requireOwner(req, res); if (!owner) return;
+    const token = crypto.randomBytes(32).toString('base64url');
+    setAdminSetting('qr_access_token', token);
+    audit(req, 'owner.qr.regenerate', { user: owner });
+    json(res, 200, { token });
+  },
+
   'GET /api/me': async (req, res) => {
     const user = readSession(req);
     if (!user) return json(res, 401, { error: 'not signed in' });
@@ -1300,7 +1331,10 @@ const routes = {
     const name = String(body.name || '').trim().slice(0, 40);
     if (!name) return json(res, 400, { error: 'name required' });
     const code = String(body.code || '').trim().toUpperCase();
-    if (INVITE_ONLY) {
+    const qr = String(body.qr || '');
+    const qrValid = qrTokenMatches(qr);
+    if (qr && !qrValid) audit(req, 'auth.qr.validate.fail', { ok: false, name, msg: 'qr-invalid' });
+    if (INVITE_ONLY && !qrValid) {
       const inv = getInviteByCode(code);
       if (!inv || inv.used_by || inv.revoked) {
         audit(req, 'auth.register.denied', { ok: false, name, msg: 'invite-rejected' });
@@ -1315,7 +1349,7 @@ const routes = {
       authenticatorSelection: { residentKey: 'required', userVerification: 'preferred' },
       excludeCredentials: []
     });
-    const cid = putChallenge({ challenge: options.challenge, name, uid, code });
+    const cid = putChallenge({ challenge: options.challenge, name, uid, code, qr: qrValid ? qr : null });
     json(res, 200, { cid, options });
   },
 
@@ -1348,8 +1382,10 @@ const routes = {
       audit(req, 'auth.register.fail', { ok: false, name: c.name, msg: 'credential-exists' });
       return json(res, 409, { error: 'credential already registered' });
     }
+    const qrValid = !!c.qr && qrTokenMatches(c.qr);
+    if (c.qr && !qrValid) audit(req, 'auth.qr.validate.fail', { ok: false, name: c.name, msg: 'qr-invalid' });
     let invite = null;
-    if (INVITE_ONLY) {
+    if (INVITE_ONLY && !qrValid) {
       invite = getInviteByCode(c.code);
       if (!invite || invite.used_by || invite.revoked) {
         audit(req, 'auth.register.fail', { ok: false, name: c.name, msg: 'invite-invalid' });
@@ -2021,7 +2057,8 @@ http.createServer(async (req, res) => {
       ? 'DELETE /api/plantillas/:id'
     : key;
 
-  const rateLimitMax = routeKey === 'POST /api/register/options'
+  const rateLimitMax = routeKey === 'POST /api/access/qr'
+    || routeKey === 'POST /api/register/options'
     || routeKey === 'POST /api/register/verify'
     || routeKey === 'POST /api/login/options'
     || routeKey === 'POST /api/login/verify'
