@@ -24,6 +24,7 @@ import { estimate1RM, best1RM, is1RMRecord, REP_CAP } from './lib/onerm.js'
 import { nextPrescription, applyPrescription, policyFor, defaultIncrement, POLICIES_FOR, POLICY_NAME, POLICY_DESC, MAX_BW_SETS } from './lib/progression.js'
 import { buildCompletedWorkout } from './lib/finish-workout.js'
 import { isWarmupRow } from './lib/workout-model.js'
+import { applyPlannedDays } from './lib/routineGroups.js'
 
 const S = () => useStore.getState().S
 const update = (...a) => useStore.getState().update(...a)
@@ -77,16 +78,19 @@ export async function loadStarterPlan() {
     } catch (e) { /* use the built-in fallback when the server is unavailable */ }
   }
   if (!routines?.length) routines = starterRoutines()
+  let result
   update(st => {
+    const candidate = [...(st.routines || []), ...routines]
+    result = applyPlannedDays(routines, st.week, { groupRoutines: candidate })
+    if (!result.ok) return
     st.routines.push(...routines)
-    // A preset day is only an initial suggestion: never replace an existing manual
-    // assignment for that weekday. Presets without a day leave the weekly plan alone.
-    for (const routine of routines) {
-      const day = Number.isInteger(routine.plannedDay) ? routine.plannedDay : null
-      if (day !== null && !st.week[day]) st.week[day] = routine.id
-    }
+    st.week = result.week
     st.estadoInicial = 'plan_predeterminado'
   })
+  if (result && !result.ok) {
+    toast(t('La rutina “{0}” ya está planeada para el {1}.', result.routine?.name || t('Routine'), t(DAYN[result.conflict.day])))
+    return
+  }
   toast(t('Starter plan loaded'))
 }
 
@@ -1222,7 +1226,18 @@ export const dayOverrideSheet = iso => ui().openSheet(close => <DayOverride iso=
 
 function DayAssign({ day, close }) {
   const st = useStore(s => s.S)
-  const set = v => { update(s => { if (v) s.week[day] = v; else delete s.week[day] }); close() }
+  const set = v => {
+    if (!v) { update(s => { delete s.week[day] }); close(); return }
+    const routine = st.routines.find(r => r.id === v)
+    const currentId = st.week[day]
+    const result = applyPlannedDays([{ ...routine, plannedDay: day }], st.week, { groupRoutines: st.routines.filter(r => r.id !== currentId && r.id !== v) })
+    if (!result.ok) {
+      toast(t('La rutina “{0}” ya está planeada para el {1}.', result.conflict.existingRoutine?.name || t('Routine'), t(DAYN[day])))
+      return
+    }
+    update(s => { s.week = result.week })
+    close()
+  }
   return <>
     <h3>{t(DAYN[day])}</h3>
     <div className="list">

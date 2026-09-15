@@ -233,7 +233,12 @@ function PresetEditor({ existing, close, reload }) {
     const body = JSON.stringify({ id: existing?.id, name: name.trim(), groupName: groupName.trim() || 'General', plannedDay, emoji: emoji.trim() || 'dumbbell', ex })
     api(existing ? '/api/admin/presets' : '/api/admin/presets', { method: existing ? 'PUT' : 'POST', body })
       .then(() => { toast(existing ? t('Preset updated') : t('Preset created')); close(); reload() })
-      .catch(e => { console.error('[Presets] Failed to save preset/day', e); toast(e.message) })
+      .catch(e => {
+        console.error('[Presets] Failed to save preset/day', e)
+        if (e.data?.error === 'ROUTINE_DAY_CONFLICT') {
+          toast(t('La rutina “{0}” ya está planeada para el {1}.', e.data.routineName, t(DAYN[e.data.plannedDay])))
+        } else toast(e.message)
+      })
   }
   return <>
     <h3>{existing ? t('Edit preset') : t('New preset')}</h3>

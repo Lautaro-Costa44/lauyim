@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useStore } from '../store/useStore.js'
+import { useUI } from '../store/useUI.js'
 import { effectiveRoutine, effectiveRoutineId, streakWeeks, lastBW, setsDoneActive } from '../lib/history.js'
-import { fmtNum, fmtDate, todayISO, isoOf, weekKey, DAYS } from '../lib/format.js'
+import { fmtNum, fmtDate, todayISO, isoOf, weekKey, DAYS, DAYN } from '../lib/format.js'
 import { t, dateLocale } from '../lib/i18n.js'
 import { bwSheet, goalSheet, dayOverrideSheet, calendarSheet, startFlow, loadStarterPlan, bwDeltaColor, confirmSheet } from '../sheets.jsx'
 import LineChart from '../components/LineChart.jsx'
@@ -12,6 +13,7 @@ import { glyphOf } from '../lib/glyphs.js'
 import { startTourA } from '../lib/onboarding.js'
 import { api } from '../lib/api.js'
 import { routinesFromPresets } from '../lib/starter.js'
+import { applyPlannedDays } from '../lib/routineGroups.js'
 
 
 // Home = what to do now + a quick glance. Deep charts & history live in Stats.
@@ -21,9 +23,21 @@ export default function Home() {
   const user = useStore(s => s.user)
   const config = useStore(s => s.config)
   const update = useStore(s => s.update)
+  const toast = useUI(s => s.toast)
   const [presetGroups, setPresetGroups] = useState([])
   useEffect(() => { if (S.routines.length === 0) api('/api/presets').then(d => setPresetGroups(d.groups || [])).catch(() => {}) }, [S.routines.length])
-  const chooseGroup = async name => { const d = await api('/api/presets'); const rs = routinesFromPresets((d.presets || []).filter(p => (p.group_name || 'General') === name)); update(s => { s.routines = rs; s.week = {}; rs.forEach((r, i) => { s.week[[1,2,3,0][i]] = r.id }) }) }
+  const chooseGroup = async name => {
+    try {
+      const d = await api('/api/presets')
+      const rs = routinesFromPresets((d.presets || []).filter(p => (p.group_name || p.groupName || 'General') === name))
+      const result = applyPlannedDays(rs, {}, { groupRoutines: rs })
+      if (!result.ok) {
+        toast(`La rutina “${result.conflict.routine?.name || 'Routine'}” ya está planeada para el ${t(DAYN[result.conflict.day])}.`)
+        return
+      }
+      update(s => { s.routines = rs; s.week = result.week })
+    } catch (e) { toast(e.message || t('Could not load this group.')) }
+  }
   const [weekOffset, setWeekOffset] = useState(0)
 
   useEffect(() => {

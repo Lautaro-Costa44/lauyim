@@ -187,6 +187,27 @@ function cleanPreset(body, existingId) {
   return { value: { id: existingId || 'p' + crypto.randomBytes(8).toString('hex'), name, emoji: String(body.emoji || 'dumbbell').slice(0, 40), groupName: String(body.groupName || 'General').trim().slice(0, 80) || 'General', plannedDay, ex } };
 }
 
+function findPresetDayConflict(preset, excludeId = null) {
+  if (preset.plannedDay === null) return null;
+  const db = getDatabase();
+  return db.prepare(`
+    SELECT id, name, planned_day AS plannedDay
+    FROM presets
+    WHERE lower(trim(group_name)) = lower(trim(?)) AND planned_day = ? AND id != ?
+    LIMIT 1
+  `).get(preset.groupName, preset.plannedDay, excludeId || '') || null;
+}
+
+function presetConflictResponse(res, conflict, plannedDay) {
+  return json(res, 409, {
+    error: 'ROUTINE_DAY_CONFLICT',
+    code: 'ROUTINE_DAY_CONFLICT',
+    routineName: conflict.name,
+    plannedDay,
+    message: `Routine "${conflict.name}" already occupies planned day ${plannedDay}.`
+  });
+}
+
 const DEFAULT_PRESETS = [
   { id: 'starter-push', name: 'Push Day', emoji: 'barbell', plannedDay: 1, ex: [['0025', 4, 8], ['0047', 3, 10], ['0426', 3, 10], ['0334', 3, 12], ['0241', 3, 12], ['0251', 3, 10]] },
   { id: 'starter-pull', name: 'Pull Day', emoji: 'pullup', plannedDay: 3, ex: [['2330', 4, 10], ['0027', 4, 8], ['1323', 3, 10], ['0031', 3, 10], ['0313', 3, 12]] },
@@ -1769,6 +1790,8 @@ const routes = {
     const admin = requireAdmin(req, res); if (!admin) return;
     const result = cleanPreset(await readBody(req));
     if (result.error) return json(res, 400, { error: result.error });
+    const conflict = findPresetDayConflict(result.value);
+    if (conflict) return presetConflictResponse(res, conflict, result.value.plannedDay);
     createPreset(result.value);
     // saveDb(); // Eliminado: SQLite persiste automáticamente
     audit(req, 'admin.preset.create', { user: admin, msg: result.value.name });
@@ -1782,6 +1805,8 @@ const routes = {
     if (!existing) return json(res, 404, { error: 'no such preset' });
     const result = cleanPreset(body, existing.id);
     if (result.error) return json(res, 400, { error: result.error });
+    const conflict = findPresetDayConflict(result.value, existing.id);
+    if (conflict) return presetConflictResponse(res, conflict, result.value.plannedDay);
     updatePreset(existing.id, result.value);
     // saveDb(); // Eliminado: SQLite persiste automáticamente
     audit(req, 'admin.preset.update', { user: admin, msg: result.value.name });

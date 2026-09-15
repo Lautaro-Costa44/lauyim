@@ -3,12 +3,13 @@ import { useNavigate } from 'react-router-dom'
 import { startTourA, startTourB } from '../lib/onboarding.js'
 import { useStore, DEF, hasData } from '../store/useStore.js'
 import { useUI } from '../store/useUI.js'
-import { ACCENTS, todayISO, localTZ } from '../lib/format.js'
+import { ACCENTS, todayISO, localTZ, DAYN } from '../lib/format.js'
 import { effortOf } from '../lib/history.js'
 import { POLICIES, POLICY_NAME, POLICY_DESC } from '../lib/progression.js'
 import Stepper from '../components/Stepper.jsx'
 import { api, webauthnOK, passkeyLogin, passkeyRegister, passkeyAddCredential, IS_ANDROID } from '../lib/api.js'
 import { supportSheet } from '../sheets.jsx'
+import { applyPlannedDays } from '../lib/routineGroups.js'
 
 function ClaimDeviceSheet({ close }) {
   const toast = useUI(s => s.toast)
@@ -111,9 +112,12 @@ export default function Settings() {
         }
         const d = await api('/api/presets')
         const routines = routinesFromPresets((d.presets || []).filter(p => (p.group_name || p.groupName || 'General') === name))
-        const week = {}
-        routines.forEach((r, i) => { week[[1, 2, 3, 4, 5, 6, 0][i]] = r.id })
-        addGroup(name, routines, week, true)
+        const result = applyPlannedDays(routines, {}, { groupRoutines: routines })
+        if (!result.ok) {
+          toast(t('La rutina “{0}” ya está planeada para el {1}.', result.conflict.routine?.name || t('Routine'), t(DAYN[result.conflict.day])))
+          return
+        }
+        addGroup(name, routines, result.week, true)
         loadedNames.add(name.toLowerCase())
         toast(t('Group loaded successfully.'))
         close()

@@ -3,6 +3,58 @@ import { t } from './i18n.js'
 
 export const MAX_ROUTINE_GROUPS = 5
 
+export const PLANNED_DAYS = new Set([0, 1, 2, 3, 4, 5, 6])
+
+export function plannedDayOf(routine) {
+  return Number.isInteger(routine?.plannedDay) && PLANNED_DAYS.has(routine.plannedDay)
+    ? routine.plannedDay
+    : null
+}
+
+export function findPlannedDayConflict(routines = [], { excludeRoutineId = null } = {}) {
+  const occupied = new Map()
+  for (const routine of routines || []) {
+    if (!routine || routine.id === excludeRoutineId) continue
+    const day = plannedDayOf(routine)
+    if (day === null) continue
+    if (occupied.has(day)) return { routine: routine, day, existingRoutine: occupied.get(day) }
+    occupied.set(day, routine)
+  }
+  return null
+}
+
+/**
+ * Valida y aplica plannedDay sin asignar nunca por posición del array.
+ * La función no modifica week si detecta un conflicto.
+ */
+export function applyPlannedDays(routines = [], week = {}, { groupRoutines = routines, replace = false } = {}) {
+  const source = routines || []
+  const internal = findPlannedDayConflict(source)
+  if (internal) {
+    return { ok: false, conflict: { day: internal.day, routine: internal.routine, existingRoutine: internal.existingRoutine } }
+  }
+
+  const nextWeek = { ...(week || {}) }
+  if (replace) {
+    for (const routine of source) {
+      const day = plannedDayOf(routine)
+      if (day !== null) delete nextWeek[day]
+    }
+  }
+
+  for (const routine of source) {
+    const day = plannedDayOf(routine)
+    if (day === null) continue
+    const occupiedId = nextWeek[day]
+    const occupyingRoutine = (groupRoutines || []).find(r => r?.id === occupiedId)
+    if (occupiedId && !source.some(r => r?.id === occupiedId)) {
+      return { ok: false, conflict: { day, routine, existingRoutine: occupyingRoutine || { id: occupiedId, name: t('Routine') } } }
+    }
+    nextWeek[day] = routine.id
+  }
+  return { ok: true, week: nextWeek }
+}
+
 export const PRESET_GROUP_NAMES = [
   'Push / Pull / Legs (PPL)',
   'Torso / Pierna',
