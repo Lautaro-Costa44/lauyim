@@ -411,7 +411,7 @@ export default {
   'Disable {0}?': '¿Desactivar a {0}?', 'Enable account': 'Activar cuenta', 'Disable account': 'Desactivar cuenta',
   'They are signed out everywhere and can no longer sync or log in until re-enabled.': 'Se cerrará su sesión en todos los dispositivos y no podrá sincronizar ni iniciar sesión hasta reactivarlo.',
   'Invite codes': 'Códigos de invitación', 'Generate': 'Generar', 'unused': 'sin usar', 'redeemed': 'canjeados',
-  'QR access': 'Acceso por QR', 'Current link': 'Enlace actual', 'Copy link': 'Copiar enlace', 'QR link copied': 'Enlace QR copiado',
+  'QR access': 'Acceso por QR', 'Current link': 'Enlace actual', 'Save QR': 'Guardar QR', 'Copy link': 'Copiar enlace', 'QR link copied': 'Enlace QR copiado', 'Could not save the QR': 'No se pudo guardar el QR',
   'Regenerate QR access?': '¿Regenerar el acceso por QR?', 'Regenerate': 'Regenerar',
   'QR access regenerated': 'Acceso por QR regenerado', 'Could not copy the QR link': 'No se pudo copiar el enlace QR',
   'Failed to regenerate QR access': 'No se pudo regenerar el acceso por QR', 'Failed to load QR access': 'No se pudo cargar el acceso por QR',

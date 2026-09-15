@@ -1296,7 +1296,11 @@ const routes = {
   },
 
   'GET /api/config': async (req, res) => {
-    json(res, 200, { invite_only: INVITE_ONLY, allow_guest: ALLOW_GUEST });
+    json(res, 200, {
+      invite_only: INVITE_ONLY,
+      allow_guest: ALLOW_GUEST,
+      instance_name: process.env.INSTANCE_NAME || req.headers['x-forwarded-host'] || req.headers['host'] || 'lauyim'
+    });
   },
 
   'POST /api/access/qr': async (req, res) => {
