@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 import sys
 
-from common import backup_database, connect, require_exact_confirmation, require_user, user_label
+from common import connect, require_exact_confirmation, require_user, user_label
 
 
 def main() -> int:
@@ -35,7 +35,6 @@ def main() -> int:
         if not args.yes:
             require_exact_confirmation(args.user_id)
 
-        backup = backup_database(db)
         try:
             db.execute("BEGIN")
             db.execute("UPDATE users SET owner = 0 WHERE owner = 1")
@@ -52,7 +51,6 @@ def main() -> int:
         updated = require_user(db, args.user_id)
         print(f"Owner reasignado correctamente: {user_label(updated)}")
         print(f"admin: {'sí' if updated['admin'] else 'no'} | owner: {'sí' if updated['owner'] else 'no'}")
-        print(f"Backup: {backup}")
     return 0
 
 

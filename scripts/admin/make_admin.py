@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import argparse
 
-from common import backup_database, connect, require_exact_confirmation, require_user, user_label
+from common import connect, require_exact_confirmation, require_user, user_label
 
 
 def main() -> int:
@@ -21,14 +21,13 @@ def main() -> int:
         print(f"Cuenta seleccionada: {user_label(user)}")
         if not args.yes:
             require_exact_confirmation(args.user_id)
-        backup = backup_database(db)
         try:
             db.execute("UPDATE users SET admin = 1 WHERE id = ?", (args.user_id,))
             db.commit()
         except Exception:
             db.rollback()
             raise
-        print(f"Cuenta convertida en administradora. Backup: {backup}")
+        print(f"Cuenta convertida en administradora: {user_label(user)}")
     return 0
 
 
