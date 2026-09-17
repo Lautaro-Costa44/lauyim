@@ -200,7 +200,7 @@ export const useStore = create((set, get) => {
         const S = get().S
         const dirty = localStorage.getItem('gym_dirty') === '1'
         const pending = await countSync(get().user.id)
-        if (state && (!hasData(S) || ((state._ts || 0) >= (S._ts || 0) && !dirty))) {
+        if (state && pending === 0 && (!hasData(S) || ((state._ts || 0) >= (S._ts || 0) && !dirty))) {
           const active = S.active
           const next = Object.assign(clone(DEF), state)
           if (active) next.active = active
@@ -312,9 +312,11 @@ export const useStore = create((set, get) => {
       try {
         const me = await api('/api/me')
         get().setUser(me.user)
-        await get().pullState()
         // Apply any local operations that were recorded while the device was offline.
         await get().syncPending()
+        // Pull after the queue is drained so a just-completed local change cannot be
+        // replaced by the older full snapshot that was on the server before reload.
+        await get().pullState()
         // Re-stamp the reminder's timezone on every load — keeps it correct if you're travelling,
         // without needing to revisit Settings.
         const tz = localTZ()
