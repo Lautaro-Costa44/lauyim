@@ -117,6 +117,7 @@ CREATE TABLE IF NOT EXISTS user_state (
   estado_inicial TEXT DEFAULT 'pendiente',
   onboarding_completado INTEGER DEFAULT 0,
   onboarding_stats_completado INTEGER DEFAULT 0,
+  onboarding_nutrition_completado INTEGER DEFAULT 0,
   edad INTEGER,
   altura INTEGER,
   objetivo TEXT,
@@ -143,6 +144,7 @@ CREATE TABLE IF NOT EXISTS user_state (
 -- COMANDOS ALTER TABLE PARA BASES YA EXISTENTES (user_state):
 -- ALTER TABLE user_state ADD COLUMN onboarding_completado INTEGER DEFAULT 0;
 -- ALTER TABLE user_state ADD COLUMN onboarding_stats_completado INTEGER DEFAULT 0;
+-- ALTER TABLE user_state ADD COLUMN onboarding_nutrition_completado INTEGER DEFAULT 0;
  
 -- Rutinas
 CREATE TABLE IF NOT EXISTS routines (

@@ -99,6 +99,8 @@ export function initDatabase() {
       target_w REAL,
       estado_inicial TEXT,
       onboarding_completado INTEGER,
+      onboarding_stats_completado INTEGER,
+      onboarding_nutrition_completado INTEGER,
       edad INTEGER,
       altura INTEGER,
       objetivo TEXT,
@@ -185,6 +187,7 @@ export function initDatabase() {
     ['equip_filter_on', 'INTEGER'],
     ['onboarding_completado', 'INTEGER'],
     ['onboarding_stats_completado', 'INTEGER'],
+    ['onboarding_nutrition_completado', 'INTEGER'],
     ['progression_type', 'TEXT'],
     ['progression_config', 'TEXT'],
     ['routine_groups', 'TEXT'],
@@ -530,6 +533,7 @@ export function getUserState(userId) {
     estadoInicial: row.estado_inicial,
     onboardingCompletado: row.onboarding_completado === 1,
     onboardingStatsCompletado: row.onboarding_stats_completado === 1,
+    onboardingNutritionCompletado: row.onboarding_nutrition_completado === 1,
     edad: row.edad,
     altura: row.altura,
     objetivo: row.objetivo,
@@ -574,10 +578,17 @@ export function saveUserState(userId, S) {
   const stateStmt = db.prepare(`
     INSERT OR REPLACE INTO user_state (
       user_id, _ts, unit, rest_sec, rest_pause_sec, sound, keep_awake, lang, theme, accent,
-      body, genero, gif_size, default_intensifier, default_sets, target_w, estado_inicial, onboarding_completado, onboarding_stats_completado, edad, altura, objetivo, grasa_corporal, nivel, peso_kg, configuracion,
+      body, genero, gif_size, default_intensifier, default_sets, target_w, estado_inicial, onboarding_completado, onboarding_stats_completado, onboarding_nutrition_completado, edad, altura, objetivo, grasa_corporal, nivel, peso_kg, configuracion,
       respuestas_encuesta, rutina_generada, fecha_ultima_encuesta, effort, auto_backup,
       active_equip_id, equip_filter_on, progression_type, progression_config
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (
+      ?, ?, ?, ?, ?, ?,
+      ?, ?, ?, ?, ?, ?,
+      ?, ?, ?, ?, ?, ?,
+      ?, ?, ?, ?, ?, ?,
+      ?, ?, ?, ?, ?, ?,
+      ?, ?, ?, ?, ?, ?
+    )
   `);
   stateStmt.run(
     userId,
@@ -599,6 +610,7 @@ export function saveUserState(userId, S) {
     S.estadoInicial || 'pendiente',
     S.onboardingCompletado ? 1 : 0,
     S.onboardingStatsCompletado ? 1 : 0,
+    S.onboardingNutritionCompletado ? 1 : 0,
     S.edad || null,
     S.altura || null,
     S.objetivo || null,

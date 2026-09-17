@@ -171,10 +171,10 @@ const stateFiles = fs.readdirSync(DATA).filter(f => f.startsWith('state-') && f.
 const stateStmt = sqlite.prepare(`
   INSERT OR REPLACE INTO user_state (
     user_id, _ts, unit, rest_sec, rest_pause_sec, sound, keep_awake, lang, theme, accent,
-    body, target_w, estado_inicial, onboarding_completado, onboarding_stats_completado, edad, altura, objetivo, grasa_corporal, nivel, peso_kg, configuracion,
+    body, target_w, estado_inicial, onboarding_completado, onboarding_stats_completado, onboarding_nutrition_completado, edad, altura, objetivo, grasa_corporal, nivel, peso_kg, configuracion,
     respuestas_encuesta, rutina_generada, fecha_ultima_encuesta, effort, auto_backup,
     active_equip_id, equip_filter_on
-  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `);
 
 const routineStmt = sqlite.prepare(`
@@ -269,6 +269,7 @@ for (const file of stateFiles) {
       S.estadoInicial || 'pendiente',
       S.onboardingCompletado ? 1 : 0,
       S.onboardingStatsCompletado ? 1 : 0,
+      S.onboardingNutritionCompletado ? 1 : 0,
       S.edad || null,
       S.altura || null,
       S.objetivo || null,

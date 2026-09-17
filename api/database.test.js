@@ -40,6 +40,7 @@ test('saveUserState ignores invalid routine references instead of breaking forei
     bodyweight: [],
     customEx: [],
     exNotes: {},
+    onboardingNutritionCompletado: true,
     reminder: null,
     equipProfiles: []
   };
@@ -50,6 +51,7 @@ test('saveUserState ignores invalid routine references instead of breaking forei
   assert.equal(saved.week[0], null);
   assert.equal(saved.dayPlan['2025-01-01'], null);
   assert.equal(saved.workouts[0].routineId, null);
+  assert.equal(saved.onboardingNutritionCompletado, true);
 });
 
 
