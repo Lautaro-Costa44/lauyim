@@ -60,6 +60,7 @@ function loadState() {
 }
 
 const hasData = st => !!((st.workouts || []).length || (st.routines || []).length || (st.bodyweight || []).length)
+const ONBOARDING_FLAGS = ['onboardingCompletado', 'onboardingStatsCompletado', 'onboardingNutritionCompletado']
 
 // Helper functions for routine groups management
 function syncGroupInStore() {
@@ -203,8 +204,16 @@ export const useStore = create((set, get) => {
         if (state && pending === 0 && (!hasData(S) || ((state._ts || 0) >= (S._ts || 0) && !dirty))) {
           const active = S.active
           const next = Object.assign(clone(DEF), state)
+          const onboardingChanges = []
+          for (const flag of ONBOARDING_FLAGS) {
+            if (S[flag] === true && state[flag] !== true) {
+              next[flag] = true
+              onboardingChanges.push({ path: [flag], op: state[flag] === undefined ? 'add' : 'replace', value: true })
+            }
+          }
           if (active) next.active = active
           persist(next, false, false)
+          if (onboardingChanges.length) enqueueSync(get().user.id, onboardingChanges, state._ts || null).then(() => scheduleSync(0))
         } else if (hasData(S) && !dirty && pending === 0) {
           // A newer local timestamp can mean offline edits that are already queued.
           // Never promote that snapshot with the legacy full-state PUT: nutrition is
