@@ -1048,19 +1048,29 @@ function parseRoutinesBody(body) {
 // antes/después en vez de tener un endpoint por operación.
 function logRoutineStateChanges({ actorUserId, targetUserId, before, after }) {
   const meta = r => ({ name: r.name, emoji: r.emoji });
+  const comparable = r => {
+    const value = { ...r, id: String(r.id), emoji: r.emoji || 'dumbbell', ex: r.ex || [] };
+    delete value.user_id;
+    delete value.created_at;
+    delete value.created;
+    return value;
+  };
   const summaries = [];
+  let changed = false;
   const beforeById = new Map(before.routines.map(r => [String(r.id), r]));
   const afterById = new Map(after.routines.map(r => [String(r.id), r]));
 
   for (const [id, r] of afterById) {
     const b = beforeById.get(id);
     if (!b) {
+      changed = true;
       summaries.push(`Rutina '${r.name}' creada`);
       logAdminAction({ actorUserId, targetUserId, action: 'routine.create', entityId: id, after: meta(r) });
       for (const ex of r.ex) logAdminAction({ actorUserId, targetUserId, action: 'routine.exercise.add', entityId: id, after: ex });
       continue;
     }
-    if (b.name !== r.name || (b.emoji || 'dumbbell') !== (r.emoji || 'dumbbell')) {
+    if (JSON.stringify(comparable(b)) !== JSON.stringify(comparable(r))) {
+      changed = true;
       summaries.push(`Rutina '${r.name}' actualizada`);
       logAdminAction({ actorUserId, targetUserId, action: 'routine.update', entityId: id, before: meta(b), after: meta(r) });
     }
@@ -1074,19 +1084,25 @@ function logRoutineStateChanges({ actorUserId, targetUserId, before, after }) {
   }
   for (const [id, r] of beforeById) {
     if (!afterById.has(id)) {
+      changed = true;
       summaries.push(`Rutina '${r.name}' eliminada`);
       logAdminAction({ actorUserId, targetUserId, action: 'routine.delete', entityId: id, before: meta(r) });
     }
   }
-  if (JSON.stringify(before.week) !== JSON.stringify(after.week) || JSON.stringify(before.dayPlan) !== JSON.stringify(after.dayPlan)) {
-    if (!summaries.length) summaries.push('Rutinas actualizadas');
+  const planChanged = JSON.stringify(before.week) !== JSON.stringify(after.week)
+    || JSON.stringify(before.dayPlan) !== JSON.stringify(after.dayPlan)
+    || JSON.stringify(before.routineGroups) !== JSON.stringify(after.routineGroups)
+    || before.activeGroupId !== after.activeGroupId;
+  if (planChanged) {
+    changed = true;
+    summaries.push('Grupo actualizado');
     logAdminAction({
       actorUserId, targetUserId, action: 'routine.plan.update',
       before: { week: before.week, dayPlan: before.dayPlan },
       after: { week: after.week, dayPlan: after.dayPlan }
     });
   }
-  return summaries;
+  return { changed, summaries };
 }
 
 if (AUDIT_ON) {
@@ -1626,10 +1642,14 @@ const routes = {
     saveWeekPlan(userId, parsed.week, validRoutineIds);
     saveDayPlan(userId, parsed.dayPlan, validRoutineIds);
     if (body.routineGroups !== undefined) saveRoutineGroups(userId, parsed.routineGroups, parsed.activeGroupId);
-    const routineSummaries = logRoutineStateChanges({ actorUserId: admin.id, targetUserId: userId, before, after: parsed });
-    const routineStateChanged = JSON.stringify({ ...before, routineGroups: body.routineGroups !== undefined ? parsed.routineGroups : before.routineGroups, activeGroupId: body.routineGroups !== undefined ? parsed.activeGroupId : before.activeGroupId })
-      !== JSON.stringify({ ...parsed, routineGroups: body.routineGroups !== undefined ? parsed.routineGroups : before.routineGroups, activeGroupId: body.routineGroups !== undefined ? parsed.activeGroupId : before.activeGroupId });
-    if (routineStateChanged) audit(req, 'admin.routine.update', { user: admin, target, summary: routineSummaries.join(' · ') || 'Rutinas actualizadas' });
+    const routineChange = logRoutineStateChanges({ actorUserId: admin.id, targetUserId: userId, before, after: parsed });
+    if (routineChange.changed) {
+      audit(req, 'admin.routine.update', {
+        user: admin,
+        target,
+        summary: routineChange.summaries.join(' · ') || 'Rutinas actualizadas'
+      });
+    }
     json(res, 200, {
       routines: getRoutinesByUserId(userId),
       week: getWeekPlanByUserId(userId),

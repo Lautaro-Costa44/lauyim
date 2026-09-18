@@ -34,14 +34,14 @@ describe('auditLabel', () => {
   it('renders final-state summaries for new admin events', () => {
     expect(auditLabel('admin.nutrition.goals.update')).not.toBe('Unknown activity')
     expect(auditLine({ ev: 'admin.nutrition.goals.update', ok: true, name: 'doctora', tname: 'socio', summary: 'Metas: manual · 2000 kcal · quema 500 · P150 C200 G60' }).sub)
-      .toBe('doctora · → socio · Metas: manual · 2000 kcal · quema 500 · P150 C200 G60')
+      .toBe('doctora → socio · Metas: manual · 2000 kcal · quema 500 · P150 C200 G60')
     expect(auditLine({ ev: 'admin.injury.update', ok: true, summary: 'Lesiones: ninguna' }).sub)
       .toBe('Lesiones: ninguna')
   })
 
   it('keeps old records without a summary unchanged', () => {
     expect(auditLine({ ev: 'admin.routine.update', ok: true, name: 'doctora', tname: 'socio' }).sub)
-      .toBe('doctora · → socio')
+      .toBe('doctora → socio')
   })
 
   it('uses a readable fallback instead of exposing a technical event name', () => {
@@ -92,13 +92,20 @@ describe('auditLine', () => {
   it('shows both sides of an admin action', () => {
     const l = auditLine({ ev: 'admin.user.disable', ok: true, uid: 'a', name: 'Duarte', tgt: 'b', tname: 'Ana' })
     expect(l.title).toBe('Disabled an account')
-    expect(l.sub).toBe('Duarte · → Ana')
+    expect(l.sub).toBe('Duarte → Ana')
   })
 
   it('shows both sides of owner actions', () => {
     const l = auditLine({ ev: 'owner.user.promote', ok: true, name: 'doctora', tname: 'santiago miano' })
     expect(l.title).toBe('Promoted to Admin')
-    expect(l.sub).toBe('doctora · → santiago miano')
+    expect(l.sub).toBe('doctora → santiago miano')
+  })
+
+  it('joins actor, target, and summary without a dangling separator', () => {
+    expect(auditLine({ ev: 'admin.routine.update', ok: true, name: 'doctora', tname: 'testeando', summary: "Rutina 'Push' actualizada" }).sub)
+      .toBe("doctora → testeando · Rutina 'Push' actualizada")
+    expect(auditLine({ ev: 'admin.routine.update', ok: true, tname: 'testeando', summary: 'Grupo actualizado' }).sub)
+      .toBe('→ testeando · Grupo actualizado')
   })
 
   it('translates the reason on a failure but not the invite code on a success', () => {
@@ -127,6 +134,10 @@ describe('auditLine', () => {
 
   it('renders nothing rather than throwing on a missing record', () => {
     expect(auditLine(undefined)).toEqual({ title: '', sub: '' })
+  })
+
+  it('renders an old record without actor, target, or summary', () => {
+    expect(auditLine({ ev: 'admin.routine.update', ok: true }).sub).toBe('')
   })
 })
 

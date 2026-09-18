@@ -431,7 +431,7 @@ export default {
   'Assigned a suggested meal': 'Asignó una sugerencia', 'Created a suggested meal': 'Creó una sugerencia',
   'Updated a suggested meal': 'Actualizó una sugerencia', 'Changed a suggested meal status': 'Cambió el estado de una sugerencia',
   'Removed a suggested meal': 'Eliminó una sugerencia', 'Updated injuries': 'Actualizó las lesiones',
-  'Overrode an injury warning': 'Ignoró una advertencia de lesión', 'Updated a routine': 'Actualizó una rutina',
+  'Overrode an injury warning': 'Ignoró una advertencia de lesión', 'Updated a routine': 'Modificó rutinas',
   'Nothing logged yet.': 'Aún no hay registros.', 'Gym membership fee': 'Cuota del gimnasio',
   'Receive a reminder when your membership fee is due.': 'Recibe un aviso cuando venza tu cuota.', 'Payment frequency': 'Periodicidad del pago',
   'Monthly': 'Mensual', 'Quarterly': 'Trimestral', 'Every two months': 'Bimensual', 'Annual': 'Anual', 'Next payment date': 'Próxima fecha de pago',

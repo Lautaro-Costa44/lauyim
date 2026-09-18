@@ -83,10 +83,12 @@ export const auditReason = msg => t(REASONS[msg] || (msg ? String(msg) : ''))
 export function auditLine(e) {
   if (!e) return { title: '', sub: '' }
   const parts = []
-  if (e.name) parts.push(e.name)
-  else if (e.uid) parts.push(e.uid)
-  else if (!e.ok) parts.push(t('unknown caller'))
-  if (e.tname) parts.push('→ ' + e.tname)
+  const identity = []
+  if (e.name) identity.push(e.name)
+  else if (e.uid) identity.push(e.uid)
+  else if (!e.ok) identity.push(t('unknown caller'))
+  if (e.tname) identity.push('→ ' + e.tname)
+  if (identity.length) parts.push(identity.join(' '))
   if (e.summary) parts.push(e.summary)
   // The reason codes and the invite codes share the msg field; only failures read as a reason.
   if (e.msg) parts.push(e.ok ? e.msg : auditReason(e.msg))
