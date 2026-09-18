@@ -155,7 +155,11 @@ function OptionGrid({ opciones, valor, onSelect }) {
   )
 }
 
-function CheckPill({ checked, onChange, children }) {
+// Reutilizados por el panel admin (Administrar Rutina → Lesiones, Administrar Nutrición →
+// Metas) para no duplicar catálogos ni la pill de selección.
+export const LESIONES_OPTIONS = OPT.lesiones
+export const OBJETIVO_OPTIONS = OPT.objetivo
+export function CheckPill({ checked, onChange, children }) {
   return (
     <button
       className={'survey-pill' + (checked ? ' on' : '')}

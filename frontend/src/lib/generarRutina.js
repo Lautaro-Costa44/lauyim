@@ -87,6 +87,23 @@ const LESION_RULES = {
   gemelos_tobillos: { bpExclude: ['lower legs'], tgExclude: ['calves'], keywords: ['jump', 'box jump', 'calf raise', 'skip', 'ankle'] },
 }
 
+// Fase 7 — panel admin: misma regla que prepararPoolSeguro usa para excluir ejercicios del
+// generador automático, reutilizada acá solo para decidir si mostrar una advertencia en la
+// asignación manual. No toca ni reemplaza la exclusión preventiva de arriba.
+export function ejercicioAfectaLesion(ex, lesion) {
+  const rule = LESION_RULES[lesion]
+  if (!ex || !rule) return false
+  if (rule.bpExclude?.includes(ex.bp)) return true
+  if (rule.tgExclude?.includes(ex.tg)) return true
+  const nLower = (ex.n || '').toLowerCase()
+  return (rule.keywords || []).some(kw => nLower.includes(kw))
+}
+
+// Lesiones (de las que tiene el socio) que este ejercicio afecta, según la regla de arriba.
+export function lesionesAfectadasPorEjercicio(ex, lesiones = []) {
+  return (lesiones || []).filter(lesion => ejercicioAfectaLesion(ex, lesion))
+}
+
 const RARE_KEYWORDS = ['male', 'female', 'pyramid', 'wheel', 'bosu', 'single leg cable', 'roller', 'foam', 'stability ball', 'swiss ball', 'towel', 'stick']
 
 function esRaro(n) {

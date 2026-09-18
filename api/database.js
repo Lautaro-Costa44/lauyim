@@ -689,8 +689,7 @@ export function saveUserState(userId, S) {
 
   // Guardar equipment profiles
   saveEquipProfiles(userId, S.equipProfiles || []);
-  db.prepare('UPDATE user_state SET routine_groups = ?, active_group_id = ? WHERE user_id = ?')
-    .run(JSON.stringify(S.routineGroups || []), S.activeGroupId || null, userId);
+  saveRoutineGroups(userId, S.routineGroups || [], S.activeGroupId || null);
   db.prepare('UPDATE user_state SET sync_versions = ? WHERE user_id = ?')
     .run(JSON.stringify(S._syncVersions || {}), userId);
   db.prepare('UPDATE user_state SET nutrition_goals = ? WHERE user_id = ?')
@@ -701,7 +700,7 @@ export function saveUserState(userId, S) {
 // Metas nutricionales manuales (Admin/Owner override; ver Fase 2 del prompt)
 // ============================================================
 
-const DEFAULT_NUTRITION_GOALS = { mode: 'automatic', calories: null, protein: null, carbs: null, fat: null, updatedAt: null, updatedBy: null };
+const DEFAULT_NUTRITION_GOALS = { mode: 'automatic', objetivo: null, calories: null, caloriesBurn: null, protein: null, carbs: null, fat: null, updatedAt: null, updatedBy: null };
 
 export function getNutritionGoals(userId) {
   const row = getDatabase().prepare('SELECT nutrition_goals FROM user_state WHERE user_id = ?').get(userId);
@@ -715,6 +714,29 @@ export function setNutritionGoals(userId, goals) {
     INSERT INTO user_state (user_id, nutrition_goals) VALUES (?, ?)
     ON CONFLICT(user_id) DO UPDATE SET nutrition_goals = excluded.nutrition_goals
   `).run(userId, JSON.stringify(goals));
+}
+
+// ============================================================
+// Lesiones (Fase 7 — panel admin, bloque Lesiones de Administrar Rutina)
+// Viven dentro de respuestasEncuesta.lesiones (mismo campo que llena el paso 5 de
+// SurveyWizard), así que se lee/escribe el resto del blob tal cual para no pisarlo.
+// ============================================================
+
+export function getLesiones(userId) {
+  const row = getDatabase().prepare('SELECT respuestas_encuesta FROM user_state WHERE user_id = ?').get(userId);
+  const resp = row ? safeJsonParse(row.respuestas_encuesta, null) : null;
+  return Array.isArray(resp?.lesiones) ? resp.lesiones : [];
+}
+
+export function saveLesiones(userId, lesiones) {
+  const db = getDatabase();
+  const row = db.prepare('SELECT respuestas_encuesta FROM user_state WHERE user_id = ?').get(userId);
+  const resp = (row && safeJsonParse(row.respuestas_encuesta, null)) || {};
+  resp.lesiones = lesiones;
+  db.prepare(`
+    INSERT INTO user_state (user_id, respuestas_encuesta) VALUES (?, ?)
+    ON CONFLICT(user_id) DO UPDATE SET respuestas_encuesta = excluded.respuestas_encuesta
+  `).run(userId, JSON.stringify(resp));
 }
 
 // ============================================================
@@ -873,6 +895,18 @@ export function getRoutinesByUserId(userId) {
   }
 
   return routines;
+}
+
+export function getRoutineGroups(userId) {
+  const row = getDatabase().prepare('SELECT routine_groups, active_group_id FROM user_state WHERE user_id = ?').get(userId) || {};
+  return { routineGroups: safeJsonParse(row.routine_groups, []), activeGroupId: row.active_group_id || null };
+}
+
+export function saveRoutineGroups(userId, routineGroups, activeGroupId) {
+  getDatabase().prepare(`
+    INSERT INTO user_state (user_id, routine_groups, active_group_id) VALUES (?, ?, ?)
+    ON CONFLICT(user_id) DO UPDATE SET routine_groups = excluded.routine_groups, active_group_id = excluded.active_group_id
+  `).run(userId, JSON.stringify(routineGroups || []), activeGroupId || null);
 }
 
 export function saveRoutines(userId, routines) {

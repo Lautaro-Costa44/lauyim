@@ -121,7 +121,7 @@ export function ajustarPorDiaEntreno(caloriasBase, huboEntrenoHoy) {
  * y se muestra igual que siempre: el socio no debe notar que el número final vino de otro
  * lado (regla de prioridad total del admin, sin indicios en la UI).
  */
-export function calcularMetasNutricionales(S) {
+export function calcularMetasNutricionales(S, { automaticoHabilitado = true } = {}) {
   const resp = S.respuestasEncuesta || {}
   const bwObj = lastBW(S)
   const peso = bwObj ? bwObj.w : (resp.pesoKg || 70)
@@ -140,12 +140,17 @@ export function calcularMetasNutricionales(S) {
   const { grasasMeta: grasasAutomaticas, carbosMeta: carbosAutomaticos } = calcularMetasMacros(sugeridoAutomatico, metaProteinaAutomatica)
 
   const manual = S.nutritionGoals?.mode === 'manual' ? S.nutritionGoals : null
+  const usarAutomatico = automaticoHabilitado && !manual
   return {
-    peso, altura, edad, objetivo, objetivoInterno, tmb, tdee,
-    mantenimiento: tdee,
-    sugerido: manual ? manual.calories : sugeridoAutomatico,
-    metaProteina: manual ? manual.protein : metaProteinaAutomatica,
-    carbosMeta: manual ? manual.carbs : carbosAutomaticos,
-    grasasMeta: manual ? manual.fat : grasasAutomaticas,
+    peso, altura, edad, objetivo: manual?.objetivo || objetivo, objetivoInterno, tmb,
+    // caloriesBurn es una etiqueta informativa ("Kcalorías a quemar"), no está sujeta a
+    // NUTRICION_AUTOMATICO: si el admin la cargó, reemplaza el gasto total diario mostrado.
+    mantenimiento: manual?.caloriesBurn ?? tdee,
+    tdee,
+    sugerido: manual ? manual.calories : (usarAutomatico ? sugeridoAutomatico : null),
+    metaProteina: manual ? manual.protein : (usarAutomatico ? metaProteinaAutomatica : null),
+    carbosMeta: manual ? manual.carbs : (usarAutomatico ? carbosAutomaticos : null),
+    grasasMeta: manual ? manual.fat : (usarAutomatico ? grasasAutomaticas : null),
+    sinMetas: !manual && !usarAutomatico,
   }
 }

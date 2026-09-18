@@ -12,12 +12,16 @@ import { Button, SelectRow } from '../components/ui.jsx'
 import { NO_AUTOFILL } from '../lib/input-safety.js'
 import { POLICIES_FOR, POLICY_NAME, POLICY_DESC } from '../lib/progression.js'
 import BodyMap from '../components/BodyMap.jsx'
-import { loadOfRoutine, rankOf, MUSCLE_NAME } from '../lib/muscles.js'
+import { loadOfRoutine, rankOf, MUSCLE_NAME, muscleGroupsOf } from '../lib/muscles.js'
+import { lesionesAfectadasPorEjercicio } from '../lib/generarRutina.js'
 
 // Edición de una rutina. Presentacional: no sabe de dónde viene `S`/`routine` ni a dónde va
 // `update` — RoutineEdit.jsx (socio, useStore) y AdminRoutineEditor (admin, draft local) le
 // pasan su propia fuente de datos para no duplicar esta lógica (regla "no copiar y pegar").
-export default function RoutineEditor({ routine: r, S, update, onBack, onDeleted }) {
+// `lesiones`/`onInjuryOverride` son exclusivos del flujo admin (Fase 7, B.2): si vienen, se
+// avisa antes de agregar un ejercicio que afecta una zona lesionada del socio. El socio nunca
+// pasa estas props, así que RoutineEdit.jsx queda exactamente como estaba.
+export default function RoutineEditor({ routine: r, S, update, onBack, onDeleted, lesiones, onInjuryOverride }) {
   const edit = fn => update(routines => {
     const target = routines.find(x => x.id === r.id)
     if (target) {
@@ -211,7 +215,20 @@ export default function RoutineEditor({ routine: r, S, update, onBack, onDeleted
     })()}
 
     <div className="small dim row" style={{ margin: '12px 2px', gap: 5 }}><Icon name="link" style={{ fontSize: 13 }} />{t('Tap the link button on an exercise to superset it with the one above — you’ll do them back-to-back.')}</div>
-    <Button variant="primary" onClick={() => exercisePicker(ex => exConfigSheet(ex, null, cfg => edit(x => { x.push({ id: ex.id, ...cfg }) }), null, r))} icon="plus">{t('Add exercise')}</Button>
+    <Button variant="primary" onClick={() => exercisePicker(ex => {
+      const commit = () => exConfigSheet(ex, null, cfg => edit(x => { x.push({ id: ex.id, ...cfg }) }), null, r)
+      const matched = lesiones && lesiones.length ? lesionesAfectadasPorEjercicio(ex, lesiones) : []
+      if (!matched.length) return commit()
+      const musculos = muscleGroupsOf(ex).map(m => t(MUSCLE_NAME[m] || m)).join(', ') || ex.bp || ex.n
+      confirmSheet({
+        title: t('⚠ Este ejercicio trabaja: {0}', musculos),
+        message: t('El socio tiene registrada una lesión relacionada con esta zona.'),
+        confirmText: t('Asignar igualmente'),
+        cancelText: t('Cancelar'),
+        danger: true,
+        onConfirm: () => { onInjuryOverride?.(ex, matched); commit() }
+      })
+    })} icon="plus">{t('Add exercise')}</Button>
     <div style={{ height: 10 }} />
     <Button variant="danger" onClick={() => confirmSheet({
       title: t('Delete routine?'),

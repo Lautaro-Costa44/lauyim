@@ -67,6 +67,10 @@ import {
   logAdminAction,
   getRoutinesByUserId,
   saveRoutines,
+  getRoutineGroups,
+  saveRoutineGroups,
+  getLesiones,
+  saveLesiones,
   getWeekPlanByUserId,
   saveWeekPlan,
   getDayPlanByUserId,
@@ -108,6 +112,11 @@ function escapeHtml(value) {
 // Motor de encuesta de onboarding y generación de rutinas. Default true; poner SURVEY_ENABLED=false
 // para ocultar completamente la opción en el frontend sin afectar rutinas ya generadas.
 const SURVEY_ENABLED = !/^(0|false|no|off)$/i.test(process.env.SURVEY_ENABLED || 'true');
+// Única variable del módulo de nutrición (metas + sugerencias de comida). Default true.
+// NUTRICION_AUTOMATICO=0 oculta el toggle de cálculo automático en el panel admin: el modo
+// es siempre manual y, sin metas/sugerencias cargadas por el admin, el socio no ve ningún
+// valor calculado ni las plantillas globales.
+const NUTRICION_AUTOMATICO = !/^(0|false|no|off)$/i.test(process.env.NUTRICION_AUTOMATICO || 'true');
 // 90 days keeps someone who trains a few times a week permanently signed in without a stolen
 // cookie staying good for a year. Overridable because a family instance and one on the open
 // internet don't want the same number. Only affects cookies minted from now on — the expiry is
@@ -880,27 +889,51 @@ function validarIngredientes(ingredientes) {
   });
 }
 
-function isReasonableMacro(value) {
+// Mismos 4 objetivos que ofrece el paso 1 de SurveyWizard.jsx (OPT.objetivo) — sin catálogo
+// paralelo, la lista vive una sola vez en el frontend.
+const OBJETIVOS_VALIDOS = new Set(['hipertrofia', 'fuerza', 'perder_grasa', 'fitness_general']);
+
+// Campo vacío ('', null, undefined) => null, nunca 0 (regla A.3). Positivo y dentro de un
+// rango razonable si viene con valor.
+function parsePositiveOrNull(value, max) {
+  if (value === null || value === undefined || value === '') return { ok: true, value: null };
   const n = Number(value);
-  return Number.isFinite(n) && n > 0 && n <= 20000;
+  if (!Number.isFinite(n) || n <= 0 || n > max) return { ok: false, value: null };
+  return { ok: true, value: n };
 }
 
 // Body shape: { mode: 'automatic' } clears the manual override, or
-// { mode: 'manual', calories, protein, carbs, fat } sets it. Returns null on invalid input.
+// { mode: 'manual', objetivo, calories, caloriesBurn, protein, carbs, fat } sets it —
+// cada numérico es independiente y puede quedar vacío (null). Returns null on invalid input.
 function parseNutritionGoalsBody(body) {
   if (body?.mode === 'automatic') {
-    return { mode: 'automatic', calories: null, protein: null, carbs: null, fat: null };
+    return { mode: 'automatic', objetivo: null, calories: null, caloriesBurn: null, protein: null, carbs: null, fat: null };
   }
   if (body?.mode !== 'manual') return null;
-  const { calories, protein, carbs, fat } = body;
-  if (![calories, protein, carbs, fat].every(isReasonableMacro)) return null;
-  return { mode: 'manual', calories: Number(calories), protein: Number(protein), carbs: Number(carbs), fat: Number(fat) };
+  const objetivoRaw = body.objetivo;
+  const objetivo = (objetivoRaw === null || objetivoRaw === undefined || objetivoRaw === '') ? null : objetivoRaw;
+  if (objetivo !== null && !OBJETIVOS_VALIDOS.has(objetivo)) return null;
+  const calories = parsePositiveOrNull(body.calories, 20000);
+  const caloriesBurn = parsePositiveOrNull(body.caloriesBurn, 20000);
+  const protein = parsePositiveOrNull(body.protein, 2000);
+  const carbs = parsePositiveOrNull(body.carbs, 2000);
+  const fat = parsePositiveOrNull(body.fat, 2000);
+  if (![calories, caloriesBurn, protein, carbs, fat].every(r => r.ok)) return null;
+  return {
+    mode: 'manual', objetivo,
+    calories: calories.value, caloriesBurn: caloriesBurn.value,
+    protein: protein.value, carbs: carbs.value, fat: fat.value
+  };
 }
 
 function suggestionResponse(row) {
+  let franjas = [];
+  try { franjas = JSON.parse(row.franjas_recomendadas || '[]'); } catch { franjas = []; }
+  if (!franjas.length) franjas = inferirFranjasPlantilla(row.nombre, row.categoria);
   return {
     id: row.id, nombre: row.nombre, categoria: row.categoria, enabled: !!row.enabled, position: row.position,
     assignedBy: row.assigned_by, createdAt: row.created_at, updatedAt: row.updated_at,
+    franjas,
     ingredientes: (row.ingredientes || []).map(i => ({
       id: i.id, nombre_alimento: i.nombre_alimento, cantidad_gramos: i.cantidad_gramos,
       calorias: i.calorias, proteina: i.proteina, carbohidratos: i.carbohidratos, grasas: i.grasas
@@ -908,12 +941,12 @@ function suggestionResponse(row) {
   };
 }
 
-// Body validado para PUT /api/admin/users/:userId/routines (Fase 6). Misma forma que
-// {routines, week, dayPlan} que ya maneja saveUserState() — sin campos nuevos.
-function parseRoutinesBody(body) {
-  if (!Array.isArray(body?.routines)) return null;
+// Parsea y valida un array de rutinas con la misma forma usada tanto para el bloque
+// suelto {routines,week,dayPlan} como para las rutinas congeladas dentro de cada grupo.
+function parseRoutineList(list) {
+  if (!Array.isArray(list)) return null;
   const routines = [];
-  for (const r of body.routines) {
+  for (const r of list) {
     if (!r || typeof r !== 'object') return null;
     const id = String(r.id || '').trim();
     const name = String(r.name || '').trim();
@@ -926,9 +959,36 @@ function parseRoutinesBody(body) {
     }
     routines.push({ id, name, emoji: r.emoji || 'dumbbell', created: r.created_at || r.created || Date.now(), ex });
   }
+  return routines;
+}
+
+// Body validado para PUT /api/admin/users/:userId/routines (Fase 6 + 7). Misma forma que
+// {routines, week, dayPlan, routineGroups, activeGroupId} que ya maneja saveUserState()
+// del lado del socio (frontend/src/lib/routineGroups.js) — sin campos nuevos.
+function parseRoutinesBody(body) {
+  const routines = parseRoutineList(body?.routines);
+  if (!routines) return null;
   const week = (body.week && typeof body.week === 'object' && !Array.isArray(body.week)) ? body.week : {};
   const dayPlan = (body.dayPlan && typeof body.dayPlan === 'object' && !Array.isArray(body.dayPlan)) ? body.dayPlan : {};
-  return { routines, week, dayPlan };
+
+  let routineGroups = [];
+  if (body.routineGroups !== undefined) {
+    if (!Array.isArray(body.routineGroups)) return null;
+    for (const g of body.routineGroups) {
+      if (!g || typeof g !== 'object') return null;
+      const id = String(g.id || '').trim();
+      const name = String(g.name || '').trim();
+      if (!id || !name) return null;
+      const groupRoutines = parseRoutineList(g.routines || []);
+      if (!groupRoutines) return null;
+      const groupWeek = (g.week && typeof g.week === 'object' && !Array.isArray(g.week)) ? g.week : {};
+      routineGroups.push({ id, name, routines: groupRoutines, week: groupWeek, createdAt: g.createdAt || Date.now() });
+    }
+  }
+  const activeGroupId = body.activeGroupId !== undefined ? (body.activeGroupId ? String(body.activeGroupId) : null) : null;
+  if (activeGroupId && !routineGroups.some(g => g.id === activeGroupId)) return null;
+
+  return { routines, week, dayPlan, routineGroups, activeGroupId };
 }
 
 // Auditoría granular de Fase 6/8: el guardado admin reemplaza el blob completo de rutinas
@@ -1168,6 +1228,9 @@ const routes = {
         const resultado = soloFranja ? mapeadas.filter(p => p.franjas_recomendadas.includes(soloFranja)) : mapeadas;
         return json(res, 200, resultado);
       }
+      // Sin sugerencias del admin y NUTRICION_AUTOMATICO=0: nada de plantillas globales,
+      // el socio depende exclusivamente de lo que cargue el admin.
+      if (!NUTRICION_AUTOMATICO) return json(res, 200, []);
     }
 
     return json(res, 200, obtenerPlantillas(getDatabase(), user.id, categoria, soloUsuario, franja));
@@ -1325,19 +1388,54 @@ const routes = {
     json(res, 200, { ok: true });
   },
 
+  // Fase 7 (B.2): el admin confirmó igual asignar un ejercicio que afecta una zona lesionada
+  // del socio. No muta nada — solo deja rastro auditado del override.
+  'POST /api/admin/users/:userId/injuries/exercise-warning-override': async (req, res) => {
+    const admin = requireAdmin(req, res); if (!admin) return;
+    const userId = decodeURIComponent(new URL(req.url, 'http://x').pathname.split('/')[4]);
+    const target = requireActiveTargetUser(res, userId); if (!target) return;
+    const body = await readBody(req);
+    const exerciseId = String(body?.exerciseId || '').trim();
+    if (!exerciseId) return json(res, 400, { error: 'Falta exerciseId' });
+    const lesionesAfectadas = Array.isArray(body?.lesiones) ? body.lesiones.filter(l => typeof l === 'string') : [];
+    logAdminAction({ actorUserId: admin.id, targetUserId: userId, action: 'injury.exercise_warning.override', entityId: exerciseId, after: { exerciseId, lesiones: lesionesAfectadas } });
+    audit(req, 'admin.injury.exercise_warning.override', { user: admin, target, msg: exerciseId });
+    json(res, 200, { ok: true });
+  },
+
   /* ---------- admin: rutinas de un socio (Fase 6) ---------- */
   'GET /api/admin/users/:userId/routines': async (req, res) => {
     const admin = requireAdmin(req, res); if (!admin) return;
     const userId = decodeURIComponent(new URL(req.url, 'http://x').pathname.split('/')[4]);
     if (!getUserById(userId)) return json(res, 404, { error: 'El usuario no existe' });
     const prefs = getDatabase().prepare('SELECT unit, body FROM user_state WHERE user_id = ?').get(userId) || {};
+    const { routineGroups, activeGroupId } = getRoutineGroups(userId);
     json(res, 200, {
       routines: getRoutinesByUserId(userId),
       week: getWeekPlanByUserId(userId),
       dayPlan: getDayPlanByUserId(userId),
+      routineGroups,
+      activeGroupId,
+      lesiones: getLesiones(userId),
       unit: prefs.unit || 'kg',
       body: prefs.body || 'male'
     });
+  },
+
+  'PUT /api/admin/users/:userId/injuries': async (req, res) => {
+    const admin = requireAdmin(req, res); if (!admin) return;
+    const userId = decodeURIComponent(new URL(req.url, 'http://x').pathname.split('/')[4]);
+    const target = requireActiveTargetUser(res, userId); if (!target) return;
+    const body = await readBody(req);
+    if (!Array.isArray(body?.lesiones) || !body.lesiones.every(l => typeof l === 'string' && l.trim())) {
+      return json(res, 400, { error: 'Lesiones inválidas' });
+    }
+    const lesiones = [...new Set(body.lesiones.map(l => l.trim()))];
+    const before = getLesiones(userId);
+    saveLesiones(userId, lesiones);
+    logAdminAction({ actorUserId: admin.id, targetUserId: userId, action: 'injury.update', entityId: userId, before: { lesiones: before }, after: { lesiones } });
+    audit(req, 'admin.injury.update', { user: admin, target });
+    json(res, 200, { lesiones });
   },
 
   'PUT /api/admin/users/:userId/routines': async (req, res) => {
@@ -1350,18 +1448,21 @@ const routes = {
     const before = {
       routines: getRoutinesByUserId(userId),
       week: getWeekPlanByUserId(userId),
-      dayPlan: getDayPlanByUserId(userId)
+      dayPlan: getDayPlanByUserId(userId),
+      ...getRoutineGroups(userId)
     };
     const validRoutineIds = new Set(parsed.routines.map(r => r.id));
     saveRoutines(userId, parsed.routines);
     saveWeekPlan(userId, parsed.week, validRoutineIds);
     saveDayPlan(userId, parsed.dayPlan, validRoutineIds);
+    if (body.routineGroups !== undefined) saveRoutineGroups(userId, parsed.routineGroups, parsed.activeGroupId);
     logRoutineStateChanges({ actorUserId: admin.id, targetUserId: userId, before, after: parsed });
     audit(req, 'admin.routine.update', { user: admin, target });
     json(res, 200, {
       routines: getRoutinesByUserId(userId),
       week: getWeekPlanByUserId(userId),
-      dayPlan: getDayPlanByUserId(userId)
+      dayPlan: getDayPlanByUserId(userId),
+      ...getRoutineGroups(userId)
     });
   },
 
@@ -1632,6 +1733,7 @@ const routes = {
     json(res, 200, {
       invite_only: INVITE_ONLY,
       allow_guest: ALLOW_GUEST,
+      nutricion_automatico: NUTRICION_AUTOMATICO,
       instance_name: process.env.INSTANCE_NAME || req.headers['x-forwarded-host'] || req.headers['host'] || 'lauyim'
     });
   },
@@ -2412,6 +2514,14 @@ http.createServer(async (req, res) => {
       ? 'PATCH /api/admin/users/:userId/nutrition/suggestions/:id'
     : req.method === 'DELETE' && /^\/api\/admin\/users\/[^/]+\/nutrition\/suggestions\/[^/]+$/.test(url.pathname)
       ? 'DELETE /api/admin/users/:userId/nutrition/suggestions/:id'
+    : req.method === 'GET' && /^\/api\/admin\/users\/[^/]+\/routines$/.test(url.pathname)
+      ? 'GET /api/admin/users/:userId/routines'
+    : req.method === 'PUT' && /^\/api\/admin\/users\/[^/]+\/routines$/.test(url.pathname)
+      ? 'PUT /api/admin/users/:userId/routines'
+    : req.method === 'PUT' && /^\/api\/admin\/users\/[^/]+\/injuries$/.test(url.pathname)
+      ? 'PUT /api/admin/users/:userId/injuries'
+    : req.method === 'POST' && /^\/api\/admin\/users\/[^/]+\/injuries\/exercise-warning-override$/.test(url.pathname)
+      ? 'POST /api/admin/users/:userId/injuries/exercise-warning-override'
     : key;
 
   const rateLimitMax = routeKey === 'POST /api/access/qr'

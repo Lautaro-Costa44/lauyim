@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import Icon from '../components/Icon.jsx'
 import { api } from '../lib/api.js'
 import { calcularMetasNutricionales } from '../lib/nutricion.js'
+import { useStore } from '../store/useStore.js'
 
 const HISTORY_CACHE_KEY = 'gym_nutrition_history_v1:30'
 const readHistoryCache = () => {
@@ -55,7 +56,8 @@ export default function HistorialNutricion({ close, S }) {
   const historyEntryRef = useRef(false)
   const closingRef = useRef(false)
 
-  const { sugerido, metaProteina, carbosMeta, grasasMeta } = calcularMetasNutricionales(S)
+  const automaticoHabilitado = useStore(s => s.config?.nutricion_automatico) !== false
+  const { sugerido, metaProteina, carbosMeta, grasasMeta, sinMetas } = calcularMetasNutricionales(S, { automaticoHabilitado })
   const total = dias.reduce((result, dia) => ({
     calorias: result.calorias + Number(dia.calorias || 0),
     proteina: result.proteina + Number(dia.proteina || 0),
@@ -122,10 +124,14 @@ export default function HistorialNutricion({ close, S }) {
       <div className="card">
         <h2 style={{ marginBottom: 4 }}>Cumplimiento nutricional promedio</h2>
         <div className="small muted">Promedio diario de los últimos 30 días</div>
-        <MacroBar label="Calorías" actual={promedio.calorias} target={sugerido} />
-        <MacroBar label="Proteínas" actual={promedio.proteina} target={metaProteina} />
-        <MacroBar label="Carbohidratos" actual={promedio.carbohidratos} target={carbosMeta} />
-        <MacroBar label="Grasas" actual={promedio.grasas} target={grasasMeta} />
+        {sinMetas
+          ? <div className="dim small" style={{ marginTop: 10 }}>Todavía no tenés metas nutricionales configuradas.</div>
+          : <>
+            <MacroBar label="Calorías" actual={promedio.calorias} target={sugerido} />
+            <MacroBar label="Proteínas" actual={promedio.proteina} target={metaProteina} />
+            <MacroBar label="Carbohidratos" actual={promedio.carbohidratos} target={carbosMeta} />
+            <MacroBar label="Grasas" actual={promedio.grasas} target={grasasMeta} />
+          </>}
       </div>
 
       <div style={{ height: 'var(--hair)', background: 'var(--sep)', margin: '16px 14px' }} />

@@ -81,6 +81,82 @@ test('QR access token is generated once and persisted in admin_settings', () => 
   assert.equal(dbMod.getAdminSetting('qr_access_token'), first);
 });
 
+test('getRoutineGroups defaults to empty for a user with no state row yet (GET admin routines → 200 vacío)', () => {
+  dbMod.initDatabase();
+  dbMod.createUser({ id: 'nogroups1', name: 'Sin grupos', admin: false, disabled: false, created: Date.now() });
+
+  const { routineGroups, activeGroupId } = dbMod.getRoutineGroups('nogroups1');
+  assert.deepEqual(routineGroups, []);
+  assert.equal(activeGroupId, null);
+  assert.deepEqual(dbMod.getRoutinesByUserId('nogroups1'), []);
+});
+
+test('saveRoutineGroups/getRoutineGroups round-trip (Fase 7: grupos del panel admin)', () => {
+  dbMod.initDatabase();
+  dbMod.createUser({ id: 'groups1', name: 'Con grupos', admin: false, disabled: false, created: Date.now() });
+
+  const groups = [
+    { id: 'g1', name: 'Push/Pull/Legs', routines: [{ id: 'r1', name: 'Push', emoji: 'dumbbell', created: 1, ex: [] }], week: { 0: 'r1' }, createdAt: 1 }
+  ];
+  dbMod.saveRoutineGroups('groups1', groups, 'g1');
+
+  const loaded = dbMod.getRoutineGroups('groups1');
+  assert.equal(loaded.activeGroupId, 'g1');
+  assert.equal(loaded.routineGroups.length, 1);
+  assert.equal(loaded.routineGroups[0].name, 'Push/Pull/Legs');
+  assert.equal(loaded.routineGroups[0].routines[0].id, 'r1');
+});
+
+test('getLesiones defaults to empty and saveLesiones preserves other respuestasEncuesta fields', () => {
+  dbMod.initDatabase();
+  dbMod.createUser({ id: 'inj1', name: 'Con lesión', admin: false, disabled: false, created: Date.now() });
+
+  assert.deepEqual(dbMod.getLesiones('inj1'), []);
+
+  dbMod.saveUserState('inj1', {
+    _ts: Date.now(), unit: 'kg', routines: [], week: {}, dayPlan: {}, workouts: [],
+    exWeights: {}, bodyweight: [], customEx: [], exNotes: {}, reminder: null, equipProfiles: [],
+    respuestasEncuesta: { sexoBiologico: 'femenino', diasSeleccionados: ['lunes'], lesiones: [] }
+  });
+
+  dbMod.saveLesiones('inj1', ['hombros', 'rodillas']);
+  assert.deepEqual(dbMod.getLesiones('inj1'), ['hombros', 'rodillas']);
+
+  const state = dbMod.getUserState('inj1');
+  assert.equal(state.respuestasEncuesta.sexoBiologico, 'femenino');
+  assert.deepEqual(state.respuestasEncuesta.diasSeleccionados, ['lunes']);
+  assert.deepEqual(state.respuestasEncuesta.lesiones, ['hombros', 'rodillas']);
+});
+
+test('setNutritionGoals/getNutritionGoals round-trip objetivo + caloriesBurn (A.3)', () => {
+  dbMod.initDatabase();
+  dbMod.createUser({ id: 'goals1', name: 'Con metas', admin: false, disabled: false, created: Date.now() });
+
+  const defaults = dbMod.getNutritionGoals('goals1');
+  assert.equal(defaults.mode, 'automatic');
+  assert.equal(defaults.objetivo, null);
+  assert.equal(defaults.caloriesBurn, null);
+
+  dbMod.setNutritionGoals('goals1', {
+    mode: 'manual', objetivo: 'perder_grasa', calories: 1800, caloriesBurn: 2500,
+    protein: 140, carbs: 180, fat: 55, updatedAt: Date.now(), updatedBy: 'admin1'
+  });
+  const saved = dbMod.getNutritionGoals('goals1');
+  assert.equal(saved.objetivo, 'perder_grasa');
+  assert.equal(saved.caloriesBurn, 2500);
+  assert.equal(saved.calories, 1800);
+
+  // Metas guardadas ANTES de que existieran objetivo/caloriesBurn (sin esas keys en el JSON)
+  // siguen leyéndose bien — vuelven null por el merge con el default, no rompen.
+  const db = dbMod.getDatabase();
+  db.prepare('UPDATE user_state SET nutrition_goals = ? WHERE user_id = ?')
+    .run(JSON.stringify({ mode: 'manual', calories: 2000, protein: 150, carbs: 200, fat: 60 }), 'goals1');
+  const legacy = dbMod.getNutritionGoals('goals1');
+  assert.equal(legacy.objetivo, null);
+  assert.equal(legacy.caloriesBurn, null);
+  assert.equal(legacy.calories, 2000);
+});
+
 test('deleteUser removes a disabled user and cascades their data', () => {
   dbMod.initDatabase();
   const db = dbMod.getDatabase();
