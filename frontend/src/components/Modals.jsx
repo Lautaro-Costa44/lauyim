@@ -148,7 +148,7 @@ export default function Modals() {
         }
       }
       const top = sheets[sheets.length - 1]
-      if (top && !top.locked) closeSheet(top.id)
+      if (top && (!top.locked || top.backGesture)) closeSheet(top.id)
     }
     window.addEventListener('popstate', onPop)
     return () => window.removeEventListener('popstate', onPop)

@@ -745,6 +745,9 @@ input[type="search"]::-webkit-search-cancel-button{display:none;-webkit-appearan
 /* ---------------------------------------------------------------- modal -- */
 #modal-root{position:fixed;inset:0;z-index:100;display:none}
 #modal-root.open{display:block}
+/* Sheets apilados (wizards de varios pasos): solo el tope del stack es visible — los de
+   abajo quedan montados (conservan estado) pero ocultos, y reaparecen al cerrar el de arriba. */
+#modal-root>div:not(:last-child){display:none}
 .mback{
   position:absolute;inset:0;background:rgba(0,0,0,.4);
   -webkit-backdrop-filter:blur(2px);backdrop-filter:blur(2px);

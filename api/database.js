@@ -81,6 +81,12 @@ export function initDatabase() {
   try {
     db.exec(`ALTER TABLE plantillas_comida ADD COLUMN source_plantilla_id INTEGER;`);
   } catch {}
+  try {
+    // scope quedó en el DEFAULT 'user' para las filas sembradas por plantillas_globales.js
+    // (nunca lo seteaba). "Global" real siempre fue user_id IS NULL; esto alinea scope con
+    // esa realidad para que el filtro por scope='global' sea confiable de acá en adelante.
+    db.prepare(`UPDATE plantillas_comida SET scope = 'global' WHERE user_id IS NULL AND scope != 'global'`).run();
+  } catch {}
 
   // Crear tablas principales si no existen
   db.exec(`
@@ -703,7 +709,10 @@ export function saveUserState(userId, S) {
 // Metas nutricionales manuales (Admin/Owner override; ver Fase 2 del prompt)
 // ============================================================
 
-const DEFAULT_NUTRITION_GOALS = { mode: 'automatic', objetivo: null, calories: null, caloriesBurn: null, protein: null, carbs: null, fat: null, updatedAt: null, updatedBy: null };
+// limitarSugeridas: null = sin preferencia explícita (usa el default derivado de
+// NUTRICION_AUTOMATICO, ver limitarSugeridasEfectivo() en server.js), true/false = el admin
+// ya tocó el toggle "Limitar comidas sugeridas" para este socio y ese valor gana siempre.
+const DEFAULT_NUTRITION_GOALS = { mode: 'automatic', objetivo: null, calories: null, caloriesBurn: null, protein: null, carbs: null, fat: null, limitarSugeridas: null, updatedAt: null, updatedBy: null };
 
 export function getNutritionGoals(userId) {
   const row = getDatabase().prepare('SELECT nutrition_goals FROM user_state WHERE user_id = ?').get(userId);
@@ -781,6 +790,74 @@ export function getAdminSuggestionsByUserId(userId) {
   const rows = db.prepare(`SELECT * FROM plantillas_comida WHERE user_id = ? AND scope = 'admin' ORDER BY position, id`).all(userId);
   for (const row of rows) row.ingredientes = db.prepare('SELECT * FROM plantillas_ingredientes WHERE plantilla_id = ?').all(row.id);
   return rows;
+}
+
+// ============================================================
+// Catálogo global de comidas compuestas (plantillas_comida scope='global', user_id NULL).
+// Filas sembradas por plantillas_globales.js (assigned_by NULL) o creadas por un admin desde
+// la UI (assigned_by = id del admin). Ver esa distinción también en plantillas_globales.js.
+// ============================================================
+
+export function getGlobalTemplates() {
+  const db = getDatabase();
+  const rows = db.prepare(`SELECT * FROM plantillas_comida WHERE scope = 'global' ORDER BY categoria, nombre`).all();
+  for (const row of rows) row.ingredientes = db.prepare('SELECT * FROM plantillas_ingredientes WHERE plantilla_id = ?').all(row.id);
+  return rows;
+}
+
+export function findGlobalTemplateByNombreCategoria(nombre, categoria, excludeId = null) {
+  const db = getDatabase();
+  return db.prepare(`SELECT id FROM plantillas_comida WHERE scope = 'global' AND nombre = ? AND categoria = ? AND id != ?`)
+    .get(nombre, categoria || '', excludeId ?? -1) || null;
+}
+
+export function createGlobalTemplate({ nombre, categoria, franjasRecomendadas, ingredientes, assignedBy }) {
+  const db = getDatabase();
+  db.exec('BEGIN');
+  try {
+    const plantillaId = insertPlantillaConIngredientes(db, {
+      userId: null, nombre, categoria, scope: 'global', assignedBy, position: 0, ingredientes, franjasRecomendadas
+    });
+    db.exec('COMMIT');
+    return getPlantillaWithIngredientes(plantillaId);
+  } catch (error) {
+    db.exec('ROLLBACK');
+    throw error;
+  }
+}
+
+export function updateGlobalTemplate(id, { nombre, categoria, franjasRecomendadas, ingredientes }) {
+  const db = getDatabase();
+  db.exec('BEGIN');
+  try {
+    db.prepare('UPDATE plantillas_comida SET nombre = ?, categoria = ?, franjas_recomendadas = ?, updated_at = ? WHERE id = ?')
+      .run(nombre, categoria || null, JSON.stringify(franjasRecomendadas), Date.now(), id);
+    db.prepare('DELETE FROM plantillas_ingredientes WHERE plantilla_id = ?').run(id);
+    const stmt = db.prepare(`
+      INSERT INTO plantillas_ingredientes (plantilla_id, nombre_alimento, cantidad_gramos, calorias, proteina, carbohidratos, grasas)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `);
+    for (const item of ingredientes) {
+      stmt.run(id, String(item.nombre_alimento).trim(), item.cantidad_gramos, item.calorias, item.proteina, item.carbohidratos, item.grasas);
+    }
+    db.exec('COMMIT');
+    return getPlantillaWithIngredientes(id);
+  } catch (error) {
+    db.exec('ROLLBACK');
+    throw error;
+  }
+}
+
+// Cuenta a cuántos socios distintos afecta borrar esta plantilla global (asignaciones
+// clonadas vía assignExistingPlantillaToUser, que guardan source_plantilla_id).
+export function countAssignedUsersForGlobalTemplate(id) {
+  const db = getDatabase();
+  const row = db.prepare(`SELECT COUNT(DISTINCT user_id) AS c FROM plantillas_comida WHERE scope = 'admin' AND source_plantilla_id = ?`).get(id);
+  return row?.c || 0;
+}
+
+export function deleteGlobalTemplate(id) {
+  getDatabase().prepare(`DELETE FROM plantillas_comida WHERE id = ? AND scope = 'global'`).run(id);
 }
 
 function insertPlantillaConIngredientes(db, { userId, nombre, categoria, scope, assignedBy, position, ingredientes, sourcePlantillaId, franjasRecomendadas }) {

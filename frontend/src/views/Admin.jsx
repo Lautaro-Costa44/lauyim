@@ -81,7 +81,7 @@ const totalesIngredientes = ingredientes => ingredientes.reduce((total, i) => ({
 
 // Sugerencia custom o edición de una ya asignada. Reutiliza FoodPicker de Nutricion.jsx
 // (misma búsqueda/escaneo/manual que usa el socio) en vez de rearmar el catálogo de comida.
-function AdminSuggestionEditor({ userId, existing, close, onSaved }) {
+function AdminSuggestionEditor({ userId, existing, close, onFinish = close, onSaved }) {
   const toast = useUI(s => s.toast)
   const [nombre, setNombre] = useState(existing?.nombre || '')
   const [ingredientes, setIngredientes] = useState(existing?.ingredientes || [])
@@ -95,7 +95,7 @@ function AdminSuggestionEditor({ userId, existing, close, onSaved }) {
     const base = `/api/admin/users/${encodeURIComponent(userId)}/nutrition/suggestions`
     const url = existing ? `${base}/${existing.id}` : `${base}/custom`
     api(url, { method: existing ? 'PUT' : 'POST', body })
-      .then(() => { toast(existing ? t('Sugerencia actualizada') : t('Sugerencia creada')); onSaved(); close() })
+      .then(() => { toast(existing ? t('Sugerencia actualizada') : t('Sugerencia creada')); onSaved(); onFinish() })
       .catch(e => { setSaving(false); toast(e.message) })
   }
   return <div className="compound-builder">
@@ -128,30 +128,111 @@ function AdminSuggestionEditor({ userId, existing, close, onSaved }) {
   </div>
 }
 
-// Catálogo para asignar: reutiliza GET /api/plantillas del propio admin (globales + propias),
-// nunca un catálogo paralelo. PASO 1 de 3 (ver AdminSuggestionDetail / AdminFranjaSelector):
-// tocar una plantilla acá NO escribe nada, solo navega al detalle.
-function AdminSuggestionPicker({ userId, suggestions, close, onSaved }) {
+// Catálogo para asignar: usa el catálogo global de administración (todas las categorías
+// existentes en la base, sin hardcodear ninguna). PASO 1 de 3 (ver AdminSuggestionDetail /
+// AdminFranjaSelector): tocar una plantilla acá NO escribe nada, solo navega al detalle.
+// Se apila sobre el paso anterior (nunca se cierra a sí mismo) para que el gesto nativo de
+// atrás retroceda un paso a la vez — ver backGesture / closeSheetsFrom en useUI.js.
+function AdminSuggestionPicker({ userId, suggestions, onSaved, closeFlow }) {
   const [items, setItems] = useState(null)
-  useEffect(() => { api('/api/plantillas?categoria=fitness').then(setItems).catch(() => setItems([])) }, [])
-  const openDetail = plantilla => { close(); useUI.getState().openSheet(c => <AdminSuggestionDetail userId={userId} plantilla={plantilla} suggestions={suggestions} close={c} onSaved={onSaved} />) }
+  const [categoria, setCategoria] = useState('')
+  const load = () => api('/api/admin/nutrition/templates').then(r => setItems(r.templates)).catch(() => setItems([]))
+  useEffect(load, [])
+  const categorias = items ? [...new Set(items.map(p => p.categoria).filter(Boolean))].sort() : []
+  const visibles = items && categoria ? items.filter(p => p.categoria === categoria) : items
+  const openDetail = plantilla => useUI.getState().openSheet(c => <AdminSuggestionDetail userId={userId} plantilla={plantilla} suggestions={suggestions} close={c} onSaved={onSaved} closeFlow={closeFlow} />)
+  const openCrearGlobal = () => useUI.getState().openSheet(c => <AdminGlobalTemplateEditor categorias={categorias} close={c} onCreated={t => setItems(cur => cur ? [...cur, t] : [t])} />, { locked: true, fullScreen: true, backGesture: true })
   return <>
     <h3>{t('Elegir plantilla existente')}</h3>
-    {items === null ? <div className="dim small">{t('Loading…')}</div> : items.length ? <div className="list">
-      {items.map(p => <Row key={p.id} title={p.nombre} subtitle={t('{0} ingredientes', p.ingredientes.length)} onClick={() => openDetail(p)} accessory="chevron" />)}
+    <Button variant="tinted" icon="plus" style={{ width: '100%', marginBottom: 12 }} onClick={openCrearGlobal}>
+      {t('Crear comida global')}
+    </Button>
+    {categorias.length > 1 && <div style={{ marginBottom: 12 }}>
+      <Segmented options={[{ value: '', label: t('Todas') }, ...categorias.map(cat => ({ value: cat, label: cat }))]}
+        value={categoria} onChange={setCategoria} />
+    </div>}
+    {visibles === null ? <div className="dim small">{t('Loading…')}</div> : visibles.length ? <div className="list">
+      {visibles.map(p => <Row key={p.id} title={p.nombre} subtitle={t('{0} ingredientes', p.ingredientes.length)} onClick={() => openDetail(p)} accessory="chevron" />)}
     </div> : <div className="dim small">{t('No hay plantillas globales todavía.')}</div>}
   </>
 }
 
+// Crea una comida compuesta scope='global' (catálogo de la instancia, no asignada a ningún
+// socio). Reutiliza el mismo FoodPicker/cálculo de macros que AdminSuggestionEditor, pero
+// requiere categoría (de las que ya existen en la base) y al menos una franja explícita:
+// las plantillas globales sembradas dependen de inferirFranjasPlantilla() como fallback,
+// pero acá la franja siempre queda explícita y tiene prioridad sobre esa inferencia.
+function AdminGlobalTemplateEditor({ categorias, close, onCreated }) {
+  const toast = useUI(s => s.toast)
+  const [nombre, setNombre] = useState('')
+  const [categoria, setCategoria] = useState(categorias[0] || '')
+  const [franjas, setFranjas] = useState(new Set())
+  const [ingredientes, setIngredientes] = useState([])
+  const [pickerOpen, setPickerOpen] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const totales = totalesIngredientes(ingredientes)
+  const toggleFranja = value => setFranjas(cur => {
+    const next = new Set(cur)
+    next.has(value) ? next.delete(value) : next.add(value)
+    return next
+  })
+  const valido = nombre.trim() && categoria.trim() && franjas.size && ingredientes.length
+  const save = () => {
+    if (!valido) return toast(t('Completá nombre, categoría, al menos una franja y un ingrediente'))
+    setSaving(true)
+    const body = JSON.stringify({ nombre: nombre.trim(), categoria: categoria.trim(), franjas: [...franjas], ingredientes })
+    api('/api/admin/nutrition/templates', { method: 'POST', body })
+      .then(({ template }) => { toast(t('Comida global creada')); onCreated(template); close() })
+      .catch(e => { setSaving(false); toast(e.message) })
+  }
+  return <div className="compound-builder">
+    <div className="compound-builder-content">
+      <div className="row between compound-builder-header">
+        <h3 style={{ margin: 0 }}>{t('Crear comida global')}</h3>
+        <button type="button" className="iconbtn" onClick={close} aria-label={t('Close')}><Icon name="xmark" /></button>
+      </div>
+      <Section title={t('Nombre de la comida')}>
+        <TextField value={nombre} onChange={e => setNombre(e.target.value)} maxLength={80} />
+      </Section>
+      <Section title={t('Categoría')}>
+        {categorias.length ? <div className="list" style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+          {categorias.map(cat => <CheckPill key={cat} checked={categoria === cat} onChange={() => setCategoria(cat)}>{cat}</CheckPill>)}
+        </div> : <div className="dim small">{t('No hay categorías cargadas todavía. Corré la siembra de plantillas globales primero.')}</div>}
+      </Section>
+      <Section title={t('Franjas')}>
+        <div className="list" style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+          {FRANJAS.map(f => <CheckPill key={f.value} checked={franjas.has(f.value)} onChange={() => toggleFranja(f.value)}>{f.label}</CheckPill>)}
+        </div>
+      </Section>
+      <Section title={t('Ingredientes')}>
+        {ingredientes.length ? ingredientes.map((ing, i) => <Row key={i} title={ing.nombre_alimento} subtitle={`${ing.cantidad_gramos} g · ${Math.round(ing.calorias)} kcal`}>
+          <button className="iconbtn" aria-label={t('Remove')} onClick={() => setIngredientes(cur => cur.filter((_, idx) => idx !== i))}><Icon name="trash" /></button>
+        </Row>) : <div className="dim small">{t('Sin ingredientes todavía.')}</div>}
+        <div className="nutri-live row between" style={{ marginTop: 8 }}>
+          <span>{t('Total')}</span>
+          <span>{Math.round(totales.calorias)} kcal · {totales.proteina.toFixed(1)}g prot · {totales.carbohidratos.toFixed(1)}g carb · {totales.grasas.toFixed(1)}g grasas</span>
+        </div>
+      </Section>
+      <Section title={t('Agregar ingredientes')}>
+        {!pickerOpen ? <Button variant="tinted" icon="plus" onClick={() => setPickerOpen(true)}>{t('Agregar ingrediente')}</Button>
+          : <FoodPicker franja="extra" close={() => {}} onAddIngrediente={ing => setIngredientes(cur => [...cur, ing])} onAdded={() => setPickerOpen(false)} />}
+      </Section>
+    </div>
+    <div className="compound-builder-actions">
+      <Button onClick={close}>{t('Cancel')}</Button>
+      <Button variant="primary" disabled={saving || !valido} onClick={save}>{saving ? t('Guardando…') : t('Save')}</Button>
+    </div>
+  </div>
+}
+
 // PASO 2 de 3: muestra el contenido de la plantilla antes de asignarla. [Agregar] tampoco
 // escribe nada, solo abre el selector de franja (PASO 3).
-function AdminSuggestionDetail({ userId, plantilla, suggestions, close, onSaved }) {
+function AdminSuggestionDetail({ userId, plantilla, suggestions, close, onSaved, closeFlow }) {
   const totales = totalesDeIngredientes(plantilla.ingredientes)
-  const volver = () => { close(); useUI.getState().openSheet(c => <AdminSuggestionPicker userId={userId} suggestions={suggestions} close={c} onSaved={onSaved} />) }
-  const siguiente = () => { close(); useUI.getState().openSheet(c => <AdminFranjaSelector userId={userId} plantilla={plantilla} suggestions={suggestions} close={c} onSaved={onSaved} />) }
+  const siguiente = () => useUI.getState().openSheet(c => <AdminFranjaSelector userId={userId} plantilla={plantilla} suggestions={suggestions} close={c} onSaved={onSaved} closeFlow={closeFlow} />)
   return <>
     <div className="row between" style={{ marginBottom: 8 }}>
-      <Button size="sm" onClick={volver}>{t('Volver')}</Button>
+      <Button size="sm" onClick={close}>{t('Volver')}</Button>
       <Button size="sm" variant="primary" onClick={siguiente}>{t('Agregar')}</Button>
     </div>
     <h3 style={{ marginTop: 0 }}>{plantilla.nombre}</h3>
@@ -168,7 +249,7 @@ function AdminSuggestionDetail({ userId, plantilla, suggestions, close, onSaved 
 // PASO 3 de 3: única pantalla donde se escribe. Confirmar crea una asignación independiente
 // por cada franja marcada (regla A.2); las franjas donde la plantilla ya está asignada
 // aparecen marcadas y bloqueadas para evitar duplicados.
-function AdminFranjaSelector({ userId, plantilla, suggestions, close, onSaved }) {
+function AdminFranjaSelector({ userId, plantilla, suggestions, close, onSaved, closeFlow }) {
   const toast = useUI(s => s.toast)
   const yaAsignadas = new Set(suggestions.filter(s => s.sourcePlantillaId === plantilla.id).flatMap(s => s.franjas))
   const [selected, setSelected] = useState(new Set(yaAsignadas))
@@ -182,12 +263,11 @@ function AdminFranjaSelector({ userId, plantilla, suggestions, close, onSaved })
     })
   }
   const nuevas = [...selected].filter(v => !yaAsignadas.has(v))
-  const volver = () => { close(); useUI.getState().openSheet(c => <AdminSuggestionDetail userId={userId} plantilla={plantilla} suggestions={suggestions} close={c} onSaved={onSaved} />) }
   const confirmar = () => {
     setSaving(true)
     const base = `/api/admin/users/${encodeURIComponent(userId)}/nutrition/suggestions`
     Promise.all(nuevas.map(franja => api(base, { method: 'POST', body: JSON.stringify({ plantilla_id: plantilla.id, franja }) })))
-      .then(() => { toast(t('Sugerencia asignada')); onSaved(); close() })
+      .then(() => { toast(t('Sugerencia asignada')); onSaved(); closeFlow() })
       .catch(e => { setSaving(false); toast(e.message) })
   }
   return <>
@@ -198,22 +278,26 @@ function AdminFranjaSelector({ userId, plantilla, suggestions, close, onSaved })
       </CheckPill>)}
     </div>
     <div className="row between">
-      <Button onClick={volver}>{t('Cancelar')}</Button>
+      <Button onClick={close}>{t('Cancelar')}</Button>
       <Button variant="primary" disabled={saving || !nuevas.length} onClick={confirmar}>{saving ? t('Guardando…') : t('Confirmar')}</Button>
     </div>
   </>
 }
 
+// Raíz del wizard de 4 niveles (chooser → picker/editor → detalle → franjas). closeFlow
+// cierra el flujo completo de un salto al terminar con éxito; cada paso intermedio solo se
+// apila sobre el anterior (nunca se cierra a sí mismo antes de abrir el siguiente) para que
+// el gesto de atrás retroceda un nivel a la vez — ver backGesture/closeSheetsFrom en useUI.js.
 function openAddSuggestion(userId, suggestions, onSaved) {
-  useUI.getState().openSheet(close => <>
+  const { id: rootId } = useUI.getState().openSheet(close => <>
     <h3>{t('Agregar sugerencia')}</h3>
     <div className="list">
       <Button variant="tinted" icon="plate" style={{ width: '100%', marginBottom: 8 }}
-        onClick={() => { close(); useUI.getState().openSheet(c => <AdminSuggestionPicker userId={userId} suggestions={suggestions} close={c} onSaved={onSaved} />) }}>
+        onClick={() => useUI.getState().openSheet(() => <AdminSuggestionPicker userId={userId} suggestions={suggestions} onSaved={onSaved} closeFlow={() => useUI.getState().closeSheetsFrom(rootId)} />)}>
         {t('Desde plantilla existente')}
       </Button>
       <Button variant="tinted" icon="plus" style={{ width: '100%' }}
-        onClick={() => { close(); useUI.getState().openSheet(c => <AdminSuggestionEditor userId={userId} close={c} onSaved={onSaved} />, { locked: true, fullScreen: true }) }}>
+        onClick={() => useUI.getState().openSheet(c => <AdminSuggestionEditor userId={userId} close={c} onFinish={() => useUI.getState().closeSheetsFrom(rootId)} onSaved={onSaved} />, { locked: true, fullScreen: true, backGesture: true })}>
         {t('Crear nueva')}
       </Button>
     </div>
@@ -260,6 +344,11 @@ function AdminNutritionCard({ userId }) {
     api(base + '/goals', { method: 'PUT', body: JSON.stringify({ mode: 'manual', ...draft }) })
       .then(() => { toast(t('Metas guardadas')); load() }).catch(e => toast(e.message)).finally(() => setSaving(false))
   }
+  const toggleLimitar = value => {
+    setSaving(true)
+    api(base + '/suggestions-limit', { method: 'PUT', body: JSON.stringify({ limitarSugeridas: value }) })
+      .then(load).catch(e => toast(e.message)).finally(() => setSaving(false))
+  }
   const removeSuggestion = s => confirmSheet({
     title: t('¿Quitar sugerencia?'), message: t('“{0}” deja de mostrarse al socio. No afecta plantillas globales.', s.nombre),
     confirmText: t('Quitar'), danger: true,
@@ -295,8 +384,15 @@ function AdminNutritionCard({ userId }) {
         </div>
       </>}
     </Section>
-    <Section title={bigSectionTitle(t('Comidas sugeridas personalizadas'))} footer={<Button size="sm" icon="plus" onClick={() => openAddSuggestion(userId, data.suggestions, load)}>{t('Agregar sugerencia')}</Button>}>
-      {data.suggestions.length ? FRANJAS.map(franja => {
+    <Section title={bigSectionTitle(t('Comidas sugeridas personalizadas'))}
+      footer={data.limitarSugeridas ? <Button size="sm" icon="plus" onClick={() => openAddSuggestion(userId, data.suggestions, load)}>{t('Agregar sugerencia')}</Button> : null}>
+      <Row title={t('Limitar comidas sugeridas')} subtitle={data.limitarSugeridas ? t('El socio ve solo lo que le asignes acá') : t('El socio ve el comportamiento normal de sugerencias')}>
+        <Switch checked={!!data.limitarSugeridas} onChange={toggleLimitar} disabled={saving} />
+      </Row>
+      {!data.limitarSugeridas && <div className="dim small" style={{ padding: '4px 4px 8px' }}>
+        {t('Activá el toggle para asignarle sugerencias puntuales a este socio.')}
+      </div>}
+      {data.limitarSugeridas && (data.suggestions.length ? FRANJAS.map(franja => {
         const items = data.suggestions.filter(s => (s.franjas || []).includes(franja.value))
         if (!items.length) return null
         return <div key={franja.value} style={{ marginBottom: 8 }}>
@@ -311,13 +407,13 @@ function AdminNutritionCard({ userId }) {
               actions={[
                 <button key="up" className="iconbtn admin-suggestion-iconbtn" disabled={idx === 0} aria-label={t('Subir')} onClick={e => { e.stopPropagation(); move(s, -1) }}><Icon name="chevronUp" /></button>,
                 <button key="down" className="iconbtn admin-suggestion-iconbtn" disabled={idx === data.suggestions.length - 1} aria-label={t('Bajar')} onClick={e => { e.stopPropagation(); move(s, 1) }}><Icon name="chevronDown" /></button>,
-                <button key="edit" className="iconbtn admin-suggestion-iconbtn" aria-label={t('Edit')} onClick={e => { e.stopPropagation(); useUI.getState().openSheet(c => <AdminSuggestionEditor userId={userId} existing={s} close={c} onSaved={load} />, { locked: true, fullScreen: true }) }}><Icon name="pencil" /></button>,
+                <button key="edit" className="iconbtn admin-suggestion-iconbtn" aria-label={t('Edit')} onClick={e => { e.stopPropagation(); useUI.getState().openSheet(c => <AdminSuggestionEditor userId={userId} existing={s} close={c} onSaved={load} />, { locked: true, fullScreen: true, backGesture: true }) }}><Icon name="pencil" /></button>,
                 <button key="remove" className="iconbtn admin-suggestion-iconbtn" aria-label={t('Remove')} style={{ color: 'var(--red)' }} onClick={e => { e.stopPropagation(); removeSuggestion(s) }}><Icon name="trash" /></button>,
               ]}
             />
           })}
         </div>
-      }) : <div className="empty" style={{ marginBottom: 8 }}>{t('Sin sugerencias asignadas')}</div>}
+      }) : <div className="empty" style={{ marginBottom: 8 }}>{t('Sin sugerencias asignadas')}</div>)}
     </Section>
   </>
 }
@@ -437,7 +533,7 @@ function AdminRoutineCard({ userId }) {
   // sin la rutina nueva — el sheet no la encontraba y quedaba colgado sin header ni cerrar (bug A.2).
   const openEditor = (routineId, initial = data) => openSheet(
     close => <AdminRoutineEditorSheet userId={userId} routineId={routineId} initial={initial} close={close} onSaved={load} />,
-    { locked: true, fullScreen: true }
+    { locked: true, fullScreen: true, backGesture: true }
   )
 
   const createRoutine = () => {
@@ -592,7 +688,7 @@ function UserDetail({ id, onChanged, close }) {
       <div className="tile"><div className="l">{t('Last sync')}</div><div className="v" style={{ fontSize: '.95rem' }}>{rel(d.lastSync)}</div></div>
     </div>
     <Button variant="tinted" style={{ width: '100%', margin: '4px 0 4px' }}
-      onClick={() => openSheet(c => <AdminManageSheet userId={u.id} userName={u.name} close={c} />, { locked: true, fullScreen: true })}>
+      onClick={() => openSheet(c => <AdminManageSheet userId={u.id} userName={u.name} close={c} />, { locked: true, fullScreen: true, backGesture: true })}>
       {t('Administrar Nutrición/Rutina')}
     </Button>
     {currentUser?.owner && !u.owner && <button className="btn primary" style={{ margin: '12px 0 4px' }}

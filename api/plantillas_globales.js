@@ -502,10 +502,14 @@ for (const plantilla of plantillas) plantilla.franjas_recomendadas = franjasDePl
 
 const db = getDatabase();
 
+// assigned_by IS NULL es el marcador de "fila del seed": el admin puede crear comidas
+// globales desde la UI con scope='global' pero assigned_by = su propio id. Este script
+// solo debe leer/tocar sus propias filas (assigned_by IS NULL) para no pisar ni duplicar
+// nada creado por un admin, aunque coincida nombre+categoria con algo del seed.
 const buscarPlantilla = db.prepare(`
   SELECT id
   FROM plantillas_comida
-  WHERE user_id IS NULL AND nombre = ? AND categoria = ?
+  WHERE user_id IS NULL AND assigned_by IS NULL AND nombre = ? AND categoria = ?
 `);
 
 const actualizarFranjas = db.prepare(`
@@ -513,8 +517,8 @@ const actualizarFranjas = db.prepare(`
 `);
 
 const insertarPlantilla = db.prepare(`
-  INSERT INTO plantillas_comida (user_id, nombre, categoria, franjas_recomendadas, created_at, updated_at)
-  VALUES (?, ?, ?, ?, ?, ?)
+  INSERT INTO plantillas_comida (user_id, nombre, categoria, franjas_recomendadas, created_at, updated_at, scope)
+  VALUES (?, ?, ?, ?, ?, ?, 'global')
 `);
 
 const insertarIngrediente = db.prepare(`

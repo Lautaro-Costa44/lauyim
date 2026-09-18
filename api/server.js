@@ -67,6 +67,12 @@ import {
   setSuggestionEnabled,
   removeAdminSuggestion,
   logAdminAction,
+  getGlobalTemplates,
+  findGlobalTemplateByNombreCategoria,
+  createGlobalTemplate,
+  updateGlobalTemplate,
+  countAssignedUsersForGlobalTemplate,
+  deleteGlobalTemplate,
   getRoutinesByUserId,
   saveRoutines,
   getRoutineGroups,
@@ -119,6 +125,16 @@ const SURVEY_ENABLED = !/^(0|false|no|off)$/i.test(process.env.SURVEY_ENABLED ||
 // es siempre manual y, sin metas/sugerencias cargadas por el admin, el socio no ve ningún
 // valor calculado ni las plantillas globales.
 const NUTRICION_AUTOMATICO = !/^(0|false|no|off)$/i.test(process.env.NUTRICION_AUTOMATICO || 'true');
+
+// Única función que resuelve el toggle "Limitar comidas sugeridas" (goals.limitarSugeridas
+// tri-state: null/true/false). Preferencia explícita del socio gana siempre; sin ella, cae al
+// default derivado de NUTRICION_AUTOMATICO. Usada tanto por el gate de sugerencias del socio
+// (GET /api/plantillas) como por lo que ve el admin (GET .../nutrition) — no repliques esta
+// lógica en otro lado.
+function limitarSugeridasEfectivo(userId) {
+  const goals = getNutritionGoals(userId);
+  return typeof goals.limitarSugeridas === 'boolean' ? goals.limitarSugeridas : !NUTRICION_AUTOMATICO;
+}
 // 90 days keeps someone who trains a few times a week permanently signed in without a stolen
 // cookie staying good for a year. Overridable because a family instance and one on the open
 // internet don't want the same number. Only affects cookies minted from now on — the expiry is
@@ -1231,9 +1247,10 @@ const routes = {
         const resultado = soloFranja ? mapeadas.filter(p => p.franjas_recomendadas.includes(soloFranja)) : mapeadas;
         return json(res, 200, resultado);
       }
-      // Sin sugerencias del admin y NUTRICION_AUTOMATICO=0: nada de plantillas globales,
-      // el socio depende exclusivamente de lo que cargue el admin.
-      if (!NUTRICION_AUTOMATICO) return json(res, 200, []);
+      // Toggle "Limitar comidas sugeridas" (por socio, con default de NUTRICION_AUTOMATICO):
+      // activo y sin sugerencias asignadas = nada de plantillas globales ni inferencia, el
+      // socio depende exclusivamente de lo que cargue el admin.
+      if (limitarSugeridasEfectivo(user.id)) return json(res, 200, []);
     }
 
     return json(res, 200, obtenerPlantillas(getDatabase(), user.id, categoria, soloUsuario, franja));
@@ -1289,7 +1306,7 @@ const routes = {
     if (!getUserById(userId)) return json(res, 404, { error: 'El usuario no existe' });
     const goals = getNutritionGoals(userId);
     const suggestions = getAdminSuggestionsByUserId(userId).map(suggestionResponse);
-    json(res, 200, { goals, suggestions, userObjetivo: getUserObjetivo(userId) });
+    json(res, 200, { goals, suggestions, userObjetivo: getUserObjetivo(userId), limitarSugeridas: limitarSugeridasEfectivo(userId) });
   },
 
   'PUT /api/admin/users/:userId/nutrition/goals': async (req, res) => {
@@ -1300,7 +1317,9 @@ const routes = {
     const goals = parseNutritionGoalsBody(body);
     if (!goals) return json(res, 400, { error: 'Metas inválidas: el modo debe ser automático, o manual con calorías/proteína/carbohidratos/grasas positivos' });
     const before = getNutritionGoals(userId);
-    const after = { ...goals, updatedAt: Date.now(), updatedBy: admin.id };
+    // Preserva limitarSugeridas (y cualquier otro campo fuera de parseNutritionGoalsBody):
+    // guardar metas no debe pisar la preferencia de sugerencias ya guardada del socio.
+    const after = { ...before, ...goals, updatedAt: Date.now(), updatedBy: admin.id };
     setNutritionGoals(userId, after);
     // El objetivo manual también es la configuración real del socio (Settings, generación
     // de rutina) — no solo la etiqueta del cálculo nutricional.
@@ -1308,6 +1327,20 @@ const routes = {
     logAdminAction({ actorUserId: admin.id, targetUserId: userId, action: 'nutrition.goals.update', entityId: userId, before, after });
     audit(req, 'admin.nutrition.goals.update', { user: admin, target });
     json(res, 200, { goals: after });
+  },
+
+  'PUT /api/admin/users/:userId/nutrition/suggestions-limit': async (req, res) => {
+    const admin = requireAdmin(req, res); if (!admin) return;
+    const userId = decodeURIComponent(new URL(req.url, 'http://x').pathname.split('/')[4]);
+    const target = requireActiveTargetUser(res, userId); if (!target) return;
+    const body = await readBody(req);
+    if (typeof body.limitarSugeridas !== 'boolean') return json(res, 400, { error: 'Falta limitarSugeridas (boolean)' });
+    const before = getNutritionGoals(userId);
+    const after = { ...before, limitarSugeridas: body.limitarSugeridas, updatedAt: Date.now(), updatedBy: admin.id };
+    setNutritionGoals(userId, after);
+    logAdminAction({ actorUserId: admin.id, targetUserId: userId, action: 'nutrition.suggestions.limit.update', entityId: userId, before, after });
+    audit(req, 'admin.nutrition.suggestions.limit.update', { user: admin, target, msg: String(body.limitarSugeridas) });
+    json(res, 200, { limitarSugeridas: after.limitarSugeridas });
   },
 
   'GET /api/admin/users/:userId/nutrition/suggestions': async (req, res) => {
@@ -1321,6 +1354,7 @@ const routes = {
     const admin = requireAdmin(req, res); if (!admin) return;
     const userId = decodeURIComponent(new URL(req.url, 'http://x').pathname.split('/')[4]);
     const target = requireActiveTargetUser(res, userId); if (!target) return;
+    if (!limitarSugeridasEfectivo(userId)) return json(res, 409, { error: 'Activá "Limitar comidas sugeridas" para este socio antes de asignarle sugerencias' });
     const body = await readBody(req);
     const sourceId = Number(body.plantilla_id);
     if (!Number.isInteger(sourceId)) return json(res, 400, { error: 'Falta plantilla_id' });
@@ -1345,6 +1379,7 @@ const routes = {
     const admin = requireAdmin(req, res); if (!admin) return;
     const userId = decodeURIComponent(new URL(req.url, 'http://x').pathname.split('/')[4]);
     const target = requireActiveTargetUser(res, userId); if (!target) return;
+    if (!limitarSugeridasEfectivo(userId)) return json(res, 409, { error: 'Activá "Limitar comidas sugeridas" para este socio antes de asignarle sugerencias' });
     const body = await readBody(req);
     const nombre = String(body.nombre || '').trim();
     if (!nombre || !validarIngredientes(body.ingredientes)) return json(res, 400, { error: 'Nombre e ingredientes requeridos' });
@@ -1352,6 +1387,68 @@ const routes = {
     logAdminAction({ actorUserId: admin.id, targetUserId: userId, action: 'nutrition.suggestion.create', entityId: created.id, after: suggestionResponse(created) });
     audit(req, 'admin.nutrition.suggestion.create', { user: admin, target, msg: nombre });
     json(res, 201, { suggestion: suggestionResponse(created) });
+  },
+
+  /* ---------- admin: catálogo global de comidas compuestas ---------- */
+  'GET /api/admin/nutrition/templates': async (req, res) => {
+    const admin = requireAdmin(req, res); if (!admin) return;
+    json(res, 200, { templates: getGlobalTemplates().map(suggestionResponse) });
+  },
+
+  'POST /api/admin/nutrition/templates': async (req, res) => {
+    const admin = requireAdmin(req, res); if (!admin) return;
+    const body = await readBody(req);
+    const nombre = String(body.nombre || '').trim();
+    const categoria = String(body.categoria || '').trim();
+    const franjas = Array.isArray(body.franjas) ? body.franjas : [];
+    if (!nombre || !categoria || !validarIngredientes(body.ingredientes)) {
+      return json(res, 400, { error: 'Nombre, categoría e ingredientes requeridos' });
+    }
+    if (!franjas.length || !franjas.every(f => ['desayuno', 'almuerzo', 'merienda', 'cena', 'extra'].includes(f))) {
+      return json(res, 400, { error: 'Elegí al menos una franja válida' });
+    }
+    if (findGlobalTemplateByNombreCategoria(nombre, categoria)) {
+      return json(res, 409, { error: 'Ya existe una comida global con ese nombre y categoría' });
+    }
+    const created = createGlobalTemplate({ nombre, categoria, franjasRecomendadas: franjas, ingredientes: body.ingredientes, assignedBy: admin.id });
+    audit(req, 'admin.nutrition.template.create', { user: admin, msg: `${nombre} · ${categoria}` });
+    json(res, 201, { template: suggestionResponse(created) });
+  },
+
+  'PUT /api/admin/nutrition/templates/:id': async (req, res) => {
+    const admin = requireAdmin(req, res); if (!admin) return;
+    const id = Number(new URL(req.url, 'http://x').pathname.split('/').pop());
+    const before = getPlantillaWithIngredientes(id);
+    if (!before || before.scope !== 'global') return json(res, 404, { error: 'Plantilla no encontrada' });
+    const body = await readBody(req);
+    const nombre = String(body.nombre || '').trim();
+    const categoria = String(body.categoria || '').trim();
+    const franjas = Array.isArray(body.franjas) ? body.franjas : [];
+    if (!nombre || !categoria || !validarIngredientes(body.ingredientes)) {
+      return json(res, 400, { error: 'Nombre, categoría e ingredientes requeridos' });
+    }
+    if (!franjas.length || !franjas.every(f => ['desayuno', 'almuerzo', 'merienda', 'cena', 'extra'].includes(f))) {
+      return json(res, 400, { error: 'Elegí al menos una franja válida' });
+    }
+    const dup = findGlobalTemplateByNombreCategoria(nombre, categoria, id);
+    if (dup) return json(res, 409, { error: 'Ya existe una comida global con ese nombre y categoría' });
+    const after = updateGlobalTemplate(id, { nombre, categoria, franjasRecomendadas: franjas, ingredientes: body.ingredientes });
+    audit(req, 'admin.nutrition.template.update', { user: admin, msg: `${nombre} · ${categoria}` });
+    json(res, 200, { template: suggestionResponse(after) });
+  },
+
+  'DELETE /api/admin/nutrition/templates/:id': async (req, res) => {
+    const admin = requireAdmin(req, res); if (!admin) return;
+    const id = Number(new URL(req.url, 'http://x').pathname.split('/').pop());
+    const before = getPlantillaWithIngredientes(id);
+    if (!before || before.scope !== 'global') return json(res, 404, { error: 'Plantilla no encontrada' });
+    const afectados = countAssignedUsersForGlobalTemplate(id);
+    if (afectados > 0) {
+      return json(res, 409, { error: `Asignada a ${afectados} socio${afectados === 1 ? '' : 's'}. Desasignala primero.`, sociosAfectados: afectados });
+    }
+    deleteGlobalTemplate(id);
+    audit(req, 'admin.nutrition.template.delete', { user: admin, msg: before.nombre });
+    json(res, 200, { ok: true });
   },
 
   'PUT /api/admin/users/:userId/nutrition/suggestions/:id': async (req, res) => {
@@ -2517,6 +2614,8 @@ http.createServer(async (req, res) => {
       ? 'GET /api/admin/users/:userId/nutrition'
     : req.method === 'PUT' && /^\/api\/admin\/users\/[^/]+\/nutrition\/goals$/.test(url.pathname)
       ? 'PUT /api/admin/users/:userId/nutrition/goals'
+    : req.method === 'PUT' && /^\/api\/admin\/users\/[^/]+\/nutrition\/suggestions-limit$/.test(url.pathname)
+      ? 'PUT /api/admin/users/:userId/nutrition/suggestions-limit'
     : req.method === 'GET' && /^\/api\/admin\/users\/[^/]+\/nutrition\/suggestions$/.test(url.pathname)
       ? 'GET /api/admin/users/:userId/nutrition/suggestions'
     : req.method === 'POST' && /^\/api\/admin\/users\/[^/]+\/nutrition\/suggestions\/custom$/.test(url.pathname)
@@ -2537,6 +2636,10 @@ http.createServer(async (req, res) => {
       ? 'PUT /api/admin/users/:userId/injuries'
     : req.method === 'POST' && /^\/api\/admin\/users\/[^/]+\/injuries\/exercise-warning-override$/.test(url.pathname)
       ? 'POST /api/admin/users/:userId/injuries/exercise-warning-override'
+    : req.method === 'PUT' && /^\/api\/admin\/nutrition\/templates\/[^/]+$/.test(url.pathname)
+      ? 'PUT /api/admin/nutrition/templates/:id'
+    : req.method === 'DELETE' && /^\/api\/admin\/nutrition\/templates\/[^/]+$/.test(url.pathname)
+      ? 'DELETE /api/admin/nutrition/templates/:id'
     : key;
 
   const rateLimitMax = routeKey === 'POST /api/access/qr'

@@ -54,18 +54,30 @@ let workTick = null
 let workDone = null
 
 export const useUI = create((set, get) => ({
-  sheets: [],          // { id, render:(close)=>JSX, kind:'sheet'|'center', locked }
+  sheets: [],          // { id, render:(close)=>JSX, kind:'sheet'|'center', locked, backGesture }
   toastMsg: '',
   timer: null,         // rest countdown between sets — { left, total, endsAt }
   work: null,          // work countdown DURING a timed set (issue #16) — { left, total, endsAt, label }
 
-  openSheet(render, { kind = 'sheet', locked = false, fullScreen = false } = {}) {
+  // backGesture: opt-in para que un sheet locked igual cierre con el gesto nativo de atrás
+  // (Android back / iOS swipe) — locked por sí solo sigue bloqueando swipe-to-dismiss,
+  // backdrop-click y Escape, que son gestos distintos del back del sistema.
+  openSheet(render, { kind = 'sheet', locked = false, fullScreen = false, backGesture = false } = {}) {
     const id = uid()
-    set(s => ({ sheets: [...s.sheets, { id, render, kind, locked, fullScreen }] }))
+    set(s => ({ sheets: [...s.sheets, { id, render, kind, locked, fullScreen, backGesture }] }))
     const close = () => get().closeSheet(id)
     return { id, close, lock: v => set(s => ({ sheets: s.sheets.map(x => x.id === id ? { ...x, locked: v } : x) })) }
   },
   closeSheet(id) { set(s => ({ sheets: s.sheets.filter(x => x.id !== id) })) },
+  // Cierra un sheet y todo lo apilado arriba de él en una sola actualización (para que el
+  // rewind de historial en Modals.jsx lo compute de una vez) — usado para salir completo de
+  // un flujo de varios pasos (ej. wizard de asignar sugerencia) al terminar con éxito.
+  closeSheetsFrom(id) {
+    set(s => {
+      const idx = s.sheets.findIndex(x => x.id === id)
+      return idx === -1 ? s : { sheets: s.sheets.slice(0, idx) }
+    })
+  },
   closeAll() { set({ sheets: [] }) },
 
   toast(msg) {
