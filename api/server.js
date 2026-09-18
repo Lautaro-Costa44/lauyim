@@ -1048,58 +1048,121 @@ function parseRoutinesBody(body) {
 // antes/después en vez de tener un endpoint por operación.
 function logRoutineStateChanges({ actorUserId, targetUserId, before, after }) {
   const meta = r => ({ name: r.name, emoji: r.emoji });
-  const comparable = r => {
+  const routineComparable = r => {
     const value = { ...r, id: String(r.id), emoji: r.emoji || 'dumbbell', ex: r.ex || [] };
     delete value.user_id;
     delete value.created_at;
     delete value.created;
+    delete value.progression;
+    delete value.progressionType;
+    delete value.progressionConfig;
+    delete value.progression_type;
+    delete value.progression_config;
+    return value;
+  };
+  const routineProgression = r => ({
+    progression: r.progression ?? null,
+    progressionType: r.progressionType ?? r.progression_type ?? null,
+    progressionConfig: r.progressionConfig ?? r.progression_config ?? null
+  });
+  const groupProgression = group => ({
+    progression: group.progression ?? null,
+    progressionType: group.progressionType ?? group.progression_type ?? null,
+    progressionConfig: group.progressionConfig ?? group.progression_config ?? null
+  });
+  const groupComparable = group => {
+    const value = { ...group, id: String(group.id), name: String(group.name || '').trim() };
+    delete value.routines;
+    delete value.week;
+    delete value.createdAt;
+    delete value.created_at;
+    delete value.activeGroupId;
+    delete value.progression;
+    delete value.progressionType;
+    delete value.progressionConfig;
     return value;
   };
   const summaries = [];
   let changed = false;
-  const beforeById = new Map(before.routines.map(r => [String(r.id), r]));
-  const afterById = new Map(after.routines.map(r => [String(r.id), r]));
+  const beforeGroups = new Map((before.routineGroups || []).map(group => [String(group.id), group]));
+  const afterGroups = new Map((after.routineGroups || []).map(group => [String(group.id), group]));
 
-  for (const [id, r] of afterById) {
-    const b = beforeById.get(id);
-    if (!b) {
+  const newGroupIds = new Set([...afterGroups.keys()].filter(id => !beforeGroups.has(id)));
+  if (before.activeGroupId !== after.activeGroupId && after.activeGroupId && !newGroupIds.has(String(after.activeGroupId))) {
+    const activeGroup = afterGroups.get(String(after.activeGroupId));
+    changed = true;
+    summaries.push(`Grupo activo: '${activeGroup?.name || after.activeGroupId}'`);
+  }
+
+  for (const [id, group] of afterGroups) {
+    if (!beforeGroups.has(id)) {
       changed = true;
-      summaries.push(`Rutina '${r.name}' creada`);
-      logAdminAction({ actorUserId, targetUserId, action: 'routine.create', entityId: id, after: meta(r) });
-      for (const ex of r.ex) logAdminAction({ actorUserId, targetUserId, action: 'routine.exercise.add', entityId: id, after: ex });
+      summaries.push(`Grupo '${group.name}' creado`);
       continue;
     }
-    if (JSON.stringify(comparable(b)) !== JSON.stringify(comparable(r))) {
+    const previous = beforeGroups.get(id);
+    const beforeRoutines = new Map((previous.routines || []).map(routine => [String(routine.id), routine]));
+    const afterRoutines = new Map((group.routines || []).map(routine => [String(routine.id), routine]));
+    const commonRoutineIds = new Set([...beforeRoutines.keys()].filter(routineId => afterRoutines.has(routineId)));
+    const beforeCommonOrder = [...beforeRoutines.keys()].filter(routineId => commonRoutineIds.has(routineId));
+    const afterCommonOrder = [...afterRoutines.keys()].filter(routineId => commonRoutineIds.has(routineId));
+    const routineOrderChanged = JSON.stringify(afterCommonOrder) !== JSON.stringify(beforeCommonOrder);
+    if (routineOrderChanged) {
       changed = true;
-      summaries.push(`Rutina '${r.name}' actualizada`);
-      logAdminAction({ actorUserId, targetUserId, action: 'routine.update', entityId: id, before: meta(b), after: meta(r) });
+      summaries.push('Grupo actualizado');
     }
-    const maxEx = Math.max(b.ex.length, r.ex.length);
-    for (let i = 0; i < maxEx; i++) {
-      const be = b.ex[i], ae = r.ex[i];
-      if (be && !ae) logAdminAction({ actorUserId, targetUserId, action: 'routine.exercise.remove', entityId: id, before: be });
-      else if (!be && ae) logAdminAction({ actorUserId, targetUserId, action: 'routine.exercise.add', entityId: id, after: ae });
-      else if (JSON.stringify(be) !== JSON.stringify(ae)) logAdminAction({ actorUserId, targetUserId, action: 'routine.exercise.update', entityId: id, before: be, after: ae });
+    if (JSON.stringify(groupProgression(previous)) !== JSON.stringify(groupProgression(group))) {
+      changed = true;
+      summaries.push('Progresión actualizada');
+    }
+    for (const [routineId, routine] of afterRoutines) {
+      const previousRoutine = beforeRoutines.get(routineId);
+      if (!previousRoutine) {
+        changed = true;
+        summaries.push(`Rutina '${routine.name}' creada`);
+        logAdminAction({ actorUserId, targetUserId, action: 'routine.create', entityId: routineId, after: meta(routine) });
+        for (const ex of routine.ex || []) logAdminAction({ actorUserId, targetUserId, action: 'routine.exercise.add', entityId: routineId, after: ex });
+        continue;
+      }
+      const progressionChanged = JSON.stringify(routineProgression(previousRoutine)) !== JSON.stringify(routineProgression(routine));
+      const contentChanged = JSON.stringify(routineComparable(previousRoutine)) !== JSON.stringify(routineComparable(routine));
+      if (contentChanged || progressionChanged) {
+        changed = true;
+        if (progressionChanged) summaries.push('Progresión actualizada');
+        if (contentChanged) summaries.push(`Rutina '${routine.name}' actualizada`);
+        logAdminAction({ actorUserId, targetUserId, action: 'routine.update', entityId: routineId, before: meta(previousRoutine), after: meta(routine) });
+      }
+      const maxEx = Math.max((previousRoutine.ex || []).length, (routine.ex || []).length);
+      for (let i = 0; i < maxEx; i++) {
+        const beforeExercise = previousRoutine.ex?.[i], afterExercise = routine.ex?.[i];
+        if (beforeExercise && !afterExercise) logAdminAction({ actorUserId, targetUserId, action: 'routine.exercise.remove', entityId: routineId, before: beforeExercise });
+        else if (!beforeExercise && afterExercise) logAdminAction({ actorUserId, targetUserId, action: 'routine.exercise.add', entityId: routineId, after: afterExercise });
+        else if (JSON.stringify(beforeExercise) !== JSON.stringify(afterExercise)) logAdminAction({ actorUserId, targetUserId, action: 'routine.exercise.update', entityId: routineId, before: beforeExercise, after: afterExercise });
+      }
+    }
+    for (const [routineId, routine] of beforeRoutines) {
+      if (!afterRoutines.has(routineId)) {
+        changed = true;
+        summaries.push(`Rutina '${routine.name}' eliminada`);
+        logAdminAction({ actorUserId, targetUserId, action: 'routine.delete', entityId: routineId, before: meta(routine) });
+      }
+    }
+    if (JSON.stringify(groupComparable(previous)) !== JSON.stringify(groupComparable(group))) {
+      changed = true;
+      if (!summaries.includes('Grupo actualizado')) summaries.push('Grupo actualizado');
     }
   }
-  for (const [id, r] of beforeById) {
-    if (!afterById.has(id)) {
+  for (const [id, group] of beforeGroups) {
+    if (!afterGroups.has(id)) {
       changed = true;
-      summaries.push(`Rutina '${r.name}' eliminada`);
-      logAdminAction({ actorUserId, targetUserId, action: 'routine.delete', entityId: id, before: meta(r) });
+      summaries.push(`Grupo '${group.name}' eliminado`);
     }
   }
-  const planChanged = JSON.stringify(before.week) !== JSON.stringify(after.week)
-    || JSON.stringify(before.dayPlan) !== JSON.stringify(after.dayPlan)
-    || JSON.stringify(before.routineGroups) !== JSON.stringify(after.routineGroups)
-    || before.activeGroupId !== after.activeGroupId;
-  if (planChanged) {
-    changed = true;
-    summaries.push('Grupo actualizado');
+  if (changed && summaries.some(summary => summary.startsWith('Grupo') || summary.startsWith('Progresión'))) {
     logAdminAction({
       actorUserId, targetUserId, action: 'routine.plan.update',
-      before: { week: before.week, dayPlan: before.dayPlan },
-      after: { week: after.week, dayPlan: after.dayPlan }
+      before: { routineGroups: before.routineGroups },
+      after: { routineGroups: after.routineGroups }
     });
   }
   return { changed, summaries };
@@ -1642,7 +1705,16 @@ const routes = {
     saveWeekPlan(userId, parsed.week, validRoutineIds);
     saveDayPlan(userId, parsed.dayPlan, validRoutineIds);
     if (body.routineGroups !== undefined) saveRoutineGroups(userId, parsed.routineGroups, parsed.activeGroupId);
-    const routineChange = logRoutineStateChanges({ actorUserId: admin.id, targetUserId: userId, before, after: parsed });
+    const auditAfter = body.routineGroups === undefined
+      ? {
+        ...parsed,
+        routineGroups: before.routineGroups.map(group => String(group.id) === String(before.activeGroupId)
+          ? { ...group, routines: parsed.routines, week: parsed.week }
+          : group),
+        activeGroupId: before.activeGroupId
+      }
+      : parsed;
+    const routineChange = logRoutineStateChanges({ actorUserId: admin.id, targetUserId: userId, before, after: auditAfter });
     if (routineChange.changed) {
       audit(req, 'admin.routine.update', {
         user: admin,
