@@ -78,11 +78,12 @@ function Sheet({ sheet }) {
   }, [])
 
   const close = () => closeSheet(sheet.id)
+  const setOnBack = fn => useUI.getState().setSheetOnBack(sheet.id, fn)
   if (sheet.kind === 'center') {
     return (
       <div>
         <div className="mback" onClick={() => { if (!sheet.locked) close() }} />
-        <div className="center">{sheet.render(close)}</div>
+        <div className="center">{sheet.render(close, { setOnBack })}</div>
       </div>
     )
   }
@@ -92,7 +93,7 @@ function Sheet({ sheet }) {
       <div className={'sheet' + (sheet.fullScreen ? ' fullscreen' : '')} ref={ref} onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}
         onMouseDown={onMouseDown} onMouseMove={onMouseMove} onMouseUp={onMouseUp} onMouseLeave={onMouseUp}>
         {!sheet.fullScreen && <div className="grab" />}
-        {sheet.render(close)}
+        {sheet.render(close, { setOnBack })}
       </div>
     </div>
   )
@@ -148,7 +149,10 @@ export default function Modals() {
         }
       }
       const top = sheets[sheets.length - 1]
-      if (top && (!top.locked || top.backGesture)) closeSheet(top.id)
+      if (top) {
+        if (top.onBack) top.onBack()
+        else if (!top.locked || top.backGesture) closeSheet(top.id)
+      }
     }
     window.addEventListener('popstate', onPop)
     return () => window.removeEventListener('popstate', onPop)

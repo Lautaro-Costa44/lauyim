@@ -130,17 +130,15 @@ function AdminSuggestionEditor({ userId, existing, close, onFinish = close, onSa
 
 // Catálogo para asignar: usa el catálogo global de administración (todas las categorías
 // existentes en la base, sin hardcodear ninguna). PASO 1 de 3 (ver AdminSuggestionDetail /
-// AdminFranjaSelector): tocar una plantilla acá NO escribe nada, solo navega al detalle.
-// Se apila sobre el paso anterior (nunca se cierra a sí mismo) para que el gesto nativo de
-// atrás retroceda un paso a la vez — ver backGesture / closeSheetsFrom en useUI.js.
-function AdminSuggestionPicker({ userId, suggestions, onSaved, closeFlow }) {
+// AdminFranjaSelector): tocar una plantilla acá NO escribe nada, solo pasa al detalle
+// (onPick, paso interno de AdminSuggestionWizard — nunca abre un sheet propio).
+function AdminSuggestionPicker({ onPick }) {
   const [items, setItems] = useState(null)
   const [categoria, setCategoria] = useState('')
   const load = () => api('/api/admin/nutrition/templates').then(r => setItems(r.templates)).catch(() => setItems([]))
   useEffect(load, [])
   const categorias = items ? [...new Set(items.map(p => p.categoria).filter(Boolean))].sort() : []
   const visibles = items && categoria ? items.filter(p => p.categoria === categoria) : items
-  const openDetail = plantilla => useUI.getState().openSheet(c => <AdminSuggestionDetail userId={userId} plantilla={plantilla} suggestions={suggestions} close={c} onSaved={onSaved} closeFlow={closeFlow} />)
   const openCrearGlobal = () => useUI.getState().openSheet(c => <AdminGlobalTemplateEditor categorias={categorias} close={c} onCreated={t => setItems(cur => cur ? [...cur, t] : [t])} />, { locked: true, fullScreen: true, backGesture: true })
   return <>
     <h3>{t('Elegir plantilla existente')}</h3>
@@ -152,7 +150,7 @@ function AdminSuggestionPicker({ userId, suggestions, onSaved, closeFlow }) {
         value={categoria} onChange={setCategoria} />
     </div>}
     {visibles === null ? <div className="dim small">{t('Loading…')}</div> : visibles.length ? <div className="list">
-      {visibles.map(p => <Row key={p.id} title={p.nombre} subtitle={t('{0} ingredientes', p.ingredientes.length)} onClick={() => openDetail(p)} accessory="chevron" />)}
+      {visibles.map(p => <Row key={p.id} title={p.nombre} subtitle={t('{0} ingredientes', p.ingredientes.length)} onClick={() => onPick(p)} accessory="chevron" />)}
     </div> : <div className="dim small">{t('No hay plantillas globales todavía.')}</div>}
   </>
 }
@@ -226,14 +224,13 @@ function AdminGlobalTemplateEditor({ categorias, close, onCreated }) {
 }
 
 // PASO 2 de 3: muestra el contenido de la plantilla antes de asignarla. [Agregar] tampoco
-// escribe nada, solo abre el selector de franja (PASO 3).
-function AdminSuggestionDetail({ userId, plantilla, suggestions, close, onSaved, closeFlow }) {
+// escribe nada, solo pasa al selector de franja (PASO 3, onNext — paso interno).
+function AdminSuggestionDetail({ plantilla, onNext, onBack }) {
   const totales = totalesDeIngredientes(plantilla.ingredientes)
-  const siguiente = () => useUI.getState().openSheet(c => <AdminFranjaSelector userId={userId} plantilla={plantilla} suggestions={suggestions} close={c} onSaved={onSaved} closeFlow={closeFlow} />)
   return <>
     <div className="row between" style={{ marginBottom: 8 }}>
-      <Button size="sm" onClick={close}>{t('Volver')}</Button>
-      <Button size="sm" variant="primary" onClick={siguiente}>{t('Agregar')}</Button>
+      <Button size="sm" onClick={onBack}>{t('Volver')}</Button>
+      <Button size="sm" variant="primary" onClick={onNext}>{t('Agregar')}</Button>
     </div>
     <h3 style={{ marginTop: 0 }}>{plantilla.nombre}</h3>
     <Section title={t('Ingredientes')}>
@@ -248,8 +245,9 @@ function AdminSuggestionDetail({ userId, plantilla, suggestions, close, onSaved,
 
 // PASO 3 de 3: única pantalla donde se escribe. Confirmar crea una asignación independiente
 // por cada franja marcada (regla A.2); las franjas donde la plantilla ya está asignada
-// aparecen marcadas y bloqueadas para evitar duplicados.
-function AdminFranjaSelector({ userId, plantilla, suggestions, close, onSaved, closeFlow }) {
+// aparecen marcadas y bloqueadas para evitar duplicados. onDone cierra el wizard entero
+// (un único sheet real, close() de un solo nivel) y vuelve a la vista de nutrición del socio.
+function AdminFranjaSelector({ userId, plantilla, suggestions, onSaved, onDone, onBack }) {
   const toast = useUI(s => s.toast)
   const yaAsignadas = new Set(suggestions.filter(s => s.sourcePlantillaId === plantilla.id).flatMap(s => s.franjas))
   const [selected, setSelected] = useState(new Set(yaAsignadas))
@@ -267,7 +265,7 @@ function AdminFranjaSelector({ userId, plantilla, suggestions, close, onSaved, c
     setSaving(true)
     const base = `/api/admin/users/${encodeURIComponent(userId)}/nutrition/suggestions`
     Promise.all(nuevas.map(franja => api(base, { method: 'POST', body: JSON.stringify({ plantilla_id: plantilla.id, franja }) })))
-      .then(() => { toast(t('Sugerencia asignada')); onSaved(); closeFlow() })
+      .then(() => { toast(t('Sugerencia asignada')); onSaved(); onDone() })
       .catch(e => { setSaving(false); toast(e.message) })
   }
   return <>
@@ -278,30 +276,55 @@ function AdminFranjaSelector({ userId, plantilla, suggestions, close, onSaved, c
       </CheckPill>)}
     </div>
     <div className="row between">
-      <Button onClick={close}>{t('Cancelar')}</Button>
+      <Button onClick={onBack}>{t('Cancelar')}</Button>
       <Button variant="primary" disabled={saving || !nuevas.length} onClick={confirmar}>{saving ? t('Guardando…') : t('Confirmar')}</Button>
     </div>
   </>
 }
 
-// Raíz del wizard de 4 niveles (chooser → picker/editor → detalle → franjas). closeFlow
-// cierra el flujo completo de un salto al terminar con éxito; cada paso intermedio solo se
-// apila sobre el anterior (nunca se cierra a sí mismo antes de abrir el siguiente) para que
-// el gesto de atrás retroceda un nivel a la vez — ver backGesture/closeSheetsFrom en useUI.js.
-function openAddSuggestion(userId, suggestions, onSaved) {
-  const { id: rootId } = useUI.getState().openSheet(close => <>
+// Wizard de "Agregar sugerencia": UN solo sheet real (una única entrada de historial) con
+// navegación interna por estado — chooser/picker/detalle/franjas nunca abren un sheet propio,
+// así el gesto de atrás siempre retrocede un paso via onBack (setOnBack, ver useUI.js) sin
+// depender de un rewind de varios niveles de historial real (causaba pantalla negra en PWA
+// standalone: un solo history.go(-N) podía exceder la profundidad real de la sesión).
+// "Crear nueva" sí abre AdminSuggestionEditor como sheet aparte (fullScreen, 2 niveles nomás,
+// cierre normal de a uno) porque su layout está pensado para pantalla completa.
+function AdminSuggestionWizard({ userId, suggestions, onSaved, close, setOnBack, wizardId }) {
+  const [step, setStep] = useState({ name: 'chooser' })
+  const stepRef = useRef(step)
+  stepRef.current = step
+  useEffect(() => {
+    setOnBack(() => {
+      const cur = stepRef.current
+      if (cur.name === 'franja') return setStep({ name: 'detail', plantilla: cur.plantilla })
+      if (cur.name === 'detail') return setStep({ name: 'picker' })
+      if (cur.name === 'picker') return setStep({ name: 'chooser' })
+      close()
+    })
+  }, [close, setOnBack])
+
+  if (step.name === 'picker') return <AdminSuggestionPicker onPick={plantilla => setStep({ name: 'detail', plantilla })} />
+  if (step.name === 'detail') return <AdminSuggestionDetail plantilla={step.plantilla}
+    onNext={() => setStep({ name: 'franja', plantilla: step.plantilla })} onBack={() => setStep({ name: 'picker' })} />
+  if (step.name === 'franja') return <AdminFranjaSelector userId={userId} plantilla={step.plantilla} suggestions={suggestions}
+    onSaved={onSaved} onDone={close} onBack={() => setStep({ name: 'detail', plantilla: step.plantilla })} />
+  return <>
     <h3>{t('Agregar sugerencia')}</h3>
     <div className="list">
-      <Button variant="tinted" icon="plate" style={{ width: '100%', marginBottom: 8 }}
-        onClick={() => useUI.getState().openSheet(() => <AdminSuggestionPicker userId={userId} suggestions={suggestions} onSaved={onSaved} closeFlow={() => useUI.getState().closeSheetsFrom(rootId)} />)}>
+      <Button variant="tinted" icon="plate" style={{ width: '100%', marginBottom: 8 }} onClick={() => setStep({ name: 'picker' })}>
         {t('Desde plantilla existente')}
       </Button>
       <Button variant="tinted" icon="plus" style={{ width: '100%' }}
-        onClick={() => useUI.getState().openSheet(c => <AdminSuggestionEditor userId={userId} close={c} onFinish={() => useUI.getState().closeSheetsFrom(rootId)} onSaved={onSaved} />, { locked: true, fullScreen: true, backGesture: true })}>
+        onClick={() => useUI.getState().openSheet(c => <AdminSuggestionEditor userId={userId} close={c} onFinish={() => useUI.getState().closeSheetsFrom(wizardId)} onSaved={onSaved} />, { locked: true, fullScreen: true, backGesture: true })}>
         {t('Crear nueva')}
       </Button>
     </div>
-  </>)
+  </>
+}
+
+function openAddSuggestion(userId, suggestions, onSaved) {
+  const { id: wizardId } = useUI.getState().openSheet((close, { setOnBack }) =>
+    <AdminSuggestionWizard userId={userId} suggestions={suggestions} onSaved={onSaved} close={close} setOnBack={setOnBack} wizardId={wizardId} />)
 }
 
 // Metas manuales + sugerencias asignadas de un socio (Fase 4). Prioridad total del admin

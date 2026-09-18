@@ -54,7 +54,7 @@ let workTick = null
 let workDone = null
 
 export const useUI = create((set, get) => ({
-  sheets: [],          // { id, render:(close)=>JSX, kind:'sheet'|'center', locked, backGesture }
+  sheets: [],          // { id, render:(close,{setOnBack})=>JSX, kind:'sheet'|'center', locked, backGesture, onBack }
   toastMsg: '',
   timer: null,         // rest countdown between sets — { left, total, endsAt }
   work: null,          // work countdown DURING a timed set (issue #16) — { left, total, endsAt, label }
@@ -64,10 +64,16 @@ export const useUI = create((set, get) => ({
   // backdrop-click y Escape, que son gestos distintos del back del sistema.
   openSheet(render, { kind = 'sheet', locked = false, fullScreen = false, backGesture = false } = {}) {
     const id = uid()
-    set(s => ({ sheets: [...s.sheets, { id, render, kind, locked, fullScreen, backGesture }] }))
+    set(s => ({ sheets: [...s.sheets, { id, render, kind, locked, fullScreen, backGesture, onBack: null }] }))
     const close = () => get().closeSheet(id)
     return { id, close, lock: v => set(s => ({ sheets: s.sheets.map(x => x.id === id ? { ...x, locked: v } : x) })) }
   },
+  // Deja que un sheet intercepte el back del sistema para navegar un paso interno propio
+  // (ej. un wizard de varios pasos dentro de un único sheet real) en vez de cerrarse. Evita
+  // apilar un sheet real por paso — un wizard de N pasos nunca debería necesitar N entradas
+  // de historial real ni un rewind de varios niveles (riesgo de exceder la profundidad real
+  // de la sesión en PWA standalone y dejar la pantalla en negro sin forma de salir).
+  setSheetOnBack(id, fn) { set(s => ({ sheets: s.sheets.map(x => x.id === id ? { ...x, onBack: fn } : x) })) },
   closeSheet(id) { set(s => ({ sheets: s.sheets.filter(x => x.id !== id) })) },
   // Cierra un sheet y todo lo apilado arriba de él — usado para salir completo de un flujo de
   // varios pasos (ej. wizard de asignar sugerencia) al terminar con éxito. Cierra de a UNO por
