@@ -1,9 +1,9 @@
-import { useEffect, useRef } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 import { useUI } from '../store/useUI.js'
 
 // One bottom sheet (or centered dialog) with swipe-to-dismiss.
 function Sheet({ sheet }) {
-  const { closeSheet } = useUI()
+  const closeSheet = useUI(s => s.closeSheet)
   const ref = useRef(null)
   const drag = useRef({ startY: null, delta: 0 })
 
@@ -77,8 +77,12 @@ function Sheet({ sheet }) {
     }
   }, [])
 
-  const close = () => closeSheet(sheet.id)
-  const setOnBack = fn => useUI.getState().setSheetOnBack(sheet.id, fn)
+  // Estables por sheet: el contenido las recibe como props y suele meterlas en las deps de un
+  // useEffect que llama setOnBack. Si cambiaran de identidad en cada render, ese efecto volvería
+  // a correr, escribiría en el store, re-renderizaría este Sheet y se realimentaría — bucle
+  // infinito, "Maximum update depth exceeded" y pantalla negra sin salida.
+  const close = useCallback(() => useUI.getState().closeSheet(sheet.id), [sheet.id])
+  const setOnBack = useCallback(fn => useUI.getState().setSheetOnBack(sheet.id, fn), [sheet.id])
   if (sheet.kind === 'center') {
     return (
       <div>
@@ -106,6 +110,16 @@ export default function Modals() {
   const suppressPop = useRef(false)
   const pushedEntries = useRef(0)
   const sheetEntries = useRef([])
+  const lockedScrollY = useRef(null)
+
+  const releaseScrollLock = useCallback(() => {
+    if (lockedScrollY.current === null) return
+    const y = lockedScrollY.current
+    lockedScrollY.current = null
+    const b = document.body.style
+    b.position = b.top = b.left = b.right = b.width = ''
+    window.scrollTo(0, y)
+  }, [])
 
   // Every opened sheet gets a history entry so Android back dismisses it instead of
   // leaving the page (issue #63). Keep the pushed-entry count and each active sheet's
@@ -168,13 +182,15 @@ export default function Modals() {
   useEffect(() => {
     if (!sheets.length) return
     const y = window.scrollY || 0
+    lockedScrollY.current = y
     const b = document.body.style
     b.position = 'fixed'; b.top = -y + 'px'; b.left = '0'; b.right = '0'; b.width = '100%'
-    return () => {
-      b.position = b.top = b.left = b.right = b.width = ''
-      window.scrollTo(0, y)
-    }
+    return () => releaseScrollLock()
   }, [sheets.length > 0])
+  // Red de seguridad: si este componente se desmonta por cualquier vía (incluido un error de
+  // render capturado más arriba), el body no puede quedarse en position:fixed — eso deja la
+  // página congelada en negro sin forma de recuperarla salvo recargando.
+  useEffect(() => () => releaseScrollLock(), [])
 
   if (!sheets.length) return null
   return (

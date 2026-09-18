@@ -129,7 +129,9 @@ function Shell() {
       </div>
       {!licenseExpired && loc.pathname !== '/onboarding/encuesta' && <TabBar onStart={startFlow} />}
       {!licenseExpired && <RestTimer />}
-      <Modals />
+      {/* Boundary propio: Modals vive fuera de #app, así que un throw acá subía hasta la raíz y
+          desmontaba la app entera — pantalla negra sin salida. Contenido, deja el botón de recarga. */}
+      <ErrorBoundary><Modals /></ErrorBoundary>
       <Toast />
     </>
   )

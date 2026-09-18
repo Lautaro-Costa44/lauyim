@@ -12,6 +12,12 @@ const mocks = vi.hoisted(() => {
       state.sheets = state.sheets.filter(sheet => sheet.id !== id)
       listeners.forEach(listener => listener())
     },
+    setSheetOnBack(id, fn) {
+      const cur = state.sheets.find(sheet => sheet.id === id)
+      if (!cur || cur.onBack === fn) return
+      state.sheets = state.sheets.map(sheet => sheet.id === id ? { ...sheet, onBack: fn } : sheet)
+      listeners.forEach(listener => listener())
+    },
   }
   return {
     state,
@@ -158,6 +164,33 @@ describe('Modals sheet history accounting', () => {
     await popstate()
     await setSheets([])
     expect(historyMock.go).not.toHaveBeenCalled()
+  })
+})
+
+describe('Modals sheet callback identity', () => {
+  // Regresión: "Administrar Nutrición/Rutina" dejaba la app en pantalla negra. El contenido
+  // registra su onBack en un efecto que depende de close/setOnBack; si esas funciones cambiaban
+  // de identidad en cada render, el efecto se realimentaba hasta "Maximum update depth exceeded"
+  // y el árbol entero moría.
+  it('keeps close and setOnBack stable so a setOnBack effect cannot loop', async () => {
+    let renders = 0
+    const Content = ({ close, setOnBack }) => {
+      renders++
+      React.useEffect(() => { setOnBack(() => close()) }, [close, setOnBack])
+      return React.createElement('div', null, 'content')
+    }
+
+    await setSheets([sheet('manage', {
+      locked: true,
+      render: (close, { setOnBack }) => React.createElement(Content, { close, setOnBack }),
+    })])
+
+    expect(renders).toBeLessThanOrEqual(4)
+    expect(typeof mocks.state.sheets[0].onBack).toBe('function')
+
+    const settled = renders
+    await act(async () => {})
+    expect(renders).toBe(settled)
   })
 })
 

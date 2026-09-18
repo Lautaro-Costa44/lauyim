@@ -73,7 +73,13 @@ export const useUI = create((set, get) => ({
   // apilar un sheet real por paso — un wizard de N pasos nunca debería necesitar N entradas
   // de historial real ni un rewind de varios niveles (riesgo de exceder la profundidad real
   // de la sesión en PWA standalone y dejar la pantalla en negro sin forma de salir).
-  setSheetOnBack(id, fn) { set(s => ({ sheets: s.sheets.map(x => x.id === id ? { ...x, onBack: fn } : x) })) },
+  // Re-registrar el MISMO handler no emite estado nuevo: un array nuevo despertaría a Modals,
+  // que re-renderiza el sheet, que vuelve a registrar… (bucle infinito visto en producción).
+  setSheetOnBack(id, fn) {
+    const cur = get().sheets.find(x => x.id === id)
+    if (!cur || cur.onBack === fn) return
+    set(s => ({ sheets: s.sheets.map(x => x.id === id ? { ...x, onBack: fn } : x) }))
+  },
   closeSheet(id) { set(s => ({ sheets: s.sheets.filter(x => x.id !== id) })) },
   // Cierra un sheet y todo lo apilado arriba de él — usado para salir completo de un flujo de
   // varios pasos (ej. wizard de asignar sugerencia) al terminar con éxito. Cierra de a UNO por
