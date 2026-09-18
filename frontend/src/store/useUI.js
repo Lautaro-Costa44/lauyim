@@ -69,14 +69,22 @@ export const useUI = create((set, get) => ({
     return { id, close, lock: v => set(s => ({ sheets: s.sheets.map(x => x.id === id ? { ...x, locked: v } : x) })) }
   },
   closeSheet(id) { set(s => ({ sheets: s.sheets.filter(x => x.id !== id) })) },
-  // Cierra un sheet y todo lo apilado arriba de él en una sola actualización (para que el
-  // rewind de historial en Modals.jsx lo compute de una vez) — usado para salir completo de
-  // un flujo de varios pasos (ej. wizard de asignar sugerencia) al terminar con éxito.
+  // Cierra un sheet y todo lo apilado arriba de él — usado para salir completo de un flujo de
+  // varios pasos (ej. wizard de asignar sugerencia) al terminar con éxito. Cierra de a UNO por
+  // frame (nunca trunca el array entero de un salto): Modals.jsx hace un history.go(-1) por
+  // cada cierre individual, el mismo camino ya probado por el gesto de atrás paso a paso. Un
+  // solo history.go(-N) con N alto puede exceder la profundidad real de la sesión en PWA
+  // standalone y dejar la pantalla en negro sin forma de salir (bug visto en producción).
   closeSheetsFrom(id) {
-    set(s => {
-      const idx = s.sheets.findIndex(x => x.id === id)
-      return idx === -1 ? s : { sheets: s.sheets.slice(0, idx) }
-    })
+    const closeNext = () => {
+      const sheets = get().sheets
+      const idx = sheets.findIndex(x => x.id === id)
+      if (idx === -1 || !sheets.length) return
+      const topId = sheets[sheets.length - 1].id
+      get().closeSheet(topId)
+      if (topId !== id) requestAnimationFrame(closeNext)
+    }
+    closeNext()
   },
   closeAll() { set({ sheets: [] }) },
 
