@@ -72,7 +72,6 @@ function caloricInfoSheet(close) {
 function CaloricCard({ S }) {
   const automaticoHabilitado = useStore(s => s.config?.nutricion_automatico) !== false
   const { peso, altura, edad, objetivo, tmb, mantenimiento, sugerido, sinMetas } = calcularMetasNutricionales(S, { automaticoHabilitado })
-  const objMetaMap = { hipertrofia: t('Ganar Músculo'), fuerza: t('Ganar Fuerza'), perder_grasa: t('Perder Grasa'), fitness_general: t('Mantener Peso') }
   const openInfo = () => useUI.getState().openSheet(close => caloricInfoSheet(close))
   return <div style={{ marginTop: 16 }}>
     <div className="row between" style={{ marginBottom: 10 }}><h2 style={{ margin: 0 }}>{t('Tus calorías diarias')}</h2><button className="helpbtn" aria-label={t('¿Cómo se calcula?')} onClick={openInfo}><Icon name="info" /></button></div>
@@ -81,9 +80,6 @@ function CaloricCard({ S }) {
       <div style={{ height: 'var(--hair)', background: 'var(--sep)', margin: '0 14px' }} />
       <div className="row between" style={{ padding: '11px 14px' }}><span style={{ fontSize: 15, color: 'var(--label-2)' }}>{t('Gasto total diario')}</span><span style={{ fontWeight: 500 }}>~{mantenimiento.toLocaleString()} <span className="dim small">kcal</span></span></div>
     </div>
-    {sinMetas || sugerido == null
-      ? <div style={{ background: 'var(--surface-2)', borderRadius: 12, padding: '14px 16px', textAlign: 'center', marginBottom: 10 }}><div className="dim small">{t('Todavía no tenés metas nutricionales configuradas.')}</div></div>
-      : <div style={{ background: 'var(--acc-soft)', borderRadius: 12, padding: '14px 16px', textAlign: 'center', marginBottom: 10 }}><div style={{ fontSize: 13, color: 'var(--acc)', fontWeight: 600, marginBottom: 6, letterSpacing: '-.006em' }}>🎯 {t('Meta para {0}', objMetaMap[objetivo] || objetivo)}</div><div style={{ fontSize: 36, fontWeight: 700, letterSpacing: '-.028em', color: 'var(--acc)', lineHeight: 1 }}>{sugerido.toLocaleString()}</div><div className="dim small" style={{ marginTop: 4 }}>kcal / día</div></div>}
     <div className="small dim" style={{ lineHeight: 1.45 }}>{t('Calculado para {0} kg, {1} cm, {2} años y tus días de entrenamiento.', fmtNum(peso), altura, edad)}</div>
   </div>
 }

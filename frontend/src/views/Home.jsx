@@ -5,7 +5,7 @@ import { useUI } from '../store/useUI.js'
 import { effectiveRoutine, effectiveRoutineId, streakWeeks, lastBW, setsDoneActive } from '../lib/history.js'
 import { fmtNum, fmtDate, todayISO, isoOf, weekKey, DAYS, DAYN } from '../lib/format.js'
 import { t, dateLocale } from '../lib/i18n.js'
-import { bwSheet, goalSheet, dayOverrideSheet, calendarSheet, startFlow, loadStarterPlan, bwDeltaColor, confirmSheet } from '../sheets.jsx'
+import { bwSheet, goalSheet, dayOverrideSheet, calendarSheet, startFlow, bwDeltaColor, confirmSheet } from '../sheets.jsx'
 import LineChart from '../components/LineChart.jsx'
 import Icon from '../components/Icon.jsx'
 import { Button } from '../components/ui.jsx'
@@ -150,10 +150,6 @@ export default function Home() {
           <div className="muted small" style={{ margin: '8px 0 6px' }}>{t('O elegí un grupo de rutinas')}</div>
           <div className="list">{presetGroups.map(g => <button key={g.name} className="item" onClick={() => chooseGroup(g.name)}><span className="grow"><div className="tt">{g.name}</div><div className="ss">{g.count} {t('rutinas')}</div></span><Icon name="chevronRight" /></button>)}</div>
         </>}
-        <Button onClick={loadStarterPlan} style={{ width: '100%' }}>
-          {t('Cargar plan predeterminado (PPL)')}
-        </Button>
-        <div style={{ height: 10 }} />
         <button
           style={{ background: 'none', border: 'none', color: 'var(--acc)', fontSize: '0.93rem', cursor: 'pointer', width: '100%', padding: '6px 0', textAlign: 'center' }}
           onClick={irAlPlan}
