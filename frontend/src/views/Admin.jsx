@@ -136,7 +136,10 @@ function AdminSuggestionPicker({ onPick, onCreateGlobal }) {
   const [items, setItems] = useState(null)
   const [categoria, setCategoria] = useState('')
   const load = () => api('/api/admin/nutrition/templates').then(r => setItems(r.templates)).catch(() => setItems([]))
-  useEffect(load, [])
+  // `useEffect(load, [])` pasaba la promesa de load() como función de limpieza: al desmontar
+  // el catálogo React llamaba destroy() sobre una promesa y tiraba "destroy is not a function",
+  // matando el árbol entero — el admin quedaba fuera del sheet del socio.
+  useEffect(() => { load() }, [])
   const categorias = items ? [...new Set(items.map(p => p.categoria).filter(Boolean))].sort() : []
   const visibles = items && categoria ? items.filter(p => p.categoria === categoria) : items
   return <>
@@ -662,8 +665,9 @@ function AdminRoutineCard({ userId }) {
   </>
 }
 
-// Punto de entrada desde UserDetail.
-function AdminManageSheet({ userId, userName, close, setOnBack }) {
+// Punto de entrada desde UserDetail. Exportado para poder testear el flujo completo de
+// administración de un socio (metas, sugerencias, comidas globales) sin montar todo el panel.
+export function AdminManageSheet({ userId, userName, close, setOnBack }) {
   const [tab, setTab] = useState('nutrition')
   const [suggestionFlow, setSuggestionFlow] = useState(null)
   const suggestionFlowRef = useRef(suggestionFlow)
