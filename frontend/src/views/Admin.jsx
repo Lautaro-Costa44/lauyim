@@ -288,15 +288,9 @@ function AdminRoutineEditorSheet({ userId, routineId, initial, close, onSaved })
 
   const save = () => persist(draft).then(() => { toast(t('Rutina guardada')); onSaved(); close() }).catch(e => toast(e.message))
 
-  const remove = () => {
-    const next = {
-      ...draft,
-      routines: draft.routines.filter(r => r.id !== routineId),
-      week: Object.fromEntries(Object.entries(draft.week).filter(([, v]) => v !== routineId)),
-      dayPlan: Object.fromEntries(Object.entries(draft.dayPlan).filter(([, v]) => v !== routineId))
-    }
-    persist(next).then(() => { toast(t('Rutina eliminada')); onSaved(); close() }).catch(e => toast(e.message))
-  }
+  // Eliminar rutina vive solo en la lista de AdminRoutineCard (ícono de basura por fila) —
+  // el botón "Delete routine" del propio RoutineEditor queda oculto acá (no se pasa
+  // onDeleted) para no duplicar la acción dentro del editor.
 
   // B.2: audita cuando el admin fuerza la asignación de un ejercicio sobre zona lesionada.
   // Fire-and-forget — no bloquea el flujo de armado de rutina por un fallo de auditoría.
@@ -321,7 +315,6 @@ function AdminRoutineEditorSheet({ userId, routineId, initial, close, onSaved })
         S={{ unit: draft.unit, body: draft.body }}
         update={update}
         onBack={close}
-        onDeleted={remove}
         lesiones={draft.lesiones}
         onInjuryOverride={onInjuryOverride}
       />

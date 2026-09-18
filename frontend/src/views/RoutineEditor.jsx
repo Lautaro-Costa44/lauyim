@@ -230,12 +230,12 @@ export default function RoutineEditor({ routine: r, S, update, onBack, onDeleted
       })
     })} icon="plus">{t('Add exercise')}</Button>
     <div style={{ height: 10 }} />
-    <Button variant="danger" onClick={() => confirmSheet({
+    {onDeleted && <Button variant="danger" onClick={() => confirmSheet({
       title: t('Delete routine?'),
       message: t('“{0}” and its exercises will be removed.', r.name),
       confirmText: t('Delete'),
       danger: true,
       onConfirm: onDeleted
-    })}>{t('Delete routine')}</Button>
+    })}>{t('Delete routine')}</Button>}
   </div>
 }
