@@ -341,12 +341,15 @@ function AdminSuggestionWizard({ userId, suggestions, onSaved, close, backRef, i
 // esta pantalla — feedback visual del cliente). Reusa los mismos tokens de color de la app.
 const bigSectionTitle = txt => <span style={{ fontSize: 17, fontWeight: 600, color: 'var(--label)' }}>{txt}</span>
 
+const NUTRITION_GOAL_LIMITS = { macros: 2000, calories: 20000 }
+
 function AdminNutritionCard({ userId, openSuggestion, editSuggestion }) {
   const toast = useUI(s => s.toast)
   const automaticoHabilitado = useStore(s => s.config?.nutricion_automatico) !== false
   const [data, setData] = useState(null)
   const [saving, setSaving] = useState(false)
   const [manualDraft, setManualDraft] = useState(null)
+  const [manualError, setManualError] = useState(null)
   const [expandedSuggestion, setExpandedSuggestion] = useState(null)
   const base = `/api/admin/users/${encodeURIComponent(userId)}/nutrition`
   const load = () => api(base).then(d => { setData(d); setManualDraft(null) }).catch(e => toast(e.message))
@@ -362,7 +365,7 @@ function AdminNutritionCard({ userId, openSuggestion, editSuggestion }) {
   // definir", para no forzar al admin a repetir una elección que el socio ya hizo. Cada
   // campo numérico sigue siendo independiente: vacío se manda como null, nunca un 0.
   const draft = manualDraft || { objetivo: goals.objetivo ?? data.userObjetivo ?? null, calories: goals.calories, caloriesBurn: goals.caloriesBurn, protein: goals.protein, carbs: goals.carbs, fat: goals.fat }
-  const setDraft = patch => setManualDraft({ ...draft, ...patch })
+  const setDraft = patch => { setManualError(null); setManualDraft({ ...draft, ...patch }) }
   const toggleMode = manual => {
     if (manual) return setManualDraft(draft)
     setSaving(true)
@@ -370,6 +373,22 @@ function AdminNutritionCard({ userId, openSuggestion, editSuggestion }) {
       .then(() => { toast(t('Metas vueltas a automático')); load() }).catch(e => toast(e.message)).finally(() => setSaving(false))
   }
   const saveManual = () => {
+    const fields = [
+      ['caloriesBurn', draft.caloriesBurn, 'Kcalorías a quemar', NUTRITION_GOAL_LIMITS.calories, false],
+      ['calories', draft.calories, 'Kcalorías a consumir', NUTRITION_GOAL_LIMITS.calories, false],
+      ['protein', draft.protein, 'Proteínas', NUTRITION_GOAL_LIMITS.macros, true],
+      ['carbs', draft.carbs, 'Carbohidratos', NUTRITION_GOAL_LIMITS.macros, true],
+      ['fat', draft.fat, 'Grasas', NUTRITION_GOAL_LIMITS.macros, true],
+    ]
+    const invalid = fields.find(([, value, , max, decimal]) => value !== null && value !== undefined &&
+      (!Number.isFinite(value) || value <= 0 || value > max || (!decimal && !Number.isInteger(value))))
+    if (invalid) {
+      const [, value, label, max, decimal] = invalid
+      setManualError(value > max ? `${label}: máximo ${max}${decimal ? ' g' : ''}` :
+        !decimal && !Number.isInteger(value) ? `${label}: debe ser un número entero` : `${label}: debe ser mayor que 0`)
+      return
+    }
+    setManualError(null)
     setSaving(true)
     api(base + '/goals', { method: 'PUT', body: JSON.stringify({ mode: 'manual', ...draft }) })
       .then(() => { toast(t('Metas guardadas')); load() }).catch(e => toast(e.message)).finally(() => setSaving(false))
@@ -403,12 +422,13 @@ function AdminNutritionCard({ userId, openSuggestion, editSuggestion }) {
           options={[{ value: null, label: t('Sin definir') }, ...OBJETIVO_OPTIONS]}
           onChange={v => setDraft({ objetivo: v })} />
         <div className="admin-goals-fields">
-          <Row title={t('Kcalorías a quemar')}><NumberField className="admin-goal-num" value={draft.caloriesBurn} onChange={v => setDraft({ caloriesBurn: v })} decimal={false} nullable /></Row>
-          <Row title={t('Kcalorías a consumir')}><NumberField className="admin-goal-num" value={draft.calories} onChange={v => setDraft({ calories: v })} decimal={false} nullable /></Row>
-          <Row title={t('Proteínas (g)')}><NumberField className="admin-goal-num" value={draft.protein} onChange={v => setDraft({ protein: v })} nullable /></Row>
-          <Row title={t('Carbohidratos (g)')}><NumberField className="admin-goal-num" value={draft.carbs} onChange={v => setDraft({ carbs: v })} nullable /></Row>
-          <Row title={t('Grasas (g)')}><NumberField className="admin-goal-num" value={draft.fat} onChange={v => setDraft({ fat: v })} nullable /></Row>
+          <Row title={t('Kcalorías a quemar')}><NumberField className="admin-goal-num" value={draft.caloriesBurn} onChange={v => setDraft({ caloriesBurn: v })} decimal={false} max={NUTRITION_GOAL_LIMITS.calories} nullable /></Row>
+          <Row title={t('Kcalorías a consumir')}><NumberField className="admin-goal-num" value={draft.calories} onChange={v => setDraft({ calories: v })} decimal={false} max={NUTRITION_GOAL_LIMITS.calories} nullable /></Row>
+          <Row title={t('Proteínas (g)')}><NumberField className="admin-goal-num" value={draft.protein} onChange={v => setDraft({ protein: v })} max={NUTRITION_GOAL_LIMITS.macros} nullable /></Row>
+          <Row title={t('Carbohidratos (g)')}><NumberField className="admin-goal-num" value={draft.carbs} onChange={v => setDraft({ carbs: v })} max={NUTRITION_GOAL_LIMITS.macros} nullable /></Row>
+          <Row title={t('Grasas (g)')}><NumberField className="admin-goal-num" value={draft.fat} onChange={v => setDraft({ fat: v })} max={NUTRITION_GOAL_LIMITS.macros} nullable /></Row>
         </div>
+        {manualError && <div role="alert" className="error small" style={{ marginTop: 8 }}>{manualError}</div>}
         <div className="row" style={{ justifyContent: 'center', marginTop: 14 }}>
           <Button variant="primary" size="sm" disabled={saving} onClick={saveManual}>{t('Guardar metas')}</Button>
         </div>

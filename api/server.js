@@ -911,37 +911,51 @@ function validarIngredientes(ingredientes) {
 // paralelo, la lista vive una sola vez en el frontend.
 const OBJETIVOS_VALIDOS = new Set(['hipertrofia', 'fuerza', 'perder_grasa', 'fitness_general']);
 
+const NUTRITION_GOAL_LIMITS = {
+  macros: { min: 0, max: 2000, integer: false },
+  calories: { min: 0, max: 20000, integer: true },
+  caloriesBurn: { min: 0, max: 20000, integer: true },
+};
+
 // Campo vacío ('', null, undefined) => null, nunca 0 (regla A.3). Positivo y dentro de un
 // rango razonable si viene con valor.
-function parsePositiveOrNull(value, max) {
+function parsePositiveOrNull(value, limits, label) {
   if (value === null || value === undefined || value === '') return { ok: true, value: null };
   const n = Number(value);
-  if (!Number.isFinite(n) || n <= 0 || n > max) return { ok: false, value: null };
+  if (!Number.isFinite(n) || n <= limits.min || n > limits.max || (limits.integer && !Number.isInteger(n))) {
+    return {
+      ok: false,
+      error: !Number.isFinite(n) || n <= limits.min ? `${label}: debe ser mayor que 0` :
+        limits.integer && !Number.isInteger(n) ? `${label}: debe ser un número entero` :
+          `${label}: máximo ${limits.max}${label.includes('Calor') ? '' : ' g'}`,
+    };
+  }
   return { ok: true, value: n };
 }
 
 // Body shape: { mode: 'automatic' } clears the manual override, or
 // { mode: 'manual', objetivo, calories, caloriesBurn, protein, carbs, fat } sets it —
-// cada numérico es independiente y puede quedar vacío (null). Returns null on invalid input.
+// cada numérico es independiente y puede quedar vacío (null). Returns { ok, goals/error }.
 function parseNutritionGoalsBody(body) {
   if (body?.mode === 'automatic') {
-    return { mode: 'automatic', objetivo: null, calories: null, caloriesBurn: null, protein: null, carbs: null, fat: null };
+    return { ok: true, goals: { mode: 'automatic', objetivo: null, calories: null, caloriesBurn: null, protein: null, carbs: null, fat: null } };
   }
-  if (body?.mode !== 'manual') return null;
+  if (body?.mode !== 'manual') return { ok: false, error: 'Metas inválidas: el modo debe ser automático o manual' };
   const objetivoRaw = body.objetivo;
   const objetivo = (objetivoRaw === null || objetivoRaw === undefined || objetivoRaw === '') ? null : objetivoRaw;
-  if (objetivo !== null && !OBJETIVOS_VALIDOS.has(objetivo)) return null;
-  const calories = parsePositiveOrNull(body.calories, 20000);
-  const caloriesBurn = parsePositiveOrNull(body.caloriesBurn, 20000);
-  const protein = parsePositiveOrNull(body.protein, 2000);
-  const carbs = parsePositiveOrNull(body.carbs, 2000);
-  const fat = parsePositiveOrNull(body.fat, 2000);
-  if (![calories, caloriesBurn, protein, carbs, fat].every(r => r.ok)) return null;
-  return {
+  if (objetivo !== null && !OBJETIVOS_VALIDOS.has(objetivo)) return { ok: false, error: 'Objetivo inválido' };
+  const calories = parsePositiveOrNull(body.calories, NUTRITION_GOAL_LIMITS.calories, 'Calorías');
+  const caloriesBurn = parsePositiveOrNull(body.caloriesBurn, NUTRITION_GOAL_LIMITS.caloriesBurn, 'Calorías a quemar');
+  const protein = parsePositiveOrNull(body.protein, NUTRITION_GOAL_LIMITS.macros, 'Proteínas');
+  const carbs = parsePositiveOrNull(body.carbs, NUTRITION_GOAL_LIMITS.macros, 'Carbohidratos');
+  const fat = parsePositiveOrNull(body.fat, NUTRITION_GOAL_LIMITS.macros, 'Grasas');
+  const invalid = [calories, caloriesBurn, protein, carbs, fat].find(result => !result.ok);
+  if (invalid) return { ok: false, error: invalid.error };
+  return { ok: true, goals: {
     mode: 'manual', objetivo,
     calories: calories.value, caloriesBurn: caloriesBurn.value,
     protein: protein.value, carbs: carbs.value, fat: fat.value
-  };
+  } };
 }
 
 function suggestionResponse(row) {
@@ -1324,8 +1338,9 @@ const routes = {
     const userId = decodeURIComponent(new URL(req.url, 'http://x').pathname.split('/')[4]);
     const target = requireActiveTargetUser(res, userId); if (!target) return;
     const body = await readBody(req);
-    const goals = parseNutritionGoalsBody(body);
-    if (!goals) return json(res, 400, { error: 'Metas inválidas: el modo debe ser automático, o manual con calorías/proteína/carbohidratos/grasas positivos' });
+    const parsedGoals = parseNutritionGoalsBody(body);
+    if (!parsedGoals.ok) return json(res, 400, { error: parsedGoals.error });
+    const goals = parsedGoals.goals;
     const before = getNutritionGoals(userId);
     // Preserva limitarSugeridas (y cualquier otro campo fuera de parseNutritionGoalsBody):
     // guardar metas no debe pisar la preferencia de sugerencias ya guardada del socio.

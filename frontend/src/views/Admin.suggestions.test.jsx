@@ -157,6 +157,17 @@ describe('Administrar Nutrición/Rutina — metas', () => {
     expect(JSON.parse(saved[1].body)).toMatchObject({ mode: 'manual', objetivo: 'perder_grasa' })
     expect(close).not.toHaveBeenCalled()
   })
+
+  it('muestra un error inline y no guarda un macro mayor al límite', async () => {
+    await click(container.querySelector('[role="switch"]'))
+    await type(byText('.lrow', 'Proteínas (g)').querySelector('input'), '2000.1')
+    const callsBeforeSave = apiMock.mock.calls.length
+
+    await clickText('button', 'Guardar metas')
+
+    expect(text()).toContain('Proteínas: máximo 2000 g')
+    expect(apiMock.mock.calls.slice(callsBeforeSave).some(([, options]) => options?.method === 'PUT')).toBe(false)
+  })
 })
 
 describe('Administrar Nutrición/Rutina — sugerencias', () => {
