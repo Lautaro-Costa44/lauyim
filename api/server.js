@@ -935,6 +935,7 @@ function suggestionResponse(row) {
   return {
     id: row.id, nombre: row.nombre, categoria: row.categoria, enabled: !!row.enabled, position: row.position,
     assignedBy: row.assigned_by, createdAt: row.created_at, updatedAt: row.updated_at,
+    sourcePlantillaId: row.source_plantilla_id ?? null,
     franjas,
     ingredientes: (row.ingredientes || []).map(i => ({
       id: i.id, nombre_alimento: i.nombre_alimento, cantidad_gramos: i.cantidad_gramos,
@@ -1323,11 +1324,20 @@ const routes = {
     const body = await readBody(req);
     const sourceId = Number(body.plantilla_id);
     if (!Number.isInteger(sourceId)) return json(res, 400, { error: 'Falta plantilla_id' });
+    if (!['desayuno', 'almuerzo', 'merienda', 'cena', 'extra'].includes(body.franja)) {
+      return json(res, 400, { error: 'Franja inválida' });
+    }
     const source = getPlantillaWithIngredientes(sourceId);
     if (!source) return json(res, 404, { error: 'Plantilla no encontrada' });
-    const created = assignExistingPlantillaToUser(userId, sourceId, admin.id);
+    let created;
+    try {
+      created = assignExistingPlantillaToUser(userId, sourceId, admin.id, body.franja);
+    } catch (error) {
+      if (error.code === 'DUPLICATE_FRANJA') return json(res, 409, { error: 'Ya asignada a esa franja' });
+      throw error;
+    }
     logAdminAction({ actorUserId: admin.id, targetUserId: userId, action: 'nutrition.suggestion.assign', entityId: created.id, after: suggestionResponse(created) });
-    audit(req, 'admin.nutrition.suggestion.assign', { user: admin, target, msg: created.nombre });
+    audit(req, 'admin.nutrition.suggestion.assign', { user: admin, target, msg: `${created.nombre} · ${body.franja}` });
     json(res, 201, { suggestion: suggestionResponse(created) });
   },
 

@@ -78,6 +78,9 @@ export function initDatabase() {
   try {
     db.exec(`ALTER TABLE plantillas_comida ADD COLUMN assigned_by TEXT;`);
   } catch {}
+  try {
+    db.exec(`ALTER TABLE plantillas_comida ADD COLUMN source_plantilla_id INTEGER;`);
+  } catch {}
 
   // Crear tablas principales si no existen
   db.exec(`
@@ -780,12 +783,13 @@ export function getAdminSuggestionsByUserId(userId) {
   return rows;
 }
 
-function insertPlantillaConIngredientes(db, { userId, nombre, categoria, scope, assignedBy, position, ingredientes }) {
+function insertPlantillaConIngredientes(db, { userId, nombre, categoria, scope, assignedBy, position, ingredientes, sourcePlantillaId, franjasRecomendadas }) {
   const now = Date.now();
   const result = db.prepare(`
-    INSERT INTO plantillas_comida (user_id, nombre, categoria, created_at, updated_at, scope, enabled, position, assigned_by)
-    VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?)
-  `).run(userId, nombre, categoria || null, now, now, scope, position, assignedBy);
+    INSERT INTO plantillas_comida (user_id, nombre, categoria, created_at, updated_at, scope, enabled, position, assigned_by, source_plantilla_id, franjas_recomendadas)
+    VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?)
+  `).run(userId, nombre, categoria || null, now, now, scope, position, assignedBy,
+    sourcePlantillaId ?? null, franjasRecomendadas ? JSON.stringify(franjasRecomendadas) : null);
   const plantillaId = Number(result.lastInsertRowid);
   const stmt = db.prepare(`
     INSERT INTO plantillas_ingredientes (plantilla_id, nombre_alimento, cantidad_gramos, calorias, proteina, carbohidratos, grasas)
@@ -802,18 +806,37 @@ function nextSuggestionPosition(db, userId) {
   return (Number.isFinite(row?.maxPos) ? row.maxPos : -1) + 1;
 }
 
+// Franjas ya asignadas a este socio para esta plantilla fuente (para bloquear checkboxes
+// en el selector de franja del admin y para el chequeo de duplicado del endpoint).
+export function getAssignedFranjasForSource(userId, sourcePlantillaId) {
+  const db = getDatabase();
+  const rows = db.prepare(`SELECT franjas_recomendadas FROM plantillas_comida WHERE user_id = ? AND scope = 'admin' AND source_plantilla_id = ?`).all(userId, sourcePlantillaId);
+  const franjas = new Set();
+  for (const row of rows) {
+    try { (JSON.parse(row.franjas_recomendadas || '[]')).forEach(f => franjas.add(f)); } catch {}
+  }
+  return [...franjas];
+}
+
 // Asigna una plantilla existente (global o de otro socio, visible al admin) clonándola para
-// el socio objetivo. Nunca reutiliza la fila original: así "quitar" la sugerencia después no
-// afecta la plantilla fuente ni a otros socios que la tengan asignada.
-export function assignExistingPlantillaToUser(userId, sourcePlantillaId, assignedByUserId) {
+// el socio objetivo, en una franja puntual. Nunca reutiliza la fila original: así "quitar" la
+// sugerencia después no afecta la plantilla fuente ni a otros socios que la tengan asignada.
+// Una fila por franja (regla A.2): permite borrar/mover una franja sin afectar las demás.
+export function assignExistingPlantillaToUser(userId, sourcePlantillaId, assignedByUserId, franja) {
   const db = getDatabase();
   const source = getPlantillaWithIngredientes(sourcePlantillaId);
   if (!source) return null;
+  if (getAssignedFranjasForSource(userId, sourcePlantillaId).includes(franja)) {
+    const error = new Error('Ya asignada a esa franja');
+    error.code = 'DUPLICATE_FRANJA';
+    throw error;
+  }
   db.exec('BEGIN');
   try {
     const plantillaId = insertPlantillaConIngredientes(db, {
       userId, nombre: source.nombre, categoria: source.categoria, scope: 'admin',
-      assignedBy: assignedByUserId, position: nextSuggestionPosition(db, userId), ingredientes: source.ingredientes
+      assignedBy: assignedByUserId, position: nextSuggestionPosition(db, userId), ingredientes: source.ingredientes,
+      sourcePlantillaId, franjasRecomendadas: [franja]
     });
     db.exec('COMMIT');
     return getPlantillaWithIngredientes(plantillaId);

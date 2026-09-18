@@ -496,13 +496,13 @@ function agruparComidas(rows) {
   return items
 }
 
-export function GrupoComidaRow({ grupo, onRemove, actions, expandido, onToggle }) {
+export function GrupoComidaRow({ grupo, onRemove, actions, expandido, onToggle, className = '' }) {
   const [expandidoLocal, setExpandidoLocal] = useState(false)
   const estaExpandido = expandido !== undefined ? expandido : expandidoLocal
   const totales = grupo.totales || totalesDeIngredientes(grupo.ingredientes || [])
   const subtitle = `${Math.round(totales.calorias)} kcal · ${totales.proteina.toFixed(1)} g prot. · ${totales.carbohidratos.toFixed(1)} g carb. · ${totales.grasas.toFixed(1)} g grasas`
   const defaultActions = onRemove ? [<button key="remove" type="button" className="iconbtn meal-delete" aria-label="Eliminar comida compuesta" onClick={event => { event.stopPropagation(); onRemove(grupo.grupo_id) }}>×</button>] : []
-  return <div className="grupo-comida-row">
+  return <div className={'grupo-comida-row' + (className ? ' ' + className : '')}>
     <Row title={grupo.grupo_nombre} subtitle={subtitle} onClick={() => onToggle ? onToggle() : setExpandidoLocal(value => !value)}>
       {actions || defaultActions}
     </Row>

@@ -129,28 +129,87 @@ function AdminSuggestionEditor({ userId, existing, close, onSaved }) {
 }
 
 // Catálogo para asignar: reutiliza GET /api/plantillas del propio admin (globales + propias),
-// nunca un catálogo paralelo. El backend clona la plantilla elegida para el socio (Fase 2).
-function AdminSuggestionPicker({ userId, close, onSaved }) {
-  const toast = useUI(s => s.toast)
+// nunca un catálogo paralelo. PASO 1 de 3 (ver AdminSuggestionDetail / AdminFranjaSelector):
+// tocar una plantilla acá NO escribe nada, solo navega al detalle.
+function AdminSuggestionPicker({ userId, suggestions, close, onSaved }) {
   const [items, setItems] = useState(null)
   useEffect(() => { api('/api/plantillas?categoria=fitness').then(setItems).catch(() => setItems([])) }, [])
-  const assign = plantilla => api(`/api/admin/users/${encodeURIComponent(userId)}/nutrition/suggestions`, { method: 'POST', body: JSON.stringify({ plantilla_id: plantilla.id }) })
-    .then(() => { toast(t('Sugerencia asignada')); onSaved(); close() })
-    .catch(e => toast(e.message))
+  const openDetail = plantilla => { close(); useUI.getState().openSheet(c => <AdminSuggestionDetail userId={userId} plantilla={plantilla} suggestions={suggestions} close={c} onSaved={onSaved} />) }
   return <>
     <h3>{t('Elegir plantilla existente')}</h3>
     {items === null ? <div className="dim small">{t('Loading…')}</div> : items.length ? <div className="list">
-      {items.map(p => <Row key={p.id} title={p.nombre} subtitle={t('{0} ingredientes', p.ingredientes.length)} onClick={() => assign(p)} accessory="chevron" />)}
+      {items.map(p => <Row key={p.id} title={p.nombre} subtitle={t('{0} ingredientes', p.ingredientes.length)} onClick={() => openDetail(p)} accessory="chevron" />)}
     </div> : <div className="dim small">{t('No hay plantillas globales todavía.')}</div>}
   </>
 }
 
-function openAddSuggestion(userId, onSaved) {
+// PASO 2 de 3: muestra el contenido de la plantilla antes de asignarla. [Agregar] tampoco
+// escribe nada, solo abre el selector de franja (PASO 3).
+function AdminSuggestionDetail({ userId, plantilla, suggestions, close, onSaved }) {
+  const totales = totalesDeIngredientes(plantilla.ingredientes)
+  const volver = () => { close(); useUI.getState().openSheet(c => <AdminSuggestionPicker userId={userId} suggestions={suggestions} close={c} onSaved={onSaved} />) }
+  const siguiente = () => { close(); useUI.getState().openSheet(c => <AdminFranjaSelector userId={userId} plantilla={plantilla} suggestions={suggestions} close={c} onSaved={onSaved} />) }
+  return <>
+    <div className="row between" style={{ marginBottom: 8 }}>
+      <Button size="sm" onClick={volver}>{t('Volver')}</Button>
+      <Button size="sm" variant="primary" onClick={siguiente}>{t('Agregar')}</Button>
+    </div>
+    <h3 style={{ marginTop: 0 }}>{plantilla.nombre}</h3>
+    <Section title={t('Ingredientes')}>
+      {plantilla.ingredientes.map((ing, i) => <Row key={i} title={ing.nombre_alimento} subtitle={`${ing.cantidad_gramos} g`} />)}
+    </Section>
+    <div className="nutri-live row between" style={{ marginTop: 8 }}>
+      <span>{t('Total')}</span>
+      <span>{Math.round(totales.calorias)} kcal · {totales.proteina.toFixed(1)}g prot · {totales.carbohidratos.toFixed(1)}g carb · {totales.grasas.toFixed(1)}g grasas</span>
+    </div>
+  </>
+}
+
+// PASO 3 de 3: única pantalla donde se escribe. Confirmar crea una asignación independiente
+// por cada franja marcada (regla A.2); las franjas donde la plantilla ya está asignada
+// aparecen marcadas y bloqueadas para evitar duplicados.
+function AdminFranjaSelector({ userId, plantilla, suggestions, close, onSaved }) {
+  const toast = useUI(s => s.toast)
+  const yaAsignadas = new Set(suggestions.filter(s => s.sourcePlantillaId === plantilla.id).flatMap(s => s.franjas))
+  const [selected, setSelected] = useState(new Set(yaAsignadas))
+  const [saving, setSaving] = useState(false)
+  const toggle = value => {
+    if (yaAsignadas.has(value)) return
+    setSelected(cur => {
+      const next = new Set(cur)
+      next.has(value) ? next.delete(value) : next.add(value)
+      return next
+    })
+  }
+  const nuevas = [...selected].filter(v => !yaAsignadas.has(v))
+  const volver = () => { close(); useUI.getState().openSheet(c => <AdminSuggestionDetail userId={userId} plantilla={plantilla} suggestions={suggestions} close={c} onSaved={onSaved} />) }
+  const confirmar = () => {
+    setSaving(true)
+    const base = `/api/admin/users/${encodeURIComponent(userId)}/nutrition/suggestions`
+    Promise.all(nuevas.map(franja => api(base, { method: 'POST', body: JSON.stringify({ plantilla_id: plantilla.id, franja }) })))
+      .then(() => { toast(t('Sugerencia asignada')); onSaved(); close() })
+      .catch(e => { setSaving(false); toast(e.message) })
+  }
+  return <>
+    <h3>{t('¿A qué franja querés agregarla?')}</h3>
+    <div className="list" style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>
+      {FRANJAS.map(f => <CheckPill key={f.value} checked={selected.has(f.value)} onChange={() => toggle(f.value)}>
+        {f.label}{yaAsignadas.has(f.value) ? ` · ${t('ya asignada')}` : ''}
+      </CheckPill>)}
+    </div>
+    <div className="row between">
+      <Button onClick={volver}>{t('Cancelar')}</Button>
+      <Button variant="primary" disabled={saving || !nuevas.length} onClick={confirmar}>{saving ? t('Guardando…') : t('Confirmar')}</Button>
+    </div>
+  </>
+}
+
+function openAddSuggestion(userId, suggestions, onSaved) {
   useUI.getState().openSheet(close => <>
     <h3>{t('Agregar sugerencia')}</h3>
     <div className="list">
       <Button variant="tinted" icon="plate" style={{ width: '100%', marginBottom: 8 }}
-        onClick={() => { close(); useUI.getState().openSheet(c => <AdminSuggestionPicker userId={userId} close={c} onSaved={onSaved} />) }}>
+        onClick={() => { close(); useUI.getState().openSheet(c => <AdminSuggestionPicker userId={userId} suggestions={suggestions} close={c} onSaved={onSaved} />) }}>
         {t('Desde plantilla existente')}
       </Button>
       <Button variant="tinted" icon="plus" style={{ width: '100%' }}
@@ -201,7 +260,6 @@ function AdminNutritionCard({ userId }) {
     api(base + '/goals', { method: 'PUT', body: JSON.stringify({ mode: 'manual', ...draft }) })
       .then(() => { toast(t('Metas guardadas')); load() }).catch(e => toast(e.message)).finally(() => setSaving(false))
   }
-  const toggleSuggestion = (s, enabled) => api(`${base}/suggestions/${s.id}`, { method: 'PATCH', body: JSON.stringify({ enabled }) }).then(load).catch(e => toast(e.message))
   const removeSuggestion = s => confirmSheet({
     title: t('¿Quitar sugerencia?'), message: t('“{0}” deja de mostrarse al socio. No afecta plantillas globales.', s.nombre),
     confirmText: t('Quitar'), danger: true,
@@ -237,7 +295,7 @@ function AdminNutritionCard({ userId }) {
         </div>
       </>}
     </Section>
-    <Section title={bigSectionTitle(t('Comidas sugeridas personalizadas'))} footer={<Button size="sm" icon="plus" onClick={() => openAddSuggestion(userId, load)}>{t('Agregar sugerencia')}</Button>}>
+    <Section title={bigSectionTitle(t('Comidas sugeridas personalizadas'))} footer={<Button size="sm" icon="plus" onClick={() => openAddSuggestion(userId, data.suggestions, load)}>{t('Agregar sugerencia')}</Button>}>
       {data.suggestions.length ? FRANJAS.map(franja => {
         const items = data.suggestions.filter(s => (s.franjas || []).includes(franja.value))
         if (!items.length) return null
@@ -246,15 +304,15 @@ function AdminNutritionCard({ userId }) {
           {items.map(s => {
             const idx = data.suggestions.findIndex(x => x.id === s.id)
             return <GrupoComidaRow key={s.id + ':' + franja.value}
+              className="admin-suggestion-row"
               expandido={expandedSuggestion === s.id}
               onToggle={() => setExpandedSuggestion(cur => cur === s.id ? null : s.id)}
-              grupo={{ grupo_nombre: s.nombre + (s.enabled ? '' : ' · ' + t('deshabilitada')), ingredientes: s.ingredientes, totales: totalesDeIngredientes(s.ingredientes) }}
+              grupo={{ grupo_nombre: s.nombre, ingredientes: s.ingredientes, totales: totalesDeIngredientes(s.ingredientes) }}
               actions={[
-                <button key="up" className="iconbtn" disabled={idx === 0} aria-label={t('Subir')} onClick={e => { e.stopPropagation(); move(s, -1) }}><Icon name="chevronUp" /></button>,
-                <button key="down" className="iconbtn" disabled={idx === data.suggestions.length - 1} aria-label={t('Bajar')} onClick={e => { e.stopPropagation(); move(s, 1) }}><Icon name="chevronDown" /></button>,
-                <span key="switch" onClick={e => e.stopPropagation()}><Switch checked={!!s.enabled} onChange={v => toggleSuggestion(s, v)} /></span>,
-                <button key="edit" className="iconbtn" aria-label={t('Edit')} onClick={e => { e.stopPropagation(); useUI.getState().openSheet(c => <AdminSuggestionEditor userId={userId} existing={s} close={c} onSaved={load} />, { locked: true, fullScreen: true }) }}><Icon name="pencil" /></button>,
-                <button key="remove" className="iconbtn" aria-label={t('Remove')} style={{ color: 'var(--red)' }} onClick={e => { e.stopPropagation(); removeSuggestion(s) }}><Icon name="trash" /></button>,
+                <button key="up" className="iconbtn admin-suggestion-iconbtn" disabled={idx === 0} aria-label={t('Subir')} onClick={e => { e.stopPropagation(); move(s, -1) }}><Icon name="chevronUp" /></button>,
+                <button key="down" className="iconbtn admin-suggestion-iconbtn" disabled={idx === data.suggestions.length - 1} aria-label={t('Bajar')} onClick={e => { e.stopPropagation(); move(s, 1) }}><Icon name="chevronDown" /></button>,
+                <button key="edit" className="iconbtn admin-suggestion-iconbtn" aria-label={t('Edit')} onClick={e => { e.stopPropagation(); useUI.getState().openSheet(c => <AdminSuggestionEditor userId={userId} existing={s} close={c} onSaved={load} />, { locked: true, fullScreen: true }) }}><Icon name="pencil" /></button>,
+                <button key="remove" className="iconbtn admin-suggestion-iconbtn" aria-label={t('Remove')} style={{ color: 'var(--red)' }} onClick={e => { e.stopPropagation(); removeSuggestion(s) }}><Icon name="trash" /></button>,
               ]}
             />
           })}
