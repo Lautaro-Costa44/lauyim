@@ -722,10 +722,13 @@ export function getNutritionGoals(userId) {
 
 export function setNutritionGoals(userId, goals) {
   const db = getDatabase();
+  const stamp = Date.now();
   db.prepare(`
-    INSERT INTO user_state (user_id, nutrition_goals) VALUES (?, ?)
-    ON CONFLICT(user_id) DO UPDATE SET nutrition_goals = excluded.nutrition_goals
-  `).run(userId, JSON.stringify(goals));
+    INSERT INTO user_state (user_id, _ts, nutrition_goals) VALUES (?, ?, ?)
+    ON CONFLICT(user_id) DO UPDATE SET
+      nutrition_goals = excluded.nutrition_goals,
+      _ts = MAX(COALESCE(user_state._ts, 0), excluded._ts)
+  `).run(userId, stamp, JSON.stringify(goals));
 }
 
 // El objetivo que el admin fija en metas manuales también es la configuración real del
@@ -764,13 +767,16 @@ export function getLesiones(userId) {
 
 export function saveLesiones(userId, lesiones) {
   const db = getDatabase();
+  const stamp = Date.now();
   const row = db.prepare('SELECT respuestas_encuesta FROM user_state WHERE user_id = ?').get(userId);
   const resp = (row && safeJsonParse(row.respuestas_encuesta, null)) || {};
   resp.lesiones = lesiones;
   db.prepare(`
-    INSERT INTO user_state (user_id, respuestas_encuesta) VALUES (?, ?)
-    ON CONFLICT(user_id) DO UPDATE SET respuestas_encuesta = excluded.respuestas_encuesta
-  `).run(userId, JSON.stringify(resp));
+    INSERT INTO user_state (user_id, _ts, respuestas_encuesta) VALUES (?, ?, ?)
+    ON CONFLICT(user_id) DO UPDATE SET
+      respuestas_encuesta = excluded.respuestas_encuesta,
+      _ts = MAX(COALESCE(user_state._ts, 0), excluded._ts)
+  `).run(userId, stamp, JSON.stringify(resp));
 }
 
 // ============================================================
@@ -1025,14 +1031,23 @@ export function getRoutineGroups(userId) {
 }
 
 export function saveRoutineGroups(userId, routineGroups, activeGroupId) {
+  const stamp = Date.now();
   getDatabase().prepare(`
-    INSERT INTO user_state (user_id, routine_groups, active_group_id) VALUES (?, ?, ?)
-    ON CONFLICT(user_id) DO UPDATE SET routine_groups = excluded.routine_groups, active_group_id = excluded.active_group_id
-  `).run(userId, JSON.stringify(routineGroups || []), activeGroupId || null);
+    INSERT INTO user_state (user_id, _ts, routine_groups, active_group_id) VALUES (?, ?, ?, ?)
+    ON CONFLICT(user_id) DO UPDATE SET
+      routine_groups = excluded.routine_groups,
+      active_group_id = excluded.active_group_id,
+      _ts = MAX(COALESCE(user_state._ts, 0), excluded._ts)
+  `).run(userId, stamp, JSON.stringify(routineGroups || []), activeGroupId || null);
 }
 
 export function saveRoutines(userId, routines) {
   const db = getDatabase();
+
+  db.prepare(`
+    INSERT INTO user_state (user_id, _ts) VALUES (?, ?)
+    ON CONFLICT(user_id) DO NOTHING
+  `).run(userId, Date.now());
 
   // Eliminar rutinas viejas
   const deleteStmt = db.prepare('DELETE FROM routines WHERE user_id = ?');

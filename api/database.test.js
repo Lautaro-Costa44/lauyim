@@ -157,6 +157,44 @@ test('setNutritionGoals/getNutritionGoals round-trip objetivo + caloriesBurn (A.
   assert.equal(legacy.calories, 2000);
 });
 
+test('writes for a user without state create user_state with _ts', () => {
+  dbMod.initDatabase();
+  const db = dbMod.getDatabase();
+  const users = ['goals-no-state', 'limit-no-state', 'injuries-no-state', 'groups-no-state', 'routines-no-state'];
+  for (const id of users) dbMod.createUser({ id, name: id, admin: false, disabled: false, created: Date.now() });
+
+  dbMod.setNutritionGoals('goals-no-state', { mode: 'manual', calories: 1800 });
+  dbMod.setNutritionGoals('limit-no-state', { mode: 'automatic', limitarSugeridas: true });
+  dbMod.saveLesiones('injuries-no-state', ['hombros']);
+  dbMod.saveRoutineGroups('groups-no-state', [{ id: 'g1', name: 'Fuerza', routines: [] }], 'g1');
+  dbMod.saveRoutines('routines-no-state', [{ id: 'r1', name: 'Rutina', ex: [] }]);
+
+  for (const id of users) {
+    const row = db.prepare('SELECT _ts FROM user_state WHERE user_id = ?').get(id);
+    assert.ok(row, `missing user_state for ${id}`);
+    assert.equal(typeof row._ts, 'number');
+    assert.ok(row._ts > 0);
+  }
+  assert.equal(dbMod.getNutritionGoals('goals-no-state').calories, 1800);
+  assert.equal(dbMod.getNutritionGoals('limit-no-state').limitarSugeridas, true);
+  assert.deepEqual(dbMod.getLesiones('injuries-no-state'), ['hombros']);
+  assert.equal(dbMod.getRoutineGroups('groups-no-state').activeGroupId, 'g1');
+  assert.equal(dbMod.getRoutinesByUserId('routines-no-state')[0].id, 'r1');
+});
+
+test('setNutritionGoals updates an existing user_state row with _ts', () => {
+  dbMod.initDatabase();
+  const db = dbMod.getDatabase();
+  dbMod.createUser({ id: 'existing-state-goals', name: 'Existing state', admin: false, disabled: false, created: Date.now() });
+  db.prepare('INSERT INTO user_state (user_id, _ts) VALUES (?, ?)').run('existing-state-goals', 100);
+
+  dbMod.setNutritionGoals('existing-state-goals', { mode: 'manual', calories: 1900 });
+
+  const row = db.prepare('SELECT _ts, nutrition_goals FROM user_state WHERE user_id = ?').get('existing-state-goals');
+  assert.equal(row.nutrition_goals, JSON.stringify({ mode: 'manual', calories: 1900 }));
+  assert.ok(row._ts >= 100);
+});
+
 test('deleteUser removes a disabled user and cascades their data', () => {
   dbMod.initDatabase();
   const db = dbMod.getDatabase();
