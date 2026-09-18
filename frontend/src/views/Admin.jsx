@@ -223,14 +223,16 @@ function AdminNutritionCard({ userId }) {
         <SelectRow title={t('Objetivo')} value={draft.objetivo}
           options={[{ value: null, label: t('Sin definir') }, ...OBJETIVO_OPTIONS]}
           onChange={v => setDraft({ objetivo: v })} />
-        <div className="row" style={{ gap: 8, margin: '8px 0', flexWrap: 'wrap' }}>
-          <label className="grow small dim">{t('Kcalorías a quemar')}<NumberField value={draft.caloriesBurn} onChange={v => setDraft({ caloriesBurn: v })} decimal={false} nullable /></label>
-          <label className="grow small dim">{t('Kcalorías a consumir')}<NumberField value={draft.calories} onChange={v => setDraft({ calories: v })} decimal={false} nullable /></label>
-          <label className="grow small dim">{t('Proteínas (g)')}<NumberField value={draft.protein} onChange={v => setDraft({ protein: v })} nullable /></label>
-          <label className="grow small dim">{t('Carbohidratos (g)')}<NumberField value={draft.carbs} onChange={v => setDraft({ carbs: v })} nullable /></label>
-          <label className="grow small dim">{t('Grasas (g)')}<NumberField value={draft.fat} onChange={v => setDraft({ fat: v })} nullable /></label>
+        <div className="admin-goals-fields">
+          <Row title={t('Kcalorías a quemar')}><NumberField className="admin-goal-num" value={draft.caloriesBurn} onChange={v => setDraft({ caloriesBurn: v })} decimal={false} nullable /></Row>
+          <Row title={t('Kcalorías a consumir')}><NumberField className="admin-goal-num" value={draft.calories} onChange={v => setDraft({ calories: v })} decimal={false} nullable /></Row>
+          <Row title={t('Proteínas (g)')}><NumberField className="admin-goal-num" value={draft.protein} onChange={v => setDraft({ protein: v })} nullable /></Row>
+          <Row title={t('Carbohidratos (g)')}><NumberField className="admin-goal-num" value={draft.carbs} onChange={v => setDraft({ carbs: v })} nullable /></Row>
+          <Row title={t('Grasas (g)')}><NumberField className="admin-goal-num" value={draft.fat} onChange={v => setDraft({ fat: v })} nullable /></Row>
         </div>
-        <Button variant="primary" size="sm" disabled={saving} onClick={saveManual}>{t('Guardar metas')}</Button>
+        <div className="row" style={{ justifyContent: 'center', marginTop: 14 }}>
+          <Button variant="primary" size="sm" disabled={saving} onClick={saveManual}>{t('Guardar metas')}</Button>
+        </div>
       </>}
     </Section>
     <Section title={bigSectionTitle(t('Comidas sugeridas personalizadas'))} footer={<Button size="sm" icon="plus" onClick={() => openAddSuggestion(userId, load)}>{t('Agregar sugerencia')}</Button>}>
@@ -255,7 +257,7 @@ function AdminNutritionCard({ userId }) {
             />
           })}
         </div>
-      }) : <div className="dim small">{t('Sin sugerencias asignadas')}</div>}
+      }) : <div className="empty" style={{ marginBottom: 8 }}>{t('Sin sugerencias asignadas')}</div>}
     </Section>
   </>
 }
@@ -300,7 +302,16 @@ function AdminRoutineEditorSheet({ userId, routineId, initial, close, onSaved })
     method: 'POST', body: JSON.stringify({ exerciseId: ex.id, lesiones: matched })
   }).catch(() => {})
 
-  if (!routine) return null
+  // Aunque falle la carga, la pantalla siempre debe poder cerrarse (bug A.2) — nunca `null`.
+  if (!routine) return <div className="compound-builder">
+    <div className="compound-builder-content">
+      <div className="row between compound-builder-header">
+        <h3 style={{ margin: 0 }}>{t('Rutina')}</h3>
+        <button type="button" className="iconbtn" onClick={close} aria-label={t('Close')}><Icon name="xmark" /></button>
+      </div>
+      <div className="dim small" style={{ padding: '16px 4px' }}>{t('No se pudo cargar la rutina.')}</div>
+    </div>
+  </div>
   return <div className="compound-builder">
     <div className="compound-builder-content">
       <RoutineEditor
@@ -358,17 +369,21 @@ function AdminRoutineCard({ userId }) {
     if (!(d.routineGroups || []).length && (d.routines || []).length) {
       const next = JSON.parse(JSON.stringify(d))
       syncActiveGroupInState(next)
-      return putGroups(next).then(() => setData(next)).catch(() => setData(d))
+      return putGroups(next).then(() => { setData(next); return next }).catch(() => { setData(d); return d })
     }
     setData(d)
-  }).catch(e => toast(e.message))
+    return d
+  }).catch(e => { toast(e.message); return null })
   useEffect(() => { load() }, [userId])
   if (!data) return <div className="dim small">{t('Loading…')}</div>
 
   const putAll = next => api(base, { method: 'PUT', body: JSON.stringify({ routines: next.routines, week: next.week, dayPlan: next.dayPlan }) })
 
-  const openEditor = routineId => openSheet(
-    close => <AdminRoutineEditorSheet userId={userId} routineId={routineId} initial={data} close={close} onSaved={load} />,
+  // initial se pasa explícito (no via closure de `data`): tras crear una rutina, el `load()`
+  // async resuelve tarde y el closure viejo de este handler todavía apunta al `data` previo,
+  // sin la rutina nueva — el sheet no la encontraba y quedaba colgado sin header ni cerrar (bug A.2).
+  const openEditor = (routineId, initial = data) => openSheet(
+    close => <AdminRoutineEditorSheet userId={userId} routineId={routineId} initial={initial} close={close} onSaved={load} />,
     { locked: true, fullScreen: true }
   )
 
@@ -376,7 +391,7 @@ function AdminRoutineCard({ userId }) {
     const routine = { id: 'r' + uid(), name: t('New routine'), emoji: 'dumbbell', ex: [] }
     putAll({ ...data, routines: [...data.routines, routine] })
       .then(() => { toast(t('Rutina creada')); return load() })
-      .then(() => openEditor(routine.id))
+      .then(fresh => openEditor(routine.id, fresh || data))
       .catch(e => toast(e.message))
   }
 
@@ -405,7 +420,7 @@ function AdminRoutineCard({ userId }) {
         const v = validateGroupName(name, data.routineGroups)
         if (!v.valid) return toast(v.error)
         const next = JSON.parse(JSON.stringify(data))
-        addGroupToState(next, name, next.routines, next.week, true)
+        addGroupToState(next, name, [], {}, true)
         putGroups(next).then(() => { toast(t('Grupo "{0}" creado', name)); load() }).catch(e => toast(e.message))
       }
     })
@@ -445,12 +460,12 @@ function AdminRoutineCard({ userId }) {
     <Section title={bigSectionTitle(t('Lesiones'))} footer={<Button size="sm" icon="plus" onClick={openAddLesion}>{t('Agregar')}</Button>}>
       {(data.lesiones || []).length ? data.lesiones.map(value => <Row key={value} title={LESIONES_OPTIONS.find(o => o.value === value)?.label || value}>
         <button className="iconbtn" aria-label={t('Remove')} style={{ color: 'var(--red)' }} onClick={() => removeLesion(value)}><Icon name="trash" /></button>
-      </Row>) : <div className="dim small">{t('Ninguna registrada')}</div>}
+      </Row>) : <div className="empty" style={{ marginBottom: 8 }}>{t('Ninguna registrada')}</div>}
     </Section>
 
     {!data.routineGroups.length
       ? <Section title={bigSectionTitle(t('Rutinas'))} footer={<Button size="sm" icon="plus" onClick={createGroupPrompt}>{t('Crear grupo')}</Button>}>
-        <div className="dim small">{t('Este usuario todavía no tiene ningún plan ni rutina creada')}</div>
+        <div className="empty" style={{ marginBottom: 8 }}>{t('Este usuario todavía no tiene ningún grupo ni rutina creada')}</div>
       </Section>
       : <Section title={bigSectionTitle(t('Rutinas'))} footer={<Button size="sm" icon="plus" onClick={createRoutine}>{t('Crear rutina')}</Button>}>
         <div style={{ marginBottom: 10 }}>
@@ -466,7 +481,7 @@ function AdminRoutineCard({ userId }) {
             <button className="iconbtn" aria-label={t('Edit')} onClick={() => openEditor(r.id)}><Icon name="pencil" /></button>
             <button className="iconbtn" aria-label={t('Remove')} style={{ color: 'var(--red)' }} onClick={() => removeRoutine(r)}><Icon name="trash" /></button>
           </div>
-        </Row>) : <div className="dim small">{t('Sin rutinas asignadas.')}</div>}
+        </Row>) : <div className="empty" style={{ marginBottom: 8 }}>{t('Sin rutinas asignadas.')}</div>}
       </Section>}
   </>
 }
