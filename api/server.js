@@ -917,15 +917,14 @@ const NUTRITION_GOAL_LIMITS = {
   caloriesBurn: { min: 0, max: 20000, integer: true },
 };
 
-// Campo vacío ('', null, undefined) => null, nunca 0 (regla A.3). Positivo y dentro de un
-// rango razonable si viene con valor.
+// Campo vacío ('', null, undefined) => null. Cero y valores dentro del rango son válidos.
 function parsePositiveOrNull(value, limits, label) {
   if (value === null || value === undefined || value === '') return { ok: true, value: null };
   const n = Number(value);
-  if (!Number.isFinite(n) || n <= limits.min || n > limits.max || (limits.integer && !Number.isInteger(n))) {
+  if (!Number.isFinite(n) || n < limits.min || n > limits.max || (limits.integer && !Number.isInteger(n))) {
     return {
       ok: false,
-      error: !Number.isFinite(n) || n <= limits.min ? `${label}: debe ser mayor que 0` :
+      error: !Number.isFinite(n) || n < limits.min ? `${label}: debe ser mayor o igual que 0` :
         limits.integer && !Number.isInteger(n) ? `${label}: debe ser un número entero` :
           `${label}: máximo ${limits.max}${label.includes('Calor') ? '' : ' g'}`,
     };

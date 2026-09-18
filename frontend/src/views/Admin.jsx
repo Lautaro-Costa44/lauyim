@@ -381,11 +381,11 @@ function AdminNutritionCard({ userId, openSuggestion, editSuggestion }) {
       ['fat', draft.fat, 'Grasas', NUTRITION_GOAL_LIMITS.macros, true],
     ]
     const invalid = fields.find(([, value, , max, decimal]) => value !== null && value !== undefined &&
-      (!Number.isFinite(value) || value <= 0 || value > max || (!decimal && !Number.isInteger(value))))
+      (!Number.isFinite(value) || value < 0 || value > max || (!decimal && !Number.isInteger(value))))
     if (invalid) {
       const [, value, label, max, decimal] = invalid
       setManualError(value > max ? `${label}: máximo ${max}${decimal ? ' g' : ''}` :
-        !decimal && !Number.isInteger(value) ? `${label}: debe ser un número entero` : `${label}: debe ser mayor que 0`)
+        !decimal && !Number.isInteger(value) ? `${label}: debe ser un número entero` : `${label}: debe ser mayor o igual que 0`)
       return
     }
     setManualError(null)

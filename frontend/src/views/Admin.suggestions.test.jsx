@@ -168,6 +168,17 @@ describe('Administrar Nutrición/Rutina — metas', () => {
     expect(text()).toContain('Proteínas: máximo 2000 g')
     expect(apiMock.mock.calls.slice(callsBeforeSave).some(([, options]) => options?.method === 'PUT')).toBe(false)
   })
+
+  it('permite guardar un macro igual a cero', async () => {
+    await click(container.querySelector('[role="switch"]'))
+    await type(byText('.lrow', 'Proteínas (g)').querySelector('input'), '0')
+
+    await clickText('button', 'Guardar metas')
+
+    const saved = apiMock.mock.calls.find(([url, options]) => options?.method === 'PUT' && /\/nutrition\/goals$/.test(url))
+    expect(saved).toBeTruthy()
+    expect(JSON.parse(saved[1].body)).toMatchObject({ mode: 'manual', protein: 0 })
+  })
 })
 
 describe('Administrar Nutrición/Rutina — sugerencias', () => {
