@@ -325,12 +325,6 @@ function AdminSuggestionWizard({ userId, suggestions, onSaved, close, setOnBack,
   </>
 }
 
-function openAddSuggestion(userId, suggestions, onSaved) {
-  useUI.getState().openSheet((close, { setOnBack }) =>
-    <AdminSuggestionWizard userId={userId} suggestions={suggestions} onSaved={onSaved} close={close} setOnBack={setOnBack} />,
-    { locked: true, fullScreen: true, backGesture: true })
-}
-
 // Metas manuales + sugerencias asignadas de un socio (Fase 4). Prioridad total del admin
 // (regla 1): estos valores son la única fuente que ve el socio, sin indicarle que vienen
 // de un admin (regla 3) — esta pantalla es la única parte de la app que menciona esto.
@@ -338,7 +332,7 @@ function openAddSuggestion(userId, suggestions, onSaved) {
 // esta pantalla — feedback visual del cliente). Reusa los mismos tokens de color de la app.
 const bigSectionTitle = txt => <span style={{ fontSize: 17, fontWeight: 600, color: 'var(--label)' }}>{txt}</span>
 
-function AdminNutritionCard({ userId }) {
+function AdminNutritionCard({ userId, openSuggestion, editSuggestion }) {
   const toast = useUI(s => s.toast)
   const automaticoHabilitado = useStore(s => s.config?.nutricion_automatico) !== false
   const [data, setData] = useState(null)
@@ -412,7 +406,7 @@ function AdminNutritionCard({ userId }) {
       </>}
     </Section>
     <Section title={bigSectionTitle(t('Comidas sugeridas personalizadas'))}
-      footer={data.limitarSugeridas ? <Button size="sm" icon="plus" onClick={() => openAddSuggestion(userId, data.suggestions, load)}>{t('Agregar sugerencia')}</Button> : null}>
+      footer={data.limitarSugeridas ? <Button size="sm" icon="plus" onClick={() => openSuggestion(data.suggestions, load)}>{t('Agregar sugerencia')}</Button> : null}>
       <Row title={t('Limitar comidas sugeridas')} subtitle={data.limitarSugeridas ? t('El socio ve solo lo que le asignes acá') : t('El socio ve el comportamiento normal de sugerencias')}>
         <Switch checked={!!data.limitarSugeridas} onChange={toggleLimitar} disabled={saving} />
       </Row>
@@ -434,7 +428,7 @@ function AdminNutritionCard({ userId }) {
               actions={[
                 <button key="up" className="iconbtn admin-suggestion-iconbtn" disabled={idx === 0} aria-label={t('Subir')} onClick={e => { e.stopPropagation(); move(s, -1) }}><Icon name="chevronUp" /></button>,
                 <button key="down" className="iconbtn admin-suggestion-iconbtn" disabled={idx === data.suggestions.length - 1} aria-label={t('Bajar')} onClick={e => { e.stopPropagation(); move(s, 1) }}><Icon name="chevronDown" /></button>,
-                <button key="edit" className="iconbtn admin-suggestion-iconbtn" aria-label={t('Edit')} onClick={e => { e.stopPropagation(); useUI.getState().openSheet((c, { setOnBack }) => <AdminSuggestionWizard userId={userId} suggestions={data.suggestions} onSaved={load} close={c} setOnBack={setOnBack} initialStep={{ name: 'editor', existing: s }} />, { locked: true, fullScreen: true, backGesture: true }) }}><Icon name="pencil" /></button>,
+                <button key="edit" className="iconbtn admin-suggestion-iconbtn" aria-label={t('Edit')} onClick={e => { e.stopPropagation(); editSuggestion(s, data.suggestions, load) }}><Icon name="pencil" /></button>,
                 <button key="remove" className="iconbtn admin-suggestion-iconbtn" aria-label={t('Remove')} style={{ color: 'var(--red)' }} onClick={e => { e.stopPropagation(); removeSuggestion(s) }}><Icon name="trash" /></button>,
               ]}
             />
@@ -663,16 +657,43 @@ function AdminRoutineCard({ userId }) {
 }
 
 // Punto de entrada desde UserDetail.
-function AdminManageSheet({ userId, userName, close }) {
+function AdminManageSheet({ userId, userName, close, setOnBack }) {
   const [tab, setTab] = useState('nutrition')
+  const [suggestionFlow, setSuggestionFlow] = useState(null)
+  const suggestionFlowRef = useRef(suggestionFlow)
+  suggestionFlowRef.current = suggestionFlow
+
+  // This is already a real sheet. Keep the suggestion wizard inside it; opening another
+  // fullscreen sheet here was the remaining nested-sheet path to the PWA black screen.
+  useEffect(() => {
+    setOnBack(() => {
+      if (suggestionFlowRef.current) return setSuggestionFlow(null)
+      return close()
+    })
+  }, [close, setOnBack, suggestionFlow])
+
+  const openSuggestion = (suggestions, onSaved) =>
+    setSuggestionFlow({ initialStep: { name: 'chooser' }, suggestions, onSaved })
+  const editSuggestion = (existing, suggestions, onSaved) =>
+    setSuggestionFlow({ initialStep: { name: 'editor', existing }, suggestions, onSaved })
+
   return <div className="compound-builder">
     <div className="compound-builder-content">
-      <div className="row between compound-builder-header">
-        <div><h3 style={{ margin: 0 }}>{t('Administrar Nutrición/Rutina')}</h3><div className="t-sub" style={{ color: 'var(--label)', marginTop: 2 }}>{userName}</div></div>
-        <button type="button" className="iconbtn" onClick={close} aria-label={t('Close')}><Icon name="xmark" /></button>
-      </div>
-      <Segmented options={[{ value: 'nutrition', label: t('Nutrición') }, { value: 'routine', label: t('Rutina') }]} value={tab} onChange={setTab} />
-      {tab === 'nutrition' ? <AdminNutritionCard userId={userId} /> : <AdminRoutineCard userId={userId} />}
+      {suggestionFlow ? <AdminSuggestionWizard
+        userId={userId}
+        suggestions={suggestionFlow.suggestions}
+        onSaved={suggestionFlow.onSaved}
+        close={() => setSuggestionFlow(null)}
+        setOnBack={setOnBack}
+        initialStep={suggestionFlow.initialStep}
+      /> : <>
+        <div className="row between compound-builder-header">
+          <div><h3 style={{ margin: 0 }}>{t('Administrar Nutrición/Rutina')}</h3><div className="t-sub" style={{ color: 'var(--label)', marginTop: 2 }}>{userName}</div></div>
+          <button type="button" className="iconbtn" onClick={close} aria-label={t('Close')}><Icon name="xmark" /></button>
+        </div>
+        <Segmented options={[{ value: 'nutrition', label: t('Nutrición') }, { value: 'routine', label: t('Rutina') }]} value={tab} onChange={setTab} />
+        {tab === 'nutrition' ? <AdminNutritionCard userId={userId} openSuggestion={openSuggestion} editSuggestion={editSuggestion} /> : <AdminRoutineCard userId={userId} />}
+      </>}
     </div>
   </div>
 }
@@ -715,7 +736,7 @@ function UserDetail({ id, onChanged, close }) {
       <div className="tile"><div className="l">{t('Last sync')}</div><div className="v" style={{ fontSize: '.95rem' }}>{rel(d.lastSync)}</div></div>
     </div>
     <Button variant="tinted" style={{ width: '100%', margin: '4px 0 4px' }}
-      onClick={() => openSheet(c => <AdminManageSheet userId={u.id} userName={u.name} close={c} />, { locked: true, fullScreen: true, backGesture: true })}>
+      onClick={() => openSheet((c, { setOnBack }) => <AdminManageSheet userId={u.id} userName={u.name} close={c} setOnBack={setOnBack} />, { locked: true, fullScreen: true, backGesture: true })}>
       {t('Administrar Nutrición/Rutina')}
     </Button>
     {currentUser?.owner && !u.owner && <button className="btn primary" style={{ margin: '12px 0 4px' }}
