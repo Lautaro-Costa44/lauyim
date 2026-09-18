@@ -184,9 +184,11 @@ function AdminNutritionCard({ userId }) {
   // manualDraft !== null también cuenta como manual: el admin recién prendió el switch
   // localmente y todavía no guardó — sin esto el bloque de campos nunca aparecía (bug).
   const isManual = !automaticoHabilitado || goals.mode === 'manual' || manualDraft !== null
-  // Arrancan vacíos por defecto — nada de valores precargados (regla A.3). Cada campo es
-  // independiente: uno vacío se manda como null, no se inventa un 0 ni se copia el automático.
-  const draft = manualDraft || { objetivo: goals.objetivo, calories: goals.calories, caloriesBurn: goals.caloriesBurn, protein: goals.protein, carbs: goals.carbs, fat: goals.fat }
+  // Arrancan vacíos por defecto — nada de valores precargados (regla A.3), salvo Objetivo:
+  // ese sí se prellena con el que ya tiene el socio (data.userObjetivo) en vez de "Sin
+  // definir", para no forzar al admin a repetir una elección que el socio ya hizo. Cada
+  // campo numérico sigue siendo independiente: vacío se manda como null, nunca un 0.
+  const draft = manualDraft || { objetivo: goals.objetivo ?? data.userObjetivo ?? null, calories: goals.calories, caloriesBurn: goals.caloriesBurn, protein: goals.protein, carbs: goals.carbs, fat: goals.fat }
   const setDraft = patch => setManualDraft({ ...draft, ...patch })
   const toggleMode = manual => {
     if (manual) return setManualDraft(draft)

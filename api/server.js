@@ -57,6 +57,8 @@ import {
   getDatabase,
   getNutritionGoals,
   setNutritionGoals,
+  getUserObjetivo,
+  setUserObjetivo,
   getAdminSuggestionsByUserId,
   getPlantillaWithIngredientes,
   assignExistingPlantillaToUser,
@@ -1286,7 +1288,7 @@ const routes = {
     if (!getUserById(userId)) return json(res, 404, { error: 'El usuario no existe' });
     const goals = getNutritionGoals(userId);
     const suggestions = getAdminSuggestionsByUserId(userId).map(suggestionResponse);
-    json(res, 200, { goals, suggestions });
+    json(res, 200, { goals, suggestions, userObjetivo: getUserObjetivo(userId) });
   },
 
   'PUT /api/admin/users/:userId/nutrition/goals': async (req, res) => {
@@ -1299,6 +1301,9 @@ const routes = {
     const before = getNutritionGoals(userId);
     const after = { ...goals, updatedAt: Date.now(), updatedBy: admin.id };
     setNutritionGoals(userId, after);
+    // El objetivo manual también es la configuración real del socio (Settings, generación
+    // de rutina) — no solo la etiqueta del cálculo nutricional.
+    if (goals.mode === 'manual' && goals.objetivo) setUserObjetivo(userId, goals.objetivo);
     logAdminAction({ actorUserId: admin.id, targetUserId: userId, action: 'nutrition.goals.update', entityId: userId, before, after });
     audit(req, 'admin.nutrition.goals.update', { user: admin, target });
     json(res, 200, { goals: after });

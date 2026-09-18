@@ -221,6 +221,16 @@ export const useStore = create((set, get) => {
           // another device's unrelated changes are not overwritten.
           await get().pushState()
         }
+        // nutritionGoals lo administra únicamente el admin (endpoints propios, nunca el
+        // cliente) y su escritura no bumpea user_state._ts — el gate de arriba puede fallar
+        // (socio con cambios locales pendientes) y la prioridad del admin nunca llegaba al
+        // socio aunque el guardado en la DB fuera correcto. Se sincroniza siempre, aparte.
+        if (state) {
+          const fresh = get().S
+          if (JSON.stringify(state.nutritionGoals || null) !== JSON.stringify(fresh.nutritionGoals || null)) {
+            persist({ ...fresh, nutritionGoals: state.nutritionGoals }, false, false)
+          }
+        }
       } catch (e) { /* offline — keep local */ }
     },
 

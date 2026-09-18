@@ -716,6 +716,28 @@ export function setNutritionGoals(userId, goals) {
   `).run(userId, JSON.stringify(goals));
 }
 
+// El objetivo que el admin fija en metas manuales también es la configuración real del
+// socio (mismo campo que edita en Settings y que usa la generación de rutina) — no un
+// valor sombra aparte. Bumpea _ts como cualquier escritura normal de perfil para que el
+// próximo pull limpio del socio (sin operaciones pendientes) lo traiga sin trato especial.
+// Objetivo real efectivo del socio (mismo fallback que frontend/src/lib/nutricion.js), para
+// prellenar el selector de metas manuales con lo que el socio ya tiene, no "Sin definir".
+export function getUserObjetivo(userId) {
+  const row = getDatabase().prepare('SELECT objetivo, respuestas_encuesta FROM user_state WHERE user_id = ?').get(userId);
+  if (!row) return 'fitness_general';
+  const resp = safeJsonParse(row.respuestas_encuesta, {}) || {};
+  return row.objetivo || resp.objetivo || 'fitness_general';
+}
+
+export function setUserObjetivo(userId, objetivo) {
+  const db = getDatabase();
+  const stamp = Date.now();
+  db.prepare(`
+    INSERT INTO user_state (user_id, objetivo, _ts) VALUES (?, ?, ?)
+    ON CONFLICT(user_id) DO UPDATE SET objetivo = excluded.objetivo, _ts = MAX(user_state._ts, excluded._ts)
+  `).run(userId, objetivo, stamp);
+}
+
 // ============================================================
 // Lesiones (Fase 7 — panel admin, bloque Lesiones de Administrar Rutina)
 // Viven dentro de respuestasEncuesta.lesiones (mismo campo que llena el paso 5 de
