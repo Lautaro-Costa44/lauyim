@@ -647,8 +647,7 @@ function PushCard({ S, update, toast }) {
   const test = async () => {
     try { await sendTestPush(); toast(t('Test sent — should arrive any second')) }
     catch (e) { 
-      const msg = e.message === 'not signed in' ? t('Not signed in') : (e.message || t('Test failed'))
-      toast(msg) 
+      toast(e.message || t('Test failed'))
     }
   }
 

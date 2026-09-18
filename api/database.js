@@ -66,6 +66,18 @@ export function initDatabase() {
   try {
     db.prepare(`UPDATE plantillas_comida SET updated_at = COALESCE(updated_at, created_at, ?) WHERE updated_at IS NULL`).run(Date.now());
   } catch {}
+  try {
+    db.exec(`ALTER TABLE plantillas_comida ADD COLUMN scope TEXT NOT NULL DEFAULT 'user';`);
+  } catch {}
+  try {
+    db.exec(`ALTER TABLE plantillas_comida ADD COLUMN enabled INTEGER NOT NULL DEFAULT 1;`);
+  } catch {}
+  try {
+    db.exec(`ALTER TABLE plantillas_comida ADD COLUMN position INTEGER NOT NULL DEFAULT 0;`);
+  } catch {}
+  try {
+    db.exec(`ALTER TABLE plantillas_comida ADD COLUMN assigned_by TEXT;`);
+  } catch {}
 
   // Crear tablas principales si no existen
   db.exec(`
@@ -117,6 +129,7 @@ export function initDatabase() {
       routine_groups TEXT,
       active_group_id TEXT,
       sync_versions TEXT,
+      nutrition_goals TEXT,
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     );
 
@@ -153,6 +166,16 @@ export function initDatabase() {
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL,
     updated_at INTEGER NOT NULL
+  );`);
+  db.exec(`CREATE TABLE IF NOT EXISTS admin_audit_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    actor_user_id TEXT NOT NULL,
+    target_user_id TEXT NOT NULL,
+    action TEXT NOT NULL,
+    entity_id TEXT,
+    before_json TEXT,
+    after_json TEXT,
+    created_at INTEGER NOT NULL
   );`);
 
   // Enforce the single-owner invariant at the database level after all base tables exist.
@@ -196,7 +219,8 @@ export function initDatabase() {
     ['gif_size', 'TEXT'],
     ['default_intensifier', 'TEXT'],
     ['default_sets', 'INTEGER'],
-    ['sync_versions', 'TEXT']
+    ['sync_versions', 'TEXT'],
+    ['nutrition_goals', 'TEXT']
   ];
 
   for (const [col, type] of columnsToAdd) {
@@ -553,6 +577,9 @@ export function getUserState(userId) {
     routineGroups: safeJsonParse(row.routine_groups, []),
     activeGroupId: row.active_group_id || null,
     _syncVersions: safeJsonParse(row.sync_versions, {}),
+    // Solo lectura para el cliente: se administra vía los endpoints admin (Fase 2),
+    // nunca a través de este sync general — saveUserState() ignora este campo del cliente.
+    nutritionGoals: getNutritionGoals(userId),
   };
 
   // Cargar relaciones
@@ -573,6 +600,10 @@ export function getUserState(userId) {
 export function saveUserState(userId, S) {
   const db = getDatabase();
   const validRoutineIds = new Set((S.routines || []).map(r => String(r?.id || '')).filter(Boolean));
+  // nutrition_goals is set only through the admin nutrition endpoints, never part of the
+  // client's full-state sync payload. INSERT OR REPLACE below would otherwise wipe it back
+  // to NULL on every regular sync, so capture and restore it around the replace.
+  const existingNutritionGoals = db.prepare('SELECT nutrition_goals FROM user_state WHERE user_id = ?').get(userId)?.nutrition_goals ?? null;
 
   // Guardar estado principal
   const stateStmt = db.prepare(`
@@ -662,6 +693,155 @@ export function saveUserState(userId, S) {
     .run(JSON.stringify(S.routineGroups || []), S.activeGroupId || null, userId);
   db.prepare('UPDATE user_state SET sync_versions = ? WHERE user_id = ?')
     .run(JSON.stringify(S._syncVersions || {}), userId);
+  db.prepare('UPDATE user_state SET nutrition_goals = ? WHERE user_id = ?')
+    .run(existingNutritionGoals, userId);
+}
+
+// ============================================================
+// Metas nutricionales manuales (Admin/Owner override; ver Fase 2 del prompt)
+// ============================================================
+
+const DEFAULT_NUTRITION_GOALS = { mode: 'automatic', calories: null, protein: null, carbs: null, fat: null, updatedAt: null, updatedBy: null };
+
+export function getNutritionGoals(userId) {
+  const row = getDatabase().prepare('SELECT nutrition_goals FROM user_state WHERE user_id = ?').get(userId);
+  const parsed = row ? safeJsonParse(row.nutrition_goals, null) : null;
+  return parsed ? { ...DEFAULT_NUTRITION_GOALS, ...parsed } : { ...DEFAULT_NUTRITION_GOALS };
+}
+
+export function setNutritionGoals(userId, goals) {
+  const db = getDatabase();
+  db.prepare(`
+    INSERT INTO user_state (user_id, nutrition_goals) VALUES (?, ?)
+    ON CONFLICT(user_id) DO UPDATE SET nutrition_goals = excluded.nutrition_goals
+  `).run(userId, JSON.stringify(goals));
+}
+
+// ============================================================
+// Sugerencias de comida asignadas por admin (plantillas_comida scope='admin')
+// ============================================================
+
+export function getPlantillaWithIngredientes(id) {
+  const db = getDatabase();
+  const plantilla = db.prepare('SELECT * FROM plantillas_comida WHERE id = ?').get(id);
+  if (!plantilla) return null;
+  plantilla.ingredientes = db.prepare('SELECT * FROM plantillas_ingredientes WHERE plantilla_id = ?').all(id);
+  return plantilla;
+}
+
+export function getAdminSuggestionsByUserId(userId) {
+  const db = getDatabase();
+  const rows = db.prepare(`SELECT * FROM plantillas_comida WHERE user_id = ? AND scope = 'admin' ORDER BY position, id`).all(userId);
+  for (const row of rows) row.ingredientes = db.prepare('SELECT * FROM plantillas_ingredientes WHERE plantilla_id = ?').all(row.id);
+  return rows;
+}
+
+function insertPlantillaConIngredientes(db, { userId, nombre, categoria, scope, assignedBy, position, ingredientes }) {
+  const now = Date.now();
+  const result = db.prepare(`
+    INSERT INTO plantillas_comida (user_id, nombre, categoria, created_at, updated_at, scope, enabled, position, assigned_by)
+    VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?)
+  `).run(userId, nombre, categoria || null, now, now, scope, position, assignedBy);
+  const plantillaId = Number(result.lastInsertRowid);
+  const stmt = db.prepare(`
+    INSERT INTO plantillas_ingredientes (plantilla_id, nombre_alimento, cantidad_gramos, calorias, proteina, carbohidratos, grasas)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `);
+  for (const item of ingredientes) {
+    stmt.run(plantillaId, String(item.nombre_alimento).trim(), item.cantidad_gramos, item.calorias, item.proteina, item.carbohidratos, item.grasas);
+  }
+  return plantillaId;
+}
+
+function nextSuggestionPosition(db, userId) {
+  const row = db.prepare(`SELECT MAX(position) AS maxPos FROM plantillas_comida WHERE user_id = ? AND scope = 'admin'`).get(userId);
+  return (Number.isFinite(row?.maxPos) ? row.maxPos : -1) + 1;
+}
+
+// Asigna una plantilla existente (global o de otro socio, visible al admin) clonándola para
+// el socio objetivo. Nunca reutiliza la fila original: así "quitar" la sugerencia después no
+// afecta la plantilla fuente ni a otros socios que la tengan asignada.
+export function assignExistingPlantillaToUser(userId, sourcePlantillaId, assignedByUserId) {
+  const db = getDatabase();
+  const source = getPlantillaWithIngredientes(sourcePlantillaId);
+  if (!source) return null;
+  db.exec('BEGIN');
+  try {
+    const plantillaId = insertPlantillaConIngredientes(db, {
+      userId, nombre: source.nombre, categoria: source.categoria, scope: 'admin',
+      assignedBy: assignedByUserId, position: nextSuggestionPosition(db, userId), ingredientes: source.ingredientes
+    });
+    db.exec('COMMIT');
+    return getPlantillaWithIngredientes(plantillaId);
+  } catch (error) {
+    db.exec('ROLLBACK');
+    throw error;
+  }
+}
+
+export function createCustomSuggestionForUser(userId, { nombre, categoria, ingredientes }, assignedByUserId) {
+  const db = getDatabase();
+  db.exec('BEGIN');
+  try {
+    const plantillaId = insertPlantillaConIngredientes(db, {
+      userId, nombre, categoria, scope: 'admin', assignedBy: assignedByUserId,
+      position: nextSuggestionPosition(db, userId), ingredientes
+    });
+    db.exec('COMMIT');
+    return getPlantillaWithIngredientes(plantillaId);
+  } catch (error) {
+    db.exec('ROLLBACK');
+    throw error;
+  }
+}
+
+export function updateAdminSuggestion(id, { nombre, categoria, ingredientes, position }) {
+  const db = getDatabase();
+  db.exec('BEGIN');
+  try {
+    if (Number.isInteger(position)) {
+      db.prepare('UPDATE plantillas_comida SET nombre = ?, categoria = ?, updated_at = ?, position = ? WHERE id = ?')
+        .run(nombre, categoria || null, Date.now(), position, id);
+    } else {
+      db.prepare('UPDATE plantillas_comida SET nombre = ?, categoria = ?, updated_at = ? WHERE id = ?')
+        .run(nombre, categoria || null, Date.now(), id);
+    }
+    db.prepare('DELETE FROM plantillas_ingredientes WHERE plantilla_id = ?').run(id);
+    const stmt = db.prepare(`
+      INSERT INTO plantillas_ingredientes (plantilla_id, nombre_alimento, cantidad_gramos, calorias, proteina, carbohidratos, grasas)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `);
+    for (const item of ingredientes) {
+      stmt.run(id, String(item.nombre_alimento).trim(), item.cantidad_gramos, item.calorias, item.proteina, item.carbohidratos, item.grasas);
+    }
+    db.exec('COMMIT');
+    return getPlantillaWithIngredientes(id);
+  } catch (error) {
+    db.exec('ROLLBACK');
+    throw error;
+  }
+}
+
+export function setSuggestionEnabled(id, enabled) {
+  getDatabase().prepare('UPDATE plantillas_comida SET enabled = ?, updated_at = ? WHERE id = ?').run(enabled ? 1 : 0, Date.now(), id);
+}
+
+// Desasigna (borra) la sugerencia clonada del socio. Como cada sugerencia asignada es su
+// propia fila (ver assignExistingPlantillaToUser), esto nunca toca plantillas scope='global'.
+export function removeAdminSuggestion(id) {
+  getDatabase().prepare('DELETE FROM plantillas_comida WHERE id = ?').run(id);
+}
+
+// ============================================================
+// Auditoría de acciones administrativas (admin_audit_log; ver Fase 8 del prompt)
+// ============================================================
+
+export function logAdminAction({ actorUserId, targetUserId, action, entityId = null, before = null, after = null }) {
+  getDatabase().prepare(`
+    INSERT INTO admin_audit_log (actor_user_id, target_user_id, action, entity_id, before_json, after_json, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `).run(actorUserId, targetUserId, action, entityId != null ? String(entityId) : null,
+    before != null ? JSON.stringify(before) : null, after != null ? JSON.stringify(after) : null, Date.now());
 }
 
 // ============================================================
@@ -695,7 +875,7 @@ export function getRoutinesByUserId(userId) {
   return routines;
 }
 
-function saveRoutines(userId, routines) {
+export function saveRoutines(userId, routines) {
   const db = getDatabase();
 
   // Eliminar rutinas viejas
@@ -752,7 +932,7 @@ export function getWeekPlanByUserId(userId) {
   return week;
 }
 
-function saveWeekPlan(userId, week, validRoutineIds = null) {
+export function saveWeekPlan(userId, week, validRoutineIds = null) {
   const db = getDatabase();
   const deleteStmt = db.prepare('DELETE FROM week_plan WHERE user_id = ?');
   deleteStmt.run(userId);
@@ -778,7 +958,7 @@ export function getDayPlanByUserId(userId) {
   return dayPlan;
 }
 
-function saveDayPlan(userId, dayPlan, validRoutineIds = null) {
+export function saveDayPlan(userId, dayPlan, validRoutineIds = null) {
   const db = getDatabase();
   const deleteStmt = db.prepare('DELETE FROM day_plan WHERE user_id = ?');
   deleteStmt.run(userId);

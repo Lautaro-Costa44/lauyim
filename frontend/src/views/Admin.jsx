@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useStore } from '../store/useStore.js'
 import { useUI } from '../store/useUI.js'
 import { api } from '../lib/api.js'
-import { fmtDate, fmtNum, fmtVol, fmtDur, DAYN } from '../lib/format.js'
+import { fmtDate, fmtNum, fmtVol, fmtDur, DAYN, uid } from '../lib/format.js'
 import { auditCat, auditLine, fmtWhen } from '../lib/audit.js'
 import { workoutVolume, setsDone } from '../lib/history.js'
 import { confirmSheet, exercisePicker, exConfigSheet, glyphPicker } from '../sheets.jsx'
@@ -12,8 +12,10 @@ import { exLine } from '../lib/history.js'
 import { glyphOf } from '../lib/glyphs.js'
 import { t, exerciseNameFor } from '../lib/i18n.js'
 import Icon from '../components/Icon.jsx'
-import { Button, TextField, SelectRow, Segmented } from '../components/ui.jsx'
+import { Button, TextField, SelectRow, Segmented, Section, Row, Switch, NumberField } from '../components/ui.jsx'
 import { NO_AUTOFILL } from '../lib/input-safety.js'
+import { FoodPicker } from './Nutricion.jsx'
+import RoutineEditor from './RoutineEditor.jsx'
 import * as ZXing from 'html5-qrcode/third_party/zxing-js.umd.js'
 
 // Admin-only operator dashboard (owner passkey + admin flag; guarded again server-side).
@@ -68,9 +70,287 @@ function AttendanceHeatmap({ data, onStartChange }) {
   </div>
 }
 
+const totalesIngredientes = ingredientes => ingredientes.reduce((total, i) => ({
+  calorias: total.calorias + Number(i.calorias || 0),
+  proteina: total.proteina + Number(i.proteina || 0),
+  carbohidratos: total.carbohidratos + Number(i.carbohidratos || 0),
+  grasas: total.grasas + Number(i.grasas || 0),
+}), { calorias: 0, proteina: 0, carbohidratos: 0, grasas: 0 })
+
+// Sugerencia custom o edición de una ya asignada. Reutiliza FoodPicker de Nutricion.jsx
+// (misma búsqueda/escaneo/manual que usa el socio) en vez de rearmar el catálogo de comida.
+function AdminSuggestionEditor({ userId, existing, close, onSaved }) {
+  const toast = useUI(s => s.toast)
+  const [nombre, setNombre] = useState(existing?.nombre || '')
+  const [ingredientes, setIngredientes] = useState(existing?.ingredientes || [])
+  const [pickerOpen, setPickerOpen] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const totales = totalesIngredientes(ingredientes)
+  const save = () => {
+    if (!nombre.trim() || !ingredientes.length) return toast(t('Ingresá un nombre y al menos un ingrediente'))
+    setSaving(true)
+    const body = JSON.stringify({ nombre: nombre.trim(), categoria: 'fitness', ingredientes })
+    const base = `/api/admin/users/${encodeURIComponent(userId)}/nutrition/suggestions`
+    const url = existing ? `${base}/${existing.id}` : `${base}/custom`
+    api(url, { method: existing ? 'PUT' : 'POST', body })
+      .then(() => { toast(existing ? t('Sugerencia actualizada') : t('Sugerencia creada')); onSaved(); close() })
+      .catch(e => { setSaving(false); toast(e.message) })
+  }
+  return <div className="compound-builder">
+    <div className="compound-builder-content">
+      <div className="row between compound-builder-header">
+        <h3 style={{ margin: 0 }}>{existing ? t('Editar sugerencia') : t('Nueva sugerencia')}</h3>
+        <button type="button" className="iconbtn" onClick={close} aria-label={t('Close')}><Icon name="xmark" /></button>
+      </div>
+      <Section title={t('Nombre de la comida')}>
+        <TextField value={nombre} onChange={e => setNombre(e.target.value)} maxLength={80} />
+      </Section>
+      <Section title={t('Ingredientes')}>
+        {ingredientes.length ? ingredientes.map((ing, i) => <Row key={i} title={ing.nombre_alimento} subtitle={`${ing.cantidad_gramos} g · ${Math.round(ing.calorias)} kcal`}>
+          <button className="iconbtn" aria-label={t('Remove')} onClick={() => setIngredientes(cur => cur.filter((_, idx) => idx !== i))}><Icon name="trash" /></button>
+        </Row>) : <div className="dim small">{t('Sin ingredientes todavía.')}</div>}
+        <div className="nutri-live row between" style={{ marginTop: 8 }}>
+          <span>{t('Total')}</span>
+          <span>{Math.round(totales.calorias)} kcal · {totales.proteina.toFixed(1)}g prot · {totales.carbohidratos.toFixed(1)}g carb · {totales.grasas.toFixed(1)}g grasas</span>
+        </div>
+      </Section>
+      <Section title={t('Agregar ingredientes')}>
+        {!pickerOpen ? <Button variant="tinted" icon="plus" onClick={() => setPickerOpen(true)}>{t('Agregar ingrediente')}</Button>
+          : <FoodPicker franja="extra" close={() => {}} onAddIngrediente={ing => setIngredientes(cur => [...cur, ing])} onAdded={() => setPickerOpen(false)} />}
+      </Section>
+    </div>
+    <div className="compound-builder-actions">
+      <Button onClick={close}>{t('Cancel')}</Button>
+      <Button variant="primary" disabled={saving || !nombre.trim() || !ingredientes.length} onClick={save}>{saving ? t('Guardando…') : t('Save')}</Button>
+    </div>
+  </div>
+}
+
+// Catálogo para asignar: reutiliza GET /api/plantillas del propio admin (globales + propias),
+// nunca un catálogo paralelo. El backend clona la plantilla elegida para el socio (Fase 2).
+function AdminSuggestionPicker({ userId, close, onSaved }) {
+  const toast = useUI(s => s.toast)
+  const [items, setItems] = useState(null)
+  useEffect(() => { api('/api/plantillas?categoria=fitness').then(setItems).catch(() => setItems([])) }, [])
+  const assign = plantilla => api(`/api/admin/users/${encodeURIComponent(userId)}/nutrition/suggestions`, { method: 'POST', body: JSON.stringify({ plantilla_id: plantilla.id }) })
+    .then(() => { toast(t('Sugerencia asignada')); onSaved(); close() })
+    .catch(e => toast(e.message))
+  return <>
+    <h3>{t('Elegir plantilla existente')}</h3>
+    {items === null ? <div className="dim small">{t('Loading…')}</div> : items.length ? <div className="list">
+      {items.map(p => <Row key={p.id} title={p.nombre} subtitle={t('{0} ingredientes', p.ingredientes.length)} onClick={() => assign(p)} accessory="chevron" />)}
+    </div> : <div className="dim small">{t('No hay plantillas globales todavía.')}</div>}
+  </>
+}
+
+function openAddSuggestion(userId, onSaved) {
+  useUI.getState().openSheet(close => <>
+    <h3>{t('Agregar sugerencia')}</h3>
+    <div className="list">
+      <Button variant="tinted" icon="plate" style={{ width: '100%', marginBottom: 8 }}
+        onClick={() => { close(); useUI.getState().openSheet(c => <AdminSuggestionPicker userId={userId} close={c} onSaved={onSaved} />) }}>
+        {t('Desde plantilla existente')}
+      </Button>
+      <Button variant="tinted" icon="plus" style={{ width: '100%' }}
+        onClick={() => { close(); useUI.getState().openSheet(c => <AdminSuggestionEditor userId={userId} close={c} onSaved={onSaved} />, { locked: true, fullScreen: true }) }}>
+        {t('Crear nueva')}
+      </Button>
+    </div>
+  </>)
+}
+
+// Metas manuales + sugerencias asignadas de un socio (Fase 4). Prioridad total del admin
+// (regla 1): estos valores son la única fuente que ve el socio, sin indicarle que vienen
+// de un admin (regla 3) — esta pantalla es la única parte de la app que menciona esto.
+function AdminNutritionCard({ userId }) {
+  const toast = useUI(s => s.toast)
+  const [data, setData] = useState(null)
+  const [saving, setSaving] = useState(false)
+  const [manualDraft, setManualDraft] = useState(null)
+  const base = `/api/admin/users/${encodeURIComponent(userId)}/nutrition`
+  const load = () => api(base).then(d => { setData(d); setManualDraft(null) }).catch(e => toast(e.message))
+  useEffect(() => { load() }, [userId])
+  if (!data) return <div className="dim small">{t('Loading…')}</div>
+  const goals = data.goals
+  const isManual = goals.mode === 'manual'
+  const draft = manualDraft || { calories: goals.calories, protein: goals.protein, carbs: goals.carbs, fat: goals.fat }
+  const toggleMode = manual => {
+    if (manual) return setManualDraft({ calories: goals.calories || 2000, protein: goals.protein || 150, carbs: goals.carbs || 200, fat: goals.fat || 60 })
+    setSaving(true)
+    api(base + '/goals', { method: 'PUT', body: JSON.stringify({ mode: 'automatic' }) })
+      .then(() => { toast(t('Metas vueltas a automático')); load() }).catch(e => toast(e.message)).finally(() => setSaving(false))
+  }
+  const saveManual = () => {
+    if (![draft.calories, draft.protein, draft.carbs, draft.fat].every(v => Number(v) > 0)) return toast(t('Completá los cuatro valores con números positivos'))
+    setSaving(true)
+    api(base + '/goals', { method: 'PUT', body: JSON.stringify({ mode: 'manual', ...draft }) })
+      .then(() => { toast(t('Metas guardadas')); load() }).catch(e => toast(e.message)).finally(() => setSaving(false))
+  }
+  const toggleSuggestion = (s, enabled) => api(`${base}/suggestions/${s.id}`, { method: 'PATCH', body: JSON.stringify({ enabled }) }).then(load).catch(e => toast(e.message))
+  const removeSuggestion = s => confirmSheet({
+    title: t('¿Quitar sugerencia?'), message: t('“{0}” deja de mostrarse al socio. No afecta plantillas globales.', s.nombre),
+    confirmText: t('Quitar'), danger: true,
+    onConfirm: () => api(`${base}/suggestions/${s.id}`, { method: 'DELETE' }).then(load).catch(e => toast(e.message))
+  })
+  const move = (s, dir) => {
+    const list = data.suggestions
+    const other = list[list.findIndex(x => x.id === s.id) + dir]
+    if (!other) return
+    Promise.all([
+      api(`${base}/suggestions/${s.id}`, { method: 'PUT', body: JSON.stringify({ nombre: s.nombre, categoria: s.categoria, ingredientes: s.ingredientes, position: other.position }) }),
+      api(`${base}/suggestions/${other.id}`, { method: 'PUT', body: JSON.stringify({ nombre: other.nombre, categoria: other.categoria, ingredientes: other.ingredientes, position: s.position }) }),
+    ]).then(load).catch(e => toast(e.message))
+  }
+  return <>
+    <Section title={t('Metas nutricionales')}>
+      <Row title={t('Modo manual')} subtitle={isManual ? t('El socio ve estos valores fijos') : t('Se calcula automáticamente como hoy')}>
+        <Switch checked={isManual} onChange={toggleMode} disabled={saving} />
+      </Row>
+      {isManual && <>
+        <div className="row" style={{ gap: 8, margin: '8px 0', flexWrap: 'wrap' }}>
+          <label className="grow small dim">{t('Calorías')}<NumberField value={draft.calories} onChange={v => setManualDraft({ ...draft, calories: v })} decimal={false} /></label>
+          <label className="grow small dim">{t('Proteína (g)')}<NumberField value={draft.protein} onChange={v => setManualDraft({ ...draft, protein: v })} /></label>
+          <label className="grow small dim">{t('Carbohidratos (g)')}<NumberField value={draft.carbs} onChange={v => setManualDraft({ ...draft, carbs: v })} /></label>
+          <label className="grow small dim">{t('Grasas (g)')}<NumberField value={draft.fat} onChange={v => setManualDraft({ ...draft, fat: v })} /></label>
+        </div>
+        <Button variant="primary" size="sm" disabled={saving} onClick={saveManual}>{t('Guardar metas')}</Button>
+      </>}
+    </Section>
+    <Section title={t('Sugerencias asignadas')} footer={<Button size="sm" icon="plus" onClick={() => openAddSuggestion(userId, load)}>{t('Agregar sugerencia')}</Button>}>
+      {data.suggestions.length ? data.suggestions.map((s, i) => <Row key={s.id} title={s.nombre}
+        subtitle={t('{0} ingredientes', s.ingredientes.length) + (s.enabled ? '' : ' · ' + t('deshabilitada'))}>
+        <div className="row" style={{ gap: 2 }}>
+          <button className="iconbtn" disabled={i === 0} aria-label={t('Subir')} onClick={() => move(s, -1)}><Icon name="chevronUp" /></button>
+          <button className="iconbtn" disabled={i === data.suggestions.length - 1} aria-label={t('Bajar')} onClick={() => move(s, 1)}><Icon name="chevronDown" /></button>
+          <Switch checked={!!s.enabled} onChange={v => toggleSuggestion(s, v)} />
+          <button className="iconbtn" aria-label={t('Edit')}
+            onClick={() => useUI.getState().openSheet(c => <AdminSuggestionEditor userId={userId} existing={s} close={c} onSaved={load} />, { locked: true, fullScreen: true })}>
+            <Icon name="pencil" />
+          </button>
+          <button className="iconbtn" aria-label={t('Remove')} style={{ color: 'var(--red)' }} onClick={() => removeSuggestion(s)}><Icon name="trash" /></button>
+        </div>
+      </Row>) : <div className="dim small">{t('Sin sugerencias asignadas. El socio ve las plantillas globales.')}</div>}
+    </Section>
+  </>
+}
+
+// Editor de una rutina puntual dentro del draft cargado por AdminRoutineCard. Reutiliza
+// RoutineEditor.jsx (misma UI que usa el socio en RoutineEdit.jsx) — el draft vive acá y
+// solo se persiste con "Guardar cambios" (un solo PUT con todo el blob de rutinas).
+function AdminRoutineEditorSheet({ userId, routineId, initial, close, onSaved }) {
+  const toast = useUI(s => s.toast)
+  const [draft, setDraft] = useState(() => JSON.parse(JSON.stringify(initial)))
+  const [saving, setSaving] = useState(false)
+  const base = `/api/admin/users/${encodeURIComponent(userId)}/routines`
+  const routine = draft.routines.find(r => r.id === routineId)
+
+  const persist = next => {
+    setSaving(true)
+    return api(base, { method: 'PUT', body: JSON.stringify({ routines: next.routines, week: next.week, dayPlan: next.dayPlan }) })
+      .finally(() => setSaving(false))
+  }
+
+  const update = fn => setDraft(d => {
+    const next = JSON.parse(JSON.stringify(d))
+    fn(next.routines)
+    return next
+  })
+
+  const save = () => persist(draft).then(() => { toast(t('Rutina guardada')); onSaved(); close() }).catch(e => toast(e.message))
+
+  const remove = () => {
+    const next = {
+      ...draft,
+      routines: draft.routines.filter(r => r.id !== routineId),
+      week: Object.fromEntries(Object.entries(draft.week).filter(([, v]) => v !== routineId)),
+      dayPlan: Object.fromEntries(Object.entries(draft.dayPlan).filter(([, v]) => v !== routineId))
+    }
+    persist(next).then(() => { toast(t('Rutina eliminada')); onSaved(); close() }).catch(e => toast(e.message))
+  }
+
+  if (!routine) return null
+  return <div className="compound-builder">
+    <div className="compound-builder-content">
+      <RoutineEditor
+        routine={routine}
+        S={{ unit: draft.unit, body: draft.body }}
+        update={update}
+        onBack={close}
+        onDeleted={remove}
+      />
+      <div className="row" style={{ padding: '0 16px 16px', gap: 8 }}>
+        <Button variant="primary" disabled={saving} onClick={save}>{t('Guardar cambios')}</Button>
+      </div>
+    </div>
+  </div>
+}
+
+// Lista de rutinas de un socio (Fase 6). Crear/eliminar rutina persiste al toque (como las
+// sugerencias de nutrición); editar contenido de una rutina abre AdminRoutineEditorSheet,
+// que junta todos los cambios en un solo "Guardar cambios".
+function AdminRoutineCard({ userId }) {
+  const toast = useUI(s => s.toast)
+  const openSheet = useUI(s => s.openSheet)
+  const [data, setData] = useState(null)
+  const base = `/api/admin/users/${encodeURIComponent(userId)}/routines`
+  const load = () => api(base).then(setData).catch(e => toast(e.message))
+  useEffect(() => { load() }, [userId])
+  if (!data) return <div className="dim small">{t('Loading…')}</div>
+
+  const putAll = next => api(base, { method: 'PUT', body: JSON.stringify({ routines: next.routines, week: next.week, dayPlan: next.dayPlan }) })
+
+  const openEditor = routineId => openSheet(
+    close => <AdminRoutineEditorSheet userId={userId} routineId={routineId} initial={data} close={close} onSaved={load} />,
+    { locked: true, fullScreen: true }
+  )
+
+  const createRoutine = () => {
+    const routine = { id: 'r' + uid(), name: t('New routine'), emoji: 'dumbbell', ex: [] }
+    putAll({ ...data, routines: [...data.routines, routine] })
+      .then(() => { toast(t('Rutina creada')); return load() })
+      .then(() => openEditor(routine.id))
+      .catch(e => toast(e.message))
+  }
+
+  const removeRoutine = routine => confirmSheet({
+    title: t('¿Eliminar rutina?'), message: t('“{0}” y sus ejercicios se eliminarán.', routine.name),
+    confirmText: t('Eliminar'), danger: true,
+    onConfirm: () => putAll({
+      routines: data.routines.filter(r => r.id !== routine.id),
+      week: Object.fromEntries(Object.entries(data.week).filter(([, v]) => v !== routine.id)),
+      dayPlan: Object.fromEntries(Object.entries(data.dayPlan).filter(([, v]) => v !== routine.id))
+    }).then(() => { toast(t('Rutina eliminada')); load() }).catch(e => toast(e.message))
+  })
+
+  return <Section title={t('Rutinas')} footer={<Button size="sm" icon="plus" onClick={createRoutine}>{t('Crear rutina')}</Button>}>
+    {data.routines.length ? data.routines.map(r => <Row key={r.id} title={r.name} subtitle={t('{0} ejercicios', (r.ex || []).length)}>
+      <div className="row" style={{ gap: 2 }}>
+        <button className="iconbtn" aria-label={t('Edit')} onClick={() => openEditor(r.id)}><Icon name="pencil" /></button>
+        <button className="iconbtn" aria-label={t('Remove')} style={{ color: 'var(--red)' }} onClick={() => removeRoutine(r)}><Icon name="trash" /></button>
+      </div>
+    </Row>) : <div className="dim small">{t('Sin rutinas asignadas.')}</div>}
+  </Section>
+}
+
+// Punto de entrada desde UserDetail.
+function AdminManageSheet({ userId, userName, close }) {
+  const [tab, setTab] = useState('nutrition')
+  return <div className="compound-builder">
+    <div className="compound-builder-content">
+      <div className="row between compound-builder-header">
+        <div><h3 style={{ margin: 0 }}>{t('Administrar Nutrición/Rutina')}</h3><div className="dim small">{userName}</div></div>
+        <button type="button" className="iconbtn" onClick={close} aria-label={t('Close')}><Icon name="xmark" /></button>
+      </div>
+      <Segmented options={[{ value: 'nutrition', label: t('Nutrición') }, { value: 'routine', label: t('Rutina') }]} value={tab} onChange={setTab} />
+      {tab === 'nutrition' ? <AdminNutritionCard userId={userId} /> : <AdminRoutineCard userId={userId} />}
+    </div>
+  </div>
+}
+
 function UserDetail({ id, onChanged, close }) {
   const [d, setD] = useState(null)
   const toast = useUI(s => s.toast)
+  const openSheet = useUI(s => s.openSheet)
   const currentUser = useStore(s => s.user)
   useEffect(() => { api('/api/admin/user?id=' + encodeURIComponent(id)).then(setD).catch(e => toast(e.message)) }, [id])
   if (!d) return <div className="muted small">{t('Loading…')}</div>
@@ -104,6 +384,10 @@ function UserDetail({ id, onChanged, close }) {
       <div className="tile"><div className="l">{t('Routines')}</div><div className="v" style={{ fontSize: '1.1rem' }}>{d.routines.length}</div></div>
       <div className="tile"><div className="l">{t('Last sync')}</div><div className="v" style={{ fontSize: '.95rem' }}>{rel(d.lastSync)}</div></div>
     </div>
+    <Button variant="tinted" style={{ width: '100%', margin: '4px 0 4px' }}
+      onClick={() => openSheet(c => <AdminManageSheet userId={u.id} userName={u.name} close={c} />, { locked: true, fullScreen: true })}>
+      {t('Administrar Nutrición/Rutina')}
+    </Button>
     {currentUser?.owner && !u.owner && <button className="btn primary" style={{ margin: '12px 0 4px' }}
       onClick={() => confirmSheet({ title: u.admin ? t('Remove admin from {0}?', u.name) : t('Make {0} an admin?', u.name), message: u.admin ? t('They will keep access to normal administrative tools only if promoted again.') : t('This gives the user access to the admin dashboard and administrative tools.'), confirmText: u.admin ? t('Remove admin') : t('Make admin'), danger: false, onConfirm: () => setAdmin(!u.admin) })}>
       {u.admin ? t('Remove admin role') : t('Make admin')}</button>}

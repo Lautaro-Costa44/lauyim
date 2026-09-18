@@ -114,6 +114,12 @@ export function ajustarPorDiaEntreno(caloriasBase, huboEntrenoHoy) {
 /**
  * Deriva las metas nutricionales visibles a partir del estado del usuario.
  * Mantiene en un único lugar la misma cadena de cálculo usada por las vistas.
+ *
+ * Si un admin configuró metas manuales para este socio (S.nutritionGoals.mode === 'manual',
+ * ver database.getUserState), esos cuatro valores reemplazan a los calculados — nunca se
+ * mezclan. El resto de la fila (peso/altura/edad/tmb/gasto diario) sigue siendo informativo
+ * y se muestra igual que siempre: el socio no debe notar que el número final vino de otro
+ * lado (regla de prioridad total del admin, sin indicios en la UI).
  */
 export function calcularMetasNutricionales(S) {
   const resp = S.respuestasEncuesta || {}
@@ -129,10 +135,17 @@ export function calcularMetasNutricionales(S) {
   const objetivoInterno = mapearObjetivoUI(objetivo)
   const caloriasBase = calcularMetaCalorica(tdee, objetivoInterno, S.grasaCorporal)
   const huboEntrenoHoy = (S.workouts || []).some(w => w.d === todayISO()) || Boolean(effectiveRoutine(S, todayISO()))
-  const sugerido = ajustarPorDiaEntreno(caloriasBase, huboEntrenoHoy)
+  const sugeridoAutomatico = ajustarPorDiaEntreno(caloriasBase, huboEntrenoHoy)
+  const metaProteinaAutomatica = calcularMetaProteina(peso, objetivoInterno === 'bajar')
+  const { grasasMeta: grasasAutomaticas, carbosMeta: carbosAutomaticos } = calcularMetasMacros(sugeridoAutomatico, metaProteinaAutomatica)
+
+  const manual = S.nutritionGoals?.mode === 'manual' ? S.nutritionGoals : null
   return {
     peso, altura, edad, objetivo, objetivoInterno, tmb, tdee,
-    mantenimiento: tdee, sugerido,
-    metaProteina: calcularMetaProteina(peso, objetivoInterno === 'bajar'),
+    mantenimiento: tdee,
+    sugerido: manual ? manual.calories : sugeridoAutomatico,
+    metaProteina: manual ? manual.protein : metaProteinaAutomatica,
+    carbosMeta: manual ? manual.carbs : carbosAutomaticos,
+    grasasMeta: manual ? manual.fat : grasasAutomaticas,
   }
 }

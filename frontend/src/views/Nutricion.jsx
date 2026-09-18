@@ -6,7 +6,7 @@ import LineChart from '../components/LineChart.jsx'
 import { Button, Row, Section, Segmented, SelectRow } from '../components/ui.jsx'
 import { bwSheet, goalSheet, confirmSheet } from '../sheets.jsx'
 import { fmtNum } from '../lib/format.js'
-import { calcularMetasNutricionales, calcularMetasMacros, calcularNutrientesPorCantidad, porcionAGramos } from '../lib/nutricion.js'
+import { calcularMetasNutricionales, calcularNutrientesPorCantidad, porcionAGramos } from '../lib/nutricion.js'
 import ResumenNutricional from '../components/ResumenNutricional.jsx'
 import ScannerCodigoBarras from '../components/ScannerCodigoBarras.jsx'
 import HistorialNutricion from './HistorialNutricion.jsx'
@@ -230,7 +230,7 @@ function ManualFoodForm({ franja, close, onBack, onSaved, onAddIngrediente }) {
   </form>
 }
 
-function FoodPicker({ franja, close, onSaved, onAddIngrediente, onAdded }) {
+export function FoodPicker({ franja, close, onSaved, onAddIngrediente, onAdded }) {
   const [tab, setTab] = useState('buscar')
   const [query, setQuery] = useState('')
   const [results, setResults] = useState([])
@@ -700,8 +700,7 @@ export default function Nutricion() {
   const bwPts = (S.bodyweight || []).filter(b => range === 0 || (b.t || new Date(b.d).getTime()) > now - range * 86400000).map(b => ({ t: b.t || new Date(b.d).getTime(), y: b.w, d: b.d }))
   const [comidas, setComidas] = useState([])
   const [loadingComidas, setLoadingComidas] = useState(true)
-  const { sugerido, metaProteina } = calcularMetasNutricionales(S)
-  const { grasasMeta, carbosMeta } = calcularMetasMacros(sugerido, metaProteina)
+  const { sugerido, metaProteina, carbosMeta, grasasMeta } = calcularMetasNutricionales(S)
   const loadComidas = (showLoading = false) => {
     const date = todayISO()
     const cached = readMealsCache(date)

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import Icon from '../components/Icon.jsx'
 import { api } from '../lib/api.js'
-import { calcularMetasNutricionales, calcularMetasMacros } from '../lib/nutricion.js'
+import { calcularMetasNutricionales } from '../lib/nutricion.js'
 
 const HISTORY_CACHE_KEY = 'gym_nutrition_history_v1:30'
 const readHistoryCache = () => {
@@ -55,8 +55,7 @@ export default function HistorialNutricion({ close, S }) {
   const historyEntryRef = useRef(false)
   const closingRef = useRef(false)
 
-  const { sugerido, metaProteina } = calcularMetasNutricionales(S)
-  const { grasasMeta, carbosMeta } = calcularMetasMacros(sugerido, metaProteina)
+  const { sugerido, metaProteina, carbosMeta, grasasMeta } = calcularMetasNutricionales(S)
   const total = dias.reduce((result, dia) => ({
     calorias: result.calorias + Number(dia.calorias || 0),
     proteina: result.proteina + Number(dia.proteina || 0),

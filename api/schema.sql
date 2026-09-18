@@ -396,6 +396,10 @@ CREATE TABLE IF NOT EXISTS plantillas_comida (
   franjas_recomendadas TEXT,
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL,
+  scope TEXT NOT NULL DEFAULT 'user',
+  enabled INTEGER NOT NULL DEFAULT 1,
+  position INTEGER NOT NULL DEFAULT 0,
+  assigned_by TEXT,
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
@@ -403,6 +407,10 @@ CREATE TABLE IF NOT EXISTS plantillas_comida (
 -- ALTER TABLE plantillas_comida ADD COLUMN categoria TEXT;
 -- ALTER TABLE plantillas_comida ADD COLUMN franjas_recomendadas TEXT;
 -- ALTER TABLE plantillas_comida ADD COLUMN updated_at INTEGER;
+-- ALTER TABLE plantillas_comida ADD COLUMN scope TEXT NOT NULL DEFAULT 'user';
+-- ALTER TABLE plantillas_comida ADD COLUMN enabled INTEGER NOT NULL DEFAULT 1;
+-- ALTER TABLE plantillas_comida ADD COLUMN position INTEGER NOT NULL DEFAULT 0;
+-- ALTER TABLE plantillas_comida ADD COLUMN assigned_by TEXT;
 
 CREATE TABLE IF NOT EXISTS plantillas_ingredientes (
   id INTEGER PRIMARY KEY AUTOINCREMENT,

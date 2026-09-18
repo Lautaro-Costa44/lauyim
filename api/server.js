@@ -54,7 +54,23 @@ import {
   setAdminSetting,
   getOrCreateQrAccessToken,
   getAttendanceByDate,
-  getDatabase
+  getDatabase,
+  getNutritionGoals,
+  setNutritionGoals,
+  getAdminSuggestionsByUserId,
+  getPlantillaWithIngredientes,
+  assignExistingPlantillaToUser,
+  createCustomSuggestionForUser,
+  updateAdminSuggestion,
+  setSuggestionEnabled,
+  removeAdminSuggestion,
+  logAdminAction,
+  getRoutinesByUserId,
+  saveRoutines,
+  getWeekPlanByUserId,
+  saveWeekPlan,
+  getDayPlanByUserId,
+  saveDayPlan
 } from './database.js';
 
 const PORT = +(process.env.PORT || 3000);
@@ -413,16 +429,26 @@ function readSession(req) {
 
 function requireAdmin(req, res) {
   const user = readSession(req);
-  if (!user) { json(res, 401, { error: 'not signed in' }); return null; }
-  if (!isAdmin(user)) { audit(req, 'admin.denied', { ok: false, user }); json(res, 403, { error: 'forbidden' }); return null; }
+  if (!user) { json(res, 401, { error: 'No has iniciado sesión' }); return null; }
+  if (!isAdmin(user)) { audit(req, 'admin.denied', { ok: false, user }); json(res, 403, { error: 'No autorizado' }); return null; }
   return user;
 }
 
 function requireOwner(req, res) {
   const user = readSession(req);
-  if (!user) { json(res, 401, { error: 'not signed in' }); return null; }
+  if (!user) { json(res, 401, { error: 'No has iniciado sesión' }); return null; }
   if (!isOwner(user)) { audit(req, 'owner.denied', { ok: false, user }); json(res, 403, { error: 'owner required' }); return null; }
   return user;
+}
+
+// Single reusable gate for every admin mutation that targets a socio (nutrition/routine/injury
+// admin endpoints): confirms the target exists and is active before any write is allowed.
+// Read-only admin views may look up getUserById directly instead of calling this.
+function requireActiveTargetUser(res, userId) {
+  const target = getUserById(userId);
+  if (!target) { json(res, 404, { error: 'El usuario no existe' }); return null; }
+  if (target.disabled) { json(res, 409, { error: 'El socio está desactivado' }); return null; }
+  return target;
 }
 const expireCookie = name => `${name}=; Path=/; Max-Age=0; HttpOnly;${SECURE} SameSite=Lax`;
 function sessionCookie(user) {
@@ -854,6 +880,97 @@ function validarIngredientes(ingredientes) {
   });
 }
 
+function isReasonableMacro(value) {
+  const n = Number(value);
+  return Number.isFinite(n) && n > 0 && n <= 20000;
+}
+
+// Body shape: { mode: 'automatic' } clears the manual override, or
+// { mode: 'manual', calories, protein, carbs, fat } sets it. Returns null on invalid input.
+function parseNutritionGoalsBody(body) {
+  if (body?.mode === 'automatic') {
+    return { mode: 'automatic', calories: null, protein: null, carbs: null, fat: null };
+  }
+  if (body?.mode !== 'manual') return null;
+  const { calories, protein, carbs, fat } = body;
+  if (![calories, protein, carbs, fat].every(isReasonableMacro)) return null;
+  return { mode: 'manual', calories: Number(calories), protein: Number(protein), carbs: Number(carbs), fat: Number(fat) };
+}
+
+function suggestionResponse(row) {
+  return {
+    id: row.id, nombre: row.nombre, categoria: row.categoria, enabled: !!row.enabled, position: row.position,
+    assignedBy: row.assigned_by, createdAt: row.created_at, updatedAt: row.updated_at,
+    ingredientes: (row.ingredientes || []).map(i => ({
+      id: i.id, nombre_alimento: i.nombre_alimento, cantidad_gramos: i.cantidad_gramos,
+      calorias: i.calorias, proteina: i.proteina, carbohidratos: i.carbohidratos, grasas: i.grasas
+    }))
+  };
+}
+
+// Body validado para PUT /api/admin/users/:userId/routines (Fase 6). Misma forma que
+// {routines, week, dayPlan} que ya maneja saveUserState() — sin campos nuevos.
+function parseRoutinesBody(body) {
+  if (!Array.isArray(body?.routines)) return null;
+  const routines = [];
+  for (const r of body.routines) {
+    if (!r || typeof r !== 'object') return null;
+    const id = String(r.id || '').trim();
+    const name = String(r.name || '').trim();
+    if (!id || !name) return null;
+    if (!Array.isArray(r.ex)) return null;
+    const ex = [];
+    for (const item of r.ex) {
+      if (!item || typeof item !== 'object' || !String(item.id || '').trim()) return null;
+      ex.push(item);
+    }
+    routines.push({ id, name, emoji: r.emoji || 'dumbbell', created: r.created_at || r.created || Date.now(), ex });
+  }
+  const week = (body.week && typeof body.week === 'object' && !Array.isArray(body.week)) ? body.week : {};
+  const dayPlan = (body.dayPlan && typeof body.dayPlan === 'object' && !Array.isArray(body.dayPlan)) ? body.dayPlan : {};
+  return { routines, week, dayPlan };
+}
+
+// Auditoría granular de Fase 6/8: el guardado admin reemplaza el blob completo de rutinas
+// (mismo patrón que usa el propio socio), así que la auditoría por acción sale de comparar
+// antes/después en vez de tener un endpoint por operación.
+function logRoutineStateChanges({ actorUserId, targetUserId, before, after }) {
+  const meta = r => ({ name: r.name, emoji: r.emoji });
+  const beforeById = new Map(before.routines.map(r => [String(r.id), r]));
+  const afterById = new Map(after.routines.map(r => [String(r.id), r]));
+
+  for (const [id, r] of afterById) {
+    const b = beforeById.get(id);
+    if (!b) {
+      logAdminAction({ actorUserId, targetUserId, action: 'routine.create', entityId: id, after: meta(r) });
+      for (const ex of r.ex) logAdminAction({ actorUserId, targetUserId, action: 'routine.exercise.add', entityId: id, after: ex });
+      continue;
+    }
+    if (b.name !== r.name || (b.emoji || 'dumbbell') !== (r.emoji || 'dumbbell')) {
+      logAdminAction({ actorUserId, targetUserId, action: 'routine.update', entityId: id, before: meta(b), after: meta(r) });
+    }
+    const maxEx = Math.max(b.ex.length, r.ex.length);
+    for (let i = 0; i < maxEx; i++) {
+      const be = b.ex[i], ae = r.ex[i];
+      if (be && !ae) logAdminAction({ actorUserId, targetUserId, action: 'routine.exercise.remove', entityId: id, before: be });
+      else if (!be && ae) logAdminAction({ actorUserId, targetUserId, action: 'routine.exercise.add', entityId: id, after: ae });
+      else if (JSON.stringify(be) !== JSON.stringify(ae)) logAdminAction({ actorUserId, targetUserId, action: 'routine.exercise.update', entityId: id, before: be, after: ae });
+    }
+  }
+  for (const [id, r] of beforeById) {
+    if (!afterById.has(id)) {
+      logAdminAction({ actorUserId, targetUserId, action: 'routine.delete', entityId: id, before: meta(r) });
+    }
+  }
+  if (JSON.stringify(before.week) !== JSON.stringify(after.week) || JSON.stringify(before.dayPlan) !== JSON.stringify(after.dayPlan)) {
+    logAdminAction({
+      actorUserId, targetUserId, action: 'routine.plan.update',
+      before: { week: before.week, dayPlan: before.dayPlan },
+      after: { week: after.week, dayPlan: after.dayPlan }
+    });
+  }
+}
+
 if (AUDIT_ON) {
   compactAudit();
   setInterval(compactAudit, 3600000).unref();
@@ -944,10 +1061,10 @@ const routes = {
 
   'POST /api/plantillas': async (req, res) => {
     const user = readSession(req);
-    if (!user) return json(res, 401, { error: 'not signed in' });
+    if (!user) return json(res, 401, { error: 'No has iniciado sesión' });
     const body = await readBody(req);
     const nombre = String(body.nombre || '').trim();
-    if (!nombre || !validarIngredientes(body.ingredientes)) return json(res, 400, { error: 'nombre and ingredientes required' });
+    if (!nombre || !validarIngredientes(body.ingredientes)) return json(res, 400, { error: 'Nombre e ingredientes requeridos' });
 
     const db = getDatabase();
     db.exec('BEGIN');
@@ -973,10 +1090,10 @@ const routes = {
 
   'POST /api/comidas-compuestas': async (req, res) => {
     const user = readSession(req);
-    if (!user) return json(res, 401, { error: 'not signed in' });
+    if (!user) return json(res, 401, { error: 'No has iniciado sesión' });
     const body = await readBody(req);
     const nombre = String(body.nombre || '').trim();
-    if (!nombre || !validarIngredientes(body.ingredientes)) return json(res, 400, { error: 'nombre and ingredientes required' });
+    if (!nombre || !validarIngredientes(body.ingredientes)) return json(res, 400, { error: 'Nombre e ingredientes requeridos' });
     if (!/^\d{4}-\d{2}-\d{2}$/.test(String(body.fecha || '')) || !['desayuno', 'almuerzo', 'merienda', 'cena', 'extra'].includes(body.franja)) {
       return json(res, 400, { error: 'fecha or franja invalid' });
     }
@@ -1012,25 +1129,61 @@ const routes = {
 
   'GET /api/plantillas': async (req, res) => {
     const user = readSession(req);
-    if (!user) return json(res, 401, { error: 'not signed in' });
+    if (!user) return json(res, 401, { error: 'No has iniciado sesión' });
     const categoria = new URL(req.url, 'http://x').searchParams.get('categoria') || '';
     const requestUrl = new URL(req.url, 'http://x');
     const soloUsuario = requestUrl.searchParams.get('scope') === 'mine';
     const franja = requestUrl.searchParams.get('franja') || '';
+
+    // Prioridad total del admin (Fase 3): scope=mine pide las plantillas propias del socio
+    // (gestión personal, sin relación con sugerencias de admin) y sigue como siempre. El
+    // feed de sugerencias (sin scope=mine) sí respeta la precedencia: si hay alguna
+    // sugerencia scope='admin' habilitada asignada a este socio, es la única fuente —
+    // nunca se mezcla con plantillas globales ni con lo automático, aunque el filtro de
+    // franja/categoria la deje vacía.
+    if (!soloUsuario) {
+      const asignadas = getAdminSuggestionsByUserId(user.id).filter(row => row.enabled);
+      if (asignadas.length) {
+        const soloCategoria = String(categoria || '').trim();
+        const soloFranja = String(franja || '').trim();
+        const mapeadas = asignadas
+          .filter(row => !soloCategoria || row.categoria === soloCategoria)
+          .map(row => ({
+            id: row.id,
+            user_id: row.user_id,
+            nombre: row.nombre,
+            created_at: row.created_at,
+            updated_at: row.updated_at || row.created_at,
+            franjas_recomendadas: (() => {
+              try {
+                const franjas = JSON.parse(row.franjas_recomendadas || '[]');
+                return franjas.length ? franjas : inferirFranjasPlantilla(row.nombre, row.categoria);
+              } catch { return inferirFranjasPlantilla(row.nombre, row.categoria); }
+            })(),
+            ingredientes: row.ingredientes.map(i => ({
+              id: i.id, nombre_alimento: i.nombre_alimento, cantidad_gramos: i.cantidad_gramos,
+              calorias: i.calorias, proteina: i.proteina, carbohidratos: i.carbohidratos, grasas: i.grasas
+            }))
+          }));
+        const resultado = soloFranja ? mapeadas.filter(p => p.franjas_recomendadas.includes(soloFranja)) : mapeadas;
+        return json(res, 200, resultado);
+      }
+    }
+
     return json(res, 200, obtenerPlantillas(getDatabase(), user.id, categoria, soloUsuario, franja));
   },
 
   'PUT /api/plantillas/:id': async (req, res) => {
     const user = readSession(req);
-    if (!user) return json(res, 401, { error: 'not signed in' });
+    if (!user) return json(res, 401, { error: 'No has iniciado sesión' });
     const id = new URL(req.url, 'http://x').pathname.split('/').pop();
     const db = getDatabase();
     const plantilla = db.prepare('SELECT id, user_id, updated_at FROM plantillas_comida WHERE id = ?').get(id);
     if (!plantilla) return json(res, 404, { error: 'template not found' });
-    if (plantilla.user_id !== user.id) return json(res, 403, { error: 'forbidden' });
+    if (plantilla.user_id !== user.id) return json(res, 403, { error: 'No autorizado' });
     const body = await readBody(req);
     const nombre = String(body.nombre || '').trim();
-    if (!nombre || !validarIngredientes(body.ingredientes)) return json(res, 400, { error: 'nombre and ingredientes required' });
+    if (!nombre || !validarIngredientes(body.ingredientes)) return json(res, 400, { error: 'Nombre e ingredientes requeridos' });
 
     db.exec('BEGIN');
     try {
@@ -1053,14 +1206,163 @@ const routes = {
 
   'DELETE /api/plantillas/:id': async (req, res) => {
     const user = readSession(req);
-    if (!user) return json(res, 401, { error: 'not signed in' });
+    if (!user) return json(res, 401, { error: 'No has iniciado sesión' });
     const id = new URL(req.url, 'http://x').pathname.split('/').pop();
     const db = getDatabase();
     const plantilla = db.prepare('SELECT id, user_id FROM plantillas_comida WHERE id = ?').get(id);
     if (!plantilla) return json(res, 404, { error: 'template not found' });
-    if (plantilla.user_id !== user.id) return json(res, 403, { error: 'forbidden' });
+    if (plantilla.user_id !== user.id) return json(res, 403, { error: 'No autorizado' });
     db.prepare('DELETE FROM plantillas_comida WHERE id = ?').run(id);
     return json(res, 200, { ok: true });
+  },
+
+  /* ---------- admin: nutrición de un socio (Fase 2) ---------- */
+  'GET /api/admin/users/:userId/nutrition': async (req, res) => {
+    const admin = requireAdmin(req, res); if (!admin) return;
+    const userId = decodeURIComponent(new URL(req.url, 'http://x').pathname.split('/')[4]);
+    if (!getUserById(userId)) return json(res, 404, { error: 'El usuario no existe' });
+    const goals = getNutritionGoals(userId);
+    const suggestions = getAdminSuggestionsByUserId(userId).map(suggestionResponse);
+    json(res, 200, { goals, suggestions });
+  },
+
+  'PUT /api/admin/users/:userId/nutrition/goals': async (req, res) => {
+    const admin = requireAdmin(req, res); if (!admin) return;
+    const userId = decodeURIComponent(new URL(req.url, 'http://x').pathname.split('/')[4]);
+    const target = requireActiveTargetUser(res, userId); if (!target) return;
+    const body = await readBody(req);
+    const goals = parseNutritionGoalsBody(body);
+    if (!goals) return json(res, 400, { error: 'Metas inválidas: el modo debe ser automático, o manual con calorías/proteína/carbohidratos/grasas positivos' });
+    const before = getNutritionGoals(userId);
+    const after = { ...goals, updatedAt: Date.now(), updatedBy: admin.id };
+    setNutritionGoals(userId, after);
+    logAdminAction({ actorUserId: admin.id, targetUserId: userId, action: 'nutrition.goals.update', entityId: userId, before, after });
+    audit(req, 'admin.nutrition.goals.update', { user: admin, target });
+    json(res, 200, { goals: after });
+  },
+
+  'GET /api/admin/users/:userId/nutrition/suggestions': async (req, res) => {
+    const admin = requireAdmin(req, res); if (!admin) return;
+    const userId = decodeURIComponent(new URL(req.url, 'http://x').pathname.split('/')[4]);
+    if (!getUserById(userId)) return json(res, 404, { error: 'El usuario no existe' });
+    json(res, 200, { suggestions: getAdminSuggestionsByUserId(userId).map(suggestionResponse) });
+  },
+
+  'POST /api/admin/users/:userId/nutrition/suggestions': async (req, res) => {
+    const admin = requireAdmin(req, res); if (!admin) return;
+    const userId = decodeURIComponent(new URL(req.url, 'http://x').pathname.split('/')[4]);
+    const target = requireActiveTargetUser(res, userId); if (!target) return;
+    const body = await readBody(req);
+    const sourceId = Number(body.plantilla_id);
+    if (!Number.isInteger(sourceId)) return json(res, 400, { error: 'Falta plantilla_id' });
+    const source = getPlantillaWithIngredientes(sourceId);
+    if (!source) return json(res, 404, { error: 'Plantilla no encontrada' });
+    const created = assignExistingPlantillaToUser(userId, sourceId, admin.id);
+    logAdminAction({ actorUserId: admin.id, targetUserId: userId, action: 'nutrition.suggestion.assign', entityId: created.id, after: suggestionResponse(created) });
+    audit(req, 'admin.nutrition.suggestion.assign', { user: admin, target, msg: created.nombre });
+    json(res, 201, { suggestion: suggestionResponse(created) });
+  },
+
+  'POST /api/admin/users/:userId/nutrition/suggestions/custom': async (req, res) => {
+    const admin = requireAdmin(req, res); if (!admin) return;
+    const userId = decodeURIComponent(new URL(req.url, 'http://x').pathname.split('/')[4]);
+    const target = requireActiveTargetUser(res, userId); if (!target) return;
+    const body = await readBody(req);
+    const nombre = String(body.nombre || '').trim();
+    if (!nombre || !validarIngredientes(body.ingredientes)) return json(res, 400, { error: 'Nombre e ingredientes requeridos' });
+    const created = createCustomSuggestionForUser(userId, { nombre, categoria: body.categoria, ingredientes: body.ingredientes }, admin.id);
+    logAdminAction({ actorUserId: admin.id, targetUserId: userId, action: 'nutrition.suggestion.create', entityId: created.id, after: suggestionResponse(created) });
+    audit(req, 'admin.nutrition.suggestion.create', { user: admin, target, msg: nombre });
+    json(res, 201, { suggestion: suggestionResponse(created) });
+  },
+
+  'PUT /api/admin/users/:userId/nutrition/suggestions/:id': async (req, res) => {
+    const admin = requireAdmin(req, res); if (!admin) return;
+    const parts = new URL(req.url, 'http://x').pathname.split('/');
+    const userId = decodeURIComponent(parts[4]);
+    const id = Number(parts[7]);
+    const target = requireActiveTargetUser(res, userId); if (!target) return;
+    const before = getPlantillaWithIngredientes(id);
+    if (!before || before.user_id !== userId || before.scope !== 'admin') return json(res, 404, { error: 'Sugerencia no encontrada' });
+    const body = await readBody(req);
+    const nombre = String(body.nombre || '').trim();
+    if (!nombre || !validarIngredientes(body.ingredientes)) return json(res, 400, { error: 'Nombre e ingredientes requeridos' });
+    const position = Number.isInteger(body.position) ? body.position : undefined;
+    const after = updateAdminSuggestion(id, { nombre, categoria: body.categoria, ingredientes: body.ingredientes, position });
+    logAdminAction({ actorUserId: admin.id, targetUserId: userId, action: 'nutrition.suggestion.update', entityId: id, before: suggestionResponse(before), after: suggestionResponse(after) });
+    audit(req, 'admin.nutrition.suggestion.update', { user: admin, target, msg: nombre });
+    json(res, 200, { suggestion: suggestionResponse(after) });
+  },
+
+  'PATCH /api/admin/users/:userId/nutrition/suggestions/:id': async (req, res) => {
+    const admin = requireAdmin(req, res); if (!admin) return;
+    const parts = new URL(req.url, 'http://x').pathname.split('/');
+    const userId = decodeURIComponent(parts[4]);
+    const id = Number(parts[7]);
+    const target = requireActiveTargetUser(res, userId); if (!target) return;
+    const before = getPlantillaWithIngredientes(id);
+    if (!before || before.user_id !== userId || before.scope !== 'admin') return json(res, 404, { error: 'Sugerencia no encontrada' });
+    const body = await readBody(req);
+    if (typeof body.enabled !== 'boolean') return json(res, 400, { error: 'Falta enabled (boolean)' });
+    setSuggestionEnabled(id, body.enabled);
+    const after = getPlantillaWithIngredientes(id);
+    logAdminAction({ actorUserId: admin.id, targetUserId: userId, action: 'nutrition.suggestion.enable', entityId: id, before: suggestionResponse(before), after: suggestionResponse(after) });
+    audit(req, 'admin.nutrition.suggestion.enable', { user: admin, target, msg: `${before.nombre}: ${body.enabled}` });
+    json(res, 200, { suggestion: suggestionResponse(after) });
+  },
+
+  'DELETE /api/admin/users/:userId/nutrition/suggestions/:id': async (req, res) => {
+    const admin = requireAdmin(req, res); if (!admin) return;
+    const parts = new URL(req.url, 'http://x').pathname.split('/');
+    const userId = decodeURIComponent(parts[4]);
+    const id = Number(parts[7]);
+    const target = requireActiveTargetUser(res, userId); if (!target) return;
+    const before = getPlantillaWithIngredientes(id);
+    if (!before || before.user_id !== userId || before.scope !== 'admin') return json(res, 404, { error: 'Sugerencia no encontrada' });
+    removeAdminSuggestion(id);
+    logAdminAction({ actorUserId: admin.id, targetUserId: userId, action: 'nutrition.suggestion.remove', entityId: id, before: suggestionResponse(before) });
+    audit(req, 'admin.nutrition.suggestion.remove', { user: admin, target, msg: before.nombre });
+    json(res, 200, { ok: true });
+  },
+
+  /* ---------- admin: rutinas de un socio (Fase 6) ---------- */
+  'GET /api/admin/users/:userId/routines': async (req, res) => {
+    const admin = requireAdmin(req, res); if (!admin) return;
+    const userId = decodeURIComponent(new URL(req.url, 'http://x').pathname.split('/')[4]);
+    if (!getUserById(userId)) return json(res, 404, { error: 'El usuario no existe' });
+    const prefs = getDatabase().prepare('SELECT unit, body FROM user_state WHERE user_id = ?').get(userId) || {};
+    json(res, 200, {
+      routines: getRoutinesByUserId(userId),
+      week: getWeekPlanByUserId(userId),
+      dayPlan: getDayPlanByUserId(userId),
+      unit: prefs.unit || 'kg',
+      body: prefs.body || 'male'
+    });
+  },
+
+  'PUT /api/admin/users/:userId/routines': async (req, res) => {
+    const admin = requireAdmin(req, res); if (!admin) return;
+    const userId = decodeURIComponent(new URL(req.url, 'http://x').pathname.split('/')[4]);
+    const target = requireActiveTargetUser(res, userId); if (!target) return;
+    const body = await readBody(req);
+    const parsed = parseRoutinesBody(body);
+    if (!parsed) return json(res, 400, { error: 'Rutinas inválidas' });
+    const before = {
+      routines: getRoutinesByUserId(userId),
+      week: getWeekPlanByUserId(userId),
+      dayPlan: getDayPlanByUserId(userId)
+    };
+    const validRoutineIds = new Set(parsed.routines.map(r => r.id));
+    saveRoutines(userId, parsed.routines);
+    saveWeekPlan(userId, parsed.week, validRoutineIds);
+    saveDayPlan(userId, parsed.dayPlan, validRoutineIds);
+    logRoutineStateChanges({ actorUserId: admin.id, targetUserId: userId, before, after: parsed });
+    audit(req, 'admin.routine.update', { user: admin, target });
+    json(res, 200, {
+      routines: getRoutinesByUserId(userId),
+      week: getWeekPlanByUserId(userId),
+      dayPlan: getDayPlanByUserId(userId)
+    });
   },
 
   'GET /api/alimentos/codigo/:codigo': async (req, res) => {
@@ -1119,7 +1421,7 @@ const routes = {
 
   'POST /api/comidas': async (req, res) => {
     const user = readSession(req);
-    if (!user) return json(res, 401, { error: 'not signed in' });
+    if (!user) return json(res, 401, { error: 'No has iniciado sesión' });
     const body = await readBody(req);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(String(body.fecha || '')) || !['desayuno', 'almuerzo', 'merienda', 'cena', 'extra'].includes(body.franja)) {
       return json(res, 400, { error: 'fecha or franja invalid' });
@@ -1134,7 +1436,7 @@ const routes = {
 
   'POST /api/comidas/grupo': async (req, res) => {
     const user = readSession(req);
-    if (!user) return json(res, 401, { error: 'not signed in' });
+    if (!user) return json(res, 401, { error: 'No has iniciado sesión' });
     const body = await readBody(req);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(String(body.fecha || '')) || !['desayuno', 'almuerzo', 'merienda', 'cena', 'extra'].includes(body.franja)) {
       return json(res, 400, { error: 'fecha or franja invalid' });
@@ -1175,7 +1477,7 @@ const routes = {
 
   'GET /api/comidas': async (req, res) => {
     const user = readSession(req);
-    if (!user) return json(res, 401, { error: 'not signed in' });
+    if (!user) return json(res, 401, { error: 'No has iniciado sesión' });
     const fecha = new URL(req.url, 'http://x').searchParams.get('fecha') || '';
     if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha)) return json(res, 400, { error: 'fecha invalid' });
     const comidas = getDatabase().prepare('SELECT * FROM comidas_registradas WHERE user_id = ? AND fecha = ? ORDER BY id').all(user.id, fecha);
@@ -1184,7 +1486,7 @@ const routes = {
 
   'GET /api/comidas/historial': async (req, res) => {
     const user = readSession(req);
-    if (!user) return json(res, 401, { error: 'not signed in' });
+    if (!user) return json(res, 401, { error: 'No has iniciado sesión' });
 
     const dias = Number(new URL(req.url, 'http://x').searchParams.get('dias') || 30);
     if (!Number.isInteger(dias) || dias < 1 || dias > 365) {
@@ -1210,7 +1512,7 @@ const routes = {
 
   'DELETE /api/comidas/:id': async (req, res) => {
     const user = readSession(req);
-    if (!user) return json(res, 401, { error: 'not signed in' });
+    if (!user) return json(res, 401, { error: 'No has iniciado sesión' });
     const id = new URL(req.url, 'http://x').pathname.split('/').pop();
     const result = getDatabase().prepare('DELETE FROM comidas_registradas WHERE id = ? AND user_id = ?').run(id, user.id);
     if (!result.changes) return json(res, 404, { error: 'meal not found' });
@@ -1219,7 +1521,7 @@ const routes = {
 
   'DELETE /api/comidas/grupo/:grupo_id': async (req, res) => {
     const user = readSession(req);
-    if (!user) return json(res, 401, { error: 'not signed in' });
+    if (!user) return json(res, 401, { error: 'No has iniciado sesión' });
     const grupoId = new URL(req.url, 'http://x').pathname.split('/').pop();
     const result = getDatabase().prepare('DELETE FROM comidas_registradas WHERE grupo_id = ? AND user_id = ?').run(grupoId, user.id);
     if (!result.changes) return json(res, 404, { error: 'meal group not found' });
@@ -1357,7 +1659,7 @@ const routes = {
 
   'GET /api/me': async (req, res) => {
     const user = readSession(req);
-    if (!user) return json(res, 401, { error: 'not signed in' });
+    if (!user) return json(res, 401, { error: 'No has iniciado sesión' });
     json(res, 200, { user: { id: user.id, name: user.name, admin: isAdmin(user), owner: !!user.owner } });
   },
 
@@ -1527,7 +1829,7 @@ const routes = {
 
   'POST /api/auth/device/claim': async (req, res) => {
     const user = readSession(req);
-    if (!user) return json(res, 401, { error: 'not signed in' });
+    if (!user) return json(res, 401, { error: 'No has iniciado sesión' });
     const body = await readBody(req);
     cleanExpiredPairings();
     const rawCode = String(body.code || body.manualCode || body.pairingId || '').trim().toUpperCase();
@@ -1546,7 +1848,7 @@ const routes = {
 
   'POST /api/auth/device/confirm': async (req, res) => {
     const user = readSession(req);
-    if (!user) return json(res, 401, { error: 'not signed in' });
+    if (!user) return json(res, 401, { error: 'No has iniciado sesión' });
     const body = await readBody(req);
     cleanExpiredPairings();
     const pairingId = String(body.pairingId || '').trim();
@@ -1585,7 +1887,7 @@ const routes = {
   /* ---------- Additional Passkey Registration ---------- */
   'POST /api/credentials/add/options': async (req, res) => {
     const user = readSession(req);
-    if (!user) return json(res, 401, { error: 'not signed in' });
+    if (!user) return json(res, 401, { error: 'No has iniciado sesión' });
     const userCreds = getCredentialsByUserId(user.id);
     const excludeCredentials = userCreds.map(c => ({ id: c.id, type: 'public-key' }));
     const options = await generateRegistrationOptions({
@@ -1601,7 +1903,7 @@ const routes = {
 
   'POST /api/credentials/add/verify': async (req, res) => {
     const user = readSession(req);
-    if (!user) return json(res, 401, { error: 'not signed in' });
+    if (!user) return json(res, 401, { error: 'No has iniciado sesión' });
     const body = await readBody(req);
     const c = takeChallenge(body.cid);
     if (!c || c.uid !== user.id) {
@@ -1645,7 +1947,7 @@ const routes = {
 
   'POST /api/logout/all': async (req, res) => {
     const user = readSession(req);
-    if (!user) return json(res, 401, { error: 'not signed in' });
+    if (!user) return json(res, 401, { error: 'No has iniciado sesión' });
     const newSv = sessionVersion(user) + 1;
     updateUser(user.id, { sv: newSv });
     // saveDb(); // Eliminado: SQLite persiste automáticamente
@@ -1655,7 +1957,7 @@ const routes = {
 
   'GET /api/data': async (req, res) => {
     const user = readSession(req);
-    if (!user) return json(res, 401, { error: 'not signed in' });
+    if (!user) return json(res, 401, { error: 'No has iniciado sesión' });
     const state = getUserState(user.id);
     json(res, 200, { state });
   },
@@ -1666,7 +1968,7 @@ const routes = {
 
   'PUT /api/data': async (req, res) => {
     const user = readSession(req);
-    if (!user) return json(res, 401, { error: 'not signed in' });
+    if (!user) return json(res, 401, { error: 'No has iniciado sesión' });
     const body = await readBody(req);
     if (!body.state || typeof body.state !== 'object') return json(res, 400, { error: 'state required' });
     delete body.state.active;
@@ -1688,7 +1990,7 @@ const routes = {
   // patches are idempotent, so a response lost after commit is safe to retry.
   'POST /api/data/sync': async (req, res) => {
     const user = readSession(req);
-    if (!user) return json(res, 401, { error: 'not signed in' });
+    if (!user) return json(res, 401, { error: 'No has iniciado sesión' });
     const body = await readBody(req);
     if (!Array.isArray(body.operations) || body.operations.length > 50) return json(res, 400, { error: 'invalid operations batch' });
     const processed = processSyncBatch({ db: getDatabase(), userId: user.id, operations: body.operations, getUserState, saveUserState });
@@ -1699,7 +2001,7 @@ const routes = {
 
   'POST /api/push/subscribe': async (req, res) => {
     const user = readSession(req);
-    if (!user) return json(res, 401, { error: 'not signed in' });
+    if (!user) return json(res, 401, { error: 'No has iniciado sesión' });
     const body = await readBody(req);
     const sub = body.subscription;
     if (!sub?.endpoint || !sub?.keys?.p256dh || !sub?.keys?.auth) return json(res, 400, { error: 'invalid subscription' });
@@ -1732,7 +2034,7 @@ const routes = {
 
   'POST /api/push/unsubscribe': async (req, res) => {
     const user = readSession(req);
-    if (!user) return json(res, 401, { error: 'not signed in' });
+    if (!user) return json(res, 401, { error: 'No has iniciado sesión' });
     const body = await readBody(req);
     deleteSubscription(body.endpoint);
     // saveDb(); // Eliminado: SQLite persiste automáticamente
@@ -1741,14 +2043,14 @@ const routes = {
 
   'POST /api/push/test': async (req, res) => {
     const user = readSession(req);
-    if (!user) return json(res, 401, { error: 'not signed in' });
+    if (!user) return json(res, 401, { error: 'No has iniciado sesión' });
     await sendPush(user.id, testPush(readState(user.id)?.lang));
     json(res, 200, { ok: true });
   },
 
   'POST /api/push/rest-timer': async (req, res) => {
     const user = readSession(req);
-    if (!user) return json(res, 401, { error: 'not signed in' });
+    if (!user) return json(res, 401, { error: 'No has iniciado sesión' });
     const body = await readBody(req);
     const sec = Math.max(1, Math.min(3600, Math.round(+body.seconds || 0)));
     if (!sec) return json(res, 400, { error: 'seconds required' });
@@ -1758,14 +2060,14 @@ const routes = {
 
   'POST /api/push/rest-timer/cancel': async (req, res) => {
     const user = readSession(req);
-    if (!user) return json(res, 401, { error: 'not signed in' });
+    if (!user) return json(res, 401, { error: 'No has iniciado sesión' });
     cancelRestTimer(user.id);
     json(res, 200, { ok: true });
   },
 
   'POST /api/activity': async (req, res) => {
     const user = readSession(req);
-    if (!user) return json(res, 401, { error: 'not signed in' });
+    if (!user) return json(res, 401, { error: 'No has iniciado sesión' });
     const body = await readBody(req);
     if (body.active) {
       presence.set(user.id, {
@@ -1781,7 +2083,7 @@ const routes = {
 
   /* ---------- admin dashboard ---------- */
   'GET /api/presets': async (req, res) => {
-    if (!readSession(req)) return json(res, 401, { error: 'not signed in' });
+    if (!readSession(req)) return json(res, 401, { error: 'No has iniciado sesión' });
     const presets = getAllPresets().map(p => getPresetWithExercises(p.id));
     json(res, 200, { presets, groups: getPresetGroups() });
   },
@@ -1871,7 +2173,7 @@ const routes = {
     if (!requireAdmin(req, res)) return;
     const id = new URL(req.url, 'http://x').searchParams.get('id');
     const u = getUserById(id);
-    if (!u) return json(res, 404, { error: 'no such user' });
+    if (!u) return json(res, 404, { error: 'El usuario no existe' });
     const S = readState(u.id) || {};
     json(res, 200, {
       user: { id: u.id, name: u.name, created: u.created || u.created_at || null, disabled: !!u.disabled, admin: isAdmin(u), owner: !!u.owner, invitedBy: u.invited_by || u.invitedBy || null },
@@ -1887,7 +2189,7 @@ const routes = {
     const admin = requireAdmin(req, res); if (!admin) return;
     const body = await readBody(req);
     const u = getUserById(body.id);
-    if (!u) return json(res, 404, { error: 'no such user' });
+    if (!u) return json(res, 404, { error: 'El usuario no existe' });
     if (isAdmin(u)) return json(res, 400, { error: 'cannot disable an admin' });
     const newDisabled = !!body.disabled;
     updateUser(u.id, { disabled: newDisabled });
@@ -1903,7 +2205,7 @@ const routes = {
     const id = String(body.id || '').trim();
     if (!id) return json(res, 400, { error: 'user id required' });
     const u = getUserById(id);
-    if (!u) return json(res, 404, { error: 'no such user' });
+    if (!u) return json(res, 404, { error: 'El usuario no existe' });
     if (isOwner(u)) return json(res, 400, { error: 'cannot change the owner role' });
     const admin = !!body.admin;
     updateUser(u.id, { admin });
@@ -1917,7 +2219,7 @@ const routes = {
     const id = String(body.id || '').trim();
     if (!id) return json(res, 400, { error: 'user id required' });
     const u = getUserById(id);
-    if (!u) return json(res, 404, { error: 'no such user' });
+    if (!u) return json(res, 404, { error: 'El usuario no existe' });
     if (!u.disabled) return json(res, 400, { error: 'only disabled accounts can be deleted' });
     if (isOwner(u)) return json(res, 400, { error: 'cannot delete the owner account' });
 
@@ -2094,6 +2396,22 @@ http.createServer(async (req, res) => {
       ? 'PUT /api/plantillas/:id'
     : req.method === 'DELETE' && /^\/api\/plantillas\/[^/]+$/.test(url.pathname)
       ? 'DELETE /api/plantillas/:id'
+    : req.method === 'GET' && /^\/api\/admin\/users\/[^/]+\/nutrition$/.test(url.pathname)
+      ? 'GET /api/admin/users/:userId/nutrition'
+    : req.method === 'PUT' && /^\/api\/admin\/users\/[^/]+\/nutrition\/goals$/.test(url.pathname)
+      ? 'PUT /api/admin/users/:userId/nutrition/goals'
+    : req.method === 'GET' && /^\/api\/admin\/users\/[^/]+\/nutrition\/suggestions$/.test(url.pathname)
+      ? 'GET /api/admin/users/:userId/nutrition/suggestions'
+    : req.method === 'POST' && /^\/api\/admin\/users\/[^/]+\/nutrition\/suggestions\/custom$/.test(url.pathname)
+      ? 'POST /api/admin/users/:userId/nutrition/suggestions/custom'
+    : req.method === 'POST' && /^\/api\/admin\/users\/[^/]+\/nutrition\/suggestions$/.test(url.pathname)
+      ? 'POST /api/admin/users/:userId/nutrition/suggestions'
+    : req.method === 'PUT' && /^\/api\/admin\/users\/[^/]+\/nutrition\/suggestions\/[^/]+$/.test(url.pathname)
+      ? 'PUT /api/admin/users/:userId/nutrition/suggestions/:id'
+    : req.method === 'PATCH' && /^\/api\/admin\/users\/[^/]+\/nutrition\/suggestions\/[^/]+$/.test(url.pathname)
+      ? 'PATCH /api/admin/users/:userId/nutrition/suggestions/:id'
+    : req.method === 'DELETE' && /^\/api\/admin\/users\/[^/]+\/nutrition\/suggestions\/[^/]+$/.test(url.pathname)
+      ? 'DELETE /api/admin/users/:userId/nutrition/suggestions/:id'
     : key;
 
   const rateLimitMax = routeKey === 'POST /api/access/qr'
