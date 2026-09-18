@@ -33,6 +33,16 @@ const LABELS = {
   'admin.invite.revoke': 'Revoked an invite code',
   'admin.push.send': 'Sent a push notification',
   'admin.audit.clear': 'Cleared the activity log',
+  'admin.nutrition.goals.update': 'Updated nutrition goals',
+  'admin.nutrition.suggestions.limit.update': 'Changed suggested meals limit',
+  'admin.nutrition.suggestion.assign': 'Assigned a suggested meal',
+  'admin.nutrition.suggestion.create': 'Created a suggested meal',
+  'admin.nutrition.suggestion.update': 'Updated a suggested meal',
+  'admin.nutrition.suggestion.enable': 'Changed a suggested meal status',
+  'admin.nutrition.suggestion.remove': 'Removed a suggested meal',
+  'admin.injury.update': 'Updated injuries',
+  'admin.injury.exercise_warning.override': 'Overrode an injury warning',
+  'admin.routine.update': 'Updated a routine',
   'admin.denied': 'Blocked from the admin dashboard',
   'owner.denied': 'Blocked: owner access required',
   'owner.user.promote': 'Promoted to Admin',
@@ -77,6 +87,7 @@ export function auditLine(e) {
   else if (e.uid) parts.push(e.uid)
   else if (!e.ok) parts.push(t('unknown caller'))
   if (e.tname) parts.push('→ ' + e.tname)
+  if (e.summary) parts.push(e.summary)
   // The reason codes and the invite codes share the msg field; only failures read as a reason.
   if (e.msg) parts.push(e.ok ? e.msg : auditReason(e.msg))
   if (e.ip) parts.push(e.ip)

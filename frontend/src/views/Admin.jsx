@@ -1014,7 +1014,7 @@ function AuditCard({ tick }) {
 
   if (meta && !meta.enabled) return null      // AUDIT_LOG=0 — the card isn't there at all
 
-  return <div className="card">
+  return <div className="card audit-log">
     <div className="row between"><h2 style={{ margin: 0 }}>{t('Activity log')}</h2>
       <button className="iconbtn" style={{ width: 32, height: 30, borderRadius: 8, fontSize: 15, color: 'var(--red)' }}
         onClick={clear} aria-label="clear log"><Icon name="trash" /></button></div>
@@ -1023,7 +1023,7 @@ function AuditCard({ tick }) {
         + (meta.retention.days ? ' · ' + t('last {0} days', meta.retention.days) : '') : t('Loading…')}</div>
     <div className="chips" style={{ marginBottom: 10 }}>
       {[['', 'All'], ['auth', 'Sign-ins'], ['admin', 'Admin'], ['fail', 'Failed']].map(([v, l]) =>
-        <button key={v} className={'chip' + (cat === v ? ' on' : '')} onClick={() => pick(v)}>{t(l)}</button>)}
+        <button key={v} className={'chip nocap' + (cat === v ? ' on' : '')} onClick={() => pick(v)}>{t(l)}</button>)}
     </div>
     {rows.map(e => {
       const line = auditLine(e)

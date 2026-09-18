@@ -155,6 +155,7 @@ button,.chip,.tile,.item,.wday,.cal-d,.swatch,.hm-c,.lrow,.seg button,.stp butto
 .small{font-size:13px;line-height:1.38}
 .accent{color:var(--acc)}
 .capitalize{text-transform:capitalize}
+.audit-log .chip{text-transform:none}
 /* exercise names and body-part/equipment terms arrive lowercase from the dataset,
    so tags and chips capitalise by default. Anything that is a unit or a sentence opts
    back out — blanket-capitalising turned "60 kg" into "60 Kg" and a whole hint into

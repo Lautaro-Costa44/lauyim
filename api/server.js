@@ -678,11 +678,31 @@ function audit(req, ev, f = {}) {
   }
   if (f.target) { rec.tgt = f.target.id; rec.tname = String(f.target.name || '').slice(0, 40); }
   if (f.msg) rec.msg = String(f.msg).slice(0, 120);
+  if (f.summary) rec.summary = String(f.summary).slice(0, 240);
   const ip = clientIp(req);
   if (ip) rec.ip = ip;
   try { fs.appendFileSync(auditFile, JSON.stringify(rec) + '\n'); }
   catch (e) { return console.error('audit write failed', e.message); }
   if (AUDIT_MAX && ++auditCount > AUDIT_MAX * 1.25) compactAudit();
+}
+
+const nutritionGoalFields = ['mode', 'objetivo', 'calories', 'caloriesBurn', 'protein', 'carbs', 'fat', 'limitarSugeridas'];
+const nutritionGoalsEqual = (a, b) => nutritionGoalFields.every(field => (a?.[field] ?? null) === (b?.[field] ?? null));
+function nutritionGoalsSummary(goals) {
+  if (goals.mode !== 'manual') return 'Metas: automático';
+  const values = ['calories', 'caloriesBurn', 'protein', 'carbs', 'fat'];
+  const labels = { calories: 'kcal', caloriesBurn: 'quema', protein: 'P', carbs: 'C', fat: 'G' };
+  const parts = values.filter(field => goals[field] != null).map(field => labels[field] + ' ' + goals[field]);
+  return 'Metas: manual' + (parts.length ? ' · ' + parts.join(' · ') : '');
+}
+const suggestionsSummary = (name, verb) => `Sugerencia '${name}' ${verb}`;
+const injuriesSummary = lesiones => `Lesiones: ${lesiones.length ? lesiones.join(', ') : 'ninguna'}`;
+function suggestionContentEqual(a, b) {
+  const fields = ['nombre', 'categoria', 'position'];
+  if (!fields.every(field => a[field] === b[field])) return false;
+  const ingredients = item => ['nombre_alimento', 'cantidad_gramos', 'calorias', 'proteina', 'carbohidratos', 'grasas']
+    .reduce((out, field) => ({ ...out, [field]: item[field] }), {});
+  return JSON.stringify((a.ingredientes || []).map(ingredients)) === JSON.stringify((b.ingredientes || []).map(ingredients));
 }
 
 function normalizarTexto(value) {
@@ -1028,17 +1048,20 @@ function parseRoutinesBody(body) {
 // antes/después en vez de tener un endpoint por operación.
 function logRoutineStateChanges({ actorUserId, targetUserId, before, after }) {
   const meta = r => ({ name: r.name, emoji: r.emoji });
+  const summaries = [];
   const beforeById = new Map(before.routines.map(r => [String(r.id), r]));
   const afterById = new Map(after.routines.map(r => [String(r.id), r]));
 
   for (const [id, r] of afterById) {
     const b = beforeById.get(id);
     if (!b) {
+      summaries.push(`Rutina '${r.name}' creada`);
       logAdminAction({ actorUserId, targetUserId, action: 'routine.create', entityId: id, after: meta(r) });
       for (const ex of r.ex) logAdminAction({ actorUserId, targetUserId, action: 'routine.exercise.add', entityId: id, after: ex });
       continue;
     }
     if (b.name !== r.name || (b.emoji || 'dumbbell') !== (r.emoji || 'dumbbell')) {
+      summaries.push(`Rutina '${r.name}' actualizada`);
       logAdminAction({ actorUserId, targetUserId, action: 'routine.update', entityId: id, before: meta(b), after: meta(r) });
     }
     const maxEx = Math.max(b.ex.length, r.ex.length);
@@ -1051,16 +1074,19 @@ function logRoutineStateChanges({ actorUserId, targetUserId, before, after }) {
   }
   for (const [id, r] of beforeById) {
     if (!afterById.has(id)) {
+      summaries.push(`Rutina '${r.name}' eliminada`);
       logAdminAction({ actorUserId, targetUserId, action: 'routine.delete', entityId: id, before: meta(r) });
     }
   }
   if (JSON.stringify(before.week) !== JSON.stringify(after.week) || JSON.stringify(before.dayPlan) !== JSON.stringify(after.dayPlan)) {
+    if (!summaries.length) summaries.push('Rutinas actualizadas');
     logAdminAction({
       actorUserId, targetUserId, action: 'routine.plan.update',
       before: { week: before.week, dayPlan: before.dayPlan },
       after: { week: after.week, dayPlan: after.dayPlan }
     });
   }
+  return summaries;
 }
 
 if (AUDIT_ON) {
@@ -1344,12 +1370,13 @@ const routes = {
     // Preserva limitarSugeridas (y cualquier otro campo fuera de parseNutritionGoalsBody):
     // guardar metas no debe pisar la preferencia de sugerencias ya guardada del socio.
     const after = { ...before, ...goals, updatedAt: Date.now(), updatedBy: admin.id };
+    if (nutritionGoalsEqual(before, after)) return json(res, 200, { goals: before });
     setNutritionGoals(userId, after);
     // El objetivo manual también es la configuración real del socio (Settings, generación
     // de rutina) — no solo la etiqueta del cálculo nutricional.
     if (goals.mode === 'manual' && goals.objetivo) setUserObjetivo(userId, goals.objetivo);
     logAdminAction({ actorUserId: admin.id, targetUserId: userId, action: 'nutrition.goals.update', entityId: userId, before, after });
-    audit(req, 'admin.nutrition.goals.update', { user: admin, target });
+    audit(req, 'admin.nutrition.goals.update', { user: admin, target, summary: nutritionGoalsSummary(after) });
     json(res, 200, { goals: after });
   },
 
@@ -1361,9 +1388,10 @@ const routes = {
     if (typeof body.limitarSugeridas !== 'boolean') return json(res, 400, { error: 'Falta limitarSugeridas (boolean)' });
     const before = getNutritionGoals(userId);
     const after = { ...before, limitarSugeridas: body.limitarSugeridas, updatedAt: Date.now(), updatedBy: admin.id };
+    if (nutritionGoalsEqual(before, after)) return json(res, 200, { limitarSugeridas: before.limitarSugeridas });
     setNutritionGoals(userId, after);
     logAdminAction({ actorUserId: admin.id, targetUserId: userId, action: 'nutrition.suggestions.limit.update', entityId: userId, before, after });
-    audit(req, 'admin.nutrition.suggestions.limit.update', { user: admin, target, msg: String(body.limitarSugeridas) });
+    audit(req, 'admin.nutrition.suggestions.limit.update', { user: admin, target, summary: `Limitar sugeridas: ${after.limitarSugeridas ? 'sí' : 'no'}` });
     json(res, 200, { limitarSugeridas: after.limitarSugeridas });
   },
 
@@ -1395,7 +1423,7 @@ const routes = {
       throw error;
     }
     logAdminAction({ actorUserId: admin.id, targetUserId: userId, action: 'nutrition.suggestion.assign', entityId: created.id, after: suggestionResponse(created) });
-    audit(req, 'admin.nutrition.suggestion.assign', { user: admin, target, msg: `${created.nombre} · ${body.franja}` });
+    audit(req, 'admin.nutrition.suggestion.assign', { user: admin, target, summary: suggestionsSummary(created.nombre, 'asignada') });
     json(res, 201, { suggestion: suggestionResponse(created) });
   },
 
@@ -1409,7 +1437,7 @@ const routes = {
     if (!nombre || !validarIngredientes(body.ingredientes)) return json(res, 400, { error: 'Nombre e ingredientes requeridos' });
     const created = createCustomSuggestionForUser(userId, { nombre, categoria: body.categoria, ingredientes: body.ingredientes }, admin.id);
     logAdminAction({ actorUserId: admin.id, targetUserId: userId, action: 'nutrition.suggestion.create', entityId: created.id, after: suggestionResponse(created) });
-    audit(req, 'admin.nutrition.suggestion.create', { user: admin, target, msg: nombre });
+    audit(req, 'admin.nutrition.suggestion.create', { user: admin, target, summary: suggestionsSummary(nombre, 'creada') });
     json(res, 201, { suggestion: suggestionResponse(created) });
   },
 
@@ -1487,9 +1515,13 @@ const routes = {
     const nombre = String(body.nombre || '').trim();
     if (!nombre || !validarIngredientes(body.ingredientes)) return json(res, 400, { error: 'Nombre e ingredientes requeridos' });
     const position = Number.isInteger(body.position) ? body.position : undefined;
+    const beforeResponse = suggestionResponse(before);
+    const requested = { ...beforeResponse, nombre, categoria: body.categoria || null,
+      position: position === undefined ? beforeResponse.position : position, ingredientes: body.ingredientes };
+    if (suggestionContentEqual(beforeResponse, requested)) return json(res, 200, { suggestion: beforeResponse });
     const after = updateAdminSuggestion(id, { nombre, categoria: body.categoria, ingredientes: body.ingredientes, position });
     logAdminAction({ actorUserId: admin.id, targetUserId: userId, action: 'nutrition.suggestion.update', entityId: id, before: suggestionResponse(before), after: suggestionResponse(after) });
-    audit(req, 'admin.nutrition.suggestion.update', { user: admin, target, msg: nombre });
+    audit(req, 'admin.nutrition.suggestion.update', { user: admin, target, summary: suggestionsSummary(after.nombre, 'editada') });
     json(res, 200, { suggestion: suggestionResponse(after) });
   },
 
@@ -1503,10 +1535,11 @@ const routes = {
     if (!before || before.user_id !== userId || before.scope !== 'admin') return json(res, 404, { error: 'Sugerencia no encontrada' });
     const body = await readBody(req);
     if (typeof body.enabled !== 'boolean') return json(res, 400, { error: 'Falta enabled (boolean)' });
+    if (!!before.enabled === body.enabled) return json(res, 200, { suggestion: suggestionResponse(before) });
     setSuggestionEnabled(id, body.enabled);
     const after = getPlantillaWithIngredientes(id);
     logAdminAction({ actorUserId: admin.id, targetUserId: userId, action: 'nutrition.suggestion.enable', entityId: id, before: suggestionResponse(before), after: suggestionResponse(after) });
-    audit(req, 'admin.nutrition.suggestion.enable', { user: admin, target, msg: `${before.nombre}: ${body.enabled}` });
+    audit(req, 'admin.nutrition.suggestion.enable', { user: admin, target, summary: suggestionsSummary(after.nombre, body.enabled ? 'activada' : 'desactivada') });
     json(res, 200, { suggestion: suggestionResponse(after) });
   },
 
@@ -1535,7 +1568,7 @@ const routes = {
     if (!exerciseId) return json(res, 400, { error: 'Falta exerciseId' });
     const lesionesAfectadas = Array.isArray(body?.lesiones) ? body.lesiones.filter(l => typeof l === 'string') : [];
     logAdminAction({ actorUserId: admin.id, targetUserId: userId, action: 'injury.exercise_warning.override', entityId: exerciseId, after: { exerciseId, lesiones: lesionesAfectadas } });
-    audit(req, 'admin.injury.exercise_warning.override', { user: admin, target, msg: exerciseId });
+    audit(req, 'admin.injury.exercise_warning.override', { user: admin, target, summary: `Advertencia de lesión ignorada: ${exerciseId}` });
     json(res, 200, { ok: true });
   },
 
@@ -1568,9 +1601,10 @@ const routes = {
     }
     const lesiones = [...new Set(body.lesiones.map(l => l.trim()))];
     const before = getLesiones(userId);
+    if (JSON.stringify(before) === JSON.stringify(lesiones)) return json(res, 200, { lesiones: before });
     saveLesiones(userId, lesiones);
     logAdminAction({ actorUserId: admin.id, targetUserId: userId, action: 'injury.update', entityId: userId, before: { lesiones: before }, after: { lesiones } });
-    audit(req, 'admin.injury.update', { user: admin, target });
+    audit(req, 'admin.injury.update', { user: admin, target, summary: injuriesSummary(lesiones) });
     json(res, 200, { lesiones });
   },
 
@@ -1592,8 +1626,10 @@ const routes = {
     saveWeekPlan(userId, parsed.week, validRoutineIds);
     saveDayPlan(userId, parsed.dayPlan, validRoutineIds);
     if (body.routineGroups !== undefined) saveRoutineGroups(userId, parsed.routineGroups, parsed.activeGroupId);
-    logRoutineStateChanges({ actorUserId: admin.id, targetUserId: userId, before, after: parsed });
-    audit(req, 'admin.routine.update', { user: admin, target });
+    const routineSummaries = logRoutineStateChanges({ actorUserId: admin.id, targetUserId: userId, before, after: parsed });
+    const routineStateChanged = JSON.stringify({ ...before, routineGroups: body.routineGroups !== undefined ? parsed.routineGroups : before.routineGroups, activeGroupId: body.routineGroups !== undefined ? parsed.activeGroupId : before.activeGroupId })
+      !== JSON.stringify({ ...parsed, routineGroups: body.routineGroups !== undefined ? parsed.routineGroups : before.routineGroups, activeGroupId: body.routineGroups !== undefined ? parsed.activeGroupId : before.activeGroupId });
+    if (routineStateChanged) audit(req, 'admin.routine.update', { user: admin, target, summary: routineSummaries.join(' · ') || 'Rutinas actualizadas' });
     json(res, 200, {
       routines: getRoutinesByUserId(userId),
       week: getWeekPlanByUserId(userId),

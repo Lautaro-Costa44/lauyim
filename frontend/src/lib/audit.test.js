@@ -11,6 +11,11 @@ const EVENTS = [
   'admin.preset.create', 'admin.preset.update', 'admin.preset.delete',
   'admin.attendance.settings', 'admin.invite.create', 'admin.invite.revoke',
   'admin.push.send', 'admin.audit.clear', 'admin.denied', 'owner.denied',
+    'admin.nutrition.goals.update', 'admin.nutrition.suggestions.limit.update',
+    'admin.nutrition.suggestion.assign', 'admin.nutrition.suggestion.create',
+    'admin.nutrition.suggestion.update', 'admin.nutrition.suggestion.enable',
+  'admin.nutrition.suggestion.remove', 'admin.injury.update',
+  'admin.injury.exercise_warning.override', 'admin.routine.update',
   'owner.user.promote', 'owner.user.demote', 'owner.user.delete', 'owner.qr.regenerate'
 ]
 const REASONS = [
@@ -24,6 +29,19 @@ describe('auditLabel', () => {
       expect(auditLabel(ev), ev).not.toBe(ev)
       expect(auditLabel(ev)).toMatch(/^[A-Z]/)
     }
+  })
+
+  it('renders final-state summaries for new admin events', () => {
+    expect(auditLabel('admin.nutrition.goals.update')).not.toBe('Unknown activity')
+    expect(auditLine({ ev: 'admin.nutrition.goals.update', ok: true, name: 'doctora', tname: 'socio', summary: 'Metas: manual · 2000 kcal · quema 500 · P150 C200 G60' }).sub)
+      .toBe('doctora · → socio · Metas: manual · 2000 kcal · quema 500 · P150 C200 G60')
+    expect(auditLine({ ev: 'admin.injury.update', ok: true, summary: 'Lesiones: ninguna' }).sub)
+      .toBe('Lesiones: ninguna')
+  })
+
+  it('keeps old records without a summary unchanged', () => {
+    expect(auditLine({ ev: 'admin.routine.update', ok: true, name: 'doctora', tname: 'socio' }).sub)
+      .toBe('doctora · → socio')
   })
 
   it('uses a readable fallback instead of exposing a technical event name', () => {
