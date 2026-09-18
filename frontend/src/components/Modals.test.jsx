@@ -6,18 +6,21 @@ import Modals from './Modals.jsx'
 
 const mocks = vi.hoisted(() => {
   const listeners = new Set()
+  const backHandlers = new Map()
   const state = {
     sheets: [],
+    backHandlers,
     closeSheet(id) {
+      backHandlers.delete(id)
       state.sheets = state.sheets.filter(sheet => sheet.id !== id)
       listeners.forEach(listener => listener())
     },
+    // Igual que el store real: registrar un handler NO emite estado ni notifica suscriptores.
     setSheetOnBack(id, fn) {
-      const cur = state.sheets.find(sheet => sheet.id === id)
-      if (!cur || cur.onBack === fn) return
-      state.sheets = state.sheets.map(sheet => sheet.id === id ? { ...sheet, onBack: fn } : sheet)
-      listeners.forEach(listener => listener())
+      if (fn) backHandlers.set(id, fn)
+      else backHandlers.delete(id)
     },
+    getSheetOnBack(id) { return backHandlers.get(id) || null },
   }
   return {
     state,
@@ -91,6 +94,7 @@ function mouse(target, type, clientY) {
 
 beforeEach(async () => {
   mocks.state.sheets = []
+  mocks.state.backHandlers.clear()
   installDom()
   await act(async () => { root.render(React.createElement(Modals)) })
 })
@@ -186,11 +190,46 @@ describe('Modals sheet callback identity', () => {
     })])
 
     expect(renders).toBeLessThanOrEqual(4)
-    expect(typeof mocks.state.sheets[0].onBack).toBe('function')
+    expect(typeof mocks.state.getSheetOnBack('manage')).toBe('function')
 
     const settled = renders
     await act(async () => {})
     expect(renders).toBe(settled)
+  })
+
+  // El caso que rompía de verdad: un hijo (el wizard de sugerencias) montado dentro del
+  // contenido del sheet, recibiendo del padre un `close` recreado en cada render. Registrar
+  // el onBack no debe despertar a Modals, o el ciclo padre-hijo no termina nunca.
+  it('does not re-render when a nested child registers onBack with an unstable callback', async () => {
+    let renders = 0
+    const Child = ({ close, setOnBack }) => {
+      React.useEffect(() => { setOnBack(() => close()) }, [close, setOnBack])
+      return React.createElement('div', null, 'child')
+    }
+    const Parent = ({ setOnBack }) => {
+      renders++
+      // `close` inestable a propósito: se recrea en cada render del padre.
+      return React.createElement(Child, { close: () => {}, setOnBack })
+    }
+
+    await setSheets([sheet('nested', {
+      locked: true,
+      render: (close, { setOnBack }) => React.createElement(Parent, { close, setOnBack }),
+    })])
+
+    expect(renders).toBeLessThanOrEqual(4)
+    const settled = renders
+    await act(async () => {})
+    expect(renders).toBe(settled)
+  })
+
+  it('drops a sheet back handler when the sheet closes', async () => {
+    await setSheets([sheet('one'), sheet('two')])
+    mocks.state.setSheetOnBack('two', () => {})
+    expect(mocks.state.getSheetOnBack('two')).toBeTypeOf('function')
+
+    await act(async () => { mocks.state.closeSheet('two') })
+    expect(mocks.state.getSheetOnBack('two')).toBeNull()
   })
 })
 

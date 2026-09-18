@@ -130,7 +130,9 @@ function Shell() {
       {!licenseExpired && loc.pathname !== '/onboarding/encuesta' && <TabBar onStart={startFlow} />}
       {!licenseExpired && <RestTimer />}
       {/* Boundary propio: Modals vive fuera de #app, así que un throw acá subía hasta la raíz y
-          desmontaba la app entera — pantalla negra sin salida. Contenido, deja el botón de recarga. */}
+          desmontaba la app entera — pantalla negra sin salida. NO va keyed en la ruta: Modals
+          debe sobrevivir a la navegación (re-montarlo volvería a apilar entradas de historial
+          por cada sheet abierto). El fallback deja el botón de recarga. */}
       <ErrorBoundary><Modals /></ErrorBoundary>
       <Toast />
     </>

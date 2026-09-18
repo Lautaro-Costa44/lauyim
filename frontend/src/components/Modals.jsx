@@ -164,7 +164,8 @@ export default function Modals() {
       }
       const top = sheets[sheets.length - 1]
       if (top) {
-        if (top.onBack) top.onBack()
+        const onBack = useUI.getState().getSheetOnBack(top.id)
+        if (onBack) onBack()
         else if (!top.locked || top.backGesture) closeSheet(top.id)
       }
     }

@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react'
+import { useCallback, useEffect, useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useStore } from '../store/useStore.js'
 import { useUI } from '../store/useUI.js'
@@ -179,7 +179,7 @@ function AdminGlobalTemplateEditor({ categorias, close, onCreated }) {
     setSaving(true)
     const body = JSON.stringify({ nombre: nombre.trim(), categoria: categoria.trim(), franjas: [...franjas], ingredientes })
     api('/api/admin/nutrition/templates', { method: 'POST', body })
-      .then(({ template }) => { toast(t('Comida global creada')); onCreated(template); close() })
+      .then(({ template }) => { toast(t('Comida global creada')); onCreated(template) })
       .catch(e => { setSaving(false); toast(e.message) })
   }
   return <div className="compound-builder">
@@ -288,24 +288,30 @@ function AdminFranjaSelector({ userId, plantilla, suggestions, onSaved, onDone, 
 // standalone: un solo history.go(-N) podía exceder la profundidad real de la sesión).
 // "Crear nueva", crear una comida global y editar una sugerencia también son pasos internos del
 // mismo sheet raíz. Esto evita cualquier sheet anidado dentro del flujo de nutrición admin.
-function AdminSuggestionWizard({ userId, suggestions, onSaved, close, setOnBack, initialStep = { name: 'chooser' } }) {
+// El wizard NO registra su propio onBack en el sheet: el dueño del handler es siempre
+// AdminManageSheet (un solo registrante por sheet, sin carreras de orden de efectos entre
+// padre e hijo). Publica su paso-atrás en `backRef` y el padre delega ahí mientras exista.
+function AdminSuggestionWizard({ userId, suggestions, onSaved, close, backRef, initialStep = { name: 'chooser' } }) {
   const [step, setStep] = useState(initialStep)
   const stepRef = useRef(step)
   stepRef.current = step
   useEffect(() => {
-    setOnBack(() => {
+    backRef.current = () => {
       const cur = stepRef.current
       if (cur.name === 'franja') return setStep({ name: 'detail', plantilla: cur.plantilla })
       if (cur.name === 'detail') return setStep({ name: 'picker' })
       if (cur.name === 'picker') return setStep({ name: 'chooser' })
       if (cur.name === 'global') return setStep({ name: 'picker' })
-      if (cur.name === 'editor') return close()
       close()
-    })
-  }, [close, setOnBack])
+    }
+    return () => { backRef.current = null }
+  }, [close, backRef])
 
   if (step.name === 'editor') return <AdminSuggestionEditor userId={userId} existing={step.existing} close={close} onFinish={close} onSaved={onSaved} />
-  if (step.name === 'global') return <AdminGlobalTemplateEditor categorias={step.categorias || []} close={close} onCreated={() => setStep({ name: 'picker' })} />
+  // Cancelar o crear una comida global vuelve al catálogo, no cierra el wizard entero: se
+  // entró acá para asignarle algo al socio y esa asignación todavía no pasó.
+  if (step.name === 'global') return <AdminGlobalTemplateEditor categorias={step.categorias || []}
+    close={() => setStep({ name: 'picker' })} onCreated={() => setStep({ name: 'picker' })} />
   if (step.name === 'picker') return <AdminSuggestionPicker onPick={plantilla => setStep({ name: 'detail', plantilla })} onCreateGlobal={categorias => setStep({ name: 'global', categorias })} />
   if (step.name === 'detail') return <AdminSuggestionDetail plantilla={step.plantilla}
     onNext={() => setStep({ name: 'franja', plantilla: step.plantilla })} onBack={() => setStep({ name: 'picker' })} />
@@ -662,15 +668,24 @@ function AdminManageSheet({ userId, userName, close, setOnBack }) {
   const [suggestionFlow, setSuggestionFlow] = useState(null)
   const suggestionFlowRef = useRef(suggestionFlow)
   suggestionFlowRef.current = suggestionFlow
+  // Paso-atrás publicado por el wizard mientras está montado (ver AdminSuggestionWizard).
+  const wizardBack = useRef(null)
 
   // This is already a real sheet. Keep the suggestion wizard inside it; opening another
   // fullscreen sheet here was the remaining nested-sheet path to the PWA black screen.
+  // Único registro de onBack de este sheet, y se hace una sola vez: todo lo variable se lee
+  // por ref. Volver a registrar en cada cambio de paso realimentaba el render de Modals.
   useEffect(() => {
     setOnBack(() => {
+      if (wizardBack.current) return wizardBack.current()
       if (suggestionFlowRef.current) return setSuggestionFlow(null)
       return close()
     })
-  }, [close, setOnBack, suggestionFlow])
+    return () => setOnBack(null)
+  }, [close, setOnBack])
+
+  // Estable: es dependencia del efecto que publica el paso-atrás del wizard.
+  const closeSuggestionFlow = useCallback(() => setSuggestionFlow(null), [])
 
   const openSuggestion = (suggestions, onSaved) =>
     setSuggestionFlow({ initialStep: { name: 'chooser' }, suggestions, onSaved })
@@ -683,8 +698,8 @@ function AdminManageSheet({ userId, userName, close, setOnBack }) {
         userId={userId}
         suggestions={suggestionFlow.suggestions}
         onSaved={suggestionFlow.onSaved}
-        close={() => setSuggestionFlow(null)}
-        setOnBack={setOnBack}
+        close={closeSuggestionFlow}
+        backRef={wizardBack}
         initialStep={suggestionFlow.initialStep}
       /> : <>
         <div className="row between compound-builder-header">

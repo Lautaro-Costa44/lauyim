@@ -719,7 +719,9 @@ export default function Nutricion() {
       setComidas(meals)
     }).catch(() => { if (!cached) setComidas([]) }).finally(() => setLoadingComidas(false))
   }
-  useEffect(() => { loadComidas(true) }, [])
+  // Junto con las comidas del día, revalidar las metas que un admin pueda haber cambiado:
+  // entrar a esta pantalla no debería mostrar valores viejos hasta el próximo arranque.
+  useEffect(() => { loadComidas(true); useStore.getState().refreshNutritionGoals() }, [])
   const totals = useMemo(() => comidas.reduce((a, c) => ({ calorias: a.calorias + Number(c.calorias || 0), proteina: a.proteina + Number(c.proteina || 0), carbos: a.carbos + Number(c.carbohidratos || 0), grasas: a.grasas + Number(c.grasas || 0) }), { calorias: 0, proteina: 0, carbos: 0, grasas: 0 }), [comidas])
   const addMeal = franja => useUI.getState().openSheet(close => <FoodPicker franja={franja} close={close} onSaved={loadComidas} />)
   const addComidaCompuesta = () => useUI.getState().openSheet(close => <ComidaCompuestaBuilder close={close} onSaved={loadComidas} />, { locked: true, fullScreen: true })

@@ -1299,6 +1299,16 @@ const routes = {
     return json(res, 200, { ok: true });
   },
 
+  // El socio lee sus propias metas. Existe aparte de GET /api/data porque escribirlas (solo
+  // un admin puede) no bumpea user_state._ts: ningún gate de sync las trae, y GET /api/data
+  // solo se pide al arrancar la app. Una PWA instalada puede pasar días sin reiniciarse, así
+  // que la prioridad del admin nunca llegaba al socio hasta que cerrara y abriera la app.
+  'GET /api/nutrition/goals': async (req, res) => {
+    const user = readSession(req);
+    if (!user) return json(res, 401, { error: 'No has iniciado sesión' });
+    json(res, 200, { goals: getNutritionGoals(user.id) });
+  },
+
   /* ---------- admin: nutrición de un socio (Fase 2) ---------- */
   'GET /api/admin/users/:userId/nutrition': async (req, res) => {
     const admin = requireAdmin(req, res); if (!admin) return;

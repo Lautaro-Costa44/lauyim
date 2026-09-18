@@ -98,7 +98,10 @@ export const useStore = create((set, get) => {
   // same applies to the file mirror — backgrounding is often the last thing before the OS
   // kills the app.
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState !== 'hidden') return
+    // Volver a primer plano: traer las metas que un admin pudo cambiar mientras tanto. Son el
+    // único dato que el socio nunca escribe y que no bumpea _ts, así que ningún otro camino
+    // de sync las refresca en una sesión ya abierta (ver refreshNutritionGoals).
+    if (document.visibilityState !== 'hidden') return get().refreshNutritionGoals()
     scheduleSync(0)
   })
   window.addEventListener('online', () => scheduleSync(0))
@@ -194,6 +197,18 @@ export const useStore = create((set, get) => {
         await deferSync(batch)
         localStorage.setItem('gym_dirty', '1')
       } finally { syncing = false }
+    },
+    // Metas nutricionales: las escribe únicamente un admin, por endpoints propios que no
+    // bumpean user_state._ts. Se refrescan solas al volver la app a primer plano, para que la
+    // prioridad del admin llegue al socio sin que tenga que cerrar y abrir la PWA.
+    async refreshNutritionGoals() {
+      if (!get().user) return
+      try {
+        const { goals } = await api('/api/nutrition/goals')
+        const fresh = get().S
+        if (JSON.stringify(fresh.nutritionGoals || null) === JSON.stringify(goals || null)) return
+        persist({ ...fresh, nutritionGoals: goals }, false, false)
+      } catch { /* offline — se mantiene lo local */ }
     },
     async pullState() {
       try {

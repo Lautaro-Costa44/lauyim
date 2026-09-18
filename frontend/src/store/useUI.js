@@ -53,8 +53,14 @@ let workInt = null
 let workTick = null
 let workDone = null
 
+// Handlers de back por sheet. Viven FUERA del estado de zustand a propósito: registrarlos no
+// puede provocar un render. Cuando vivían dentro de `sheets`, cada registro creaba un array
+// nuevo, Modals re-renderizaba, el contenido del sheet recibía callbacks nuevos y volvía a
+// registrar — bucle infinito, "Maximum update depth exceeded" y la app entera caída.
+const sheetBackHandlers = new Map()
+
 export const useUI = create((set, get) => ({
-  sheets: [],          // { id, render:(close,{setOnBack})=>JSX, kind:'sheet'|'center', locked, backGesture, onBack }
+  sheets: [],          // { id, render:(close,{setOnBack})=>JSX, kind:'sheet'|'center', locked, backGesture }
   toastMsg: '',
   timer: null,         // rest countdown between sets — { left, total, endsAt }
   work: null,          // work countdown DURING a timed set (issue #16) — { left, total, endsAt, label }
@@ -64,7 +70,7 @@ export const useUI = create((set, get) => ({
   // backdrop-click y Escape, que son gestos distintos del back del sistema.
   openSheet(render, { kind = 'sheet', locked = false, fullScreen = false, backGesture = false } = {}) {
     const id = uid()
-    set(s => ({ sheets: [...s.sheets, { id, render, kind, locked, fullScreen, backGesture, onBack: null }] }))
+    set(s => ({ sheets: [...s.sheets, { id, render, kind, locked, fullScreen, backGesture }] }))
     const close = () => get().closeSheet(id)
     return { id, close, lock: v => set(s => ({ sheets: s.sheets.map(x => x.id === id ? { ...x, locked: v } : x) })) }
   },
@@ -73,14 +79,16 @@ export const useUI = create((set, get) => ({
   // apilar un sheet real por paso — un wizard de N pasos nunca debería necesitar N entradas
   // de historial real ni un rewind de varios niveles (riesgo de exceder la profundidad real
   // de la sesión en PWA standalone y dejar la pantalla en negro sin forma de salir).
-  // Re-registrar el MISMO handler no emite estado nuevo: un array nuevo despertaría a Modals,
-  // que re-renderiza el sheet, que vuelve a registrar… (bucle infinito visto en producción).
+  // Registrar un handler NO emite estado: ver sheetBackHandlers arriba. `fn` null lo borra.
   setSheetOnBack(id, fn) {
-    const cur = get().sheets.find(x => x.id === id)
-    if (!cur || cur.onBack === fn) return
-    set(s => ({ sheets: s.sheets.map(x => x.id === id ? { ...x, onBack: fn } : x) }))
+    if (fn) sheetBackHandlers.set(id, fn)
+    else sheetBackHandlers.delete(id)
   },
-  closeSheet(id) { set(s => ({ sheets: s.sheets.filter(x => x.id !== id) })) },
+  getSheetOnBack(id) { return sheetBackHandlers.get(id) || null },
+  closeSheet(id) {
+    sheetBackHandlers.delete(id)
+    set(s => ({ sheets: s.sheets.filter(x => x.id !== id) }))
+  },
   // Cierra un sheet y todo lo apilado arriba de él — usado para salir completo de un flujo de
   // varios pasos (ej. wizard de asignar sugerencia) al terminar con éxito. Cierra de a UNO por
   // frame (nunca trunca el array entero de un salto): Modals.jsx hace un history.go(-1) por
@@ -98,7 +106,7 @@ export const useUI = create((set, get) => ({
     }
     closeNext()
   },
-  closeAll() { set({ sheets: [] }) },
+  closeAll() { sheetBackHandlers.clear(); set({ sheets: [] }) },
 
   toast(msg) {
     set({ toastMsg: msg })
