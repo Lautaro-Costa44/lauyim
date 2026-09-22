@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { FATIGUE_STATES, fatigueOf, strengthOf } from './recovery.js'
-import { fatigueStateOf } from './recovery-view.js'
+import { FATIGUE_LEVELS, fatigueStateOf } from './recovery-view.js'
 import { MUSCLES, levelsOf } from './muscles.js'
 
 const FATIGUE_BANDS = [
@@ -28,6 +28,36 @@ describe('production recovery view selectors', () => {
     expect(fatigueStateOf(0.25)).toBe(FATIGUE_STATES.RECOVERING)
     expect(fatigueStateOf(0.5)).toBe(FATIGUE_STATES.RECOVERING)
     expect(fatigueStateOf(0.5001)).toBe(FATIGUE_STATES.FATIGUED)
+  })
+
+  it('exposes five ordered fatigue bands with only the fatigued one exclusive', () => {
+    expect(FATIGUE_LEVELS.map(band => [band.at, band.level, band.state, !!band.exclusive])).toEqual([
+      [0, 0, FATIGUE_STATES.READY, false],
+      [0.15, 1, FATIGUE_STATES.READY, false],
+      [0.25, 2, FATIGUE_STATES.RECOVERING, false],
+      [0.4, 3, FATIGUE_STATES.RECOVERING, false],
+      [0.5, 4, FATIGUE_STATES.FATIGUED, true],
+    ])
+  })
+
+  it('classifies every band boundary on the value it names', () => {
+    const cases = [
+      [0, 0, FATIGUE_STATES.READY],
+      [0.1499, 0, FATIGUE_STATES.READY],
+      [0.15, 1, FATIGUE_STATES.READY],
+      [0.2499, 1, FATIGUE_STATES.READY],
+      [0.25, 2, FATIGUE_STATES.RECOVERING],
+      [0.3999, 2, FATIGUE_STATES.RECOVERING],
+      [0.4, 3, FATIGUE_STATES.RECOVERING],
+      [0.5, 3, FATIGUE_STATES.RECOVERING],
+      [0.5001, 4, FATIGUE_STATES.FATIGUED],
+      [1, 4, FATIGUE_STATES.FATIGUED],
+    ]
+    for (const [value, level, state] of cases) {
+      // one constant drives both the BodyMap shade and the wording, so they agree by construction
+      expect(levelsOf({ chest: value }, FATIGUE_LEVELS).chest).toBe(level)
+      expect(fatigueStateOf(value)).toBe(state)
+    }
   })
 
   it('renders fatigue bands on a fixed absolute scale rather than relative to the map maximum', () => {

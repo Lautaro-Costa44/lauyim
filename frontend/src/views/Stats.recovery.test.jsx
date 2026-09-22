@@ -3,7 +3,7 @@ import { createRoot } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { MUSCLES, levelsOf } from '../lib/muscles.js'
 import { FATIGUE_STATES, STRENGTH_FLOOR } from '../lib/recovery.js'
-import { fatigueStateOf } from '../lib/recovery-view.js'
+import { FATIGUE_LEVELS, fatigueStateOf } from '../lib/recovery-view.js'
 import Stats from './Stats.jsx'
 
 const DAY = 86400000
@@ -136,6 +136,10 @@ function muscleCard() {
   return container.querySelector('[data-tour="muscle-card"]')
 }
 
+function fatigueLegend() {
+  return container.querySelector('.hm-legend.hm-fatigue')
+}
+
 function buttonWithText(scope, text) {
   const aliases = { All: 'Todo', Hard: 'Duras', 'Fatigued': 'Fatigado', Recovering: 'En recuperación', Ready: 'Listo' }
   const labels = new Set([text, aliases[text]])
@@ -189,8 +193,14 @@ describe('Stats muscle recovery view runtime', () => {
 
     await click(viewButton('Fatigue'))
     expectPressed(viewButton('Fatigue'))
-    expect(lastMap().thresholds).toBeTruthy()
-    expect(lastMap().thresholds.at(-1)).toEqual({ at: 0.5, level: 4, exclusive: true })
+    // the view paints the shared constant itself, so the map and the label cannot disagree
+    expect(lastMap().thresholds).toBe(FATIGUE_LEVELS)
+    // the legend shows every band the map can paint, not a three-step summary of it
+    expect(fatigueLegend().querySelectorAll('.hm-c').length).toBe(FATIGUE_LEVELS.length)
+    expect([...fatigueLegend().querySelectorAll('.hm-c')].map(node => node.className)).toEqual([
+      'hm-c l4', 'hm-c l3', 'hm-c l2', 'hm-c l1', 'hm-c l0',
+    ])
+    expect(fatigueLegend().textContent).toBe('FatigadoEn recuperaciónListo')
     expect(container.textContent).toContain('La fatiga indica cuánto tiempo ha pasado desde el último entrenamiento')
     expect(container.querySelector('[data-selected-muscle="chest"]')).toBeTruthy()
 

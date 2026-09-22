@@ -60,6 +60,16 @@ function loadState() {
 }
 
 const hasData = st => !!((st.workouts || []).length || (st.routines || []).length || (st.bodyweight || []).length)
+
+// Every reader of S.bodyweight treats it as oldest-first: lastBW takes the final element, Home
+// reads the one before it as the previous weigh-in, and the chart plots the tail. The server now
+// sends it ascending, but a response cached offline by an older build can still arrive newest-
+// first, so the one place a server payload becomes S re-sorts it. Copy, never sort in place: the
+// caller's payload stays untouched.
+const bodyweightTime = entry => Number(entry?.t) || new Date(entry?.d).getTime() || 0
+const ascendingBodyweight = entries => (Array.isArray(entries)
+  ? [...entries].sort((a, b) => bodyweightTime(a) - bodyweightTime(b))
+  : entries)
 const ONBOARDING_FLAGS = ['onboardingCompletado', 'onboardingStatsCompletado', 'onboardingNutritionCompletado']
 
 // Helper functions for routine groups management
@@ -219,6 +229,7 @@ export const useStore = create((set, get) => {
         if (state && pending === 0 && (!hasData(S) || ((state._ts || 0) >= (S._ts || 0) && !dirty))) {
           const active = S.active
           const next = Object.assign(clone(DEF), state)
+          next.bodyweight = ascendingBodyweight(next.bodyweight)
           const onboardingChanges = []
           for (const flag of ONBOARDING_FLAGS) {
             if (S[flag] === true && state[flag] !== true) {

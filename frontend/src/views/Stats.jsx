@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { Fragment, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useStore } from '../store/useStore.js'
 import { EXIDX } from '../lib/exercises.js'
@@ -13,7 +13,7 @@ import BodyMap, { BodyMapLegend } from '../components/BodyMap.jsx'
 import { loadOfWorkouts, rankOf, MUSCLE_NAME, musclesOf } from '../lib/muscles.js'
 import { fatigueOf, strengthOf, STRENGTH_FLOOR, LB_TO_KG } from '../lib/recovery.js'
 import { strengthExerciseRowsForMuscle } from '../lib/strength-exercises.js'
-import { fatigueStateOf } from '../lib/recovery-view.js'
+import { FATIGUE_LEVELS, fatigueStateOf } from '../lib/recovery-view.js'
 import { e1rmSeries, best1RM } from '../lib/onerm.js'
 import {
   hasEffort, displayScale, scaleName, toScale, avgRir, effortSummary, effortWeeks,
@@ -40,14 +40,6 @@ function latestMuscleTraining(workouts) {
   }
   return latest
 }
-
-export const FATIGUE_LEVELS = [
-  { at: 0, level: 0 },
-  { at: 0.15, level: 1 },
-  { at: 0.25, level: 2 },
-  { at: 0.4, level: 3 },
-  { at: 0.5, level: 4, exclusive: true },
-]
 
 export const STRENGTH_LEVELS = [
   { at: STRENGTH_FLOOR, level: 0 },
@@ -77,11 +69,18 @@ export function weeksSinceTraining(now, lastTrained) {
   return Math.max(0, Math.floor((now - lastTrained) / 86400000 / 7))
 }
 
+const FATIGUE_STATE_LABEL = { ready: 'Ready', recovering: 'Recovering', fatigued: 'Fatigued' }
+
+// Every band the fatigue map can paint, worst first, each state named once over the swatches it
+// covers. Derived from FATIGUE_LEVELS so a band added there shows up here instead of leaving the
+// legend describing a scale the map no longer uses.
 function FatigueLegend() {
+  const bands = [...FATIGUE_LEVELS].reverse()
   return <div className="hm-legend hm-fatigue" aria-label={t('Fatigue')}>
-    <span>{t('Fatigued')}</span><div className="hm-c l4" />
-    <span>{t('Recovering')}</span><div className="hm-c l2" />
-    <span>{t('Ready')}</span><div className="hm-c l0" />
+    {bands.map((band, i) => <Fragment key={band.level}>
+      {band.state !== bands[i - 1]?.state && <span>{t(FATIGUE_STATE_LABEL[band.state])}</span>}
+      <div className={'hm-c l' + band.level} />
+    </Fragment>)}
   </div>
 }
 
@@ -93,8 +92,7 @@ function StrengthLegend() {
 }
 
 function fatigueLabel(value) {
-  const state = fatigueStateOf(value)
-  return t(state === 'ready' ? 'Ready' : state === 'recovering' ? 'Recovering' : 'Fatigued')
+  return t(FATIGUE_STATE_LABEL[fatigueStateOf(value)])
 }
 
 function MuscleBalance({ S }) {

@@ -387,7 +387,7 @@ describe('accumulation and purity', () => {
 
 
 describe('warm-up flag in strength and fatigue', () => {
-  it('a warm-up set does not reset strength but still adds fatigue volume', () => {
+  it('a warm-up set neither resets strength nor adds fatigue', () => {
     const now = Date.UTC(2026, 7, 1, 12)
     const oldWork = { id: 'w1', d: '2026-07-10', start: now - 20 * 86400000, unit: 'kg',
       entries: [{ id: '1254', sets: [{ done: true, w: 80, r: 8 }] }] }
@@ -397,9 +397,32 @@ describe('warm-up flag in strength and fatigue', () => {
     const strength = strengthOf(workouts, now)
     // the strength edge is 20 days old: the fresh warm-up must NOT be the latest training event
     expect(strength.chest).toBeLessThan(1)
-    // but the warm-up still contributes to the fatigue stimulus (real mechanical work)
-    const fatigue = fatigueOf(workouts, now)
-    expect(fatigue.chest).toBeGreaterThan(0)
+    // ramping up to a working weight is preparation, not a stimulus to recover from: the hour-old
+    // warm-up adds nothing over the 20-day-old work session's own residual fatigue
+    expect(fatigueOf(workouts, now).chest).toBe(fatigueOf([oldWork], now).chest)
+  })
+
+  it('leaves every muscle fatigue value unchanged when warm-up sets are added', () => {
+    // 20x8 implies an Epley estimate of 25.3 kg against the working set's 101.3 kg, so the
+    // warm-ups cannot become the session 1RM and shift the intensity weighting of the work.
+    const base = workoutAt(WEIGHTED.id, NOW, [
+      { done: true, w: 80, r: 8 },
+      { done: true, w: 80, r: 8 },
+      { done: true, w: 80, r: 8 },
+    ])
+    const withWarmups = workoutAt(WEIGHTED.id, NOW, [
+      { done: true, warmup: true, w: 20, r: 8 },
+      { done: true, warmup: true, w: 40, r: 5 },
+      { done: true, w: 80, r: 8 },
+      { done: true, w: 80, r: 8 },
+      { done: true, w: 80, r: 8 },
+    ])
+    // a warmed-up second exercise must not raise the fatigue of the muscles it touches either
+    withWarmups.entries.push({ id: SINGLE.id, sets: [{ done: true, warmup: true, w: 20, r: 10 }] })
+
+    expect(fatigueOf([withWarmups], NOW)).toEqual(fatigueOf([base], NOW))
+    // guard against a vacuous pass: the working sets themselves do register
+    expect(fatigueOf([base], NOW)[WEIGHTED_PRIMARY_SLUG]).toBeGreaterThan(0)
   })
 })
 

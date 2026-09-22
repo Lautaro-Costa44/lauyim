@@ -216,14 +216,17 @@ function setTonnage(ex, entry, set, workout, oneRm, opts = {}) {
 }
 
 // One session's per-muscle stimulus, calculated only from that session. A completed zero-load
-// set gets the set-equivalent fallback instead of disappearing from fatigue.
+// set gets the set-equivalent fallback instead of disappearing from fatigue. Warm-up rows are
+// excluded with exactly the predicate strengthOf and loadOfWorkouts use: ramping up to a
+// working weight is preparation, not the stimulus the lifter needs to recover from, so it must
+// not raise a muscle's fatigue reading.
 function sessionTonnages(workout, opts = {}) {
   const sums = emptyMuscleMap(0)
   const oneRms = session1RMs(workout, opts)
   for (const entry of workout?.entries || []) {
     const weights = musclesOf(EXIDX[entry.id])
     for (const set of entry.sets || []) {
-      if (set?.done !== true) continue
+      if (set?.done !== true || isWarmupRow(set)) continue
       const measured = setTonnage(EXIDX[entry.id], entry, set, workout, oneRms.get(entry.id), opts)
       const tonnage = Number.isFinite(measured) && measured > 0 ? measured : ZERO_LOAD_SET_STIMULUS
       for (const [slug, weight] of Object.entries(weights)) {
@@ -284,8 +287,8 @@ function fatigueValue(events, now) {
  * Calculate current per-muscle fatigue from completed sets in the recent window.
  *
  * Stimulus time is `workout.start`, falling back to the workout date `workout.d`. Each completed
- * set contributes the exercise's `musclesOf` weights; the scan is bounded to FATIGUE_SCAN_MS for
- * performance, not semantics. Stimuli are accumulated chronologically with a 36-hour half-life,
+ * non-warm-up set contributes the exercise's `musclesOf` weights; the scan is bounded to
+ * FATIGUE_SCAN_MS for performance, not semantics. Stimuli are accumulated chronologically with a 36-hour half-life,
  * decayed to `now`, and normalised with the saturation curve 1 - exp(-v). Each session is scored
  * against a causal, downward-only EWMA left by strictly earlier in-window sessions. Session-local
  * intensity estimates and the causal reference make out-of-window imports irrelevant, while

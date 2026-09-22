@@ -1363,7 +1363,7 @@ function saveExerciseWeights(userId, exWeights) {
 // ============================================================
 
 export function getBodyweightByUserId(userId) {
-  const stmt = getDatabase().prepare('SELECT * FROM bodyweight WHERE user_id = ? ORDER BY t DESC');
+  const stmt = getDatabase().prepare('SELECT * FROM bodyweight WHERE user_id = ? ORDER BY t ASC');
   return stmt.all(userId).map(row => ({
     d: row.date,
     w: row.w,
