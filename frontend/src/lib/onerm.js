@@ -1,4 +1,5 @@
 import { isWarmupRow } from './workout-model.js'
+import { workoutTime } from './format.js'
 // Estimated one-rep max (issue #18).
 //
 // Deliberately knows nothing about the exercise database: an estimate needs a weight AND a
@@ -60,7 +61,7 @@ export function e1rmSeries(S, exId, formula = DEFAULT_FORMULA) {
     const entry = w.entries.find(e => e.id === exId)
     if (!entry) return
     const best = bestSetOf(entry, formula)
-    if (best) pts.push({ t: w.start, d: w.d, y: best.est, w: best.w, r: best.r })
+    if (best) pts.push({ t: workoutTime(w), d: w.d, y: best.est, w: best.w, r: best.r })
   })
   return pts
 }

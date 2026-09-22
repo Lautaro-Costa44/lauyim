@@ -131,7 +131,7 @@ export function processSyncBatch({ db, userId, operations, getUserState, saveUse
   });
   const operationOrder = new Map(orderedOperations.map((operation, index) => [operation.id, index]));
   let currentState = getUserState(userId) || {};
-  const syncVersions = currentState._syncVersions && typeof currentState._syncVersions === 'object'
+  let syncVersions = currentState._syncVersions && typeof currentState._syncVersions === 'object'
     ? { ...currentState._syncVersions }
     : {};
   currentState._syncVersions = syncVersions;
@@ -203,6 +203,15 @@ export function processSyncBatch({ db, userId, operations, getUserState, saveUse
     } catch (error) {
       try { db.exec('ROLLBACK'); } catch {}
       conflicts.push({ id: operation.id, opId, reason: error.code || error.message || 'sync_failed' });
+      // The rollback undid the database, not the in-memory state this operation already
+      // patched. Reload it, or every later operation in the batch re-saves the rejected change.
+      if (current) {
+        currentState = getUserState(userId) || {};
+        syncVersions = currentState._syncVersions && typeof currentState._syncVersions === 'object'
+          ? { ...currentState._syncVersions }
+          : {};
+        currentState._syncVersions = syncVersions;
+      }
     }
   }
   db.prepare('DELETE FROM sync_operations WHERE created_at < ?').run(Date.now() - 90 * 86400000);

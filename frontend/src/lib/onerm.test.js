@@ -94,13 +94,16 @@ describe('bestSetOf', () => {
   })
 })
 
+// Each workout starts at 18:00 on its own local day: a point's time is `workoutTime()`, which
+// only trusts a `start` that falls on `d`.
+const at = d => new Date(d + 'T18:00:00').getTime()
 const S = {
   workouts: [
-    { d: '2026-01-01', start: 1, entries: [{ id: 'bench', sets: [{ w: 80, r: 5, done: true }] }] },
-    { d: '2026-01-08', start: 2, entries: [{ id: 'squat', sets: [{ w: 100, r: 5, done: true }] }] },
-    { d: '2026-01-15', start: 3, entries: [{ id: 'bench', sets: [{ w: 90, r: 5, done: true }, { w: 90, r: 3, done: false }] }] },
-    { d: '2026-01-22', start: 4, entries: [{ id: 'bench', sets: [{ w: 85, r: 5, done: true }] }] },
-    { d: '2026-01-29', start: 5, entries: [{ id: 'run', sets: [{ min: 30, speed: 10, done: true }] }] }
+    { d: '2026-01-01', start: at('2026-01-01'), entries: [{ id: 'bench', sets: [{ w: 80, r: 5, done: true }] }] },
+    { d: '2026-01-08', start: at('2026-01-08'), entries: [{ id: 'squat', sets: [{ w: 100, r: 5, done: true }] }] },
+    { d: '2026-01-15', start: at('2026-01-15'), entries: [{ id: 'bench', sets: [{ w: 90, r: 5, done: true }, { w: 90, r: 3, done: false }] }] },
+    { d: '2026-01-22', start: at('2026-01-22'), entries: [{ id: 'bench', sets: [{ w: 85, r: 5, done: true }] }] },
+    { d: '2026-01-29', start: at('2026-01-29'), entries: [{ id: 'run', sets: [{ min: 30, speed: 10, done: true }] }] }
   ]
 }
 
@@ -112,7 +115,7 @@ describe('e1rmSeries / best1RM', () => {
   })
 
   it('reports the all-time best with the set behind it', () => {
-    expect(best1RM(S, 'bench')).toEqual({ est: 105, w: 90, r: 5, d: '2026-01-15', t: 3 })
+    expect(best1RM(S, 'bench')).toEqual({ est: 105, w: 90, r: 5, d: '2026-01-15', t: at('2026-01-15') })
   })
 
   it('has nothing to say about cardio or an unknown exercise', () => {

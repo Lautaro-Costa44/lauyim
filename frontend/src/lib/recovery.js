@@ -1,6 +1,7 @@
 import { EXIDX } from './exercises.js'
 import { MUSCLES, musclesOf } from './muscles.js'
 import { isWarmupRow, dropsOf } from './workout-model.js'
+import { workoutTime } from './format.js'
 
 // A "normal" hard session for one muscle, in primary-set equivalents. The saturation curve
 // 1 - exp(-stimulus / REF) maps any session size onto [0,1) so volume raises the starting
@@ -48,13 +49,6 @@ export const FATIGUE_STATES = Object.freeze({
  */
 export function halfLifeDecay(ageMs, halfLifeMs) {
   return 0.5 ** (ageMs / halfLifeMs)
-}
-
-// The v2 data contract has one timestamp per workout, not per set. Keep this fallback in one
-// place so fatigue and strength use exactly the same stimulus time as effort.js.
-function workoutTimestamp(workout) {
-  const timestamp = workout?.start || new Date(workout?.d).getTime()
-  return Number.isFinite(timestamp) ? timestamp : Number(timestamp)
 }
 
 function emptyMuscleMap(value) {
@@ -245,7 +239,7 @@ function sessionTonnages(workout, opts = {}) {
 function fatigueStimuli(workouts, current, opts = {}) {
   const cutoff = current - FATIGUE_SCAN_MS
   const ordered = (workouts || [])
-    .map((workout, index) => ({ workout, index, timestamp: workoutTimestamp(workout) }))
+    .map((workout, index) => ({ workout, index, timestamp: workoutTime(workout) }))
     .filter(item => Number.isFinite(item.timestamp) && item.timestamp > cutoff)
     .sort((a, b) => a.timestamp - b.timestamp || a.index - b.index)
   const references = emptyMuscleMap(FATIGUE_REF_VOLUME)
@@ -286,7 +280,8 @@ function fatigueValue(events, now) {
 /**
  * Calculate current per-muscle fatigue from completed sets in the recent window.
  *
- * Stimulus time is `workout.start`, falling back to the workout date `workout.d`. Each completed
+ * Stimulus time is `workoutTime()`: `workout.start` when it falls on the workout's local day
+ * `workout.d`, otherwise local noon of `workout.d`. Each completed
  * non-warm-up set contributes the exercise's `musclesOf` weights; the scan is bounded to
  * FATIGUE_SCAN_MS for performance, not semantics. Stimuli are accumulated chronologically with a 36-hour half-life,
  * decayed to `now`, and normalised with the saturation curve 1 - exp(-v). Each session is scored
@@ -325,7 +320,7 @@ export function strengthOf(workouts, now, opts = {}) {
   const current = Number(now)
   const latest = Object.fromEntries(MUSCLES.map(slug => [slug, -Infinity]))
   for (const workout of workouts || []) {
-    const timestamp = workoutTimestamp(workout)
+    const timestamp = workoutTime(workout)
     if (!Number.isFinite(timestamp)) continue
     for (const entry of workout.entries || []) {
       if (!(entry.sets || []).some(set => set?.done === true && !isWarmupRow(set))) continue

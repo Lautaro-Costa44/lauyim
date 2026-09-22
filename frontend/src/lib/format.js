@@ -7,6 +7,41 @@ export const todayISO = () => {
 export const isoOf = d =>
   d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0')
 
+// A workout's `d` is a LOCAL calendar day. `new Date('YYYY-MM-DD')` parses it as UTC midnight,
+// which in UTC-3 is 21:00 of the previous day, so every date-to-time conversion goes through
+// here instead. Only the strict 'YYYY-MM-DD' shape is a calendar day; anything else is null.
+const ISO_DAY = /^(\d{4})-(\d{2})-(\d{2})$/
+function localDayAt(iso, hour) {
+  const m = ISO_DAY.exec(String(iso ?? ''))
+  if (!m) return null
+  const time = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), hour).getTime()
+  return Number.isFinite(time) ? time : null
+}
+/** Local midnight that opens calendar day `iso`, or null when `iso` is not 'YYYY-MM-DD'. */
+export const localDayStartOf = iso => localDayAt(iso, 0)
+/** Local noon of calendar day `iso`, or null when `iso` is not 'YYYY-MM-DD'. */
+export const localNoonOf = iso => localDayAt(iso, 12)
+
+/**
+ * When a workout happened, for every date and window question (recency, fatigue, strength,
+ * rolling windows, chart position). Durations still read `end - start` directly.
+ *
+ * `start` is trusted only when it falls on the workout's own local day `d`. A workout marked
+ * done after the fact used to be stamped with the time it was marked, so a `start` on another
+ * day says when it was logged, not when it was trained; local noon of `d` stands in for it,
+ * and for a workout with no `start` at all. A `d` that is not a plain calendar day cannot be
+ * compared, so `start` (or the parsed `d`) is used as before.
+ *
+ * @param {{ start?: number, d?: string }} w Workout record.
+ * @returns {number} Timestamp in milliseconds, NaN when neither field is usable.
+ */
+export function workoutTime(w) {
+  const start = w?.start ? Number(w.start) : NaN
+  const noon = localNoonOf(w?.d)
+  if (noon == null) return Number.isFinite(start) ? start : new Date(w?.d).getTime()
+  return Number.isFinite(start) && isoOf(new Date(start)) === w.d ? start : noon
+}
+
 export const DAYN = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
 export const DAYS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa']
 export const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']

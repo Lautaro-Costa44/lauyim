@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { modeOf, isTimed, fmtSec, setLabel, defaultConfig, buildSets, freestyleConfig, exLine, workoutVolume, bestWeightFor, bestWeightForEntry, effortOf, stepEffort, capEffort, isBw, isPerSide, sideReps, repStep, cascadeWeight, insertWarmupRow, removeRowAt, workSetsDone, pairAdjacent, unpairSuperset, supersetUnits, applyIntensifierPlan, pinnedNoteFor, exNoteFor, evalWeek, weeklyTarget } from './history.js'
+import { modeOf, isTimed, fmtSec, setLabel, defaultConfig, buildSets, freestyleConfig, exLine, workoutVolume, bestWeightFor, bestWeightForEntry, effortOf, stepEffort, capEffort, isBw, isPerSide, sideReps, repStep, cascadeWeight, insertWarmupRow, removeRowAt, workSetsDone, pairAdjacent, unpairSuperset, supersetUnits, applyIntensifierPlan, pinnedNoteFor, exNoteFor, evalWeek, weeklyTarget, markedDoneWorkout } from './history.js'
+import { localDayStartOf, localNoonOf, workoutTime } from './format.js'
 import { buildCompletedWorkout } from './finish-workout.js'
 import { EXDB } from './exercises.js'
 
@@ -982,5 +983,47 @@ describe('exNoteFor', () => {
     expect(exNoteFor({ exNotes: { '0025': ' seat 4, pin 7 ' } }, '0025')).toBe('seat 4, pin 7')
     expect(exNoteFor({ exNotes: { '0025': '   ' } }, '0025')).toBeNull()
     expect(exNoteFor({}, '0025')).toBeNull()
+  })
+})
+
+
+describe('markedDoneWorkout', () => {
+  const HOUR = 3600000
+  const localAt = (y, m, d, h, min = 0) => new Date(y, m - 1, d, h, min).getTime()
+  const routine = { id: 'legs', ex: [{ id: '0024', sets: 3, reps: 8, weight: 30 }, { id: '0585', sets: 2 }] }
+
+  it('logs every planned set under r, never reps', () => {
+    const w = markedDoneWorkout('2026-03-10', routine, { id: 'x', name: 'Legs', now: localAt(2026, 3, 14, 15) })
+    const sets = w.entries.flatMap(e => e.sets)
+    expect(sets).toHaveLength(5)
+    expect(sets.every(s => !('reps' in s))).toBe(true)
+    expect(w.entries[0].sets[0]).toEqual({ done: true, r: 8, w: 30 })
+    expect(w.entries[1].sets[0]).toEqual({ done: true, r: 10, w: 0 })
+  })
+
+  it('stamps a past day at its own local noon, with the one-hour placeholder span', () => {
+    const w = markedDoneWorkout('2026-03-10', routine, { id: 'x', name: 'Legs', now: localAt(2026, 3, 14, 15) })
+    expect(w.start).toBe(localNoonOf('2026-03-10'))
+    expect(w.end).toBe(w.start + HOUR)
+    expect(workoutTime(w)).toBe(w.start)
+  })
+
+  it('never stamps today in the future: an hour before now until noon, noon after it', () => {
+    const iso = '2026-03-14'
+    expect(markedDoneWorkout(iso, routine, { id: 'x', name: 'Legs', now: localAt(2026, 3, 14, 9) }).start)
+      .toBe(localAt(2026, 3, 14, 8))
+    expect(markedDoneWorkout(iso, routine, { id: 'x', name: 'Legs', now: localAt(2026, 3, 14, 15) }).start)
+      .toBe(localNoonOf(iso))
+  })
+
+  it('never stamps before the local midnight that opens the day', () => {
+    const w = markedDoneWorkout('2026-03-14', routine, { id: 'x', name: 'Legs', now: localAt(2026, 3, 14, 0, 30) })
+    expect(w.start).toBe(localDayStartOf('2026-03-14'))
+    expect(workoutTime(w)).toBe(w.start)
+  })
+
+  it('builds a freestyle day with no entries', () => {
+    const w = markedDoneWorkout('2026-03-10', null, { id: 'x', name: 'Freestyle', now: localAt(2026, 3, 14, 15) })
+    expect(w).toMatchObject({ id: 'x', d: '2026-03-10', name: 'Freestyle', routineId: null, vol: 0, entries: [] })
   })
 })

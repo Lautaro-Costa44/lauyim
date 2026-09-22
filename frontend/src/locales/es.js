@@ -449,7 +449,7 @@ export default {
   'Ready': 'Listo',
   'Recovering': 'En recuperación',
   'Fatigued': 'Fatigado',
-  'Fatigue shows how recently each muscle was trained. High means rest.': 'La fatiga indica cuánto tiempo ha pasado desde el último entrenamiento de cada músculo. Un valor alto indica que toca descansar.',
+  'Fatigue shows how recently each muscle was trained. High means rest.': 'La fatiga estima cuánto le falta recuperarse a cada músculo según el volumen y el esfuerzo de tus entrenos recientes. Baja con el descanso.',
   'Strength shows retained muscle strength. Train again to reset it.': 'La fuerza muestra cuánta fuerza muscular se conserva. Vuelve a entrenar para restablecerla.',
   'full': 'completo',
   'floor': 'mínimo',

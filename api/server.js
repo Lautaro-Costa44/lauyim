@@ -16,6 +16,7 @@ import { dayReminderPush, gymFeePush, restTimerPush, testPush } from './push-mes
 import { startScheduler } from './scheduler.js';
 import { verifyError } from './verify-error.js';
 import { processSyncBatch } from './sync.js';
+import { applyStatePut } from './data-put.js';
 import { alignActiveGroupForAudit, detectRoutineAuditChanges } from './routine-audit.js';
 import { ALIMENTOS_BASE } from './alimentos-base.js';
 import { ALIMENTOS_USDA_DICT } from './alimentos-usda-dict.js';
@@ -2242,18 +2243,8 @@ const routes = {
     const user = readSession(req);
     if (!user) return json(res, 401, { error: 'No has iniciado sesión' });
     const body = await readBody(req);
-    if (!body.state || typeof body.state !== 'object') return json(res, 400, { error: 'state required' });
-    delete body.state.active;
-    const currentState = getUserState(user.id) || {};
-    const stateVersion = Math.max(Date.now(), Number(currentState._ts || 0) + 1);
-    body.state._ts = stateVersion;
-    const versions = {};
-    for (const key of Object.keys(body.state)) {
-      if (!['_ts', '_syncVersions'].includes(key)) versions[key] = stateVersion;
-    }
-    body.state._syncVersions = versions;
-    saveUserState(user.id, body.state);
-    json(res, 200, { ok: true, ts: body.state._ts || null });
+    const { status, body: payload } = applyStatePut({ db: getDatabase(), userId: user.id, state: body.state, getUserState, saveUserState });
+    json(res, status, payload);
   },
 
   // Incremental sync endpoint. The client sends a bounded batch of top-level patches;

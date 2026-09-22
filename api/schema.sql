@@ -221,6 +221,7 @@ CREATE TABLE IF NOT EXISTS workouts (
   vol REAL,                    -- volumen total
   note TEXT,
   partial INTEGER DEFAULT 0,   -- 1 si el entrenamiento fue finalizado parcialmente
+  meta TEXT,                   -- JSON de claves sin columna propia (prs, routineGroupId, ...)
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
   FOREIGN KEY (routine_id) REFERENCES routines(id) ON DELETE SET NULL
 );
@@ -261,6 +262,7 @@ CREATE TABLE IF NOT EXISTS workout_sets (
   done INTEGER DEFAULT 0,
   rir REAL,                    -- reps in reserve
   rpe REAL,                    -- effort percibido
+  meta TEXT,                   -- JSON de claves sin columna propia (ver row-meta.js)
   FOREIGN KEY (entry_id) REFERENCES workout_entries(id) ON DELETE CASCADE
 );
  

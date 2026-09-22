@@ -8,6 +8,7 @@ import path from 'path';
 import fs from 'fs';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
+import { setRowValues, setFromRow, workoutMeta, validateWorkouts, decodeMeta } from './row-meta.js';
 
 const DATA = process.env.DATA_DIR || '/data';
 const dbPath = path.join(DATA, 'gym.db');
@@ -163,6 +164,11 @@ export function initDatabase() {
 
   // Los tests y las bases nuevas necesitan también las tablas secundarias del schema.
   db.exec(fs.readFileSync(schemaPath, 'utf8'));
+  // Catch-all de campos sin columna propia (ver row-meta.js). Va después del schema para que
+  // también corra en bases nuevas; en ellas la columna ya viene del CREATE y el ALTER falla
+  // en silencio, igual que en una base que ya migró.
+  try { db.exec(`ALTER TABLE workout_sets ADD COLUMN meta TEXT;`); } catch {}
+  try { db.exec(`ALTER TABLE workouts ADD COLUMN meta TEXT;`); } catch {}
   db.exec(`CREATE TABLE IF NOT EXISTS sync_operations (
     user_id TEXT NOT NULL,
     op_id TEXT NOT NULL,
@@ -1071,10 +1077,10 @@ export function saveRoutines(userId, routines) {
         routine.id,
         ex.id,
         i,
-        ex.sg || null,
+        ex.sg ?? null,
         ex.sets || null,
         ex.reps || null,
-        ex.weight || null,
+        ex.weight ?? null,
         ex.mode || 'reps',
         ex.min || null,
         ex.speed || null,
@@ -1154,12 +1160,13 @@ function safeJsonParse(val, fallback = null) {
   }
 }
 
+// Orden cronológico, como el cliente agrega los workouts: el último del arreglo es el más nuevo.
 export function getWorkoutsByUserId(userId) {
-  const stmt = getDatabase().prepare('SELECT * FROM workouts WHERE user_id = ? ORDER BY start DESC');
+  const stmt = getDatabase().prepare('SELECT * FROM workouts WHERE user_id = ? ORDER BY date ASC, start ASC');
   const rows = stmt.all(userId);
 
   return rows.map(row => {
-    const entryStmt = getDatabase().prepare('SELECT * FROM workout_entries WHERE workout_id = ?');
+    const entryStmt = getDatabase().prepare('SELECT * FROM workout_entries WHERE workout_id = ? ORDER BY id');
     const entries = entryStmt.all(row.id).map(entryRow => ({
       id: entryRow.exercise_id,
       topW: entryRow.top_w,
@@ -1170,7 +1177,7 @@ export function getWorkoutsByUserId(userId) {
       sets: getWorkoutSetsByEntryId(entryRow.id)
     }));
 
-    return {
+    return decodeMeta({
       id: row.id,
       d: row.date,
       start: row.start,
@@ -1182,22 +1189,13 @@ export function getWorkoutsByUserId(userId) {
       note: row.note,
       partial: row.partial === 1,
       entries
-    };
+    }, row.meta, `workouts#${row.id}`);
   });
 }
 
 function getWorkoutSetsByEntryId(entryId) {
-  const stmt = getDatabase().prepare('SELECT * FROM workout_sets WHERE entry_id = ?');
-  return stmt.all(entryId).map(row => ({
-    w: row.w,
-    r: row.r,
-    sec: row.sec,
-    min: row.min,
-    speed: row.speed,
-    done: row.done === 1,
-    rir: row.rir,
-    rpe: row.rpe
-  }));
+  const stmt = getDatabase().prepare('SELECT * FROM workout_sets WHERE entry_id = ? ORDER BY id');
+  return stmt.all(entryId).map(setFromRow);
 }
 
 function saveWorkouts(userId, workouts, validRoutineIds = null) {
@@ -1205,8 +1203,8 @@ function saveWorkouts(userId, workouts, validRoutineIds = null) {
   // Eliminar workouts viejos
   const deleteStmt = db.prepare('DELETE FROM workouts WHERE user_id = ?');
   const workoutStmt = db.prepare(`
-    INSERT OR REPLACE INTO workouts (id, user_id, date, start, end, routine_id, name, bw, vol, note, partial)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT OR REPLACE INTO workouts (id, user_id, date, start, end, routine_id, name, bw, vol, note, partial, meta)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   const entryStmt = db.prepare(`
@@ -1215,9 +1213,11 @@ function saveWorkouts(userId, workouts, validRoutineIds = null) {
   `);
 
   const setStmt = db.prepare(`
-    INSERT INTO workout_sets (entry_id, w, r, sec, min, speed, done, rir, rpe)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO workout_sets (entry_id, w, r, sec, min, speed, done, rir, rpe, meta)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
+  // Rechaza el estado antes del DELETE: un registro inválido no puede dejar el historial a medias.
+  validateWorkouts(workouts);
   // Desduplicar el arreglo por ID y generar fallback si falta un ID
   const seenIds = new Set();
   const cleanWorkouts = [];
@@ -1253,39 +1253,26 @@ function saveWorkouts(userId, workouts, validRoutineIds = null) {
         workout.routineId || null,
         workout.name,
         workout.bw || null,
-        workout.vol || null,
+        workout.vol ?? null,
         workout.note || null,
-        workout.partial ? 1 : 0
+        workout.partial ? 1 : 0,
+        workoutMeta(workout)
       );
 
       for (const entry of workout.entries || []) {
-        entryStmt.run(
+        // El id de la fila recién insertada, no una búsqueda por ejercicio: con el mismo
+        // ejercicio dos veces en un workout, la búsqueda devolvía siempre la primera entry.
+        const { lastInsertRowid } = entryStmt.run(
           workout.id,
           entry.id,
-          entry.topW || null,
+          entry.topW ?? null,
           entry.target ? JSON.stringify(entry.target) : null,
           entry.note || null,
           entry.notePin ? 1 : 0,
           entry.muscleSnapshot ? JSON.stringify(entry.muscleSnapshot) : null
         );
-
-        const entryId = db.prepare('SELECT id FROM workout_entries WHERE workout_id = ? AND exercise_id = ? LIMIT 1')
-          .get(workout.id, entry.id)?.id;
-        if (entryId) {
-          for (const set of entry.sets || []) {
-            setStmt.run(
-              entryId,
-              set.w || null,
-              set.r || null,
-              set.sec || null,
-              set.min || null,
-              set.speed || null,
-              set.done ? 1 : 0,
-              set.rir || null,
-              set.rpe || null
-            );
-          }
-        }
+        const entryId = Number(lastInsertRowid);
+        for (const set of entry.sets || []) setStmt.run(entryId, ...setRowValues(set));
       }
     }
     if (ownsTransaction) db.exec('COMMIT');

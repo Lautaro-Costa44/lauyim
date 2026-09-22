@@ -16,6 +16,7 @@ import fs from 'fs';
 import path from 'path';
 import { DatabaseSync } from 'node:sqlite';
 import crypto from 'crypto';
+import { setRowValues, workoutMeta } from './row-meta.js';
 
 const DATA = process.env.DATA_DIR || '/data';
 const dbFile = path.join(DATA, 'db.json');
@@ -198,8 +199,8 @@ const dayPlanStmt = sqlite.prepare(`
 `);
 
 const workoutStmt = sqlite.prepare(`
-  INSERT OR IGNORE INTO workouts (id, user_id, date, start, end, routine_id, name, bw, vol, note, partial)
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  INSERT OR IGNORE INTO workouts (id, user_id, date, start, end, routine_id, name, bw, vol, note, partial, meta)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `);
 
 const entryStmt = sqlite.prepare(`
@@ -208,8 +209,8 @@ const entryStmt = sqlite.prepare(`
 `);
 
 const setStmt = sqlite.prepare(`
-  INSERT OR IGNORE INTO workout_sets (entry_id, w, r, sec, min, speed, done, rir, rpe)
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  INSERT OR IGNORE INTO workout_sets (entry_id, w, r, sec, min, speed, done, rir, rpe, meta)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `);
 
 const exWeightStmt = sqlite.prepare(`
@@ -340,12 +341,13 @@ for (const file of stateFiles) {
         workout.bw || null,
         workout.vol || null,
         workout.note || null,
-        workout.partial ? 1 : 0
+        workout.partial ? 1 : 0,
+        workoutMeta(workout)
       );
 
       // Entries
       for (const entry of workout.entries || []) {
-        entryStmt.run(
+        const inserted = entryStmt.run(
           workout.id,
           entry.id,
           entry.topW || null,
@@ -355,23 +357,11 @@ for (const file of stateFiles) {
           entry.muscleSnapshot ? JSON.stringify(entry.muscleSnapshot) : null
         );
 
-        // Sets
-        const entryId = sqlite.prepare('SELECT id FROM workout_entries WHERE workout_id = ? AND exercise_id = ? LIMIT 1')
-          .get(workout.id, entry.id)?.id;
-        if (entryId) {
-          for (const set of entry.sets || []) {
-            setStmt.run(
-              entryId,
-              set.w || null,
-              set.r || null,
-              set.sec || null,
-              set.min || null,
-              set.speed || null,
-              set.done ? 1 : 0,
-              set.rir || null,
-              set.rpe || null
-            );
-          }
+        // Sets: colgados de la fila recién insertada, no de la primera entry con el mismo
+        // ejercicio. Si el INSERT OR IGNORE no insertó nada, no hay entry a la que colgarlos.
+        if (inserted.changes === 1) {
+          const entryId = Number(inserted.lastInsertRowid);
+          for (const set of entry.sets || []) setStmt.run(entryId, ...setRowValues(set));
         }
       }
     }

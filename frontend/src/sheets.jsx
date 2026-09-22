@@ -4,7 +4,7 @@ import { useUI } from './store/useUI.js'
 import { EXDB, EXIDX, BODYPARTS, isCardio, isStretch, isBodyweightEq, allExercises, equipmentOf, smOf, matchExercise, exOr } from './lib/exercises.js'
 import { activeProfile, exAvailable, ALL_EQUIPMENT, newProfile } from './lib/equipment.js'
 import { fmtDate, fmtNum, fmtVol, fmtDur, durPart, todayISO, uid, exCount, DAYN, MONTHS_LONG, ACCENTS } from './lib/format.js'
-import { lastEntryFor, bestWeightFor, buildSets, effectiveRoutineId, workoutVolume, setsDone, setsDoneActive, lastBW, supersetUnits, unitOf, setLabel, defaultConfig, cleanupSg, modeOf, effortOf, isBw, isPerSide, sideReps, workSetsDone, applyIntensifierPlan, MAX_PLANNED_WARMUPS, NOTE_MAX, intensifierConfig } from './lib/history.js'
+import { lastEntryFor, bestWeightFor, buildSets, effectiveRoutineId, workoutVolume, setsDone, setsDoneActive, lastBW, supersetUnits, unitOf, setLabel, defaultConfig, cleanupSg, modeOf, effortOf, isBw, isPerSide, sideReps, workSetsDone, applyIntensifierPlan, MAX_PLANNED_WARMUPS, NOTE_MAX, intensifierConfig, markedDoneWorkout } from './lib/history.js'
 import { beep, vibrate } from './lib/sound.js'
 import { t, instrFor, exerciseNameFor, getLang, INSTR_LANGS } from './lib/i18n.js'
 import { nav } from './lib/nav.js'
@@ -1181,19 +1181,7 @@ function DayOverride({ iso, close }) {
   const markDone = (routine) => {
     update(s => {
       s.workouts = s.workouts.filter(w => w.d !== iso)
-      s.workouts.push({
-        id: uid(),
-        d: iso,
-        start: Date.now() - 3600000,
-        end: Date.now(),
-        name: routine ? routine.name : t('Freestyle'),
-        routineId: routine ? routine.id : null,
-        vol: 0,
-        entries: routine ? (routine.ex || []).map(cfg => ({
-          id: cfg.id,
-          sets: Array.from({ length: cfg.sets || 3 }, () => ({ done: true, reps: cfg.reps || 10, w: cfg.weight || 0 }))
-        })) : []
-      })
+      s.workouts.push(markedDoneWorkout(iso, routine, { id: uid(), name: routine ? routine.name : t('Freestyle') }))
       s.dayPlan[iso] = {
         fecha: iso,
         estado: 'completado',

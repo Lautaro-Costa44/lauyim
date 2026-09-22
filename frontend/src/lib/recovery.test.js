@@ -19,6 +19,8 @@ import {
 import { EXDB, registerCustom } from './exercises.js'
 import { MUSCLES, musclesOf } from './muscles.js'
 import { fatigueStateOf } from './recovery-view.js'
+import { isoOf, localNoonOf, workoutTime } from './format.js'
+import { markedDoneWorkout } from './history.js'
 
 const HOUR = 60 * 60 * 1000
 const DAY = 24 * HOUR
@@ -565,5 +567,65 @@ describe('canonical loads and configured bodyweight', () => {
     } finally {
       registerCustom([])
     }
+  })
+})
+
+
+describe('workout time for date and fatigue questions', () => {
+  // Every date is built with the local Date constructor, so these hold in any timezone.
+  const localAt = (y, m, d, h) => new Date(y, m - 1, d, h).getTime()
+
+  it('keeps a start that falls on the workout day', () => {
+    const start = localAt(2026, 3, 10, 18)
+    expect(workoutTime({ d: '2026-03-10', start })).toBe(start)
+  })
+
+  it('uses local noon of d when start falls on another local day', () => {
+    // marked done on the 12th for the 10th: the old markDone stamped the marking time
+    expect(workoutTime({ d: '2026-03-10', start: localAt(2026, 3, 12, 9) })).toBe(localAt(2026, 3, 10, 12))
+  })
+
+  it('falls back to local noon of d, not UTC midnight, when start is missing', () => {
+    const time = workoutTime({ d: '2026-03-10' })
+    expect(time).toBe(localAt(2026, 3, 10, 12))
+    expect(isoOf(new Date(time))).toBe('2026-03-10')
+    expect(localNoonOf('2026-03-10')).toBe(time)
+  })
+
+  it('keeps start when d is not a plain calendar day it can be compared with', () => {
+    expect(workoutTime({ d: new Date(5000).toISOString(), start: 5000 })).toBe(5000)
+    expect(localNoonOf('2026-03-10T00:00:00.000Z')).toBeNull()
+  })
+
+  it('decays a day marked done four days later exactly like the same day logged live', () => {
+    const now = localAt(2026, 3, 14, 15)
+    const iso = '2026-03-10'
+    const sets = [{ done: true, w: 80, r: 8 }, { done: true, w: 80, r: 8 }]
+    const live = { d: iso, start: localNoonOf(iso), end: localNoonOf(iso) + HOUR, entries: [{ id: WEIGHTED.id, sets }] }
+    // a record the old markDone already saved: stamped an hour before it was marked, today
+    const legacy = { d: iso, start: now - HOUR, end: now, entries: [{ id: WEIGHTED.id, sets }] }
+    // a record the fixed markDone saves today for the same day
+    const marked = markedDoneWorkout(iso, { id: 'r', ex: [{ id: WEIGHTED.id, sets: 2, reps: 8, weight: 80 }] }, { id: 'm', name: 'r', now })
+
+    const expected = fatigueOf([live], now)
+    expect(fatigueOf([legacy], now)).toEqual(expected)
+    expect(fatigueOf([marked], now)).toEqual(expected)
+    expect(strengthOf([legacy], now)).toEqual(strengthOf([live], now))
+    // four and a bit days of decay, not the near-zero age of the marking time
+    expect(expected[WEIGHTED_PRIMARY_SLUG]).toBeCloseTo(
+      expectedFatigue([{ stimulus: 2 * V, age: now - localNoonOf(iso) }]),
+      10,
+    )
+  })
+
+  it('never lets a start in the future decay a stimulus by more than 1', () => {
+    const now = NOW
+    const ahead = now + 2 * HOUR
+    const future = { d: isoOf(new Date(ahead)), start: ahead, entries: [{ id: SINGLE.id, sets: [{ done: true, w: 80, r: 8 }] }] }
+    const present = { d: isoOf(new Date(now)), start: now, entries: [{ id: SINGLE.id, sets: [{ done: true, w: 80, r: 8 }] }] }
+    const value = fatigueOf([future], now)[SINGLE_SLUG]
+    expect(value).toBe(fatigueOf([present], now)[SINGLE_SLUG])
+    expect(value).toBeCloseTo(1 - Math.exp(-V / FATIGUE_REF_VOLUME), 10)
+    expect(strengthOf([future], now)[SINGLE_SLUG]).toBe(1)
   })
 })

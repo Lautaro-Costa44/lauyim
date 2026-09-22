@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { api } from '../lib/api.js'
-import { localTZ } from '../lib/format.js'
+import { localTZ, workoutTime } from '../lib/format.js'
 import { registerCustom } from '../lib/exercises.js'
 import { DEMO, DEMO_SEEDED } from '../lib/demo.js'
 import { guestAllowed } from '../lib/guest.js'
@@ -67,6 +67,19 @@ const hasData = st => !!((st.workouts || []).length || (st.routines || []).lengt
 // first, so the one place a server payload becomes S re-sorts it. Copy, never sort in place: the
 // caller's payload stays untouched.
 const bodyweightTime = entry => Number(entry?.t) || new Date(entry?.d).getTime() || 0
+// Readers treat S.workouts as oldest-first too (the last one is the newest). Older servers sent
+// them newest-first; re-sort by when each workout happened, stable for ties, without mutating
+// the payload.
+const chronologicalWorkouts = workouts => (Array.isArray(workouts)
+  ? workouts.map((workout, index) => ({ workout, index, time: workoutTime(workout) }))
+    .sort((a, b) => (a.time - b.time) || (a.index - b.index))
+    .map(item => item.workout)
+  : workouts)
+
+// Conflicts the server will reject on every retry (a record over the meta size limit, or not an
+// object at all). Retrying would park the operation in the queue forever, so it is dropped.
+const TERMINAL_SYNC_REASONS = new Set(['set_meta_too_large', 'workout_meta_too_large', 'set_not_object', 'workout_not_object'])
+
 const ascendingBodyweight = entries => (Array.isArray(entries)
   ? [...entries].sort((a, b) => bodyweightTime(a) - bodyweightTime(b))
   : entries)
@@ -196,9 +209,14 @@ export const useStore = create((set, get) => {
             persist(confirmedState, false, false)
           }
           await removeSync(response.appliedIds || [])
-          const conflicted = new Set((response.conflicts || []).map(item => item.id))
+          const terminal = (response.conflicts || []).filter(item => TERMINAL_SYNC_REASONS.has(item.reason))
+          if (terminal.length) {
+            console.warn('sync: dropping operations the server will never accept', terminal)
+            await removeSync(terminal.map(item => item.id))
+          }
+          const conflicted = new Set((response.conflicts || []).filter(item => !TERMINAL_SYNC_REASONS.has(item.reason)).map(item => item.id))
           await deferSync(batch.filter(row => conflicted.has(row.id)))
-          if (!response.appliedIds?.length && !conflicted.size) break
+          if (!response.appliedIds?.length && !conflicted.size && !terminal.length) break
         }
         if (await countSync(get().user.id)) localStorage.setItem('gym_dirty', '1')
         else localStorage.removeItem('gym_dirty')
@@ -230,6 +248,7 @@ export const useStore = create((set, get) => {
           const active = S.active
           const next = Object.assign(clone(DEF), state)
           next.bodyweight = ascendingBodyweight(next.bodyweight)
+          next.workouts = chronologicalWorkouts(next.workouts)
           const onboardingChanges = []
           for (const flag of ONBOARDING_FLAGS) {
             if (S[flag] === true && state[flag] !== true) {

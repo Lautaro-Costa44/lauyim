@@ -83,3 +83,34 @@ describe('pullState bodyweight order', () => {
     expect(queueMock.enqueueSync).not.toHaveBeenCalled()
   })
 })
+
+describe('pullState workout order', () => {
+  beforeEach(() => {
+    apiMock.mockReset()
+    queueMock.enqueueSync.mockReset().mockResolvedValue(undefined)
+    queueMock.countSync.mockReset().mockResolvedValue(0)
+    localStorage.clear()
+    useStore.setState({ user: { id: 'u1' }, S: { ...structuredClone(DEF), _ts: 1 } })
+  })
+
+  // newest-first, as older servers sent them; the same-day pair is out of order too
+  const DESC_WORKOUTS = [
+    { id: 'w-20', d: '2026-09-20', start: new Date(2026, 8, 20, 18).getTime(), entries: [] },
+    { id: 'w-10b', d: '2026-09-10', start: new Date(2026, 8, 10, 19).getTime(), entries: [] },
+    { id: 'w-10a', d: '2026-09-10', start: new Date(2026, 8, 10, 8).getTime(), entries: [] },
+    // stamped when it was marked done, days later: ordered by its own day, not that stamp
+    { id: 'w-05', d: '2026-09-05', start: new Date(2026, 8, 22, 9).getTime(), entries: [] },
+  ]
+
+  it('hydrates a newest-first payload in chronological order without touching the payload', async () => {
+    const payload = structuredClone(DESC_WORKOUTS)
+    apiMock.mockResolvedValue({ state: { _ts: 2, workouts: payload } })
+
+    await useStore.getState().pullState()
+
+    expect(useStore.getState().S.workouts.map(w => w.id)).toEqual(['w-05', 'w-10a', 'w-10b', 'w-20'])
+    expect(payload.map(w => w.id)).toEqual(['w-20', 'w-10b', 'w-10a', 'w-05'])
+    expect(queueMock.enqueueSync).not.toHaveBeenCalled()
+    expect(useStore.getState().S._ts).toBe(2)
+  })
+})
