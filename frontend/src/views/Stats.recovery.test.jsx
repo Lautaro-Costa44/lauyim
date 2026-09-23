@@ -1,8 +1,9 @@
 import React, { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { MUSCLES, levelsOf } from '../lib/muscles.js'
-import { FATIGUE_STATES, STRENGTH_FLOOR } from '../lib/recovery.js'
+import { MUSCLES, levelsOf, musclesOf } from '../lib/muscles.js'
+import { EXIDX } from '../lib/exercises.js'
+import { FATIGUE_MODEL, FATIGUE_STATES, STRENGTH_FLOOR, fatigueHalfLifeMs } from '../lib/recovery.js'
 import { FATIGUE_LEVELS, fatigueStateOf } from '../lib/recovery-view.js'
 import Stats from './Stats.jsx'
 
@@ -71,12 +72,11 @@ function entry(id, sets) {
 }
 
 function lifecycleWorkouts(now = BASE_NOW) {
-  // The old one-set session lowers the causal reference seen by the six-set session. Position
-  // that newer stimulus 30 seconds before its .5 crossing so the real interval update flips it.
-  const weightedSet = 640 * (30 / 38) ** 1.5
-  const referenceAfterOldSession = 2000 + (weightedSet - 2000) / 3
+  // Six RIR 0 sets: v0 = 6 x chest weight / K on the failure-extended chest half-life. Position
+  // that stimulus 30 seconds before its .5 crossing so the real interval update flips it.
+  const chestSets = 6 * musclesOf(EXIDX['1254']).chest
   const fatigueEdge = now - (
-    36 * Math.log2((6 * weightedSet / referenceAfterOldSession) / Math.LN2) * HOUR - 30000
+    fatigueHalfLifeMs('chest', 1) * Math.log2(chestSets / FATIGUE_MODEL.K / Math.LN2) - 30000
   )
   const balanceEdge = now - (30 * DAY - 30000)
   const strengthEdge = now - (14 * DAY - 30000)
@@ -201,7 +201,7 @@ describe('Stats muscle recovery view runtime', () => {
       'hm-c l4', 'hm-c l3', 'hm-c l2', 'hm-c l1', 'hm-c l0',
     ])
     expect(fatigueLegend().textContent).toBe('FatigadoEn recuperaciónListo')
-    expect(container.textContent).toContain('La fatiga indica cuánto tiempo ha pasado desde el último entrenamiento')
+    expect(container.textContent).toContain('La fatiga estima cuánto le falta recuperarse a cada músculo según el volumen y el esfuerzo de tus entrenos recientes.')
     expect(container.querySelector('[data-selected-muscle="chest"]')).toBeTruthy()
 
     await click(viewButton('Strength'))
@@ -242,18 +242,24 @@ describe('Stats muscle recovery view runtime', () => {
   })
 
   it('derives a pound-profile bodyweight in kg and passes it into the rendered Fatigue map', async () => {
+    // A prior session stamped at 100 kg bodyweight: 100 x 12 at RIR 5 leaves an e1RM of 140 kg
+    // and no stimulus of its own.
+    const prior = { ...workout('prior', BASE_NOW - DAY, [entry('0001', [{ done: true, w: 0, r: 12, rir: 5 }])]), bw: 100 }
     const bodyweightWorkout = workout('bodyweight', BASE_NOW, [
-      entry('0001', [{ done: true, w: 0, r: 10 }]),
+      entry('0001', [{ done: true, w: 0, r: 8 }]),
     ])
-    resetFixture([bodyweightWorkout])
+    resetFixture([prior, bodyweightWorkout])
     mocks.S.unit = 'lb'
     mocks.S.bodyweight = [{ d: '2026-01-20', w: 180 }, { d: '2026-01-22', w: 220.462262 }]
 
     await mountStats()
     await click(viewButton('Fatigue'))
 
-    // 220.462262 lb ~= 100 kg; ten reps score 1000 kg against the initial 2000 kg reference.
-    expect(lastMap().load.abs).toBeCloseTo(1 - Math.exp(-0.5), 6)
+    // 220.462262 lb ~= 100 kg: 100 x 8 against the 140 kg prior e1RM is RIR 12 - 8 = 4, so 0.25
+    // effective sets. Every wrong bodyweight lands elsewhere: 220.46 read as kg is RIR 0 (1 set),
+    // the stale 180 lb entry (81.6 kg) or the 75 kg default is RIR 10 (0 sets), and losing the
+    // prior e1RM is the RIR 2 fallback (0.75 sets).
+    expect(lastMap().load.abs).toBeCloseTo(1 - Math.exp(-0.25 / FATIGUE_MODEL.K), 6)
     expect(lastMap().thresholds).toBeTruthy()
   })
 
