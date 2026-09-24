@@ -47,6 +47,7 @@ function AuditCard({ tick }) {
       {[['', 'All'], ['auth', 'Sign-ins'], ['admin', 'Admin'], ['fail', 'Failed']].map(([v, l]) =>
         <button key={v} className={'chip nocap' + (cat === v ? ' on' : '')} onClick={() => pick(v)}>{t(l)}</button>)}
     </div>
+    <div className="audit-rows">
     {rows.map(e => {
       const line = auditLine(e)
       return <div key={e.id} className="row between" style={{ padding: '8px 2px', borderBottom: '1px solid var(--sep)' }}>
@@ -60,6 +61,7 @@ function AuditCard({ tick }) {
         <span className="small muted" style={{ flex: 'none', marginLeft: 8 }}>{fmtWhen(e.ts, meta?.now)}</span>
       </div>
     })}
+    </div>
     {meta && !rows.length && <div className="dim small">{t('Nothing logged yet.')}</div>}
     {meta?.nextBefore && <div style={{ marginTop: 10 }}>
       <Button size="sm" onClick={() => load(cat, meta.nextBefore)}>{t('Show more')}</Button></div>}

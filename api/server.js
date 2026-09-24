@@ -84,8 +84,21 @@ import {
   getWeekPlanByUserId,
   saveWeekPlan,
   getDayPlanByUserId,
-  saveDayPlan
+  saveDayPlan,
+  getPlans,
+  getPlanById,
+  createPlan,
+  updatePlan,
+  getMemberBilling,
+  getAllMemberBilling,
+  setMemberBilling,
+  recordPayment,
+  getPaymentsByUserId
 } from './database.js';
+import {
+  getBillingSettings, validateBillingSettings, serializeBillingSetting, gymToday,
+  billingStatus, nextDueDate, debtFor, debtTotal, isIsoDate
+} from './billing.js';
 
 const PORT = +(process.env.PORT || 3000);
 const DATA = process.env.DATA_DIR || '/data';
@@ -479,6 +492,71 @@ function requireActiveTargetUser(res, userId) {
   if (target.disabled) { json(res, 409, { error: 'El socio está desactivado' }); return null; }
   return target;
 }
+
+/* ---------- cuotas v1 (reglas en billing.js) ---------- */
+// "Hoy" es siempre el día calendario en la tz del gym (admin_settings.gym_tz), para la API
+// y para el scheduler por igual.
+const billingSettingsNow = () => getBillingSettings(getDatabase());
+const billingToday = settings => gymToday(Date.now(), settings.gym_tz);
+
+function billingView(billing, today, settings) {
+  const status = billingStatus(billing, today, settings);
+  return {
+    planId: billing.planId, planName: billing.planName, planPrice: billing.planPrice,
+    planDurationDays: billing.planDurationDays, planActive: billing.planActive,
+    dueDate: billing.dueDate, status, debt: debtFor(status, billing.planPrice)
+  };
+}
+
+// Bloqueo por cuota: distinto de users.disabled. El socio conserva la sesión; solo se le
+// rechazan las rutas de MEMBERSHIP_GATED. Admins y owner nunca quedan bloqueados.
+function isMembershipBlocked(user) {
+  if (!user || isAdmin(user)) return false;
+  const settings = billingSettingsNow();
+  return billingStatus(getMemberBilling(user.id), billingToday(settings), settings) === 'bloqueado';
+}
+
+// Entrenamiento, sync y nutrición del socio. Fuera a propósito: /api/me, logout, credenciales,
+// vinculación de dispositivos y push (el aviso de cuota tiene que poder llegarle), endpoints
+// públicos y todo /api/admin y /api/owner.
+const MEMBERSHIP_GATED = new Set([
+  'GET /api/data', 'PUT /api/data', 'POST /api/data/sync', 'POST /api/activity', 'GET /api/presets',
+  'GET /api/alimentos/buscar',
+  'POST /api/comidas', 'POST /api/comidas/grupo', 'GET /api/comidas', 'GET /api/comidas/historial',
+  'DELETE /api/comidas/:id', 'DELETE /api/comidas/grupo/:grupo_id',
+  'POST /api/plantillas', 'GET /api/plantillas', 'PUT /api/plantillas/:id', 'DELETE /api/plantillas/:id',
+  'POST /api/comidas-compuestas', 'GET /api/nutrition/goals'
+]);
+
+const MAX_PLAN_PRICE = 100000000;      // pesos enteros
+const MAX_PLAN_DAYS = 3660;
+const MAX_PAYMENT_NOTE = 200;
+
+// Valida los campos de plan presentes en `body`. `partial` permite omitir los obligatorios.
+function parsePlanBody(body, partial) {
+  const out = {};
+  if (body.name !== undefined || !partial) {
+    const name = typeof body.name === 'string' ? body.name.trim() : '';
+    if (!name || name.length > 60) return { error: 'El nombre del plan es obligatorio (máx. 60 caracteres)' };
+    out.name = name;
+  }
+  if (body.price !== undefined || !partial) {
+    if (!Number.isInteger(body.price) || body.price < 0 || body.price > MAX_PLAN_PRICE) return { error: 'El precio debe ser un entero en pesos, 0 o mayor' };
+    out.price = body.price;
+  }
+  if (body.durationDays !== undefined || !partial) {
+    if (!Number.isInteger(body.durationDays) || body.durationDays < 1 || body.durationDays > MAX_PLAN_DAYS) return { error: `La duración debe ser un entero entre 1 y ${MAX_PLAN_DAYS} días` };
+    out.durationDays = body.durationDays;
+  }
+  if (partial && body.active !== undefined) {
+    if (typeof body.active !== 'boolean') return { error: 'active debe ser true o false' };
+    out.active = body.active;
+  }
+  return { value: out };
+}
+
+const planSummary = plan => `${plan.name} · $${plan.price} · ${plan.durationDays} días${plan.active === false ? ' · inactivo' : ''}`;
+const userIdFromPath = req => decodeURIComponent(new URL(req.url, 'http://x').pathname.split('/')[4] || '');
 const expireCookie = name => `${name}=; Path=/; Max-Age=0; HttpOnly;${SECURE} SameSite=Lax`;
 function sessionCookie(user) {
   const fresh = `${COOKIE}=${makeSession(user)}; Path=/; Max-Age=${SESSION_DAYS * 86400}; HttpOnly;${SECURE} SameSite=Lax`;
@@ -1933,7 +2011,13 @@ const routes = {
   'GET /api/me': async (req, res) => {
     const user = readSession(req);
     if (!user) return json(res, 401, { error: 'No has iniciado sesión' });
-    json(res, 200, { user: { id: user.id, name: user.name, admin: isAdmin(user), owner: !!user.owner } });
+    const settings = billingSettingsNow();
+    const billing = getMemberBilling(user.id);
+    const status = billingStatus(billing, billingToday(settings), settings);
+    json(res, 200, {
+      user: { id: user.id, name: user.name, admin: isAdmin(user), owner: !!user.owner },
+      billing: { hasPlan: billing.planId != null, status, dueDate: billing.dueDate, planName: billing.planName, blocked: status === 'bloqueado' && !isAdmin(user) }
+    });
   },
 
   'POST /api/register/options': async (req, res) => {
@@ -2392,6 +2476,9 @@ const routes = {
   'GET /api/admin/users': async (req, res) => {
     if (!requireAdmin(req, res)) return;
     const dbUsers = getAllUsers();
+    const settings = billingSettingsNow();
+    const today = billingToday(settings);
+    const billingByUser = new Map(getAllMemberBilling().map(b => [b.userId, b]));
     const users = dbUsers.map(u => {
       const S = readState(u.id) || {};
       const workouts = S.workouts || [];
@@ -2403,10 +2490,11 @@ const routes = {
         lastWorkout: last ? last.d : null,
         lastSync: S._ts || null,
         hasPush: getSubscriptionsByUserId(u.id).length > 0,
-        live: livePresence(u.id)
+        live: livePresence(u.id),
+        billing: (b => ({ status: billingStatus(b, today, settings), dueDate: b.dueDate ?? null }))(billingByUser.get(u.id) || {})
       };
     });
-    json(res, 200, { users, invite_only: INVITE_ONLY, now: Date.now() });
+    json(res, 200, { users, invite_only: INVITE_ONLY, audit_enabled: AUDIT_ON, now: Date.now() });
   },
 
   'GET /api/admin/attendance-heatmap': async (req, res) => {
@@ -2494,6 +2582,145 @@ const routes = {
       audit(req, 'owner.user.delete', { ok: false, user: owner, target: u, msg: error.message });
       throw error;
     }
+  },
+
+  /* ---------- cuotas v1 ---------- */
+  'GET /api/admin/billing': async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    const settings = billingSettingsNow();
+    const today = billingToday(settings);
+    const members = getAllMemberBilling().map(b => {
+      const view = billingView(b, today, settings);
+      return { id: b.userId, name: b.name, disabled: b.disabled, admin: isAdmin({ id: b.userId, admin: b.admin }), planId: view.planId, planName: view.planName, dueDate: view.dueDate, status: view.status, debt: view.debt };
+    });
+    // El resumen cuenta socios activos y no admins: un desactivado no es deuda por cobrar ni un
+    // cupo, y admins/owner no quedan bloqueados por cuota. Siguen en members con admin: true.
+    const active = members.filter(m => !m.disabled && !m.admin);
+    const summary = { al_dia: 0, por_vencer: 0, vencido: 0, bloqueado: 0, sin_plan: 0 };
+    for (const m of active) summary[m.status]++;
+    summary.deuda_total = debtTotal(active);
+    json(res, 200, { today, settings, summary, members });
+  },
+
+  'GET /api/admin/billing/plans': async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    json(res, 200, { plans: getPlans() });
+  },
+
+  'POST /api/admin/billing/plans': async (req, res) => {
+    const admin = requireAdmin(req, res); if (!admin) return;
+    const parsed = parsePlanBody(await readBody(req), false);
+    if (parsed.error) return json(res, 400, { error: parsed.error });
+    const plan = createPlan(parsed.value);
+    audit(req, 'admin.billing.plan_create', { user: admin, summary: planSummary(plan) });
+    json(res, 200, { plan });
+  },
+
+  'PUT /api/admin/billing/plans/:id': async (req, res) => {
+    const admin = requireAdmin(req, res); if (!admin) return;
+    const id = Number(new URL(req.url, 'http://x').pathname.split('/').pop());
+    if (!Number.isInteger(id) || id < 1) return json(res, 400, { error: 'id de plan inválido' });
+    if (!getPlanById(id)) return json(res, 404, { error: 'El plan no existe' });
+    const parsed = parsePlanBody(await readBody(req), true);
+    if (parsed.error) return json(res, 400, { error: parsed.error });
+    if (!Object.keys(parsed.value).length) return json(res, 400, { error: 'Nada para actualizar' });
+    const plan = updatePlan(id, parsed.value);
+    audit(req, 'admin.billing.plan_update', { user: admin, summary: planSummary(plan) });
+    json(res, 200, { plan });
+  },
+
+  'GET /api/admin/billing/settings': async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    json(res, 200, { settings: billingSettingsNow() });
+  },
+
+  'PUT /api/admin/billing/settings': async (req, res) => {
+    const admin = requireAdmin(req, res); if (!admin) return;
+    const checked = validateBillingSettings(await readBody(req));
+    if (checked.error) return json(res, 400, { error: checked.error });
+    const keys = Object.keys(checked.value);
+    if (!keys.length) return json(res, 400, { error: 'Nada para actualizar' });
+    for (const key of keys) setAdminSetting(key, serializeBillingSetting(key, checked.value[key]));
+    audit(req, 'admin.billing.settings', { user: admin, summary: keys.map(k => `${k}=${[].concat(checked.value[k]).join('/')}`).join(' · ') });
+    json(res, 200, { settings: billingSettingsNow() });
+  },
+
+  'GET /api/admin/users/:userId/billing': async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    const userId = userIdFromPath(req);
+    if (!getUserById(userId)) return json(res, 404, { error: 'El usuario no existe' });
+    const settings = billingSettingsNow();
+    json(res, 200, { billing: billingView(getMemberBilling(userId), billingToday(settings), settings), payments: getPaymentsByUserId(userId) });
+  },
+
+  // Asignar, cambiar o quitar (planId null) el plan, con el vencimiento vigente.
+  'PUT /api/admin/users/:userId/billing': async (req, res) => {
+    const admin = requireAdmin(req, res); if (!admin) return;
+    const userId = userIdFromPath(req);
+    const target = getUserById(userId);
+    if (!target) return json(res, 404, { error: 'El usuario no existe' });
+    const body = await readBody(req);
+    const current = getMemberBilling(userId);
+    let summary;
+    if (body.planId === null) {
+      setMemberBilling(userId, { planId: null });
+      summary = 'Plan quitado';
+    } else {
+      if (!Number.isInteger(body.planId) || body.planId < 1) return json(res, 400, { error: 'planId debe ser un id de plan o null' });
+      const plan = getPlanById(body.planId);
+      if (!plan) return json(res, 404, { error: 'El plan no existe' });
+      // Un plan inactivo no se asigna de nuevo, pero quien ya lo tiene puede cambiar su vencimiento.
+      if (!plan.active && plan.id !== current.planId) return json(res, 409, { error: 'El plan está inactivo' });
+      if (!isIsoDate(body.dueDate)) return json(res, 400, { error: 'dueDate es obligatorio (YYYY-MM-DD) al asignar un plan' });
+      setMemberBilling(userId, { planId: plan.id, dueDate: body.dueDate });
+      summary = `Plan: ${plan.name} · vence ${body.dueDate}`;
+    }
+    audit(req, 'admin.billing.assign', { user: admin, target, summary });
+    const settings = billingSettingsNow();
+    json(res, 200, { billing: billingView(getMemberBilling(userId), billingToday(settings), settings) });
+  },
+
+  // Registrar un pago: mueve el vencimiento según nextDueDate. Vale también para un socio
+  // desactivado — el pago no toca users.disabled.
+  'POST /api/admin/users/:userId/payments': async (req, res) => {
+    const admin = requireAdmin(req, res); if (!admin) return;
+    const userId = userIdFromPath(req);
+    const target = getUserById(userId);
+    if (!target) return json(res, 404, { error: 'El usuario no existe' });
+    const body = await readBody(req);
+    const settings = billingSettingsNow();
+    const current = getMemberBilling(userId);
+
+    const planId = body.planId ?? current.planId;
+    if (planId == null) return json(res, 400, { error: 'El socio no tiene plan asignado' });
+    if (!Number.isInteger(planId) || planId < 1) return json(res, 400, { error: 'planId inválido' });
+    const plan = getPlanById(planId);
+    if (!plan) return json(res, 404, { error: 'El plan no existe' });
+    if (!plan.active && plan.id !== current.planId) return json(res, 409, { error: 'El plan está inactivo' });
+
+    const amount = body.amount ?? plan.price;
+    if (!Number.isInteger(amount) || amount < 1 || amount > MAX_PLAN_PRICE) return json(res, 400, { error: 'El monto debe ser un entero en pesos mayor que 0' });
+    if (!settings.payment_methods.includes(body.method)) return json(res, 400, { error: `method debe ser uno de: ${settings.payment_methods.join(', ')}` });
+    const now = Date.now();
+    const paidAt = body.paidAt ?? now;
+    if (!Number.isInteger(paidAt) || paidAt < 1 || paidAt > now + 86400000) return json(res, 400, { error: 'paidAt debe ser un instante en ms, no futuro' });
+    if (body.note != null && (typeof body.note !== 'string' || body.note.length > MAX_PAYMENT_NOTE)) return json(res, 400, { error: `note debe ser texto (máx. ${MAX_PAYMENT_NOTE})` });
+
+    // El período se calcula sobre el día del pago en la tz del gym (un pago cargado con fecha
+    // atrasada cuenta desde ese día); el desbloqueo se mide contra hoy.
+    const statusBefore = billingStatus(current, billingToday(settings), settings);
+    const period = nextDueDate(current.dueDate, gymToday(paidAt, settings.gym_tz), plan.durationDays, settings.grace_days);
+    const paymentId = recordPayment({
+      userId, userName: target.name, planId: plan.id, planName: plan.name, amount, method: body.method,
+      paidAt, periodStart: period.periodStart, periodEnd: period.periodEnd, dueDate: period.dueDate,
+      note: body.note ? body.note.trim() || null : null, createdBy: admin.id
+    });
+    audit(req, 'admin.billing.payment', { user: admin, target, summary: `$${amount} · ${body.method} · ${plan.name} · vence ${period.dueDate}` });
+    if (statusBefore === 'bloqueado') audit(req, 'admin.billing.unblocked', { user: admin, target, summary: `Vence ${period.dueDate}` });
+    json(res, 200, {
+      billing: billingView(getMemberBilling(userId), billingToday(settings), settings),
+      payment: getPaymentsByUserId(userId, 50).find(p => p.id === paymentId) || null
+    });
   },
 
   'GET /api/admin/invites': async (req, res) => {
@@ -2685,6 +2912,12 @@ http.createServer(async (req, res) => {
       ? 'PUT /api/admin/users/:userId/injuries'
     : req.method === 'POST' && /^\/api\/admin\/users\/[^/]+\/injuries\/exercise-warning-override$/.test(url.pathname)
       ? 'POST /api/admin/users/:userId/injuries/exercise-warning-override'
+    : req.method === 'PUT' && /^\/api\/admin\/billing\/plans\/[^/]+$/.test(url.pathname)
+      ? 'PUT /api/admin/billing/plans/:id'
+    : (req.method === 'GET' || req.method === 'PUT') && /^\/api\/admin\/users\/[^/]+\/billing$/.test(url.pathname)
+      ? req.method + ' /api/admin/users/:userId/billing'
+    : req.method === 'POST' && /^\/api\/admin\/users\/[^/]+\/payments$/.test(url.pathname)
+      ? 'POST /api/admin/users/:userId/payments'
     : req.method === 'PUT' && /^\/api\/admin\/nutrition\/templates\/[^/]+$/.test(url.pathname)
       ? 'PUT /api/admin/nutrition/templates/:id'
     : req.method === 'DELETE' && /^\/api\/admin\/nutrition\/templates\/[^/]+$/.test(url.pathname)
@@ -2706,6 +2939,11 @@ http.createServer(async (req, res) => {
   // pero endpoints protegidos / login / /api/me devuelven license_expired.
   if (LICENSE_EXPIRES_AT && Date.now() > LICENSE_EXPIRES_AT && url.pathname.startsWith('/api/') && url.pathname !== '/api/health' && url.pathname !== '/api/support') {
     return json(res, 403, { error: 'license_expired' });
+  }
+
+  // Bloqueo por cuota (Cuotas v1). Sin sesión sigue al handler, que responde 401 como siempre.
+  if (MEMBERSHIP_GATED.has(routeKey) && isMembershipBlocked(readSession(req))) {
+    return json(res, 403, { error: 'membership_blocked' });
   }
 
   const handler = routes[routeKey];

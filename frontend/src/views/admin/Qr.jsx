@@ -81,5 +81,5 @@ function QrAccessCard({ data, reload }) {
 // Owner only: App.jsx redirects non-owners to Resumen before this mounts.
 export default function Qr() {
   const { qrAccess, setQrAccess } = useOutletContext()
-  return <QrAccessCard data={qrAccess} reload={setQrAccess} />
+  return <div className="admin-single"><QrAccessCard data={qrAccess} reload={setQrAccess} /></div>
 }

@@ -445,3 +445,45 @@ CREATE TABLE IF NOT EXISTS admin_settings (
   value TEXT NOT NULL,
   updated_at INTEGER NOT NULL
 );
+
+-- Cuotas v1. Montos en pesos enteros; fechas de calendario 'YYYY-MM-DD' en la tz del gym
+-- (admin_settings.gym_tz); instantes en ms.
+-- Los planes no se borran: uno inactivo no se asigna, pero quien ya lo tiene lo conserva.
+CREATE TABLE IF NOT EXISTS plans (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  price INTEGER NOT NULL CHECK (price >= 0),
+  duration_days INTEGER NOT NULL CHECK (duration_days > 0),
+  active INTEGER NOT NULL DEFAULT 1,
+  created_at INTEGER,
+  updated_at INTEGER
+);
+
+-- Plan y vencimiento vigentes de cada socio; se va con el socio.
+-- push_sent_for_due: vencimiento para el que ya salió el aviso push (uno por período).
+CREATE TABLE IF NOT EXISTS member_billing (
+  user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  plan_id INTEGER REFERENCES plans(id),
+  due_date TEXT,
+  push_sent_for_due TEXT,
+  updated_at INTEGER
+);
+
+-- Historial de pagos. Sin FK a users a propósito: el registro contable sobrevive al borrado
+-- del socio, por eso guarda nombre y plan como snapshot.
+CREATE TABLE IF NOT EXISTS payments (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id TEXT NOT NULL,
+  user_name TEXT,
+  plan_id INTEGER,
+  plan_name TEXT,
+  amount INTEGER NOT NULL CHECK (amount > 0),
+  method TEXT,
+  paid_at INTEGER,
+  period_start TEXT,
+  period_end TEXT,
+  note TEXT,
+  created_by TEXT,
+  created_at INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_payments_user_paid ON payments(user_id, paid_at);

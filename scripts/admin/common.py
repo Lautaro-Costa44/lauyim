@@ -24,6 +24,9 @@ DATA_TABLES = (
     "equip_profiles",
     "comidas_registradas",
     "plantillas_comida",
+    # Cuotas: el plan/vencimiento vigente y el historial de pagos siguen a la persona.
+    "member_billing",
+    "payments",
 )
 NON_TRANSFERRED_TABLES = ("credentials", "subscriptions")
 

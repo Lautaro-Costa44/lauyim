@@ -1,4 +1,4 @@
-import { HashRouter, Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom'
+import { HashRouter, Routes, Route, Navigate, useNavigate, useLocation, useOutletContext } from 'react-router-dom'
 import { lazy, Suspense, useEffect, useLayoutEffect } from 'react'
 import { useStore } from './store/useStore.js'
 import { useUI } from './store/useUI.js'
@@ -30,7 +30,6 @@ const Nutricion = lazy(() => import('./views/Nutricion.jsx'))
 const History = lazy(() => import('./views/History.jsx'))
 const Settings = lazy(() => import('./views/Settings.jsx'))
 const AdminLayout = lazy(() => import('./views/admin/AdminLayout.jsx'))
-const AdminResumen = lazy(() => import('./views/admin/Resumen.jsx'))
 const AdminUsuarios = lazy(() => import('./views/admin/Usuarios.jsx'))
 const AdminCuotas = lazy(() => import('./views/admin/Cuotas.jsx'))
 const AdminRutinas = lazy(() => import('./views/admin/Rutinas.jsx'))
@@ -39,6 +38,14 @@ const AdminQr = lazy(() => import('./views/admin/Qr.jsx'))
 const AdminLogs = lazy(() => import('./views/admin/Logs.jsx'))
 const SurveyWizard = lazy(() => import('./views/SurveyWizard.jsx'))
 const ImportPlan = lazy(() => import('./views/ImportPlan.jsx'))
+
+// Resumen is the admin landing section. AdminLayout imports it statically (same chunk) and
+// hands it over through the outlet context, so /admin -> /admin/resumen renders at once
+// instead of keeping the previous screen while another chunk loads.
+function AdminResumen() {
+  const { Resumen } = useOutletContext()
+  return <Resumen />
+}
 
 bindUI(useUI)   // lets the shared controls open sheets without importing the store at module scope
 
@@ -112,7 +119,7 @@ function Shell() {
       {/* keyed on the route: a view that throws is contained, and switching tabs
           re-mounts the boundary, so the tab bar is always a way out. Every /admin/* section
           shares one key: switching sections must not re-mount the admin layout (and its poll). */}
-      <div id="app" className="vfade" key={isAdminPath ? '/admin' : loc.pathname}>
+      <div id="app" className={'vfade' + (isAdminPath ? ' admin-app' : '')} key={isAdminPath ? '/admin' : loc.pathname}>
         <ErrorBoundary>
           {licenseExpired ? <LicenseExpired /> : !authed ? <Login /> : (
             <Suspense fallback={<div className="page-loading" aria-busy="true" />}> 

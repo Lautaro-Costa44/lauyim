@@ -107,5 +107,5 @@ function PresetsCard({ presets, openSheet, reload }) {
 export default function Rutinas() {
   const openSheet = useUI(s => s.openSheet)
   const { presets, loadPresets } = useOutletContext()
-  return <PresetsCard presets={presets} openSheet={openSheet} reload={loadPresets} />
+  return <div className="admin-single"><PresetsCard presets={presets} openSheet={openSheet} reload={loadPresets} /></div>
 }

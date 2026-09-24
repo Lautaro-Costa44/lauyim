@@ -1514,3 +1514,159 @@ function saveEquipProfiles(userId, profiles) {
   }
 }
 
+
+// ============================================================
+// Cuotas v1: planes, plan/vencimiento por socio y pagos
+// (reglas de estado y fechas en billing.js)
+// ============================================================
+
+const planFromRow = row => row ? {
+  id: row.id,
+  name: row.name,
+  price: row.price,
+  durationDays: row.duration_days,
+  active: row.active === 1,
+  created: row.created_at,
+  updated: row.updated_at
+} : null;
+
+export function getPlans() {
+  return getDatabase().prepare('SELECT * FROM plans ORDER BY active DESC, name COLLATE NOCASE, id').all().map(planFromRow);
+}
+
+export function getPlanById(id) {
+  return planFromRow(getDatabase().prepare('SELECT * FROM plans WHERE id = ?').get(id));
+}
+
+export function createPlan({ name, price, durationDays }) {
+  const now = Date.now();
+  const { lastInsertRowid } = getDatabase().prepare(`
+    INSERT INTO plans (name, price, duration_days, active, created_at, updated_at) VALUES (?, ?, ?, 1, ?, ?)
+  `).run(name, price, durationDays, now, now);
+  return getPlanById(Number(lastInsertRowid));
+}
+
+// Parche parcial: solo cambia los campos presentes. Los planes no se borran.
+export function updatePlan(id, { name, price, durationDays, active }) {
+  const fields = [];
+  const values = [];
+  if (name !== undefined) { fields.push('name = ?'); values.push(name); }
+  if (price !== undefined) { fields.push('price = ?'); values.push(price); }
+  if (durationDays !== undefined) { fields.push('duration_days = ?'); values.push(durationDays); }
+  if (active !== undefined) { fields.push('active = ?'); values.push(active ? 1 : 0); }
+  if (fields.length) {
+    fields.push('updated_at = ?'); values.push(Date.now());
+    getDatabase().prepare(`UPDATE plans SET ${fields.join(', ')} WHERE id = ?`).run(...values, id);
+  }
+  return getPlanById(id);
+}
+
+const billingFromRow = (userId, row) => ({
+  userId,
+  planId: row?.plan_id ?? null,
+  planName: row?.plan_name ?? null,
+  planPrice: row?.plan_price ?? null,
+  planDurationDays: row?.plan_duration_days ?? null,
+  planActive: row?.plan_active == null ? null : row.plan_active === 1,
+  dueDate: row?.due_date ?? null,
+  pushSentForDue: row?.push_sent_for_due ?? null,
+  updatedAt: row?.updated_at ?? null
+});
+
+const BILLING_SELECT = `
+  mb.plan_id, mb.due_date, mb.push_sent_for_due, mb.updated_at,
+  p.name AS plan_name, p.price AS plan_price, p.duration_days AS plan_duration_days, p.active AS plan_active
+`;
+
+// Plan y vencimiento de un socio. Sin fila devuelve el mismo objeto con todo en null.
+export function getMemberBilling(userId) {
+  const row = getDatabase().prepare(`
+    SELECT ${BILLING_SELECT}
+    FROM member_billing mb LEFT JOIN plans p ON p.id = mb.plan_id
+    WHERE mb.user_id = ?
+  `).get(userId);
+  return billingFromRow(userId, row);
+}
+
+// Todos los usuarios con su plan y vencimiento, en una sola query (panel de cuotas y lista
+// de usuarios del admin).
+export function getAllMemberBilling() {
+  return getDatabase().prepare(`
+    SELECT u.id AS user_id, u.name, u.disabled, u.admin, u.owner, ${BILLING_SELECT}
+    FROM users u
+    LEFT JOIN member_billing mb ON mb.user_id = u.id
+    LEFT JOIN plans p ON p.id = mb.plan_id
+    ORDER BY u.name COLLATE NOCASE, u.id
+  `).all().map(row => ({
+    ...billingFromRow(row.user_id, row),
+    name: row.name,
+    disabled: !!row.disabled,
+    admin: row.admin === 1,
+    owner: row.owner === 1
+  }));
+}
+
+// Asigna, cambia o quita (planId null) el plan vigente. Un vencimiento nuevo reinicia el
+// aviso push de ese período.
+export function setMemberBilling(userId, { planId, dueDate }) {
+  getDatabase().prepare(`
+    INSERT INTO member_billing (user_id, plan_id, due_date, push_sent_for_due, updated_at)
+    VALUES (?, ?, ?, NULL, ?)
+    ON CONFLICT(user_id) DO UPDATE SET
+      plan_id = excluded.plan_id, due_date = excluded.due_date,
+      push_sent_for_due = NULL, updated_at = excluded.updated_at
+  `).run(userId, planId ?? null, planId == null ? null : dueDate, Date.now());
+  return getMemberBilling(userId);
+}
+
+// Guarda el pago y mueve el vencimiento en una sola transacción: nunca queda un pago sin
+// su vencimiento nuevo, ni al revés.
+export function recordPayment({ userId, userName, planId, planName, amount, method, paidAt, periodStart, periodEnd, dueDate, note, createdBy }) {
+  const db = getDatabase();
+  const now = Date.now();
+  db.exec('BEGIN IMMEDIATE');
+  try {
+    const { lastInsertRowid } = db.prepare(`
+      INSERT INTO payments (user_id, user_name, plan_id, plan_name, amount, method, paid_at, period_start, period_end, note, created_by, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(userId, userName ?? null, planId, planName ?? null, amount, method, paidAt, periodStart, periodEnd, note ?? null, createdBy ?? null, now);
+    db.prepare(`
+      INSERT INTO member_billing (user_id, plan_id, due_date, push_sent_for_due, updated_at)
+      VALUES (?, ?, ?, NULL, ?)
+      ON CONFLICT(user_id) DO UPDATE SET
+        plan_id = excluded.plan_id, due_date = excluded.due_date,
+        push_sent_for_due = NULL, updated_at = excluded.updated_at
+    `).run(userId, planId, dueDate, now);
+    db.exec('COMMIT');
+    return Number(lastInsertRowid);
+  } catch (error) {
+    try { db.exec('ROLLBACK'); } catch {}
+    throw error;
+  }
+}
+
+export function getPaymentsByUserId(userId, limit = 200) {
+  return getDatabase().prepare(`
+    SELECT * FROM payments WHERE user_id = ? ORDER BY paid_at DESC, id DESC LIMIT ?
+  `).all(userId, limit).map(row => ({
+    id: row.id,
+    userId: row.user_id,
+    userName: row.user_name,
+    planId: row.plan_id,
+    planName: row.plan_name,
+    amount: row.amount,
+    method: row.method,
+    paidAt: row.paid_at,
+    periodStart: row.period_start,
+    periodEnd: row.period_end,
+    note: row.note,
+    createdBy: row.created_by,
+    created: row.created_at
+  }));
+}
+
+// Marca el aviso push como enviado solo si el vencimiento sigue siendo el mismo: si un pago
+// lo movió mientras el push salía, el período nuevo conserva su propio aviso.
+export function markDuePushSent(userId, dueDate) {
+  getDatabase().prepare('UPDATE member_billing SET push_sent_for_due = ? WHERE user_id = ? AND due_date = ?').run(dueDate, userId, dueDate);
+}

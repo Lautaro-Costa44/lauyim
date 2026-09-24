@@ -1074,15 +1074,31 @@ input[type="search"]::-webkit-search-cancel-button{display:none;-webkit-appearan
   #timer.rest .head{flex:1;min-width:0}
   .exmedia img{height:380px}
   .hm-wrap{display:flex;flex-direction:column;align-items:center}
-  /* admin: fixed side menu instead of the app tab bar */
+  /* admin: fixed side menu instead of the app tab bar; the content next to it gets up to
+     1200px, centered in the space the menu leaves. #app.admin-app is only set on /admin/*. */
   #tabbar.admin{display:none}
+  #app.admin-app{max-width:none}
   .admin-shell{display:grid;grid-template-columns:200px minmax(0,1fr);gap:24px;align-items:start}
+  .admin-main{max-width:1200px;width:100%;margin:0 auto;min-width:0}
+  .admin-main .list{display:flex;flex-direction:column}
+  /* Resumen: "Training now" next to attendance; attendance takes the row alone when nobody trains */
+  .admin-split{display:flex;gap:14px;align-items:flex-start}
+  .admin-split>*{flex:1;min-width:0}
+  /* Usuarios: list on the left, the selected member's detail on the right */
+  .admin-users{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.2fr);gap:20px;align-items:start}
+  .admin-users .item.on{background:var(--acc-soft);box-shadow:inset 0 0 0 1.5px var(--acc-line)}
+  .admin-user-panel{position:sticky;top:32px;max-height:calc(100vh - 64px);overflow-y:auto;overscroll-behavior:contain}
+  /* a section that is a single card doesn't stretch across 1200px */
+  .admin-single{max-width:720px}
+  /* activity log as a wide table: event | detail | when; scrolls sideways inside the card */
+  .audit-rows{overflow-x:auto;-webkit-overflow-scrolling:touch}
+  .audit-rows>.row{min-width:760px}
+  .audit-rows>.row>.grow{display:grid;grid-template-columns:minmax(240px,1fr) minmax(320px,1.6fr);gap:16px;align-items:baseline}
   .admin-nav{position:sticky;top:32px;flex-direction:column;gap:4px;overflow:visible;margin:0}
   .admin-nav .chip{background:transparent;border-radius:var(--r);padding:9px 13px}
   .admin-nav .chip:active{background:var(--surface-2)}
   .admin-nav .chip.on{background:var(--acc);color:var(--on-acc)}
   .admin-nav .admin-nav-back{display:block;margin-top:12px;color:var(--label-2)}
-  .admin-main.narrow{width:100%}
 }
 
 /* --------------------------------------------------- survey wizard --- */

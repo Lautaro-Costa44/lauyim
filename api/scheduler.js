@@ -3,10 +3,16 @@
  */
 
 import webpush from 'web-push';
-import { getDatabase, deleteSubscription, getUserState } from './database.js';
-import { dayReminderPush, gymFeePush } from './push-messages.js';
+import { getDatabase, deleteSubscription, getUserState, markDuePushSent } from './database.js';
+import { dayReminderPush, gymFeePush, billingDuePush } from './push-messages.js';
+import { getBillingSettings, gymClock, shouldSendDuePush, daysBetween } from './billing.js';
 
 const PUSH_TIMEOUT_MS = 10000;
+// Aviso de cuota (Cuotas v1): no antes de esta hora local del gym.
+const BILLING_PUSH_FROM = '10:00';
+// Avisos de cuota en vuelo (user_id:due_date). El envío es asíncrono y el tick corre cada
+// minuto: sin esto, un push lento se volvería a disparar antes de guardar push_sent_for_due.
+const billingPushInFlight = new Set();
 
 /**
  * Lógica documentada para la cuota de gym (fee_interval + fee_date):
@@ -153,13 +159,20 @@ export function runSchedulerTick() {
         rs.tz as reminder_tz,
         rs.fee_on,
         rs.fee_interval,
-        rs.fee_date
+        rs.fee_date,
+        mb.plan_id,
+        mb.due_date,
+        mb.push_sent_for_due
       FROM users u
       LEFT JOIN reminder_settings rs ON u.id = rs.user_id
+      LEFT JOIN member_billing mb ON u.id = mb.user_id
       WHERE u.disabled = 0
     `);
 
     const users = stmt.all();
+    // Cuotas v1: un solo "hoy" y una sola hora del gym por tick, iguales para todos los socios.
+    const billingSettings = getBillingSettings(db);
+    const gymNow = gymClock(Date.now(), billingSettings.gym_tz);
     const serverUtcIso = new Date().toISOString();
     const debugUserId = process.env.DEBUG_USER_ID;
 
@@ -220,8 +233,9 @@ export function runSchedulerTick() {
           }
         }
 
-        // 2. Recordatorio de cuota de gym
-        if (u.fee_on === 1) {
+        // 2. Recordatorio de cuota de gym (manual, lo configura el socio). Con un plan asignado
+        // por el gym manda el aviso automático de abajo, no este.
+        if (u.fee_on === 1 && u.plan_id == null) {
           const feeDue = checkGymFeeDue(u.fee_date, u.fee_interval, dateStr);
           console.log(`[Scheduler Diagnostic] user_id=${u.user_id} | gym fee check | fee_date=${u.fee_date}, interval=${u.fee_interval} -> match=${feeDue ? 'MATCH' : 'NO MATCH'}`);
 
@@ -248,6 +262,28 @@ export function runSchedulerTick() {
               });
             }
           }
+        }
+
+        // 3. Aviso automático de vencimiento (Cuotas v1): socios con plan asignado, una vez por
+        // vencimiento, desde BILLING_PUSH_FROM en la hora del gym.
+        const billing = { planId: u.plan_id, dueDate: u.due_date, pushSentForDue: u.push_sent_for_due };
+        const billingKey = `${u.user_id}:${u.due_date}`;
+        if (u.plan_id != null && gymNow.time >= BILLING_PUSH_FROM && !billingPushInFlight.has(billingKey)
+            && shouldSendDuePush(billing, gymNow.date, billingSettings)) {
+          let lang = 'es';
+          try {
+            const stateRow = db.prepare('SELECT lang FROM user_state WHERE user_id = ?').get(u.user_id);
+            if (stateRow && stateRow.lang) lang = stateRow.lang;
+          } catch {}
+          const daysLeft = daysBetween(gymNow.date, u.due_date);
+          console.log(`[Scheduler] Disparando aviso de vencimiento de cuota para user_id=${u.user_id} (vence ${u.due_date}, faltan ${daysLeft} días)`);
+          billingPushInFlight.add(billingKey);
+          sendPushToUser(u.user_id, billingDuePush(lang, daysLeft)).then(res => {
+            if (res.sent < 1) throw new Error('No se entregó el aviso de vencimiento a ninguna suscripción');
+            markDuePushSent(u.user_id, u.due_date);
+          }).catch(err => {
+            console.error(`[Scheduler] Error al enviar/guardar aviso de vencimiento para user_id=${u.user_id}:`, err);
+          }).finally(() => billingPushInFlight.delete(billingKey));
         }
       } catch (userErr) {
         console.error(`[Scheduler] Error procesando usuario user_id=${u.user_id}:`, userErr);

@@ -6,12 +6,14 @@ on:
   pull_request:
     paths:
       - 'frontend/**'
+      - 'api/**'
       - 'mcp/**'
       - '.github/workflows/test.yml'
   push:
     branches: [main]
     paths:
       - 'frontend/**'
+      - 'api/**'
       - 'mcp/**'
       - '.github/workflows/test.yml'
   workflow_dispatch:
@@ -33,7 +35,9 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: frontend/package-lock.json
+          cache-dependency-path: |
+            frontend/package-lock.json
+            api/package-lock.json
       - run: npm ci
         working-directory: frontend
       - run: npm test
@@ -52,6 +56,11 @@ jobs:
       # Property probe over ~108k comparisons; too slow for the unit suite, cheap here.
       - run: npm run test:fatigue-probe
         working-directory: frontend
+      # Backend (node --test): billing, sync, DB y un recorrido HTTP que levanta server.js.
+      - run: npm ci
+        working-directory: api
+      - run: npm test
+        working-directory: api
 
   mcp:
     runs-on: ubuntu-latest

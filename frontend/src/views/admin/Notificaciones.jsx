@@ -111,5 +111,5 @@ function PushNotificationCard() {
 }
 
 export default function Notificaciones() {
-  return <PushNotificationCard />
+  return <div className="admin-single"><PushNotificationCard /></div>
 }

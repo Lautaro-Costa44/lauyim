@@ -73,6 +73,7 @@ export default function Resumen() {
       <div className="tile"><div className="l">{t('Disabled')}</div><div className="v">{users ? disabledCount : '—'}</div></div>
     </div>
 
+    <div className="admin-split">
     {liveUsers.length > 0 && <div className="card" style={{ borderColor: 'var(--acc)' }}>
       <h2 className="row" style={{ margin: '0 0 8px', gap: 6 }}><Icon name="dot" style={{ fontSize: 10, color: 'var(--green)' }} />{t('Training now')}</h2>
       {liveUsers.map(u => <div key={u.id} className="row between" style={{ padding: '8px 2px', borderBottom: '1px solid var(--sep)' }} onClick={() => openUser(u.id)}>
@@ -83,5 +84,6 @@ export default function Resumen() {
     </div>}
 
     <AttendanceHeatmap data={attendance} onStartChange={start => api('/api/admin/attendance-week-start', { method: 'POST', body: JSON.stringify({ start }) }).then(loadAttendance).catch(e => toast(e.message || t('Failed to save setting')))} />
+    </div>
   </>
 }

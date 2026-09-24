@@ -50,3 +50,17 @@ export function gymFeePush(lang, interval) {
     tag: 'gym-fee'
   }
 }
+
+// Aviso automático de Cuotas v1: el vencimiento lo carga el gym, no el socio.
+export function billingDuePush(lang, daysLeft) {
+  const spanish = lang !== 'en'
+  const days = Math.max(0, Math.trunc(Number(daysLeft) || 0))
+  const when = spanish
+    ? (days === 0 ? 'vence hoy' : days === 1 ? 'vence mañana' : `vence en ${days} días`)
+    : (days === 0 ? 'is due today' : days === 1 ? 'is due tomorrow' : `is due in ${days} days`)
+  return {
+    title: spanish ? 'Tu cuota está por vencer' : 'Your membership is almost due',
+    body: spanish ? `Tu cuota ${when}. Renovala en recepción.` : `Your membership ${when}. Renew it at the front desk.`,
+    tag: 'billing-due'
+  }
+}
