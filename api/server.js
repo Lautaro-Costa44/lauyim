@@ -4,8 +4,6 @@ import http from 'node:http';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import https from 'node:https';
-import dns from 'node:dns';
 import { fileURLToPath } from 'node:url';
 import webpush from 'web-push';
 import {
@@ -14,6 +12,7 @@ import {
 } from '@simplewebauthn/server';
 import { dayReminderPush, gymFeePush, restTimerPush, testPush } from './push-messages.js';
 import { startScheduler } from './scheduler.js';
+import { sendPushToSubscription, pushEndpointError } from './push-send.js';
 import { verifyError } from './verify-error.js';
 import { processSyncBatch } from './sync.js';
 import { applyStatePut } from './data-put.js';
@@ -303,62 +302,11 @@ catch { vapid = webpush.generateVAPIDKeys(); fs.writeFileSync(vapidFile, JSON.st
 const VAPID_SUBJECT = process.env.VAPID_SUBJECT || (SECURE ? ORIGIN : 'mailto:admin@localhost');
 webpush.setVapidDetails(VAPID_SUBJECT, vapid.publicKey, vapid.privateKey);
 
-const PUSH_TIMEOUT_MS = 10000;
 const PUSH_CONCURRENCY = 6;
 const MAX_SUBS_PER_USER = 20;
 
-function isPrivateAddr(ip) {
-  const v = String(ip).toLowerCase();
-  const m4 = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(v);
-  if (m4) {
-    const a = +m4[1], b = +m4[2];
-    if (a === 0 || a === 10 || a === 127) return true;
-    if (a === 169 && b === 254) return true;
-    if (a === 172 && b >= 16 && b <= 31) return true;
-    if (a === 192 && b === 168) return true;
-    if (a === 192 && b === 0) return true;
-    if (a === 100 && b >= 64 && b <= 127) return true;
-    if (a >= 224) return true;
-    return false;
-  }
-  const m6 = /^::ffff:(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})$/.exec(v);
-  if (m6) return isPrivateAddr(m6[1]);
-  if (v === '::' || v === '::1') return true;
-  if (/^fe[89ab]/.test(v)) return true;
-  if (/^f[cd]/.test(v)) return true;
-  return false;
-}
-
-function guardedLookup(hostname, options, cb) {
-  dns.lookup(hostname, options, (err, address, family) => {
-    if (err) return cb(err);
-    const list = Array.isArray(address) ? address : [{ address, family }];
-    if (list.some(a => isPrivateAddr(a.address))) {
-      return cb(Object.assign(new Error('refusing to connect to a private address: ' + hostname), { code: 'EPUSHBLOCKED' }));
-    }
-    cb(null, address, family);
-  });
-}
-const PUSH_AGENT = new https.Agent({ lookup: guardedLookup, keepAlive: false });
-
-function pushEndpointError(raw) {
-  let u;
-  try { u = new URL(String(raw || '')); } catch { return 'endpoint is not a valid URL'; }
-  if (u.protocol !== 'https:') return 'endpoint must be an https:// URL';
-  if (u.username || u.password) return 'endpoint must not carry credentials';
-  const host = u.hostname.replace(/^\[|\]$/g, '');
-  if (/^[0-9.]+$/.test(host) || host.includes(':')) {
-    if (isPrivateAddr(host)) return 'endpoint must not point at a private address';
-  }
-  return null;
-}
-
 async function sendPush(userId, payload) {
-  const rawSubs = getSubscriptionsByUserId(userId);
-  const subs = rawSubs.map(s => ({
-    ...s,
-    keys: typeof s.keys === 'string' ? JSON.parse(s.keys) : s.keys
-  }));
+  const subs = getSubscriptionsByUserId(userId);
   if (!subs.length) return;
   const body = JSON.stringify(payload);
   let next = 0;
@@ -366,13 +314,9 @@ async function sendPush(userId, payload) {
     while (next < subs.length) {
       const sub = subs[next++];
       try {
-        await webpush.sendNotification({ endpoint: sub.endpoint, keys: sub.keys }, body,
-          { urgency: 'high', timeout: PUSH_TIMEOUT_MS, agent: PUSH_AGENT });
+        await sendPushToSubscription(sub, body);
       } catch (e) {
         console.error('push send failed', userId, e.statusCode, e.body || e.message);
-        if (e.statusCode === 404 || e.statusCode === 410) {
-          deleteSubscription(sub.endpoint);
-        }
       }
     }
   };
@@ -2357,8 +2301,10 @@ const routes = {
     if (!sub?.endpoint || !sub?.keys?.p256dh || !sub?.keys?.auth) return json(res, 400, { error: 'invalid subscription' });
     const bad = pushEndpointError(sub.endpoint);
     if (bad) return json(res, 400, { error: bad });
-    
+
     const keys = { p256dh: String(sub.keys.p256dh), auth: String(sub.keys.auth) };
+    // p256dh: 65 bytes en base64url (87 chars); auth: 16 bytes (22 chars).
+    if (keys.p256dh.length > 128 || keys.auth.length > 64) return json(res, 400, { error: 'invalid subscription' });
     
     const db = getDatabase();
     db.exec('BEGIN');
@@ -2840,19 +2786,11 @@ const routes = {
     const payloadStr = JSON.stringify(payload);
     let sent = 0;
     for (const s of rawSubs) {
-      const keys = typeof s.keys === 'string' ? JSON.parse(s.keys) : s.keys;
       try {
-        await webpush.sendNotification({ endpoint: s.endpoint, keys }, payloadStr, {
-          urgency: 'high',
-          timeout: PUSH_TIMEOUT_MS,
-          agent: PUSH_AGENT
-        });
+        await sendPushToSubscription(s, payloadStr);
         sent++;
       } catch (e) {
         console.error('admin push send failed', s.endpoint, e.statusCode, e.body || e.message);
-        if (e.statusCode === 404 || e.statusCode === 410) {
-          deleteSubscription(s.endpoint);
-        }
       }
     }
 

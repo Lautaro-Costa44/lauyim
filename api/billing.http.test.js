@@ -97,7 +97,7 @@ test('socio bloqueado: conserva la sesión y /api/me, pero no entrena ni sincron
   assert.equal((await call(null, 'GET', '/api/data')).status, 401);
 });
 
-test('admins y owner nunca quedan bloqueados por cuota', async () => {
+test('el staff nunca queda bloqueados por cuota', async () => {
   await call('owner', 'PUT', '/api/admin/users/owner/billing', { planId, dueDate: addDays(today, -30) });
   const me = await call('owner', 'GET', '/api/me');
   assert.equal(me.body.billing.status, 'bloqueado');

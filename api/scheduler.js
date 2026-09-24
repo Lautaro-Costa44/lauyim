@@ -2,12 +2,11 @@
  * Scheduler para recordatorios automáticos (entrenamiento y cuota de gym)
  */
 
-import webpush from 'web-push';
-import { getDatabase, deleteSubscription, getUserState, markDuePushSent } from './database.js';
+import { getDatabase, getUserState, markDuePushSent } from './database.js';
+import { sendPushToSubscription } from './push-send.js';
 import { dayReminderPush, gymFeePush, billingDuePush } from './push-messages.js';
 import { getBillingSettings, gymClock, shouldSendDuePush, daysBetween } from './billing.js';
 
-const PUSH_TIMEOUT_MS = 10000;
 // Aviso de cuota (Cuotas v1): no antes de esta hora local del gym.
 const BILLING_PUSH_FROM = '10:00';
 // Avisos de cuota en vuelo (user_id:due_date). El envío es asíncrono y el tick corre cada
@@ -46,12 +45,8 @@ async function sendPushToUser(userId, payload) {
   const body = JSON.stringify(payload);
   let sentCount = 0;
   for (const sub of rawSubs) {
-    const keys = typeof sub.keys === 'string' ? JSON.parse(sub.keys) : sub.keys;
     try {
-      await webpush.sendNotification({ endpoint: sub.endpoint, keys }, body, {
-        urgency: 'high',
-        timeout: PUSH_TIMEOUT_MS
-      });
+      await sendPushToSubscription(sub, body);
       sentCount++;
       if (isDebug) {
         console.log(`[Scheduler Diagnostic] Push exitoso (${payload.tag || 'reminder'}) -> user_id=${userId}, endpoint=${sub.endpoint}`);
@@ -64,7 +59,6 @@ async function sendPushToUser(userId, payload) {
       console.error(`[Scheduler] Push fallido -> user_id=${userId}, status=${e.statusCode}, error=${e.body || e.message}`);
       if (e.statusCode === 404 || e.statusCode === 410) {
         console.log(`[Scheduler] Suscripción expirada/inválida (${e.statusCode}), eliminando endpoint: ${sub.endpoint}`);
-        deleteSubscription(sub.endpoint);
       }
     }
   }
