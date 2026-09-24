@@ -15,6 +15,16 @@ server {
     add_header Referrer-Policy "same-origin" always;
     add_header Content-Security-Policy "frame-ancestors 'none'" always;
 
+    # IP real del visitante. cloudflared corre en el host y entra por el puerto publicado, así
+    # que nginx ve la conexión desde el gateway de la red docker (172.16.0.0/12) o desde
+    # loopback. Solo desde ahí se cree CF-Connecting-IP (lo pone Cloudflare y pisa el del
+    # cliente) y $remote_addr pasa a ser el visitante. Desde cualquier otra IP el header se
+    # ignora y $remote_addr queda como la conexión real, así que nadie de afuera puede elegir
+    # su dirección. Sin el header (acceso local sin Cloudflare) también queda la conexión.
+    set_real_ip_from 127.0.0.1;
+    set_real_ip_from 172.16.0.0/12;
+    real_ip_header CF-Connecting-IP;
+
     # API → backend container.
     # `^~` so this prefix beats the regex locations below: without it a request for a path such
     # as /api/anything.json would be matched by the \.(js|css|json|html)$ block instead and be
@@ -30,11 +40,9 @@ server {
         # makes the header mean anything.
         proxy_set_header X-Forwarded-For $remote_addr;
         proxy_set_header X-Forwarded-Proto $scheme;
-        # Same reasoning, and the API trusts this one FIRST. Empty by default, which drops the
-        # header entirely, so a direct client cannot forge it. Cloudflare users set
-        # CF_CONNECTING_IP=$http_cf_connecting_ip to let the real one through — correct only when
-        # Cloudflare is genuinely in front, because that is what overwrites a client-supplied one.
-        proxy_set_header CF-Connecting-IP "${CF_CONNECTING_IP}";
+        # $remote_addr ya es el visitante (realip, arriba). La API no lee CF-Connecting-IP: el
+        # valor vacío hace que nginx no lo reenvíe.
+        proxy_set_header CF-Connecting-IP "";
     }
 
     # SPA fallback

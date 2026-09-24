@@ -6,9 +6,11 @@ CREATE TABLE IF NOT EXISTS users (
   admin INTEGER DEFAULT 0,
   owner INTEGER DEFAULT 0,
   disabled INTEGER DEFAULT 0,
-  created_at INTEGER NOT NULL,  -- timestamp ms
+  created_at INTEGER NOT NULL,  -- string ISO (bases viejas pueden tener ms)
   last_reminder TEXT,           -- ISO date
-  last_fee_reminder TEXT        -- ISO date
+  last_fee_reminder TEXT,       -- ISO date
+  sv INTEGER NOT NULL DEFAULT 0, -- versión de sesión; POST /api/logout/all la incrementa
+  invited_by TEXT               -- código de invite usado al registrarse
 );
  
 -- Índices para usuarios
@@ -49,6 +51,8 @@ CREATE TABLE IF NOT EXISTS invites (
   used_by TEXT,               -- user_id
   revoked INTEGER DEFAULT 0,
   created_at INTEGER NOT NULL,
+  note TEXT,
+  used_at TEXT,               -- ISO
   FOREIGN KEY (created_by) REFERENCES users(id),
   FOREIGN KEY (used_by) REFERENCES users(id)
 );

@@ -32,6 +32,10 @@ export function initDatabase() {
   try {
     db.exec(`ALTER TABLE users ADD COLUMN owner INTEGER NOT NULL DEFAULT 0;`);
   } catch {}
+  // sv: versión de sesión (POST /api/logout/all la incrementa). invited_by: código de invite
+  // con el que se registró.
+  try { db.exec(`ALTER TABLE users ADD COLUMN sv INTEGER NOT NULL DEFAULT 0;`); } catch {}
+  try { db.exec(`ALTER TABLE users ADD COLUMN invited_by TEXT;`); } catch {}
   try {
     db.exec(`ALTER TABLE routine_exercises ADD COLUMN progression_type TEXT;`);
   } catch {}
@@ -99,7 +103,9 @@ export function initDatabase() {
       disabled INTEGER DEFAULT 0,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       last_reminder_sent_date TEXT,
-      last_fee_reminder_sent_date TEXT
+      last_fee_reminder_sent_date TEXT,
+      sv INTEGER NOT NULL DEFAULT 0,
+      invited_by TEXT
     );
 
     CREATE TABLE IF NOT EXISTS user_state (
@@ -174,6 +180,9 @@ export function initDatabase() {
   for (const col of ['previous_due_date TEXT', 'previous_plan_id INTEGER', 'voided_at INTEGER', 'voided_by TEXT', 'void_reason TEXT']) {
     try { db.exec(`ALTER TABLE payments ADD COLUMN ${col};`); } catch {}
   }
+  // invites también viene de schema.sql: mismos ALTER después del schema.
+  try { db.exec(`ALTER TABLE invites ADD COLUMN note TEXT;`); } catch {}
+  try { db.exec(`ALTER TABLE invites ADD COLUMN used_at TEXT;`); } catch {}
   db.exec(`CREATE TABLE IF NOT EXISTS sync_operations (
     user_id TEXT NOT NULL,
     op_id TEXT NOT NULL,
@@ -293,6 +302,22 @@ export function getUserById(id) {
   return stmt.get(id);
 }
 
+// users.created_at se guarda como string ISO. Bases viejas pueden tener ms, segundos o el
+// 'YYYY-MM-DD HH:MM:SS' (UTC) del DEFAULT CURRENT_TIMESTAMP: esto los lleva a ISO para la
+// API sin migrar datos. Devuelve null si el valor falta o no se puede interpretar.
+export function isoTimestamp(value) {
+  if (value === null || value === undefined || value === '') return null;
+  let ms;
+  if (typeof value === 'number' || /^\d+(\.\d+)?$/.test(String(value))) {
+    const n = Number(value);
+    ms = n < 1e11 ? n * 1000 : n;
+  } else {
+    const s = String(value);
+    ms = Date.parse(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}(:\d{2})?$/.test(s) ? s.replace(' ', 'T') + 'Z' : s);
+  }
+  return Number.isFinite(ms) ? new Date(ms).toISOString() : null;
+}
+
 export function createUser(user) {
   const db = getDatabase();
   const isFirstUser = Number(db.prepare('SELECT COUNT(*) AS count FROM users').get().count) === 0;
@@ -300,10 +325,11 @@ export function createUser(user) {
   const admin = owner ? 1 : (user.admin ? 1 : 0);
   if (owner) db.prepare('UPDATE users SET owner = 0 WHERE owner = 1').run();
   const stmt = getDatabase().prepare(`
-    INSERT INTO users (id, name, admin, owner, disabled, created_at)
-    VALUES (?, ?, ?, ?, ?, ?)
+    INSERT INTO users (id, name, admin, owner, disabled, created_at, invited_by)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
   `);
-  stmt.run(user.id, user.name, admin, owner, user.disabled ? 1 : 0, user.created || Date.now());
+  stmt.run(user.id, user.name, admin, owner, user.disabled ? 1 : 0,
+    isoTimestamp(user.created) || new Date().toISOString(), user.invitedBy || null);
 }
 
 export function updateUser(id, updates) {
@@ -431,15 +457,15 @@ export function getInviteByCode(code) {
 
 export function createInvite(invite) {
   const stmt = getDatabase().prepare(`
-    INSERT INTO invites (code, created_by, revoked, created_at)
-    VALUES (?, ?, ?, ?)
+    INSERT INTO invites (code, created_by, revoked, created_at, note)
+    VALUES (?, ?, ?, ?, ?)
   `);
-  stmt.run(invite.code, invite.createdBy, invite.revoked ? 1 : 0, invite.created || Date.now());
+  stmt.run(invite.code, invite.createdBy, invite.revoked ? 1 : 0, invite.created || Date.now(), invite.note || null);
 }
 
 export function updateInviteUsedBy(code, userId) {
-  const stmt = getDatabase().prepare('UPDATE invites SET used_by = ? WHERE code = ?');
-  stmt.run(userId, code);
+  const stmt = getDatabase().prepare('UPDATE invites SET used_by = ?, used_at = ? WHERE code = ?');
+  stmt.run(userId, new Date().toISOString(), code);
 }
 
 export function deleteInvite(code) {

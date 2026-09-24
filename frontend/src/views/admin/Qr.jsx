@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useState } from 'react'
 import { useAdmin } from './context.js'
 import { useStore } from '../../store/useStore.js'
 import { useUI } from '../../store/useUI.js'
@@ -6,29 +6,7 @@ import { api } from '../../lib/api.js'
 import { confirmSheet } from '../../sheets.jsx'
 import { t } from '../../lib/i18n.js'
 import { Button } from '../../components/ui.jsx'
-import * as ZXing from 'html5-qrcode/third_party/zxing-js.umd.js'
-
-function QrCanvas({ value, onCanvas }) {
-  const ref = useRef(null)
-  useEffect(() => {
-    if (!value || !ref.current) return
-    const matrix = new ZXing.QRCodeWriter().encode(value, ZXing.BarcodeFormat.QR_CODE, 280, 280, new Map())
-    const canvas = ref.current
-    const size = matrix.getWidth()
-    const scale = 4
-    canvas.width = size * scale
-    canvas.height = size * scale
-    const ctx = canvas.getContext('2d')
-    ctx.fillStyle = '#fff'
-    ctx.fillRect(0, 0, canvas.width, canvas.height)
-    ctx.fillStyle = '#000'
-    for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
-      if (matrix.get(x, y)) ctx.fillRect(x * scale, y * scale, scale, scale)
-    }
-    onCanvas?.(canvas)
-  }, [value])
-  return <canvas ref={ref} aria-label={t('QR access code')} style={{ width: 280, height: 280, maxWidth: '100%', imageRendering: 'pixelated', borderRadius: 8 }} />
-}
+import QrCanvas from '../../components/QrCanvas.jsx'
 
 function QrAccessCard({ data, reload }) {
   const toast = useUI(s => s.toast)

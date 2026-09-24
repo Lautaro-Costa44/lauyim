@@ -14,6 +14,7 @@ import { dayReminderPush, gymFeePush, restTimerPush, testPush } from './push-mes
 import { startScheduler } from './scheduler.js';
 import { sendPushToSubscription, pushEndpointError } from './push-send.js';
 import { verifyError } from './verify-error.js';
+import { clientIpFrom } from './client-ip.js';
 import { processSyncBatch } from './sync.js';
 import { applyStatePut } from './data-put.js';
 import { alignActiveGroupForAudit, detectRoutineAuditChanges } from './routine-audit.js';
@@ -25,6 +26,7 @@ import {
   getUserById,
   deleteUser,
   createUser,
+  isoTimestamp,
   updateUser,
   getCredentialById,
   getCredentialsByUserId,
@@ -158,10 +160,36 @@ function limitarSugeridasEfectivo(userId) {
 // baked into each cookie when it's issued, so lowering this never cuts an existing session short.
 const SESSION_DAYS = Math.max(1, +(process.env.SESSION_DAYS || 90) || 90);
 const MAX_BODY = 5 * 1024 * 1024;
+// Rate limit: requests por ventana de 5 min, contando todas (no solo las fallidas). Cada
+// ruta tiene un cupo por IP (en un gym con wifi todos los socios comparten la IP pública, por
+// eso son altos) y algunas un segundo cupo por credencial o usuario. Override por env.
+const envMax = (name, fallback) => {
+  const n = Number(process.env[name]);
+  return Number.isInteger(n) && n > 0 ? n : fallback;
+};
 const RATE_LIMIT_WINDOW_MS = 5 * 60 * 1000;
-const RATE_LIMIT_AUTH_MAX = 10;
-const RATE_LIMIT_SHARE_MAX = 20;
-const RATE_LIMIT_SUPPORT_MAX = 5;
+const RATE_LIMIT_LOGIN_MAX = envMax('RATE_LIMIT_LOGIN_MAX', 60);                 // por IP: login/options, login/verify
+const RATE_LIMIT_REGISTER_MAX = envMax('RATE_LIMIT_REGISTER_MAX', 30);           // por IP: register/options, register/verify
+const RATE_LIMIT_QR_MAX = envMax('RATE_LIMIT_QR_MAX', 60);                       // por IP: access/qr
+const RATE_LIMIT_DEVICE_START_MAX = envMax('RATE_LIMIT_DEVICE_START_MAX', 30);   // por IP: device/start
+const RATE_LIMIT_DEVICE_MAX = envMax('RATE_LIMIT_DEVICE_MAX', 60);               // por IP: device/claim, device/confirm
+const RATE_LIMIT_PER_CREDENTIAL_MAX = envMax('RATE_LIMIT_PER_CREDENTIAL_MAX', 10); // por credencial: login/verify
+const RATE_LIMIT_PER_USER_MAX = envMax('RATE_LIMIT_PER_USER_MAX', 10);           // por usuario: device/claim, device/confirm
+const RATE_LIMIT_SHARE_MAX = envMax('RATE_LIMIT_SHARE_MAX', 20);
+const RATE_LIMIT_SUPPORT_MAX = envMax('RATE_LIMIT_SUPPORT_MAX', 5);
+// device/poll queda afuera: el cliente lo llama cada 2 s y el pairingId (128 bits) no se adivina.
+const RATE_LIMITS_BY_IP = {
+  'POST /api/login/options': RATE_LIMIT_LOGIN_MAX,
+  'POST /api/login/verify': RATE_LIMIT_LOGIN_MAX,
+  'POST /api/register/options': RATE_LIMIT_REGISTER_MAX,
+  'POST /api/register/verify': RATE_LIMIT_REGISTER_MAX,
+  'POST /api/access/qr': RATE_LIMIT_QR_MAX,
+  'POST /api/auth/device/start': RATE_LIMIT_DEVICE_START_MAX,
+  'POST /api/auth/device/claim': RATE_LIMIT_DEVICE_MAX,
+  'POST /api/auth/device/confirm': RATE_LIMIT_DEVICE_MAX,
+  'POST /api/share/plan': RATE_LIMIT_SHARE_MAX,
+  'POST /api/support': RATE_LIMIT_SUPPORT_MAX
+};
 // Secure cookies require HTTPS; over plain http://localhost the flag would drop the cookie
 const SECURE = /^https:/i.test(ORIGIN) ? ' Secure;' : '';
 
@@ -570,14 +598,15 @@ function genManualCode() {
   return c;
 }
 
+const PAIRING_MAX_ATTEMPTS = 5;
+function dropPairing(p) {
+  pendingPairings.delete(p.pairingId);
+  manualCodeMap.delete(p.manualCode);
+}
+
 function cleanExpiredPairings() {
   const now = Date.now();
-  for (const [id, p] of pendingPairings) {
-    if (p.exp < now) {
-      pendingPairings.delete(id);
-      manualCodeMap.delete(p.manualCode);
-    }
-  }
+  for (const p of pendingPairings.values()) if (p.exp < now) dropPairing(p);
 }
 setInterval(cleanExpiredPairings, 60000).unref();
 
@@ -625,15 +654,7 @@ const auditFile = path.join(DATA, 'audit.log');
 let auditSeq = 0;
 let auditCount = 0;
 
-function rawClientIp(req) {
-  const raw = String(req.headers['cf-connecting-ip'] || '').trim()
-    || String(req.headers['x-forwarded-for'] || '').split(',')[0].trim()
-    || String(req.headers['x-real-ip'] || '').trim()
-    || String(req.socket?.remoteAddress || '').replace(/^::ffff:/, '').trim();
-  const ip = raw.replace(/^\[|\]$/g, '').slice(0, 45);
-  if (!/^[0-9a-fA-F:.]{3,45}$/.test(ip)) return null;
-  return ip;
-}
+const rawClientIp = req => clientIpFrom(req.headers, req.socket?.remoteAddress);
 
 function clientIp(req) {
   if (AUDIT_IP === 'off') return null;
@@ -645,12 +666,20 @@ function clientIp(req) {
   return g ? g + '::/48' : null;
 }
 
+// Claves de rate limit: 'ip:<ip> <ruta>', 'cred:<credential id> <ruta>', 'user:<uid> <ruta>'.
+// Una ruta puede chequear varias (primero la IP, después la más específica). Para link/* de
+// la entrega 2: por IP con ipRateKey(req, routeKey) en RATE_LIMITS_BY_IP, y en el handler,
+// después de leer el body, rateLimit(res, 'code:' + sha256(code) + ' ' + routeKey, N) antes de
+// buscar el código (hasheado para no dejar el código en claro en memoria).
 const rateLimits = new Map();
-function rateLimit(req, res, routeKey, max) {
+const ipRateKey = (req, routeKey) => {
   const ip = rawClientIp(req);
-  if (!ip) return true;
+  return ip ? `ip:${ip} ${routeKey}` : null;
+};
+// Devuelve false (y ya respondió 429) si la clave se pasó del cupo. Clave null: no limita.
+function rateLimit(res, key, max) {
+  if (!key) return true;
   const now = Date.now();
-  const key = ip + ' ' + routeKey;
   let entry = rateLimits.get(key);
   if (!entry || now - entry.windowStart >= RATE_LIMIT_WINDOW_MS) {
     for (const [k, value] of rateLimits) {
@@ -2071,6 +2100,10 @@ const routes = {
 
   'POST /api/login/verify': async (req, res) => {
     const body = await readBody(req);
+    // Segundo cupo por credencial: en un wifi compartido el de IP es alto; este frena a
+    // alguien machacando una misma passkey. Antes de tocar el challenge o la base.
+    const credId = String(body.credential?.id || '').slice(0, 512);
+    if (credId && !rateLimit(res, `cred:${credId} POST /api/login/verify`, RATE_LIMIT_PER_CREDENTIAL_MAX)) return;
     const c = takeChallenge(body.cid);
     if (!c) {
       audit(req, 'auth.login.fail', { ok: false, msg: 'challenge-expired' });
@@ -2131,9 +2164,14 @@ const routes = {
     json(res, 200, { pairingId, manualCode, expiresAt: exp });
   },
 
+  // El primer claim exitoso ata el pairing a esa cuenta (claimedBy). Un claim de otra cuenta
+  // sobre el mismo pairing es un intento fallido; al llegar a PAIRING_MAX_ATTEMPTS el pairing
+  // se invalida. Un código inexistente no se puede atribuir a ningún pairing: eso lo frena el
+  // rate limit por IP.
   'POST /api/auth/device/claim': async (req, res) => {
     const user = readSession(req);
     if (!user) return json(res, 401, { error: 'No has iniciado sesión' });
+    if (!rateLimit(res, `user:${user.id} POST /api/auth/device/claim`, RATE_LIMIT_PER_USER_MAX)) return;
     const body = await readBody(req);
     cleanExpiredPairings();
     const rawCode = String(body.code || body.manualCode || body.pairingId || '').trim().toUpperCase();
@@ -2142,23 +2180,29 @@ const routes = {
     if (!pairing || pairing.exp < Date.now()) {
       return json(res, 400, { error: 'Código o QR no válido o expirado' });
     }
-    if (pairing.attempts >= 5) {
-      pendingPairings.delete(pairing.pairingId);
-      manualCodeMap.delete(pairing.manualCode);
-      return json(res, 400, { error: 'Demasiados intentos fallidos para este código' });
+    if (pairing.status !== 'pending' || (pairing.claimedBy && pairing.claimedBy !== user.id)) {
+      pairing.attempts += 1;
+      if (pairing.attempts >= PAIRING_MAX_ATTEMPTS) dropPairing(pairing);
+      audit(req, 'auth.device.claim.fail', { ok: false, user, msg: 'already-claimed' });
+      return json(res, 409, { error: 'Este código ya fue usado desde otra cuenta' });
     }
+    pairing.claimedBy = user.id;
     json(res, 200, { pairingId: pairing.pairingId, manualCode: pairing.manualCode, ok: true });
   },
 
   'POST /api/auth/device/confirm': async (req, res) => {
     const user = readSession(req);
     if (!user) return json(res, 401, { error: 'No has iniciado sesión' });
+    if (!rateLimit(res, `user:${user.id} POST /api/auth/device/confirm`, RATE_LIMIT_PER_USER_MAX)) return;
     const body = await readBody(req);
     cleanExpiredPairings();
     const pairingId = String(body.pairingId || '').trim();
     const pairing = pendingPairings.get(pairingId);
     if (!pairing || pairing.exp < Date.now()) {
       return json(res, 400, { error: 'Solicitud de vinculación expirada' });
+    }
+    if (pairing.status !== 'pending' || pairing.claimedBy !== user.id) {
+      return json(res, 409, { error: 'Primero ingresá el código de vinculación' });
     }
     pairing.status = 'approved';
     pairing.user = user;
@@ -2180,8 +2224,7 @@ const routes = {
     }
     if (pairing.status === 'approved' && pairing.user) {
       const user = pairing.user;
-      pendingPairings.delete(pairingId);
-      manualCodeMap.delete(pairing.manualCode);
+      dropPairing(pairing);
       audit(req, 'auth.device.login', { user });
       return json(res, 200, { status: 'approved', user: { id: user.id, name: user.name, admin: isAdmin(user), owner: !!user.owner } }, { 'Set-Cookie': sessionCookie(user) });
     }
@@ -2433,8 +2476,8 @@ const routes = {
       const workouts = S.workouts || [];
       const last = workouts[workouts.length - 1];
       return {
-        id: u.id, name: u.name, created: u.created || u.created_at || null,
-        disabled: !!u.disabled, admin: isAdmin(u), owner: !!u.owner, invitedBy: u.invited_by || u.invitedBy || null,
+        id: u.id, name: u.name, created: isoTimestamp(u.created_at),
+        disabled: !!u.disabled, admin: isAdmin(u), owner: !!u.owner, invitedBy: u.invited_by || null,
         workouts: workouts.length,
         lastWorkout: last ? last.d : null,
         lastSync: S._ts || null,
@@ -2476,7 +2519,7 @@ const routes = {
     if (!u) return json(res, 404, { error: 'El usuario no existe' });
     const S = readState(u.id) || {};
     json(res, 200, {
-      user: { id: u.id, name: u.name, created: u.created || u.created_at || null, disabled: !!u.disabled, admin: isAdmin(u), owner: !!u.owner, invitedBy: u.invited_by || u.invitedBy || null },
+      user: { id: u.id, name: u.name, created: isoTimestamp(u.created_at), disabled: !!u.disabled, admin: isAdmin(u), owner: !!u.owner, invitedBy: u.invited_by || null },
       unit: S.unit || 'kg',
       lastSync: S._ts || null,
       routines: (S.routines || []).map(r => ({ id: r.id, name: r.name, emoji: r.emoji, count: (r.ex || []).length })),
@@ -2842,7 +2885,7 @@ http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://x');
 
   if (req.method === 'GET' && url.pathname.startsWith('/api/share/plan/')) {
-    if (!rateLimit(req, res, 'GET /api/share/plan/:code', RATE_LIMIT_SHARE_MAX)) return;
+    if (!rateLimit(res, ipRateKey(req, 'GET /api/share/plan/:code'), RATE_LIMIT_SHARE_MAX)) return;
     const code = url.pathname.replace('/api/share/plan/', '').trim().toUpperCase();
     const item = sharedPlans.get(code);
     if (!item || Date.now() > item.expiresAt) {
@@ -2903,15 +2946,9 @@ http.createServer(async (req, res) => {
       ? 'DELETE /api/admin/nutrition/templates/:id'
     : key;
 
-  const rateLimitMax = routeKey === 'POST /api/access/qr'
-    || routeKey === 'POST /api/register/options'
-    || routeKey === 'POST /api/register/verify'
-    || routeKey === 'POST /api/login/options'
-    || routeKey === 'POST /api/login/verify'
-    ? RATE_LIMIT_AUTH_MAX
-    : routeKey === 'POST /api/share/plan' ? RATE_LIMIT_SHARE_MAX
-    : routeKey === 'POST /api/support' ? RATE_LIMIT_SUPPORT_MAX : null;
-  if (rateLimitMax !== null && !rateLimit(req, res, routeKey, rateLimitMax)) return;
+  // Cupo por IP; los cupos por credencial / usuario van en cada handler.
+  const rateLimitMax = RATE_LIMITS_BY_IP[routeKey];
+  if (rateLimitMax && !rateLimit(res, ipRateKey(req, routeKey), rateLimitMax)) return;
 
   // Verificar expiración de licencia por fecha (si está configurada y vencida)
   // Excluimos /api/health para que monitores o chequeos básicos puedan seguir funcionando si es necesario, 

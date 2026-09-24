@@ -24,6 +24,7 @@ window.matchMedia = query => ({
 })
 
 let auditOn
+let anaCreated = '2026-01-01'
 const ANA = { id: 'a', name: 'ana', lastSync: Date.now(), workouts: 1 }
 apiMock.mockImplementation(url => {
   if (url === '/api/admin/users') return Promise.resolve({ users: [ANA], invite_only: false, audit_enabled: auditOn })
@@ -34,7 +35,7 @@ apiMock.mockImplementation(url => {
   if (url.startsWith('/api/admin/audit')) return Promise.resolve({ enabled: auditOn, events: [], total: 0, retention: {}, now: Date.now() })
   if (url === '/api/admin/billing') return Promise.resolve({ today: '2026-09-24', settings: {}, summary: { al_dia: 0, por_vencer: 0, vencido: 0, bloqueado: 0, sin_plan: 1, deuda_total: 0 }, members: [{ id: 'a', name: 'ana', disabled: false, admin: false, planId: null, planName: null, dueDate: null, status: 'sin_plan', debt: 0 }] })
   if (url === '/api/admin/billing/plans') return Promise.resolve({ plans: [] })
-  if (url.startsWith('/api/admin/user?id=')) return Promise.resolve({ user: { id: 'a', name: 'ana', created: '2026-01-01' }, workouts: [], bodyweight: [], routines: [], lastSync: Date.now(), unit: 'kg' })
+  if (url.startsWith('/api/admin/user?id=')) return Promise.resolve({ user: { id: 'a', name: 'ana', created: anaCreated }, workouts: [], bodyweight: [], routines: [], lastSync: Date.now(), unit: 'kg' })
   return Promise.resolve({})
 })
 
@@ -77,6 +78,7 @@ beforeEach(async () => {
   await setLang('es')
   globalThis.IS_REACT_ACT_ENVIRONMENT = true
   auditOn = true
+  anaCreated = '2026-01-01'
   desktop = false
   apiMock.mockClear()
   useUI.setState({ sheets: [] })
@@ -172,5 +174,20 @@ describe('Usuarios: member detail', () => {
     expect(useUI.getState().sheets).toHaveLength(1)
     expect(document.querySelector('#modal-root h3').textContent).toBe('ana')
     expect(document.querySelector('.admin-users .item.on')).toBeNull()
+  })
+
+  it('does not crash when created is missing or not a string', async () => {
+    desktop = true
+    for (const created of [1700000000000, undefined, null]) {
+      anaCreated = created
+      await mount('#/admin/usuarios', ADMIN)
+      await clickAna()
+      const panel = document.querySelector('.admin-user-panel')
+      expect(panel.querySelector('h3').textContent).toBe('ana')
+      expect(panel.textContent).toContain('—')
+      await act(async () => { root.unmount() })
+      container.remove()
+    }
+    await mount('#/admin/usuarios', ADMIN)   // afterEach desmonta este
   })
 })

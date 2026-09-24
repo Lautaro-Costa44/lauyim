@@ -181,14 +181,15 @@ Read this before hosting openGym for anyone other than yourself.
   in the app is a 5 MB request body (`api/server.js:34`).
 - **The activity log is not an audit archive, and it records less than you might assume.** No IP
   address unless you set `AUDIT_IP` (`net` truncates to a /24 or /48; the default is `off`). When it is on, the
-  address comes from `CF-Connecting-IP`, `X-Forwarded-For`, `X-Real-IP` or, failing all three,
-  the connecting socket — so it is only as trustworthy as whatever sits in front, which has to
-  *overwrite* those headers rather than pass a client-supplied one through. The bundled web
-  container now does: it replaces `X-Forwarded-For`/`X-Real-IP` with the real peer and drops
-  `CF-Connecting-IP` unless you set `CF_CONNECTING_IP=$http_cf_connecting_ip`, which is correct
-  only with Cloudflare genuinely in front. Before that it appended to `X-Forwarded-For` and
-  passed `CF-Connecting-IP` straight through, and the API reads the first entry — so any caller
-  could choose the address recorded against it. Never the browser's user-agent,
+  address comes from `X-Real-IP` or the first `X-Forwarded-For` entry, and only when the
+  connection comes from loopback or a private network (the bundled web container); from anywhere
+  else the API uses the connecting socket and ignores those headers. The web container sets both
+  to the real visitor: nginx's `realip` takes Cloudflare's `CF-Connecting-IP` only from loopback
+  or the docker gateway (`172.16.0.0/12`), where the host's cloudflared connects, and drops that
+  header before proxying. The same address keys the rate limit (per IP, plus per passkey on
+  sign-in and per user on device pairing). Before, the API trusted `CF-Connecting-IP` and
+  `X-Forwarded-For` from anyone, and with the header dropped every visitor showed up as the
+  docker gateway, so the whole instance shared one rate-limit bucket. Never the browser's user-agent,
   and never the passkey id behind a failed sign-in — that id is a stable
   handle for one device, and storing it would let an admin follow an unknown device from attempt
   to attempt. So a failed sign-in from a passkey this instance doesn't know is recorded as a time

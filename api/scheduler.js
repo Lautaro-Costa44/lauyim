@@ -12,6 +12,10 @@ const BILLING_PUSH_FROM = '10:00';
 // Avisos de cuota en vuelo (user_id:due_date). El envío es asíncrono y el tick corre cada
 // minuto: sin esto, un push lento se volvería a disparar antes de guardar push_sent_for_due.
 const billingPushInFlight = new Set();
+// Diagnóstico por socio y por tick: solo con SCHEDULER_DEBUG=1. Los envíos y los errores se
+// loguean siempre. DEBUG_USER_ID sigue limitando el tick (y el diagnóstico) a un solo socio.
+const SCHEDULER_DEBUG = /^(1|true|yes|on)$/i.test(process.env.SCHEDULER_DEBUG || '');
+const debug = (...args) => { if (SCHEDULER_DEBUG) console.log(...args); };
 
 /**
  * Lógica documentada para la cuota de gym (fee_interval + fee_date):
@@ -34,7 +38,7 @@ async function sendPushToUser(userId, payload) {
   const subCount = rawSubs ? rawSubs.length : 0;
   
   const debugUserId = process.env.DEBUG_USER_ID;
-  const isDebug = !debugUserId || debugUserId === userId;
+  const isDebug = SCHEDULER_DEBUG && (!debugUserId || debugUserId === userId);
 
   if (isDebug) {
     console.log(`[Scheduler Diagnostic] user_id=${userId} | suscripciones encontradas=${subCount}`);
@@ -161,6 +165,8 @@ export function runSchedulerTick() {
       LEFT JOIN reminder_settings rs ON u.id = rs.user_id
       LEFT JOIN member_billing mb ON u.id = mb.user_id
       WHERE u.disabled = 0
+        -- Todos los avisos son push: sin suscripción no hay a quién mandarle nada.
+        AND EXISTS (SELECT 1 FROM subscriptions s WHERE s.user_id = u.id)
     `);
 
     const users = stmt.all();
@@ -186,22 +192,22 @@ export function runSchedulerTick() {
           last_reminder_sent_date: u.last_reminder_sent_date
         };
 
-        console.log(`[Scheduler Diagnostic Tick] user_id=${u.user_id} | utc_server=${serverUtcIso} | local_tz=${tz} (local_time=${timeStr}, local_date=${dateStr}) | raw_settings=`, JSON.stringify(rawRowLog));
+        debug(`[Scheduler Diagnostic Tick] user_id=${u.user_id} | utc_server=${serverUtcIso} | local_tz=${tz} (local_time=${timeStr}, local_date=${dateStr}) | raw_settings=`, JSON.stringify(rawRowLog));
 
         // 1. Recordatorio de entrenamiento
         if (u.reminder_on === 1 && u.reminder_time) {
           const timeMatch = u.reminder_time === timeStr;
-          console.log(`[Scheduler Diagnostic] user_id=${u.user_id} | training reminder check | configured_time=${u.reminder_time} vs local_time=${timeStr} -> match=${timeMatch ? 'MATCH' : 'NO MATCH'}`);
+          debug(`[Scheduler Diagnostic] user_id=${u.user_id} | training reminder check | configured_time=${u.reminder_time} vs local_time=${timeStr} -> match=${timeMatch ? 'MATCH' : 'NO MATCH'}`);
 
           const state = getUserState(u.user_id) || {};
           const routineId = effectiveRoutineId(state, dateStr);
           const workoutAlreadyLogged = hasWorkoutOnDate(state, dateStr);
           const hasTrainingToday = !!routineId && !workoutAlreadyLogged;
-          console.log(`[Scheduler Diagnostic] user_id=${u.user_id} | training plan check | routine=${routineId || 'none'} | workout_today=${workoutAlreadyLogged} -> eligible=${hasTrainingToday}`);
+          debug(`[Scheduler Diagnostic] user_id=${u.user_id} | training plan check | routine=${routineId || 'none'} | workout_today=${workoutAlreadyLogged} -> eligible=${hasTrainingToday}`);
 
           if (timeMatch && hasTrainingToday) {
             const sentToday = u.last_reminder_sent_date === dateStr;
-            console.log(`[Scheduler Diagnostic] user_id=${u.user_id} | training reminder already_sent_today check | last_sent=${u.last_reminder_sent_date}, today=${dateStr} -> status=${sentToday ? 'DESCARTADO (ya enviado hoy)' : 'PASAS (enviar)'}`);
+            debug(`[Scheduler Diagnostic] user_id=${u.user_id} | training reminder already_sent_today check | last_sent=${u.last_reminder_sent_date}, today=${dateStr} -> status=${sentToday ? 'DESCARTADO (ya enviado hoy)' : 'PASAS (enviar)'}`);
 
             if (!sentToday) {
               console.log(`[Scheduler] Disparando recordatorio de entrenamiento para user_id=${u.user_id} a las ${timeStr} (${tz})`);
@@ -218,8 +224,8 @@ export function runSchedulerTick() {
                 // accepted it. This keeps a transient push outage retryable.
                 if (res.sent < 1) throw new Error('No se entregó el recordatorio a ninguna suscripción');
                 db.prepare('UPDATE users SET last_reminder_sent_date = ? WHERE id = ?').run(dateStr, u.user_id);
-                console.log(`[Scheduler Diagnostic] Guardado exitoso de last_reminder_sent_date=${dateStr} para user_id=${u.user_id}`);
-                console.log(`[Scheduler Diagnostic] user_id=${u.user_id} | training reminder sent result: sent=${res.sent}, subscriptions=${res.subCount}`);
+                debug(`[Scheduler Diagnostic] Guardado exitoso de last_reminder_sent_date=${dateStr} para user_id=${u.user_id}`);
+                debug(`[Scheduler Diagnostic] user_id=${u.user_id} | training reminder sent result: sent=${res.sent}, subscriptions=${res.subCount}`);
               }).catch(err => {
                 console.error(`[Scheduler] Error al enviar/guardar recordatorio de entrenamiento para user_id=${u.user_id}:`, err);
               });
@@ -231,11 +237,11 @@ export function runSchedulerTick() {
         // por el gym manda el aviso automático de abajo, no este.
         if (u.fee_on === 1 && u.plan_id == null) {
           const feeDue = checkGymFeeDue(u.fee_date, u.fee_interval, dateStr);
-          console.log(`[Scheduler Diagnostic] user_id=${u.user_id} | gym fee check | fee_date=${u.fee_date}, interval=${u.fee_interval} -> match=${feeDue ? 'MATCH' : 'NO MATCH'}`);
+          debug(`[Scheduler Diagnostic] user_id=${u.user_id} | gym fee check | fee_date=${u.fee_date}, interval=${u.fee_interval} -> match=${feeDue ? 'MATCH' : 'NO MATCH'}`);
 
           if (feeDue) {
             const feeSentToday = u.last_fee_reminder_sent_date === dateStr;
-            console.log(`[Scheduler Diagnostic] user_id=${u.user_id} | gym fee already_sent_today check | last_sent=${u.last_fee_reminder_sent_date}, today=${dateStr} -> status=${feeSentToday ? 'DESCARTADO (ya enviado hoy)' : 'PASAS (enviar)'}`);
+            debug(`[Scheduler Diagnostic] user_id=${u.user_id} | gym fee already_sent_today check | last_sent=${u.last_fee_reminder_sent_date}, today=${dateStr} -> status=${feeSentToday ? 'DESCARTADO (ya enviado hoy)' : 'PASAS (enviar)'}`);
 
             if (!feeSentToday) {
               console.log(`[Scheduler] Disparando recordatorio de cuota de gym para user_id=${u.user_id} (${u.fee_interval})`);
@@ -249,8 +255,8 @@ export function runSchedulerTick() {
               sendPushToUser(u.user_id, payload).then(res => {
                 if (res.sent < 1) throw new Error('No se entregó el recordatorio de cuota a ninguna suscripción');
                 db.prepare('UPDATE users SET last_fee_reminder_sent_date = ? WHERE id = ?').run(dateStr, u.user_id);
-                console.log(`[Scheduler Diagnostic] Guardado exitoso de last_fee_reminder_sent_date=${dateStr} para user_id=${u.user_id}`);
-                console.log(`[Scheduler Diagnostic] user_id=${u.user_id} | gym fee reminder sent result: sent=${res.sent}, subscriptions=${res.subCount}`);
+                debug(`[Scheduler Diagnostic] Guardado exitoso de last_fee_reminder_sent_date=${dateStr} para user_id=${u.user_id}`);
+                debug(`[Scheduler Diagnostic] user_id=${u.user_id} | gym fee reminder sent result: sent=${res.sent}, subscriptions=${res.subCount}`);
               }).catch(err => {
                 console.error(`[Scheduler] Error al enviar/guardar recordatorio de cuota para user_id=${u.user_id}:`, err);
               });
@@ -291,5 +297,6 @@ export function runSchedulerTick() {
 export function startScheduler() {
   console.log('[Scheduler] Iniciando loop periódico de recordatorios (cada 1 minuto)...');
   // Ejecutar un tick inicial a los pocos segundos y luego cada 60s
+  setTimeout(runSchedulerTick, 5 * 1000).unref();
   setInterval(runSchedulerTick, 60 * 1000);
 }
