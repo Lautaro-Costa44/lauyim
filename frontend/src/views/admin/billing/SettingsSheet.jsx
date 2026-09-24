@@ -53,7 +53,7 @@ export function SettingsSheet({ close, onChanged }) {
     <h3>{t('Configuración de cuotas')}</h3>
     <Section title={t('Plazos (0 a 30 días)')}>
       {DAY_FIELDS.map(([key, title, subtitle]) => <Row key={key} title={t(title)} subtitle={t(subtitle)}>
-        <NumberField value={form[key]} onChange={v => set({ [key]: v })} decimal={false} nullable />
+        <NumberField className="row-num" value={form[key]} onChange={v => set({ [key]: v })} decimal={false} nullable />
       </Row>)}
     </Section>
     <Section title={t('Métodos de pago')} footer={t('Al menos uno tiene que quedar habilitado.')}>

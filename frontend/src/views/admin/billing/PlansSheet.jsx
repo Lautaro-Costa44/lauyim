@@ -32,8 +32,8 @@ function PlanEditor({ plan, onSaved, onCancel }) {
       <TextField type="text" inputMode="text" value={name} onChange={e => setName(e.target.value)} maxLength={60} placeholder={t('Ej.: Mensual')} />
     </Section>
     <Section footer={t('Precio en pesos, sin centavos. La duración define cuánto extiende cada pago el vencimiento.')}>
-      <Row title={t('Precio ($)')}><NumberField value={price} onChange={setPrice} decimal={false} nullable /></Row>
-      <Row title={t('Duración (días)')}><NumberField value={durationDays} onChange={setDurationDays} decimal={false} nullable /></Row>
+      <Row title={t('Precio ($)')}><NumberField className="row-num wide" value={price} onChange={setPrice} decimal={false} nullable /></Row>
+      <Row title={t('Duración (días)')}><NumberField className="row-num" value={durationDays} onChange={setDurationDays} decimal={false} nullable /></Row>
       {plan && <Row title={t('Activo')} subtitle={active ? t('Se puede asignar') : t('No se asigna a nuevos socios')}>
         <Switch checked={active} onChange={setActive} />
       </Row>}

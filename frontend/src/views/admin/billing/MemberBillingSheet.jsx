@@ -124,7 +124,7 @@ function PaymentForm({ member, billing, plans, methods, today, onDone }) {
       <SelectRow title={t('Plan')} value={planId} onChange={changePlan} sheetTitle={t('Plan')}
         options={options.map(p => ({ value: p.id, label: p.name + (p.active ? '' : ' · ' + t('inactivo')), subtitle: `${fmtPesos(p.price)} · ${t('{0} días', p.durationDays)}` }))} />
       <Row title={t('Monto ($)')}>
-        <NumberField value={amount} onChange={setAmount} decimal={false} nullable max={100000000} />
+        <NumberField className="row-num wide" value={amount} onChange={setAmount} decimal={false} nullable />
       </Row>
       <Row title={t('Fecha')}>
         <input name="app-billing-paid-date" type="date" className="timef" value={date} max={today} onChange={e => setDate(e.target.value)} />
