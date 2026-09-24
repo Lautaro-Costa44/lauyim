@@ -12,7 +12,7 @@ vi.mock('../lib/api.js', async importOriginal => ({ ...(await importOriginal()),
 // El escáner de códigos de barras toca APIs de cámara que no existen fuera del navegador.
 vi.mock('html5-qrcode/third_party/zxing-js.umd.js', () => ({ BrowserMultiFormatReader: class {} }))
 
-const { AdminManageSheet } = await import('./Admin.jsx')
+const { AdminManageSheet } = await import('./admin/shared.jsx')
 const { default: Modals } = await import('../components/Modals.jsx')
 const { useUI } = await import('../store/useUI.js')
 const { bindUI } = await import('../components/ui.jsx')

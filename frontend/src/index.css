@@ -1043,6 +1043,11 @@ input[type="search"]::-webkit-search-cancel-button{display:none;-webkit-appearan
   letter-spacing:-.012em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px;
 }
 
+/* ------------------------------------------------------------ admin nav --- */
+/* phone: a strip of chips that scrolls sideways inside itself (never the page) */
+.admin-nav{margin:0 0 14px}
+.admin-nav-back{display:none}
+
 /* --------------------------------------------------- desktop (≥1000px) --- */
 .cols{display:block}
 @media (min-width:1000px){
@@ -1069,6 +1074,15 @@ input[type="search"]::-webkit-search-cancel-button{display:none;-webkit-appearan
   #timer.rest .head{flex:1;min-width:0}
   .exmedia img{height:380px}
   .hm-wrap{display:flex;flex-direction:column;align-items:center}
+  /* admin: fixed side menu instead of the app tab bar */
+  #tabbar.admin{display:none}
+  .admin-shell{display:grid;grid-template-columns:200px minmax(0,1fr);gap:24px;align-items:start}
+  .admin-nav{position:sticky;top:32px;flex-direction:column;gap:4px;overflow:visible;margin:0}
+  .admin-nav .chip{background:transparent;border-radius:var(--r);padding:9px 13px}
+  .admin-nav .chip:active{background:var(--surface-2)}
+  .admin-nav .chip.on{background:var(--acc);color:var(--on-acc)}
+  .admin-nav .admin-nav-back{display:block;margin-top:12px;color:var(--label-2)}
+  .admin-main.narrow{width:100%}
 }
 
 /* --------------------------------------------------- survey wizard --- */

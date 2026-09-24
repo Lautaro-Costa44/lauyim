@@ -29,7 +29,14 @@ const Stats = lazy(() => import('./views/Stats.jsx'))
 const Nutricion = lazy(() => import('./views/Nutricion.jsx'))
 const History = lazy(() => import('./views/History.jsx'))
 const Settings = lazy(() => import('./views/Settings.jsx'))
-const Admin = lazy(() => import('./views/Admin.jsx'))
+const AdminLayout = lazy(() => import('./views/admin/AdminLayout.jsx'))
+const AdminResumen = lazy(() => import('./views/admin/Resumen.jsx'))
+const AdminUsuarios = lazy(() => import('./views/admin/Usuarios.jsx'))
+const AdminCuotas = lazy(() => import('./views/admin/Cuotas.jsx'))
+const AdminRutinas = lazy(() => import('./views/admin/Rutinas.jsx'))
+const AdminNotificaciones = lazy(() => import('./views/admin/Notificaciones.jsx'))
+const AdminQr = lazy(() => import('./views/admin/Qr.jsx'))
+const AdminLogs = lazy(() => import('./views/admin/Logs.jsx'))
 const SurveyWizard = lazy(() => import('./views/SurveyWizard.jsx'))
 const ImportPlan = lazy(() => import('./views/ImportPlan.jsx'))
 
@@ -91,6 +98,7 @@ function Shell() {
   
   // Si no se permiten invitados, estar en modo invitado NO cuenta como estar autenticado
   const authed = !!user || (allowGuest && isGuest)
+  const isAdminPath = loc.pathname === '/admin' || loc.pathname.startsWith('/admin/')
   if (!ready) return (
     <div id="app">
       <div style={{ paddingTop: '44vh', display: 'flex', justifyContent: 'center' }}>
@@ -102,8 +110,9 @@ function Shell() {
   return (
     <>
       {/* keyed on the route: a view that throws is contained, and switching tabs
-          re-mounts the boundary, so the tab bar is always a way out */}
-      <div id="app" className="vfade" key={loc.pathname}>
+          re-mounts the boundary, so the tab bar is always a way out. Every /admin/* section
+          shares one key: switching sections must not re-mount the admin layout (and its poll). */}
+      <div id="app" className="vfade" key={isAdminPath ? '/admin' : loc.pathname}>
         <ErrorBoundary>
           {licenseExpired ? <LicenseExpired /> : !authed ? <Login /> : (
             <Suspense fallback={<div className="page-loading" aria-busy="true" />}> 
@@ -120,7 +129,17 @@ function Shell() {
               <Route path="/settings" element={<Settings />} />
               <Route path="/import" element={<ImportPlan />} />
               <Route path="/onboarding/encuesta" element={<SurveyWizard />} />
-              <Route path="/admin" element={user?.admin ? <Admin /> : <Navigate to="/home" replace />} />
+              <Route path="/admin" element={user?.admin ? <AdminLayout /> : <Navigate to="/home" replace />}>
+                <Route index element={<Navigate to="/admin/resumen" replace />} />
+                <Route path="resumen" element={<AdminResumen />} />
+                <Route path="usuarios" element={<AdminUsuarios />} />
+                <Route path="cuotas" element={<AdminCuotas />} />
+                <Route path="rutinas" element={<AdminRutinas />} />
+                <Route path="notificaciones" element={<AdminNotificaciones />} />
+                <Route path="qr" element={user?.owner ? <AdminQr /> : <Navigate to="/admin/resumen" replace />} />
+                <Route path="logs" element={<AdminLogs />} />
+                <Route path="*" element={<Navigate to="/admin/resumen" replace />} />
+              </Route>
               <Route path="*" element={<Navigate to="/home" replace />} />
             </Routes>
             </Suspense>
