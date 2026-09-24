@@ -80,6 +80,14 @@ const chronologicalWorkouts = workouts => (Array.isArray(workouts)
 // object at all). Retrying would park the operation in the queue forever, so it is dropped.
 const TERMINAL_SYNC_REASONS = new Set(['set_meta_too_large', 'workout_meta_too_large', 'set_not_object', 'workout_not_object'])
 
+// Cuotas v1. El bloqueo por cuota NO es un logout: el socio conserva la sesión y los datos
+// locales, y la app muestra MembershipBlocked. El flag se guarda para que la pantalla siga ahí
+// al recargar sin conexión; solo lo apaga un /api/me que diga blocked: false.
+const BLOCK_KEY = 'gym_membership_blocked'
+const BILLING_KEY = 'gym_billing'
+const readJSON = key => { try { return JSON.parse(localStorage.getItem(key)) || null } catch { return null } }
+export const isMembershipBlockedError = e => e?.data?.error === 'membership_blocked'
+
 const ascendingBodyweight = entries => (Array.isArray(entries)
   ? [...entries].sort((a, b) => bodyweightTime(a) - bodyweightTime(b))
   : entries)
@@ -111,6 +119,23 @@ export const useStore = create((set, get) => {
     set({ S })
   }
 
+  // Nunca para staff: admins y owner no se bloquean por cuota (el servidor tampoco los bloquea).
+  const setMembershipBlocked = blocked => {
+    const on = !!blocked && !get().user?.admin
+    try { on ? localStorage.setItem(BLOCK_KEY, '1') : localStorage.removeItem(BLOCK_KEY) } catch { /* storage off */ }
+    set({ membershipBlocked: on })
+  }
+  // /api/me trae el estado de cuota: se guarda para Settings (también offline) y decide el flag.
+  const applyMeBilling = me => {
+    const billing = me?.billing || null
+    try { billing ? localStorage.setItem(BILLING_KEY, JSON.stringify(billing)) : localStorage.removeItem(BILLING_KEY) } catch { /* storage off */ }
+    set({ billing })
+    if (me?.user?.admin) setMembershipBlocked(false)
+    else if (billing?.blocked === true) setMembershipBlocked(true)
+    else if (billing?.blocked === false) setMembershipBlocked(false)
+  }
+  if (typeof window !== 'undefined') window.addEventListener('gym:membership_blocked', () => setMembershipBlocked(true))
+
   const scheduleSync = (delay = 2000) => {
     clearTimeout(syncTm)
     syncTm = setTimeout(() => get().syncPending(), delay + Math.random() * 1500)
@@ -131,6 +156,9 @@ export const useStore = create((set, get) => {
 
   // Everything a sign-out leaves behind on this device, whichever way it was triggered.
   const clearLocalSession = () => {
+    setMembershipBlocked(false)
+    try { localStorage.removeItem(BILLING_KEY) } catch { /* storage off */ }
+    set({ billing: null })
     get().setUser(null)
     localStorage.removeItem('gym_guest')
     localStorage.removeItem('gym_dirty')
@@ -142,6 +170,8 @@ export const useStore = create((set, get) => {
     S: (() => { const s = loadState(); registerCustom(s.customEx); return s })(),
     user: (() => { try { return JSON.parse(localStorage.getItem('gym_user')) || null } catch { return null } })(),
     ready: false,
+    membershipBlocked: (() => { try { return localStorage.getItem(BLOCK_KEY) === '1' } catch { return false } })(),
+    billing: readJSON(BILLING_KEY),        // { hasPlan, status, dueDate, planName, blocked } de /api/me
 
     // Mutate a draft of S via producer fn, then persist + schedule sync.
     update(mut, push = true) {
@@ -174,6 +204,12 @@ export const useStore = create((set, get) => {
     },
 
     setUser(u) {
+      // El bloqueo por cuota y el estado de cuota guardados son de quien estaba: otra cuenta (o
+      // ninguna) en este dispositivo no los hereda hasta que su propio /api/me diga lo suyo.
+      if (!u || u.id !== get().user?.id) {
+        try { localStorage.removeItem(BLOCK_KEY); localStorage.removeItem(BILLING_KEY) } catch { /* storage off */ }
+        set({ membershipBlocked: false, billing: null })
+      }
       if (u) { localStorage.setItem('gym_user', JSON.stringify(u)); localStorage.removeItem('gym_guest') }
       else localStorage.removeItem('gym_user')
       set({ user: u })
@@ -193,7 +229,8 @@ export const useStore = create((set, get) => {
       catch (e) { localStorage.setItem('gym_dirty', '1') }
     },
     async syncPending() {
-      if (!get().user || syncing || (navigator.onLine === false)) return
+      // Bloqueado por cuota: la cola queda intacta hasta que /api/me diga lo contrario.
+      if (!get().user || syncing || (navigator.onLine === false) || get().membershipBlocked) return
       syncing = true
       try {
         let rounds = 0
@@ -220,11 +257,25 @@ export const useStore = create((set, get) => {
         }
         if (await countSync(get().user.id)) localStorage.setItem('gym_dirty', '1')
         else localStorage.removeItem('gym_dirty')
-      } catch {
+      } catch (e) {
+        localStorage.setItem('gym_dirty', '1')
+        // Bloqueo por cuota: se corta el ciclo sin deferSync (sin subir attempts ni nextAttemptAt)
+        // y sin descartar nada, para que al desbloquear el sync salga en el acto.
+        if (isMembershipBlockedError(e)) return
         const batch = await takeSyncBatch(get().user.id, 25)
         await deferSync(batch)
-        localStorage.setItem('gym_dirty', '1')
       } finally { syncing = false }
+    },
+    // "Reintentar" de MembershipBlocked: pregunta de nuevo a /api/me y, si ya no está
+    // bloqueado, sincroniza en el acto. Devuelve true si quedó desbloqueado. Sin conexión tira.
+    async retryMembership() {
+      const me = await api('/api/me')
+      get().setUser(me.user)
+      applyMeBilling(me)
+      if (get().membershipBlocked) return false
+      await get().syncPending()
+      await get().pullState()
+      return true
     },
     // Metas nutricionales: las escribe únicamente un admin, por endpoints propios que no
     // bumpean user_state._ts. Se refrescan solas al volver la app a primer plano, para que la
@@ -376,11 +427,14 @@ export const useStore = create((set, get) => {
       try {
         const me = await api('/api/me')
         get().setUser(me.user)
-        // Apply any local operations that were recorded while the device was offline.
-        await get().syncPending()
-        // Pull after the queue is drained so a just-completed local change cannot be
-        // replaced by the older full snapshot that was on the server before reload.
-        await get().pullState()
+        applyMeBilling(me)
+        if (!get().membershipBlocked) {
+          // Apply any local operations that were recorded while the device was offline.
+          await get().syncPending()
+          // Pull after the queue is drained so a just-completed local change cannot be
+          // replaced by the older full snapshot that was on the server before reload.
+          await get().pullState()
+        }
         // Re-stamp the reminder's timezone on every load — keeps it correct if you're travelling,
         // without needing to revisit Settings.
         const tz = localTZ()

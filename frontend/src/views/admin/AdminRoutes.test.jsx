@@ -32,6 +32,8 @@ apiMock.mockImplementation(url => {
   if (url === '/api/admin/attendance-heatmap') return Promise.resolve({ start: 'monday', totalUsers: 1, days: {} })
   if (url === '/api/owner/qr') return Promise.resolve({ token: 'qr-token' })
   if (url.startsWith('/api/admin/audit')) return Promise.resolve({ enabled: auditOn, events: [], total: 0, retention: {}, now: Date.now() })
+  if (url === '/api/admin/billing') return Promise.resolve({ today: '2026-09-24', settings: {}, summary: { al_dia: 0, por_vencer: 0, vencido: 0, bloqueado: 0, sin_plan: 1, deuda_total: 0 }, members: [{ id: 'a', name: 'ana', disabled: false, admin: false, planId: null, planName: null, dueDate: null, status: 'sin_plan', debt: 0 }] })
+  if (url === '/api/admin/billing/plans') return Promise.resolve({ plans: [] })
   if (url.startsWith('/api/admin/user?id=')) return Promise.resolve({ user: { id: 'a', name: 'ana', created: '2026-01-01' }, workouts: [], bodyweight: [], routines: [], lastSync: Date.now(), unit: 'kg' })
   return Promise.resolve({})
 })
@@ -107,7 +109,7 @@ describe('admin routes', () => {
     await go('#/admin/cuotas')
     expect(document.querySelector('#app')).toBe(app)
     expect(usersCalls()).toBe(1)
-    expect(text()).toContain('Próximamente')
+    expect(text()).toContain('Deuda total')
   })
 
   it('QR is owner only: hidden tab and redirect for a plain admin', async () => {

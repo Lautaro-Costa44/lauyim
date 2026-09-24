@@ -93,7 +93,10 @@ import {
   getAllMemberBilling,
   setMemberBilling,
   recordPayment,
-  getPaymentsByUserId
+  getPaymentsByUserId,
+  getPaymentById,
+  getLatestActivePayment,
+  voidPayment
 } from './database.js';
 import {
   getBillingSettings, validateBillingSettings, serializeBillingSetting, gymToday,
@@ -2710,6 +2713,11 @@ const routes = {
     // atrasada cuenta desde ese día); el desbloqueo se mide contra hoy.
     const statusBefore = billingStatus(current, billingToday(settings), settings);
     const period = nextDueDate(current.dueDate, gymToday(paidAt, settings.gym_tz), plan.durationDays, settings.grace_days);
+    // Vista previa para el formulario: la misma regla de vencimiento, sin guardar ni auditar.
+    if (body.dry_run === true) {
+      const preview = { ...current, planId: plan.id, planName: plan.name, planPrice: plan.price, planDurationDays: plan.durationDays, planActive: plan.active, dueDate: period.dueDate };
+      return json(res, 200, { dry_run: true, billing: billingView(preview, billingToday(settings), settings), period, amount });
+    }
     const paymentId = recordPayment({
       userId, userName: target.name, planId: plan.id, planName: plan.name, amount, method: body.method,
       paidAt, periodStart: period.periodStart, periodEnd: period.periodEnd, dueDate: period.dueDate,
@@ -2719,8 +2727,39 @@ const routes = {
     if (statusBefore === 'bloqueado') audit(req, 'admin.billing.unblocked', { user: admin, target, summary: `Vence ${period.dueDate}` });
     json(res, 200, {
       billing: billingView(getMemberBilling(userId), billingToday(settings), settings),
-      payment: getPaymentsByUserId(userId, 50).find(p => p.id === paymentId) || null
+      payment: getPaymentById(paymentId)
     });
+  },
+
+  // Anular el último pago vigente del socio: vuelve al plan y vencimiento previos. Solo si nada
+  // movió el vencimiento después (otra asignación o pago); el pago queda en el historial, marcado.
+  'POST /api/admin/users/:userId/payments/:paymentId/void': async (req, res) => {
+    const admin = requireAdmin(req, res); if (!admin) return;
+    const parts = new URL(req.url, 'http://x').pathname.split('/');
+    const userId = decodeURIComponent(parts[4] || '');
+    const paymentId = Number(parts[6]);
+    if (!Number.isInteger(paymentId) || paymentId < 1) return json(res, 400, { error: 'id de pago inválido' });
+    const target = getUserById(userId);
+    if (!target) return json(res, 404, { error: 'El usuario no existe' });
+    const payment = getPaymentById(paymentId);
+    if (!payment || payment.userId !== userId) return json(res, 404, { error: 'El pago no existe' });
+    const body = await readBody(req);
+    if (body.reason != null && (typeof body.reason !== 'string' || body.reason.length > MAX_PAYMENT_NOTE)) return json(res, 400, { error: `reason debe ser texto (máx. ${MAX_PAYMENT_NOTE})` });
+    if (payment.voidedAt) return json(res, 409, { error: 'Este pago ya está anulado' });
+    if (getLatestActivePayment(userId)?.id !== payment.id) return json(res, 409, { error: 'Solo se puede anular el último pago registrado del socio' });
+    const current = getMemberBilling(userId);
+    if (current.dueDate !== payment.periodEnd || current.planId !== payment.planId) {
+      return json(res, 409, { error: 'El vencimiento cambió después de este pago; no se puede anular' });
+    }
+    if (payment.previousDueDate == null) return json(res, 409, { error: 'Este pago no guarda el vencimiento anterior; no se puede anular' });
+
+    const reason = body.reason ? body.reason.trim() || null : null;
+    voidPayment({ paymentId, userId, voidedBy: admin.id, reason, planId: payment.previousPlanId, dueDate: payment.previousDueDate });
+    const settings = billingSettingsNow();
+    const billing = billingView(getMemberBilling(userId), billingToday(settings), settings);
+    audit(req, 'admin.billing.payment_void', { user: admin, target, summary: `$${payment.amount} · vuelve a vencer ${payment.previousDueDate}${reason ? ' · ' + reason : ''}` });
+    if (billing.status === 'bloqueado' && !isAdmin(target)) audit(req, 'admin.billing.blocked', { user: admin, target, summary: `Venció ${payment.previousDueDate}` });
+    json(res, 200, { billing, payment: getPaymentById(paymentId) });
   },
 
   'GET /api/admin/invites': async (req, res) => {
@@ -2918,6 +2957,8 @@ http.createServer(async (req, res) => {
       ? req.method + ' /api/admin/users/:userId/billing'
     : req.method === 'POST' && /^\/api\/admin\/users\/[^/]+\/payments$/.test(url.pathname)
       ? 'POST /api/admin/users/:userId/payments'
+    : req.method === 'POST' && /^\/api\/admin\/users\/[^/]+\/payments\/\d+\/void$/.test(url.pathname)
+      ? 'POST /api/admin/users/:userId/payments/:paymentId/void'
     : req.method === 'PUT' && /^\/api\/admin\/nutrition\/templates\/[^/]+$/.test(url.pathname)
       ? 'PUT /api/admin/nutrition/templates/:id'
     : req.method === 'DELETE' && /^\/api\/admin\/nutrition\/templates\/[^/]+$/.test(url.pathname)

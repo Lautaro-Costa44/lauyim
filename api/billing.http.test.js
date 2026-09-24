@@ -162,3 +162,77 @@ test('ajustes de cuotas: validación y guardado', async () => {
   assert.equal((await call('owner', 'GET', '/api/admin/billing/settings')).body.settings.grace_days, 7);
   assert.equal((await call('m1', 'PUT', '/api/admin/billing/settings', { grace_days: 1 })).status, 403);
 });
+
+test('dry_run devuelve el vencimiento que quedaría sin guardar nada', async () => {
+  const plan = (await call('owner', 'POST', '/api/admin/billing/plans', { name: 'Mensual B', price: 30000, durationDays: 30 })).body.plan;
+  await call('owner', 'PUT', '/api/admin/users/m2/billing', { planId: plan.id, dueDate: today });
+  const preview = await call('owner', 'POST', '/api/admin/users/m2/payments', { method: 'efectivo', dry_run: true });
+  assert.equal(preview.status, 200);
+  assert.equal(preview.body.dry_run, true);
+  assert.equal(preview.body.billing.dueDate, addDays(today, 30));
+  assert.deepEqual(preview.body.period, { dueDate: addDays(today, 30), periodStart: today, periodEnd: addDays(today, 30) });
+  const after = await call('owner', 'GET', '/api/admin/users/m2/billing');
+  assert.equal(after.body.billing.dueDate, today);
+  assert.equal(after.body.payments.length, 0);
+  // La vista previa valida igual que el pago real.
+  assert.equal((await call('owner', 'POST', '/api/admin/users/m2/payments', { method: 'cheque', dry_run: true })).status, 400);
+});
+
+test('anular pagos: solo el último vigente, en orden inverso, y el anulado no cuenta', async () => {
+  const p1 = (await call('owner', 'POST', '/api/admin/users/m2/payments', { method: 'efectivo' })).body.payment;
+  const p2 = (await call('owner', 'POST', '/api/admin/users/m2/payments', { method: 'efectivo' })).body.payment;
+  assert.equal(p1.previousDueDate, today);
+  assert.equal(p2.previousDueDate, addDays(today, 30));
+
+  const notLast = await call('owner', 'POST', `/api/admin/users/m2/payments/${p1.id}/void`, {});
+  assert.equal(notLast.status, 409);
+  assert.match(notLast.body.error, /último pago/);
+
+  const voided = await call('owner', 'POST', `/api/admin/users/m2/payments/${p2.id}/void`, { reason: 'cargado dos veces' });
+  assert.equal(voided.status, 200);
+  assert.equal(voided.body.billing.dueDate, addDays(today, 30));
+  assert.ok(voided.body.payment.voidedAt);
+  assert.equal(voided.body.payment.voidReason, 'cargado dos veces');
+  assert.equal(voided.body.payment.voidedByName, 'Dueña');
+  assert.equal((await call('owner', 'POST', `/api/admin/users/m2/payments/${p2.id}/void`, {})).status, 409);
+
+  // Con p2 anulado, p1 pasa a ser el último vigente.
+  const back = await call('owner', 'POST', `/api/admin/users/m2/payments/${p1.id}/void`, {});
+  assert.equal(back.status, 200);
+  assert.equal(back.body.billing.dueDate, today);
+  const history = (await call('owner', 'GET', '/api/admin/users/m2/billing')).body.payments;
+  assert.equal(history.length, 2);
+  assert.ok(history.every(p => p.voidedAt));
+
+  assert.equal((await call('owner', 'POST', `/api/admin/users/m1/payments/${p1.id}/void`, {})).status, 404);   // de otro socio
+});
+
+test('no se anula un pago si el vencimiento cambió después', async () => {
+  const p = (await call('owner', 'POST', '/api/admin/users/m2/payments', { method: 'efectivo' })).body.payment;
+  const billing = (await call('owner', 'GET', '/api/admin/users/m2/billing')).body.billing;
+  await call('owner', 'PUT', '/api/admin/users/m2/billing', { planId: billing.planId, dueDate: addDays(billing.dueDate, 3) });
+  const r = await call('owner', 'POST', `/api/admin/users/m2/payments/${p.id}/void`, {});
+  assert.equal(r.status, 409);
+  assert.match(r.body.error, /vencimiento cambió/);
+});
+
+test('anular devuelve el bloqueo y lo audita; un pago sin vencimiento previo no se anula', async () => {
+  const plan = (await call('owner', 'GET', '/api/admin/users/m2/billing')).body.billing.planId;
+  await call('owner', 'PUT', '/api/admin/users/m2/billing', { planId: plan, dueDate: addDays(today, -10) });
+  const p = (await call('owner', 'POST', '/api/admin/users/m2/payments', { method: 'efectivo' })).body.payment;
+  const r = await call('owner', 'POST', `/api/admin/users/m2/payments/${p.id}/void`, {});
+  assert.equal(r.status, 200);
+  assert.equal(r.body.billing.status, 'bloqueado');
+  const log = fs.readFileSync(path.join(dataDir, 'audit.log'), 'utf8');
+  for (const ev of ['admin.billing.payment_void', 'admin.billing.blocked']) assert.ok(log.includes(`"ev":"${ev}"`), ev);
+
+  // Un pago anterior a estas columnas no sabe a qué vencimiento volver.
+  const legacy = (await call('owner', 'POST', '/api/admin/users/m2/payments', { method: 'efectivo' })).body.payment;
+  const { DatabaseSync } = await import('node:sqlite');
+  const raw = new DatabaseSync(path.join(dataDir, 'gym.db'));
+  raw.prepare('UPDATE payments SET previous_due_date = NULL WHERE id = ?').run(legacy.id);
+  raw.close();
+  const old = await call('owner', 'POST', `/api/admin/users/m2/payments/${legacy.id}/void`, {});
+  assert.equal(old.status, 409);
+  assert.match(old.body.error, /vencimiento anterior/);
+});

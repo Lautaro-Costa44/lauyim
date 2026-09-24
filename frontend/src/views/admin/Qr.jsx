@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from 'react'
-import { useOutletContext } from 'react-router-dom'
+import { useAdmin } from './context.js'
 import { useStore } from '../../store/useStore.js'
 import { useUI } from '../../store/useUI.js'
 import { api } from '../../lib/api.js'
@@ -78,8 +78,8 @@ function QrAccessCard({ data, reload }) {
   </div>
 }
 
-// Owner only: App.jsx redirects non-owners to Resumen before this mounts.
+// Owner only: AdminLayout redirects non-owners to Resumen before this mounts.
 export default function Qr() {
-  const { qrAccess, setQrAccess } = useOutletContext()
+  const { qrAccess, setQrAccess } = useAdmin()
   return <div className="admin-single"><QrAccessCard data={qrAccess} reload={setQrAccess} /></div>
 }

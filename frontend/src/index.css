@@ -41,6 +41,10 @@
   --yellow:#ffd60a; --teal:#40c8e0; --indigo:#5e5ce6; --pink:#ff375f;
   --purple:#bf5af2; --mint:#63e6e2; --brown:#ac8e68; --grey:#8e8e93;
 
+  /* semantic status (Cuotas): success / warning / error. They point at the system palette,
+     so the light theme's own greens and reds follow without redefining them. */
+  --success: var(--green); --warning: var(--orange); --danger: var(--red);
+
   /* accent (per-account, synced) */
   --acc:  var(--green);
   --acc-2:#248a3d;
@@ -1099,6 +1103,37 @@ input[type="search"]::-webkit-search-cancel-button{display:none;-webkit-appearan
   .admin-nav .chip:active{background:var(--surface-2)}
   .admin-nav .chip.on{background:var(--acc);color:var(--on-acc)}
   .admin-nav .admin-nav-back{display:block;margin-top:12px;color:var(--label-2)}
+}
+
+/* ------------------------------------------------------ cuotas (billing) --- */
+/* status badges on .tag: soft tint for al día / por vencer / vencido, solid for bloqueado */
+.tag.st-al_dia{background:color-mix(in srgb,var(--success) 16%,transparent);color:var(--success)}
+.tag.st-por_vencer{background:color-mix(in srgb,var(--warning) 16%,transparent);color:var(--warning)}
+.tag.st-vencido{background:color-mix(in srgb,var(--danger) 16%,transparent);color:var(--danger)}
+.tag.st-bloqueado{background:var(--danger);color:#fff}
+/* summary tiles double as filters */
+.tile.tappable{text-align:left;width:100%}
+.tile.on{box-shadow:inset 0 0 0 1.5px var(--acc)}
+.billing-tiles .v{font-size:22px}
+.billing-actions{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 12px}
+.billing-filters{display:flex;flex-direction:column;gap:8px;margin:0 0 12px}
+.item .billing-side{display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex:none}
+/* desktop table: scrolls sideways inside its card, never the page */
+.billing-table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;background:var(--surface);border-radius:var(--r-card)}
+.billing-table{width:100%;min-width:720px;border-collapse:collapse;font-size:15px}
+.billing-table th{text-align:left;font-size:13px;font-weight:400;color:var(--label-2);padding:10px 14px;border-bottom:var(--hair) solid var(--sep)}
+.billing-table td{padding:10px 14px;border-bottom:var(--hair) solid var(--sep);vertical-align:middle}
+.billing-table tbody tr:last-child td{border-bottom:none}
+.billing-table tbody tr{cursor:pointer;transition:background var(--fast)}
+.billing-table tbody tr:hover{background:var(--surface-2)}
+.billing-table .num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+/* payment history: a voided payment stays listed, struck through */
+.pay-row.voided .lrow-t{text-decoration:line-through;color:var(--label-3)}
+.form-error{color:var(--danger);font-size:13px;line-height:1.4;margin-top:8px}
+@media (min-width:1000px){
+  .tiles.billing-tiles{grid-template-columns:repeat(3,1fr)}
+  .billing-filters{flex-direction:row;align-items:center;flex-wrap:wrap}
+  .billing-filters .searchf{flex:1;min-width:240px}
 }
 
 /* --------------------------------------------------- survey wizard --- */

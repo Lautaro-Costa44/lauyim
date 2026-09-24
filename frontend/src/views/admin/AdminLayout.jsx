@@ -1,10 +1,19 @@
-import { Suspense, useEffect, useRef, useState } from 'react'
-import { NavLink, Outlet, useLocation } from 'react-router-dom'
+import { lazy, Suspense, useEffect, useRef, useState } from 'react'
+import { Navigate, NavLink, Route, Routes, useLocation } from 'react-router-dom'
 import { useStore } from '../../store/useStore.js'
 import { useUI } from '../../store/useUI.js'
 import { api } from '../../lib/api.js'
 import { t } from '../../lib/i18n.js'
+import { AdminContext } from './context.js'
+// Resumen is the landing section: static, in this chunk, so /admin -> /admin/resumen renders at
+// once instead of keeping the previous screen while another chunk loads. The rest are lazy.
 import Resumen from './Resumen.jsx'
+const Usuarios = lazy(() => import('./Usuarios.jsx'))
+const Cuotas = lazy(() => import('./Cuotas.jsx'))
+const Rutinas = lazy(() => import('./Rutinas.jsx'))
+const Notificaciones = lazy(() => import('./Notificaciones.jsx'))
+const Qr = lazy(() => import('./Qr.jsx'))
+const Logs = lazy(() => import('./Logs.jsx'))
 
 // Admin-only operator dashboard (owner passkey + admin flag; guarded again server-side).
 // The layout owns every admin fetch — including the 15 s poll — and hands the data to the
@@ -55,8 +64,7 @@ export default function AdminLayout() {
     user.owner && ['qr', t('QR')],
     auditEnabled !== false && ['logs', t('Logs')],
   ].filter(Boolean)
-  // Resumen travels in the context: App.jsx renders it from here, without a lazy chunk of its own.
-  const ctx = { Resumen, users, inviteOnly, invites, presets, attendance, qrAccess, setQrAccess, tick, auditEnabled, loadUsers, loadInvites, loadPresets, loadAttendance, refresh }
+  const ctx = { users, inviteOnly, invites, presets, attendance, qrAccess, setQrAccess, tick, auditEnabled, loadUsers, loadInvites, loadPresets, loadAttendance, refresh }
 
   return <div className="admin-shell">
     <nav className="admin-nav chips" ref={navRef} aria-label={t('Admin')}>
@@ -64,9 +72,21 @@ export default function AdminLayout() {
       <NavLink to="/home" className="chip nocap admin-nav-back">{t('Volver a la app')}</NavLink>
     </nav>
     <div className="admin-main">
-      <Suspense fallback={<div className="page-loading" aria-busy="true" />}>
-        <Outlet context={ctx} />
-      </Suspense>
+      <AdminContext.Provider value={ctx}>
+        <Suspense fallback={<div className="page-loading" aria-busy="true" />}>
+          <Routes>
+            <Route index element={<Navigate to="/admin/resumen" replace />} />
+            <Route path="resumen" element={<Resumen />} />
+            <Route path="usuarios" element={<Usuarios />} />
+            <Route path="cuotas" element={<Cuotas />} />
+            <Route path="rutinas" element={<Rutinas />} />
+            <Route path="notificaciones" element={<Notificaciones />} />
+            <Route path="qr" element={user.owner ? <Qr /> : <Navigate to="/admin/resumen" replace />} />
+            <Route path="logs" element={<Logs />} />
+            <Route path="*" element={<Navigate to="/admin/resumen" replace />} />
+          </Routes>
+        </Suspense>
+      </AdminContext.Provider>
     </div>
   </div>
 }

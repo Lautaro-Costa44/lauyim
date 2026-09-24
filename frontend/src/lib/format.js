@@ -66,6 +66,22 @@ export const fmtNum = n => (Math.round(n * 10) / 10).toLocaleString(dateLocale()
 // 10 000 into "t", which is wrong for a pound profile and made one list mix "18.8t" with
 // "7'535 kg" — two numbers you can't compare at a glance.
 export const fmtVol = (v, unit) => fmtNum(v) + ' ' + unit
+
+// Cuotas: montos en pesos enteros con separador de miles es-AR ("$30.000") y fechas de
+// calendario como dd/mm/aaaa. Son los únicos formatters de dinero y de esa fecha: no rearmar
+// el formato en cada pantalla.
+const PESOS = new Intl.NumberFormat('es-AR', { maximumFractionDigits: 0 })
+export const fmtPesos = n => '$' + PESOS.format(Math.trunc(Number(n) || 0))
+export const fmtDateDMY = iso => {
+  const m = ISO_DAY.exec(String(iso ?? ''))
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : ''
+}
+// 'YYYY-MM-DD' + n días, en calendario puro (sin la tz del navegador).
+export const addDaysISO = (iso, days) => {
+  const m = ISO_DAY.exec(String(iso ?? ''))
+  if (!m) return ''
+  return new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]) + days)).toISOString().slice(0, 10)
+}
 // Plural forms are not automatic when the English string is the key.
 export const exCount = n => t(n === 1 ? '{0} exercise' : '{0} exercises', n)
 

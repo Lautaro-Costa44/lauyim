@@ -29,6 +29,10 @@ export async function api(path, opts) {
     if (data.error === 'license_expired') {
       window.dispatchEvent(new CustomEvent('gym:license_expired', { detail: data }))
     }
+    // Cuota bloqueada: el socio conserva la sesión, pero la app pasa a la pantalla de bloqueo.
+    if (data.error === 'membership_blocked') {
+      window.dispatchEvent(new CustomEvent('gym:membership_blocked', { detail: data }))
+    }
     throw e 
   }
   return data

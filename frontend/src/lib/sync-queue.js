@@ -14,6 +14,11 @@ const fallbackRead = () => { try { return JSON.parse(localStorage.getItem(FALLBA
 const fallbackWrite = rows => localStorage.setItem(FALLBACK_KEY, JSON.stringify(rows))
 const notifyQueueChanged = () => { try { window.dispatchEvent(new CustomEvent('gym:sync_queue_changed')) } catch {} }
 
+// Una escritura que falló se encola igual que sin conexión cuando reintentarla más tarde puede
+// funcionar: sin respuesta del servidor (offline) o bloqueo por cuota (membership_blocked: la
+// cola espera a que se renueve). Cualquier otro error del servidor es definitivo.
+export const shouldQueueOffline = error => !error?.status || error?.data?.error === 'membership_blocked'
+
 export async function enqueueSync(userId, changes, baseTs = null) {
   if (!changes.length) return null
   const id = crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`

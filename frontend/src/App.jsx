@@ -1,4 +1,4 @@
-import { HashRouter, Routes, Route, Navigate, useNavigate, useLocation, useOutletContext } from 'react-router-dom'
+import { HashRouter, Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom'
 import { lazy, Suspense, useEffect, useLayoutEffect } from 'react'
 import { useStore } from './store/useStore.js'
 import { useUI } from './store/useUI.js'
@@ -18,6 +18,7 @@ import { installKeyboardViewport } from './lib/keyboard.js'
 import { disableKeyboardAutofill } from './lib/input-safety.js'
 import Login from './views/Login.jsx'
 import LicenseExpired from './views/LicenseExpired.jsx'
+import MembershipBlocked from './views/MembershipBlocked.jsx'
 // Keep every authenticated screen out of the initial payload. The service worker
 // caches each chunk after first use, so repeat visits remain instant without
 // forcing a large first download on mobile connections.
@@ -30,22 +31,8 @@ const Nutricion = lazy(() => import('./views/Nutricion.jsx'))
 const History = lazy(() => import('./views/History.jsx'))
 const Settings = lazy(() => import('./views/Settings.jsx'))
 const AdminLayout = lazy(() => import('./views/admin/AdminLayout.jsx'))
-const AdminUsuarios = lazy(() => import('./views/admin/Usuarios.jsx'))
-const AdminCuotas = lazy(() => import('./views/admin/Cuotas.jsx'))
-const AdminRutinas = lazy(() => import('./views/admin/Rutinas.jsx'))
-const AdminNotificaciones = lazy(() => import('./views/admin/Notificaciones.jsx'))
-const AdminQr = lazy(() => import('./views/admin/Qr.jsx'))
-const AdminLogs = lazy(() => import('./views/admin/Logs.jsx'))
 const SurveyWizard = lazy(() => import('./views/SurveyWizard.jsx'))
 const ImportPlan = lazy(() => import('./views/ImportPlan.jsx'))
-
-// Resumen is the admin landing section. AdminLayout imports it statically (same chunk) and
-// hands it over through the outlet context, so /admin -> /admin/resumen renders at once
-// instead of keeping the previous screen while another chunk loads.
-function AdminResumen() {
-  const { Resumen } = useOutletContext()
-  return <Resumen />
-}
 
 bindUI(useUI)   // lets the shared controls open sheets without importing the store at module scope
 
@@ -72,6 +59,7 @@ function Shell() {
   const { S, user, ready } = useStore()
   const config = useStore(s => s.config)
   const licenseExpired = useStore(s => s.licenseExpired)
+  const membershipBlocked = useStore(s => s.membershipBlocked)
   const isGuest = useStore(s => s.isGuest())
   const langV = useLang()   // re-renders the whole shell when the language (pack) changes
   useLayoutEffect(() => {
@@ -105,6 +93,8 @@ function Shell() {
   
   // Si no se permiten invitados, estar en modo invitado NO cuenta como estar autenticado
   const authed = !!user || (allowGuest && isGuest)
+  // Bloqueo por cuota: pantalla completa, sin TabBar ni RestTimer. Nunca para staff.
+  const blocked = !licenseExpired && membershipBlocked && !!user && !user.admin
   const isAdminPath = loc.pathname === '/admin' || loc.pathname.startsWith('/admin/')
   if (!ready) return (
     <div id="app">
@@ -121,7 +111,7 @@ function Shell() {
           shares one key: switching sections must not re-mount the admin layout (and its poll). */}
       <div id="app" className={'vfade' + (isAdminPath ? ' admin-app' : '')} key={isAdminPath ? '/admin' : loc.pathname}>
         <ErrorBoundary>
-          {licenseExpired ? <LicenseExpired /> : !authed ? <Login /> : (
+          {licenseExpired ? <LicenseExpired /> : !authed ? <Login /> : blocked ? <MembershipBlocked /> : (
             <Suspense fallback={<div className="page-loading" aria-busy="true" />}> 
             <Routes>
               <Route path="/home" element={<Home />} />
@@ -136,25 +126,16 @@ function Shell() {
               <Route path="/settings" element={<Settings />} />
               <Route path="/import" element={<ImportPlan />} />
               <Route path="/onboarding/encuesta" element={<SurveyWizard />} />
-              <Route path="/admin" element={user?.admin ? <AdminLayout /> : <Navigate to="/home" replace />}>
-                <Route index element={<Navigate to="/admin/resumen" replace />} />
-                <Route path="resumen" element={<AdminResumen />} />
-                <Route path="usuarios" element={<AdminUsuarios />} />
-                <Route path="cuotas" element={<AdminCuotas />} />
-                <Route path="rutinas" element={<AdminRutinas />} />
-                <Route path="notificaciones" element={<AdminNotificaciones />} />
-                <Route path="qr" element={user?.owner ? <AdminQr /> : <Navigate to="/admin/resumen" replace />} />
-                <Route path="logs" element={<AdminLogs />} />
-                <Route path="*" element={<Navigate to="/admin/resumen" replace />} />
-              </Route>
+              {/* The admin sections are routed inside AdminLayout (views/admin/AdminLayout.jsx). */}
+              <Route path="/admin/*" element={user?.admin ? <AdminLayout /> : <Navigate to="/home" replace />} />
               <Route path="*" element={<Navigate to="/home" replace />} />
             </Routes>
             </Suspense>
           )}
         </ErrorBoundary>
       </div>
-      {!licenseExpired && loc.pathname !== '/onboarding/encuesta' && <TabBar onStart={startFlow} />}
-      {!licenseExpired && <RestTimer />}
+      {!licenseExpired && !blocked && loc.pathname !== '/onboarding/encuesta' && <TabBar onStart={startFlow} />}
+      {!licenseExpired && !blocked && <RestTimer />}
       {/* Boundary propio: Modals vive fuera de #app, así que un throw acá subía hasta la raíz y
           desmontaba la app entera — pantalla negra sin salida. NO va keyed en la ruta: Modals
           debe sobrevivir a la navegación (re-montarlo volvería a apilar entradas de historial

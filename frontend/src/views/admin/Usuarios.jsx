@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import { useOutletContext } from 'react-router-dom'
+import { useAdmin } from './context.js'
+import { useDesktop } from './useDesktop.js'
 import { useUI } from '../../store/useUI.js'
 import { api } from '../../lib/api.js'
 import { fmtDate } from '../../lib/format.js'
@@ -33,24 +34,9 @@ function InvitesCard({ invites, reload }) {
   </div>
 }
 
-// Same breakpoint as the desktop block of index.css.
-const DESKTOP = '(min-width: 1000px)'
-function useDesktop() {
-  const [desktop, setDesktop] = useState(() => !!window.matchMedia?.(DESKTOP).matches)
-  useEffect(() => {
-    const mql = window.matchMedia?.(DESKTOP)
-    if (!mql) return
-    const onChange = () => setDesktop(mql.matches)
-    onChange()
-    mql.addEventListener('change', onChange)
-    return () => mql.removeEventListener('change', onChange)
-  }, [])
-  return desktop
-}
-
 export default function Usuarios() {
   const openSheet = useUI(s => s.openSheet)
-  const { users, invites, loadUsers, loadInvites } = useOutletContext()
+  const { users, invites, loadUsers, loadInvites } = useAdmin()
   const [userSearch, setUserSearch] = useState('')
   const [userPage, setUserPage] = useState(1)
   const desktop = useDesktop()

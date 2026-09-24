@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useOutletContext } from 'react-router-dom'
+import { useAdmin } from './context.js'
 import { useUI } from '../../store/useUI.js'
 import { api } from '../../lib/api.js'
 import { DAYN } from '../../lib/format.js'
@@ -106,6 +106,6 @@ function PresetsCard({ presets, openSheet, reload }) {
 
 export default function Rutinas() {
   const openSheet = useUI(s => s.openSheet)
-  const { presets, loadPresets } = useOutletContext()
+  const { presets, loadPresets } = useAdmin()
   return <div className="admin-single"><PresetsCard presets={presets} openSheet={openSheet} reload={loadPresets} /></div>
 }

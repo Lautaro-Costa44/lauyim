@@ -1,4 +1,5 @@
-import { useNavigate, useOutletContext } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
+import { useAdmin } from './context.js'
 import { useUI } from '../../store/useUI.js'
 import { api } from '../../lib/api.js'
 import { t } from '../../lib/i18n.js'
@@ -51,7 +52,7 @@ export default function Resumen() {
   const nav = useNavigate()
   const toast = useUI(s => s.toast)
   const openSheet = useUI(s => s.openSheet)
-  const { users, attendance, loadUsers, loadAttendance, refresh } = useOutletContext()
+  const { users, attendance, loadUsers, loadAttendance, refresh } = useAdmin()
 
   const openUser = id => openSheet(close => <UserDetail id={id} onChanged={loadUsers} close={close} />)
   const liveUsers = (users || []).filter(u => u.live)

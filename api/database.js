@@ -169,6 +169,11 @@ export function initDatabase() {
   // en silencio, igual que en una base que ya migró.
   try { db.exec(`ALTER TABLE workout_sets ADD COLUMN meta TEXT;`); } catch {}
   try { db.exec(`ALTER TABLE workouts ADD COLUMN meta TEXT;`); } catch {}
+  // Cuotas v1: anular pagos. payments ya existe acá (lo crea schema.sql), así que estos ALTER
+  // van después del schema; en una base nueva fallan en silencio porque el CREATE los trae.
+  for (const col of ['previous_due_date TEXT', 'previous_plan_id INTEGER', 'voided_at INTEGER', 'voided_by TEXT', 'void_reason TEXT']) {
+    try { db.exec(`ALTER TABLE payments ADD COLUMN ${col};`); } catch {}
+  }
   db.exec(`CREATE TABLE IF NOT EXISTS sync_operations (
     user_id TEXT NOT NULL,
     op_id TEXT NOT NULL,
@@ -1620,16 +1625,19 @@ export function setMemberBilling(userId, { planId, dueDate }) {
 }
 
 // Guarda el pago y mueve el vencimiento en una sola transacción: nunca queda un pago sin
-// su vencimiento nuevo, ni al revés.
+// su vencimiento nuevo, ni al revés. El plan y vencimiento anteriores quedan en el pago para
+// poder anularlo (voidPayment).
 export function recordPayment({ userId, userName, planId, planName, amount, method, paidAt, periodStart, periodEnd, dueDate, note, createdBy }) {
   const db = getDatabase();
   const now = Date.now();
   db.exec('BEGIN IMMEDIATE');
   try {
+    const before = db.prepare('SELECT plan_id, due_date FROM member_billing WHERE user_id = ?').get(userId);
     const { lastInsertRowid } = db.prepare(`
-      INSERT INTO payments (user_id, user_name, plan_id, plan_name, amount, method, paid_at, period_start, period_end, note, created_by, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(userId, userName ?? null, planId, planName ?? null, amount, method, paidAt, periodStart, periodEnd, note ?? null, createdBy ?? null, now);
+      INSERT INTO payments (user_id, user_name, plan_id, plan_name, amount, method, paid_at, period_start, period_end, note, created_by, created_at, previous_due_date, previous_plan_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(userId, userName ?? null, planId, planName ?? null, amount, method, paidAt, periodStart, periodEnd, note ?? null, createdBy ?? null, now,
+      before?.due_date ?? null, before?.plan_id ?? null);
     db.prepare(`
       INSERT INTO member_billing (user_id, plan_id, due_date, push_sent_for_due, updated_at)
       VALUES (?, ?, ?, NULL, ?)
@@ -1645,24 +1653,75 @@ export function recordPayment({ userId, userName, planId, planName, amount, meth
   }
 }
 
+const paymentFromRow = row => row ? {
+  id: row.id,
+  userId: row.user_id,
+  userName: row.user_name,
+  planId: row.plan_id,
+  planName: row.plan_name,
+  amount: row.amount,
+  method: row.method,
+  paidAt: row.paid_at,
+  periodStart: row.period_start,
+  periodEnd: row.period_end,
+  note: row.note,
+  createdBy: row.created_by,
+  createdByName: row.created_by_name ?? null,
+  created: row.created_at,
+  previousDueDate: row.previous_due_date,
+  previousPlanId: row.previous_plan_id,
+  voidedAt: row.voided_at,
+  voidedBy: row.voided_by,
+  voidedByName: row.voided_by_name ?? null,
+  voidReason: row.void_reason
+} : null;
+
+const PAYMENT_SELECT = `
+  SELECT p.*, cu.name AS created_by_name, vu.name AS voided_by_name
+  FROM payments p
+  LEFT JOIN users cu ON cu.id = p.created_by
+  LEFT JOIN users vu ON vu.id = p.voided_by
+`;
+
+// Historial completo, anulados incluidos (marcados con voidedAt).
 export function getPaymentsByUserId(userId, limit = 200) {
-  return getDatabase().prepare(`
-    SELECT * FROM payments WHERE user_id = ? ORDER BY paid_at DESC, id DESC LIMIT ?
-  `).all(userId, limit).map(row => ({
-    id: row.id,
-    userId: row.user_id,
-    userName: row.user_name,
-    planId: row.plan_id,
-    planName: row.plan_name,
-    amount: row.amount,
-    method: row.method,
-    paidAt: row.paid_at,
-    periodStart: row.period_start,
-    periodEnd: row.period_end,
-    note: row.note,
-    createdBy: row.created_by,
-    created: row.created_at
-  }));
+  return getDatabase().prepare(`${PAYMENT_SELECT} WHERE p.user_id = ? ORDER BY p.paid_at DESC, p.id DESC LIMIT ?`)
+    .all(userId, limit).map(paymentFromRow);
+}
+
+export function getPaymentById(id) {
+  return paymentFromRow(getDatabase().prepare(`${PAYMENT_SELECT} WHERE p.id = ?`).get(id));
+}
+
+// El último pago vigente es el último REGISTRADO (id), no el de paid_at más alto: cada pago
+// guardó el vencimiento que había al cargarlo, así que solo se deshacen en orden inverso.
+export function getLatestActivePayment(userId) {
+  return paymentFromRow(getDatabase().prepare(`${PAYMENT_SELECT} WHERE p.user_id = ? AND p.voided_at IS NULL ORDER BY p.id DESC LIMIT 1`).get(userId));
+}
+
+// Anula un pago y devuelve al socio el plan y vencimiento que tenía antes, en una transacción.
+// Las condiciones (último vigente, vencimiento sin cambios) las valida quien llama.
+export function voidPayment({ paymentId, userId, voidedBy, reason, planId, dueDate }) {
+  const db = getDatabase();
+  const now = Date.now();
+  db.exec('BEGIN IMMEDIATE');
+  try {
+    const marked = db.prepare(`
+      UPDATE payments SET voided_at = ?, voided_by = ?, void_reason = ? WHERE id = ? AND user_id = ? AND voided_at IS NULL
+    `).run(now, voidedBy ?? null, reason ?? null, paymentId, userId);
+    if (marked.changes !== 1) throw new Error('payment already voided or missing');
+    db.prepare(`
+      INSERT INTO member_billing (user_id, plan_id, due_date, push_sent_for_due, updated_at)
+      VALUES (?, ?, ?, NULL, ?)
+      ON CONFLICT(user_id) DO UPDATE SET
+        plan_id = excluded.plan_id, due_date = excluded.due_date,
+        push_sent_for_due = NULL, updated_at = excluded.updated_at
+    `).run(userId, planId ?? null, planId == null ? null : dueDate, now);
+    db.exec('COMMIT');
+  } catch (error) {
+    try { db.exec('ROLLBACK'); } catch {}
+    throw error;
+  }
 }
 
 // Marca el aviso push como enviado solo si el vencimiento sigue siendo el mismo: si un pago

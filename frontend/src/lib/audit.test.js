@@ -16,7 +16,9 @@ const EVENTS = [
     'admin.nutrition.suggestion.update', 'admin.nutrition.suggestion.enable',
   'admin.nutrition.suggestion.remove', 'admin.injury.update',
   'admin.injury.exercise_warning.override', 'admin.routine.update',
-  'owner.user.promote', 'owner.user.demote', 'owner.user.delete', 'owner.qr.regenerate'
+  'owner.user.promote', 'owner.user.demote', 'owner.user.delete', 'owner.qr.regenerate',
+  'admin.billing.plan_create', 'admin.billing.plan_update', 'admin.billing.assign', 'admin.billing.payment',
+  'admin.billing.payment_void', 'admin.billing.settings', 'admin.billing.blocked', 'admin.billing.unblocked'
 ]
 const REASONS = [
   'challenge-expired', 'unknown-credential', 'verify-error', 'not-verified',

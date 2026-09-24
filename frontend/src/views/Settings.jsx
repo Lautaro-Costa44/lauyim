@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { startTourA, startTourB, startTourNutrition } from '../lib/onboarding.js'
 import { useStore, DEF, hasData } from '../store/useStore.js'
 import { useUI } from '../store/useUI.js'
-import { ACCENTS, todayISO, localTZ, DAYN } from '../lib/format.js'
+import { ACCENTS, todayISO, localTZ, DAYN, fmtDateDMY } from '../lib/format.js'
 import { effortOf } from '../lib/history.js'
 import { POLICIES, POLICY_NAME, POLICY_DESC } from '../lib/progression.js'
 import Stepper from '../components/Stepper.jsx'
@@ -630,6 +630,12 @@ function PushCard({ S, update, toast }) {
   const [on, setOn] = useState(false)
   const [busy, setBusy] = useState(false)
   const supported = pushSupported()
+  // Con un plan asignado por el gym (Cuotas v1), el vencimiento y su aviso los maneja el gym:
+  // el recordatorio manual de cuota se reemplaza por esta fila de solo lectura.
+  const billing = useStore(s => s.billing)
+  const hasPlan = !!billing?.hasPlan
+  const planRow = hasPlan && <Row icon="calendar" iconTint="var(--teal)" title={t('Cuota del gym')} subtitle={billing.planName || null}
+    value={billing.dueDate ? t('Vence el {0}', fmtDateDMY(billing.dueDate)) : null} />
 
   useEffect(() => {
     if (!supported) return
@@ -654,6 +660,7 @@ function PushCard({ S, update, toast }) {
   if (!supported) return (
     <Section title={t('Notifications')}>
       <Row icon="bellSlash" iconTint="var(--grey)" title={t('Not supported in this browser.')} />
+      {planRow}
     </Section>
   )
 
@@ -673,16 +680,16 @@ function PushCard({ S, update, toast }) {
           <Switch checked={!!S.reminder?.on} onChange={() => update(s => { s.reminder = { ...(s.reminder || DEF.reminder), on: !s.reminder?.on, tz: localTZ() } })} />
         </Row>
       )}
-      {on && (S.reminder?.on || S.reminder?.feeOn) && (
+      {on && (S.reminder?.on || (!hasPlan && S.reminder?.feeOn)) && (
         <Row icon="clock" iconTint="var(--purple)" title={t('Reminder time')}>
           <input {...NO_AUTOFILL} name="app-reminder-time" type="time" className="timef" value={S.reminder?.time || DEF.reminder.time}
             onChange={e => update(s => { s.reminder = { ...(s.reminder || DEF.reminder), time: e.target.value, tz: localTZ() } })} />
         </Row>
       )}
-      {on && <Row icon="calendar" iconTint="var(--teal)" title={t('Gym membership fee')} subtitle={t('Receive a reminder when your membership fee is due.')}>
+      {hasPlan ? planRow : on && <Row icon="calendar" iconTint="var(--teal)" title={t('Gym membership fee')} subtitle={t('Receive a reminder when your membership fee is due.')}>
         <Switch checked={!!S.reminder?.feeOn} onChange={v => update(s => { s.reminder = { ...(s.reminder || DEF.reminder), feeOn: v, tz: localTZ() } })} />
       </Row>}
-      {on && S.reminder?.feeOn && <>
+      {on && !hasPlan && S.reminder?.feeOn && <>
         <SelectRow icon="timer" iconTint="var(--teal)" title={t('Payment frequency')}
           value={S.reminder?.feeInterval || 'monthly'} onChange={v => update(s => { s.reminder = { ...(s.reminder || DEF.reminder), feeInterval: v } })}
           options={[['monthly', 'Monthly'], ['quarterly', 'Quarterly'], ['bimonthly', 'Every two months'], ['annual', 'Annual']].map(([value, label]) => ({ value, label: t(label) }))} />

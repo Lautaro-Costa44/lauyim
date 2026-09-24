@@ -11,6 +11,7 @@ import { Button, TextField, SelectRow, Segmented, Section, Row, Switch, NumberFi
 import { FoodPicker, GrupoComidaRow, totalesDeIngredientes, FRANJAS } from '../Nutricion.jsx'
 import RoutineEditor from '../RoutineEditor.jsx'
 import { LESIONES_OPTIONS, OBJETIVO_OPTIONS, CheckPill } from '../SurveyWizard.jsx'
+import { BillingSummaryCard } from './billing/common.jsx'
 import { MAX_ROUTINE_GROUPS, canAddGroup, validateGroupName, syncActiveGroupInState, switchActiveGroup, addGroupToState, removeGroupFromState } from '../../lib/routineGroups.js'
 
 // Shared by more than one admin section: UserDetail opens from Resumen ("Training now") and
@@ -727,6 +728,7 @@ export function UserDetail({ id, onChanged, close }) {
       <div className="tile"><div className="l">{t('Routines')}</div><div className="v" style={{ fontSize: '1.1rem' }}>{d.routines.length}</div></div>
       <div className="tile"><div className="l">{t('Last sync')}</div><div className="v" style={{ fontSize: '.95rem' }}>{rel(d.lastSync)}</div></div>
     </div>
+    <BillingSummaryCard userId={u.id} userName={u.name} openSheet={openSheet} onChanged={onChanged} />
     <Button variant="tinted" style={{ width: '100%', margin: '4px 0 4px' }}
       onClick={() => openSheet((c, { setOnBack }) => <AdminManageSheet userId={u.id} userName={u.name} close={c} setOnBack={setOnBack} />, { locked: true, fullScreen: true, backGesture: true })}>
       {t('Administrar Nutrición/Rutina')}

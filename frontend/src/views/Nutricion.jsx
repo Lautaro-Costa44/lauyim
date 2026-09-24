@@ -13,7 +13,7 @@ import HistorialNutricion from './HistorialNutricion.jsx'
 import { api } from '../lib/api.js'
 import { todayISO } from '../lib/format.js'
 import { useUI } from '../store/useUI.js'
-import { cancelPendingRequest, enqueueRequest, updatePendingRequest } from '../lib/sync-queue.js'
+import { cancelPendingRequest, enqueueRequest, shouldQueueOffline, updatePendingRequest } from '../lib/sync-queue.js'
 import { startTourNutrition } from '../lib/onboarding.js'
 
 const MEALS_CACHE_PREFIX = 'gym_nutrition_cache_v1:'
@@ -149,7 +149,7 @@ function MealForm({ alimento, franja, close, onBack, onSaved, onAddIngrediente, 
         const payload = { fecha: todayISO(), franja: mealFranja, ...ingrediente }
         try { await api('/api/comidas', { method: 'POST', body: JSON.stringify(payload) }) }
         catch (error) {
-          if (error.status) throw error
+          if (!shouldQueueOffline(error)) throw error
           const tempId = offlineId(); payload.tempId = tempId
           cacheMeal(payload.fecha, { ...payload, id: tempId })
           const user = useStore.getState().user
@@ -204,7 +204,7 @@ function ManualFoodForm({ franja, close, onBack, onSaved, onAddIngrediente }) {
         const payload = { fecha: todayISO(), franja, ...ingrediente }
         try { await api('/api/comidas', { method: 'POST', body: JSON.stringify(payload) }) }
         catch (error) {
-          if (error.status) throw error
+          if (!shouldQueueOffline(error)) throw error
           const tempId = offlineId(); payload.tempId = tempId
           cacheMeal(payload.fecha, { ...payload, id: tempId })
           const user = useStore.getState().user
@@ -277,7 +277,7 @@ export function FoodPicker({ franja, close, onSaved, onAddIngrediente, onAdded }
             onSaved()
             close()
           } catch (error) {
-            if (error.status) { setError('No se pudo agregar la comida compuesta. Intentá nuevamente.'); return }
+            if (!shouldQueueOffline(error)) { setError('No se pudo agregar la comida compuesta. Intentá nuevamente.'); return }
             const date = todayISO()
             const grupoId = offlineId()
             const requestPayload = { grupo_nombre: alimento.nombre, franja, fecha: date, ingredientes: alimento.ingredientes, tempGroupId: grupoId }
@@ -389,7 +389,7 @@ function ComidaCompuestaBuilder({ close, onSaved, plantillaId, initialNombre = '
         const payload = { id: plantillaId, nombre: nombreComida.trim(), ingredientes, expectedUpdatedAt: cachedTemplate?.updated_at ?? null }
         try { await api('/api/plantillas/' + encodeURIComponent(plantillaId), { method: 'PUT', body: JSON.stringify(payload) }) }
         catch (error) {
-          if (error.status) throw error
+          if (!shouldQueueOffline(error)) throw error
           const cached = readTemplatesCache() || []
           writeTemplatesCache(cached.map(item => item.id === plantillaId ? { ...item, nombre: payload.nombre, ingredientes } : item))
           const user = useStore.getState().user
@@ -405,7 +405,7 @@ function ComidaCompuestaBuilder({ close, onSaved, plantillaId, initialNombre = '
         const payload = { nombre: nombreComida.trim(), franja: franjaSeleccionada, fecha: todayISO(), ingredientes }
         try { await api('/api/comidas-compuestas', { method: 'POST', body: JSON.stringify(payload) }) }
         catch (error) {
-          if (error.status) throw error
+          if (!shouldQueueOffline(error)) throw error
           const date = payload.fecha
           const groupId = offlineId()
           payload.tempGroupId = groupId
@@ -541,7 +541,7 @@ function MisComidasCompuestas({ close }) {
         writeTemplatesCache((readTemplatesCache() || []).filter(item => item.id !== plantilla.id))
         loadPlantillas()
       } catch (error) {
-        if (error.status) return
+        if (!shouldQueueOffline(error)) return
         writeTemplatesCache((readTemplatesCache() || []).filter(item => item.id !== plantilla.id))
         const user = useStore.getState().user
         if (user) {
@@ -651,7 +651,7 @@ function SugerenciaComida({ close, onSaved }) {
       }) })
       onSaved()
     } catch (error) {
-      if (error.status) { setError('No se pudo agregar la sugerencia. Intentá nuevamente.'); return }
+      if (!shouldQueueOffline(error)) { setError('No se pudo agregar la sugerencia. Intentá nuevamente.'); return }
       const date = todayISO()
       const grupoId = offlineId()
       plantilla.ingredientes.forEach(item => cacheMeal(date, { ...item, id: offlineId(), grupo_id: grupoId, grupo_nombre: plantilla.nombre, fecha: date, franja }))
@@ -731,12 +731,12 @@ export default function Nutricion() {
   }, [onboardingNutritionCompletado])
   const removeMeal = async id => {
     try { await api('/api/comidas/' + id, { method: 'DELETE' }) }
-    catch (error) { if (error.status) throw error; removeCachedMeal(todayISO(), item => item.id === id); const user = useStore.getState().user; if (user) await enqueueRequest(user.id, { kind: 'meal-delete', payload: { id } }) }
+    catch (error) { if (!shouldQueueOffline(error)) throw error; removeCachedMeal(todayISO(), item => item.id === id); const user = useStore.getState().user; if (user) await enqueueRequest(user.id, { kind: 'meal-delete', payload: { id } }) }
     loadComidas()
   }
   const removeGrupo = async grupoId => {
     try { await api('/api/comidas/grupo/' + encodeURIComponent(grupoId), { method: 'DELETE' }) }
-    catch (error) { if (error.status) throw error; removeCachedMeal(todayISO(), item => item.grupo_id === grupoId); const user = useStore.getState().user; if (user) await enqueueRequest(user.id, { kind: 'meal-group-delete', payload: { grupoId } }) }
+    catch (error) { if (!shouldQueueOffline(error)) throw error; removeCachedMeal(todayISO(), item => item.grupo_id === grupoId); const user = useStore.getState().user; if (user) await enqueueRequest(user.id, { kind: 'meal-group-delete', payload: { grupoId } }) }
     loadComidas()
   }
 

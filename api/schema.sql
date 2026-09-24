@@ -471,6 +471,8 @@ CREATE TABLE IF NOT EXISTS member_billing (
 
 -- Historial de pagos. Sin FK a users a propósito: el registro contable sobrevive al borrado
 -- del socio, por eso guarda nombre y plan como snapshot.
+-- previous_*: plan y vencimiento del socio antes del pago, para poder anularlo. Un pago
+-- anulado (voided_at) queda en el historial pero no cuenta.
 CREATE TABLE IF NOT EXISTS payments (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id TEXT NOT NULL,
@@ -484,6 +486,11 @@ CREATE TABLE IF NOT EXISTS payments (
   period_end TEXT,
   note TEXT,
   created_by TEXT,
-  created_at INTEGER
+  created_at INTEGER,
+  previous_due_date TEXT,
+  previous_plan_id INTEGER,
+  voided_at INTEGER,
+  voided_by TEXT,
+  void_reason TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_payments_user_paid ON payments(user_id, paid_at);

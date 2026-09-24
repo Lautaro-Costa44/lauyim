@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import { Navigate, useOutletContext } from 'react-router-dom'
+import { Navigate } from 'react-router-dom'
+import { useAdmin } from './context.js'
 import { useUI } from '../../store/useUI.js'
 import { api } from '../../lib/api.js'
 import { fmtNum } from '../../lib/format.js'
@@ -70,7 +71,7 @@ function AuditCard({ tick }) {
 
 // AUDIT_LOG=0: AdminLayout hides the tab and the route falls back to Resumen.
 export default function Logs() {
-  const { tick, auditEnabled } = useOutletContext()
+  const { tick, auditEnabled } = useAdmin()
   if (auditEnabled === false) return <Navigate to="/admin/resumen" replace />
   return <div style={{ marginTop: 14 }}><AuditCard tick={tick} /></div>
 }
