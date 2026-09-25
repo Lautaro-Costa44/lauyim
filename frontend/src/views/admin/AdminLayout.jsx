@@ -45,15 +45,29 @@ export default function AdminLayout() {
   // poll every 15s so the "training now" section stays live without a manual refresh
   useEffect(() => { if (!user?.admin) return; loadUsers(); loadInvites(); loadPresets(); loadAttendance(); loadQrAccess(); const iv = setInterval(() => { loadUsers(); loadAttendance() }, 15000); return () => clearInterval(iv) }, [user?.owner])
 
-  // Phone tabs scroll sideways inside their own strip: keep the active one in view, also when
-  // the page is opened from a direct link to a section further right.
-  useEffect(() => {
+  // Phone tabs scroll sideways inside their own strip: center the active one, also when the
+  // page is opened from a direct link to a section further right. Only the strip scrolls
+  // (scrollIntoView would also move the page vertically); the first centering jumps, later
+  // ones glide. From 1000px the tabs are a side menu and nothing scrolls.
+  const firstCenter = useRef(true)
+  const centerActiveTab = smooth => {
     const nav = navRef.current
-    const on = nav?.querySelector('.on')
-    if (!on || nav.scrollWidth <= nav.clientWidth) return
-    const n = nav.getBoundingClientRect(), a = on.getBoundingClientRect()
-    nav.scrollLeft += (a.left - n.left) - (n.width - a.width) / 2
+    const on = nav?.querySelector('a.on')
+    if (!on || window.matchMedia('(min-width: 1000px)').matches) return false
+    const left = on.offsetLeft - (nav.clientWidth - on.offsetWidth) / 2
+    nav.scrollTo({ left: Math.max(0, left), behavior: smooth ? 'smooth' : 'auto' })
+    return true
+  }
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => { if (centerActiveTab(!firstCenter.current)) firstCenter.current = false })
+    return () => cancelAnimationFrame(frame)
   }, [loc.pathname, user?.owner, auditEnabled, billingEnabled])
+  // Chip widths change once the web font lands: center again, without animation.
+  useEffect(() => {
+    let alive = true
+    document.fonts?.ready.then(() => { if (alive) centerActiveTab(false) })
+    return () => { alive = false }
+  }, [])
 
   if (!user?.admin) return null
 

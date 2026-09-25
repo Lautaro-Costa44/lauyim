@@ -181,6 +181,16 @@ describe('admin routes', () => {
     expect(text()).toContain('Sin DNI no se pueden detectar socios duplicados')
     expect(document.querySelector('[role="switch"][aria-label="DNI obligatorio"]').disabled).toBe(true)
     expect(document.querySelector('[role="switch"][aria-label="Celular obligatorio"]').disabled).toBe(false)
+    const dniRow = [...document.querySelectorAll('.access-row')].find(r => r.querySelector('.access-name')?.textContent === 'DNI')
+    expect(dniRow.querySelector('.access-warn').textContent).toBe('Sin DNI no se pueden detectar socios duplicados')
+  })
+
+  it('registration fields: one header over the switches, rows with no switch labels', async () => {
+    await mount('#/admin/acceso', OWNER)
+    const [head, ...rows] = document.querySelectorAll('.access-fields > .access-row')
+    expect([...head.querySelectorAll('.access-col')].map(c => c.textContent)).toEqual(['Pedir', 'Obligatorio'])
+    expect(rows.map(r => r.textContent)).toEqual(['Nombre y apellido', 'DNI', 'Celular', 'Mail'])
+    for (const r of rows) expect(r.querySelectorAll('[role="switch"][aria-label]')).toHaveLength(2)
   })
 
   it('turning "Pedir" off sends required: false too', async () => {
@@ -247,6 +257,64 @@ describe('admin routes', () => {
     expect(document.querySelector('#tabbar').className).toBe('admin')
     await go('#/home')
     expect(document.querySelector('#tabbar').className).toBe('')
+  })
+})
+
+// happy-dom has no layout: every tab is 100px wide and the strip shows 300px, so centering
+// tab i means scrollLeft = i * 100 - 100.
+describe('admin tabs on a phone: the active one is centered', () => {
+  let scrolls
+  const stubs = {
+    offsetLeft() { return [...this.parentElement.children].indexOf(this) * 100 },
+    offsetWidth() { return 100 },
+  }
+  const findDescriptor = name => {
+    for (let p = HTMLElement.prototype; p; p = Object.getPrototypeOf(p)) {
+      const d = Object.getOwnPropertyDescriptor(p, name)
+      if (d) return d
+    }
+  }
+  const saved = {}
+  beforeEach(() => {
+    scrolls = []
+    for (const name of ['offsetLeft', 'offsetWidth', 'clientWidth']) {
+      saved[name] = Object.getOwnPropertyDescriptor(HTMLElement.prototype, name)
+      const real = findDescriptor(name)
+      Object.defineProperty(HTMLElement.prototype, name, {
+        configurable: true,
+        get() {
+          if (name === 'clientWidth' && this.classList.contains('admin-nav')) return 300
+          if (name !== 'clientWidth' && this.parentElement?.classList.contains('admin-nav')) return stubs[name].call(this)
+          return real ? real.get.call(this) : 0
+        }
+      })
+    }
+    saved.scrollTo = HTMLElement.prototype.scrollTo
+    HTMLElement.prototype.scrollTo = function (opts) { if (this.classList.contains('admin-nav')) scrolls.push(opts) }
+  })
+  afterEach(() => {
+    for (const name of ['offsetLeft', 'offsetWidth', 'clientWidth']) {
+      if (saved[name]) Object.defineProperty(HTMLElement.prototype, name, saved[name])
+      else delete HTMLElement.prototype[name]
+    }
+    HTMLElement.prototype.scrollTo = saved.scrollTo
+  })
+
+  it('a direct link to the last tab jumps to it, later taps glide', async () => {
+    await mount('#/admin/logs', OWNER)        // Logs is tab 6
+    expect(scrolls[0]).toEqual({ left: 500, behavior: 'auto' })
+    expect(scrolls.every(s => s.behavior === 'auto')).toBe(true)
+    await go('#/admin/resumen')
+    expect(scrolls.at(-1)).toEqual({ left: 0, behavior: 'smooth' })   // clamped at the start
+    await go('#/admin/acceso')                // tab 5
+    expect(scrolls.at(-1)).toEqual({ left: 400, behavior: 'smooth' })
+  })
+
+  it('does nothing with the desktop side menu', async () => {
+    desktop = true
+    await mount('#/admin/logs', OWNER)
+    await go('#/admin/resumen')
+    expect(scrolls).toEqual([])
   })
 })
 

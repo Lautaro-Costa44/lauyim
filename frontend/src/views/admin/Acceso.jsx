@@ -109,21 +109,23 @@ function MemberFieldsCard() {
   return <div className="card">
     <h2 style={{ margin: 0 }}>{t('Datos del registro')}</h2>
     <div className="small muted" style={{ margin: '6px 0 4px' }}>{t('Qué datos se piden al registrar un socio. El nombre de usuario siempre se pide.')}</div>
-    {fields ? MEMBER_FIELD_LABELS.map(([key, label]) => {
-      const f = fields[key] || { enabled: false, required: false }
-      return <div key={key} className="access-field">
-        <div className="access-field-name">{t(label)}</div>
-        <div className="access-field-switches">
-          <span className="access-switch"><span className="small muted">{t('Pedir')}</span>
-            <Switch label={t('Pedir {0}', t(label))} checked={f.enabled} disabled={saving}
-              onChange={v => save({ [key]: v ? { enabled: true } : { enabled: false, required: false } })} /></span>
-          <span className="access-switch"><span className="small muted">{t('Obligatorio')}</span>
-            <Switch label={t('{0} obligatorio', t(label))} checked={f.required} disabled={saving || !f.enabled}
-              onChange={v => save({ [key]: { required: v } })} /></span>
-        </div>
-        {key === 'dni' && !f.enabled && <div className="access-field-warn small" role="note">{t('Sin DNI no se pueden detectar socios duplicados')}</div>}
+    {fields ? <div className="access-fields">
+      {/* Column headers once, over the switches; the switches carry only an aria-label. */}
+      <div className="access-row access-head" aria-hidden="true">
+        <span /><span className="access-col">{t('Pedir')}</span><span className="access-col">{t('Obligatorio')}</span>
       </div>
-    }) : <div className="dim small">{t('Loading…')}</div>}
+      {MEMBER_FIELD_LABELS.map(([key, label]) => {
+        const f = fields[key] || { enabled: false, required: false }
+        return <div key={key} className="access-row">
+          <span className="access-name">{t(label)}</span>
+          <span className="access-col"><Switch label={t('Pedir {0}', t(label))} checked={f.enabled} disabled={saving}
+            onChange={v => save({ [key]: v ? { enabled: true } : { enabled: false, required: false } })} /></span>
+          <span className="access-col"><Switch label={t('{0} obligatorio', t(label))} checked={f.required} disabled={saving || !f.enabled}
+            onChange={v => save({ [key]: { required: v } })} /></span>
+          {key === 'dni' && !f.enabled && <div className="access-warn small" role="note">{t('Sin DNI no se pueden detectar socios duplicados')}</div>}
+        </div>
+      })}
+    </div> : <div className="dim small">{t('Loading…')}</div>}
   </div>
 }
 

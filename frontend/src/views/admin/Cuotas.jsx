@@ -90,7 +90,7 @@ export default function Cuotas() {
       <div className="sect-b">
         <SelectRow title={t('Plan')} value={planFilter} onChange={setPlanFilter} sheetTitle={t('Filtrar por plan')}
           options={[{ value: '', label: t('Todos') }, { value: 'none', label: t('Sin plan') }, ...plans.map(p => ({ value: p.id, label: p.name + (p.active ? '' : ' · ' + t('inactivo')) }))]} />
-        <Row title={t('Mostrar staff')} subtitle={t('Admins y owner no cuentan en el resumen')}>
+        <Row title={t('Mostrar staff')} subtitle={t('El staff no cuenta en el resumen')}>
           <Switch checked={showStaff} onChange={setShowStaff} />
         </Row>
       </div>

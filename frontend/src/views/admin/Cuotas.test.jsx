@@ -82,7 +82,7 @@ describe('Cuotas', () => {
     expect(rows()).toHaveLength(3)
   })
 
-  it('"Mostrar staff" suma a admins y owner', async () => {
+  it('"Mostrar staff" suma al staff', async () => {
     await click(byText('.lrow', 'Mostrar staff').querySelector('[role="switch"]'))
     expect(rows()).toContain('DueñaStaff')
   })
