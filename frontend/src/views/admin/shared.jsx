@@ -691,7 +691,8 @@ export function AdminManageSheet({ userId, userName, close, setOnBack }) {
   </div>
 }
 
-export function UserDetail({ id, onChanged, close }) {
+// billingEnabled comes from the admin users poll; false hides the membership card (cuotas off).
+export function UserDetail({ id, billingEnabled = true, onChanged, close }) {
   const [d, setD] = useState(null)
   const toast = useUI(s => s.toast)
   const openSheet = useUI(s => s.openSheet)
@@ -728,7 +729,7 @@ export function UserDetail({ id, onChanged, close }) {
       <div className="tile"><div className="l">{t('Routines')}</div><div className="v" style={{ fontSize: '1.1rem' }}>{d.routines.length}</div></div>
       <div className="tile"><div className="l">{t('Last sync')}</div><div className="v" style={{ fontSize: '.95rem' }}>{rel(d.lastSync)}</div></div>
     </div>
-    <BillingSummaryCard userId={u.id} userName={u.name} openSheet={openSheet} onChanged={onChanged} />
+    {billingEnabled !== false && <BillingSummaryCard userId={u.id} userName={u.name} openSheet={openSheet} onChanged={onChanged} />}
     <Button variant="tinted" style={{ width: '100%', margin: '4px 0 4px' }}
       onClick={() => openSheet((c, { setOnBack }) => <AdminManageSheet userId={u.id} userName={u.name} close={c} setOnBack={setOnBack} />, { locked: true, fullScreen: true, backGesture: true })}>
       {t('Administrar Nutrición/Rutina')}

@@ -164,6 +164,10 @@ test('endpoint público: se envía con PUSH_AGENT; 410 borra la suscripción', a
 test('tick del scheduler: endpoints privados no conectan y el resto de los socios recibe', async (t) => {
   const today = new Date().toISOString().slice(0, 10);
   const conn = db.getDatabase();
+  // El recordatorio manual sale desde la hora de avisos del gym: gym en UTC desde las 00:00,
+  // para que salga en cualquier momento en que corra el test.
+  db.setAdminSetting('gym_tz', 'UTC');
+  db.setAdminSetting('billing_notify_hour', '00:00');
   const addMember = (id, endpoints) => {
     db.createUser({ id, name: id, created: Date.now() });
     conn.prepare(`INSERT INTO reminder_settings (user_id, "on", time, tz, fee_on, fee_interval, fee_date)

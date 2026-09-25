@@ -631,9 +631,11 @@ function PushCard({ S, update, toast }) {
   const [busy, setBusy] = useState(false)
   const supported = pushSupported()
   // Con un plan asignado por el gym (Cuotas v1), el vencimiento y su aviso los maneja el gym:
-  // el recordatorio manual de cuota se reemplaza por esta fila de solo lectura.
+  // el recordatorio manual de cuota se reemplaza por esta fila de solo lectura. Con cuotas
+  // apagado en el gym, el recordatorio manual vuelve para todos (!billingEnabled || !hasPlan).
   const billing = useStore(s => s.billing)
-  const hasPlan = !!billing?.hasPlan
+  const billingEnabled = useStore(s => s.billingEnabled)
+  const hasPlan = billingEnabled !== false && !!billing?.hasPlan
   const planRow = hasPlan && <Row icon="calendar" iconTint="var(--teal)" title={t('Cuota del gym')} subtitle={billing.planName || null}
     value={billing.dueDate ? t('Vence el {0}', fmtDateDMY(billing.dueDate)) : null} />
 

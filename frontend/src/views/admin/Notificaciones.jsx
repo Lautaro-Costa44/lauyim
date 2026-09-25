@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useUI } from '../../store/useUI.js'
 import { api } from '../../lib/api.js'
 import { t } from '../../lib/i18n.js'
@@ -110,6 +110,41 @@ function PushNotificationCard() {
   )
 }
 
+// Hora del gym desde la que salen el aviso de vencimiento y el recordatorio manual de cuota.
+// Se guarda sola: un reloj con flechas dispara varios cambios seguidos, así que espera a que
+// el valor se quede quieto antes de mandarlo.
+function NotifyHourCard() {
+  const toast = useUI(s => s.toast)
+  const [hour, setHour] = useState(null)
+  const saved = useRef(null)
+  const timer = useRef(null)
+  useEffect(() => {
+    api('/api/admin/notifications/settings')
+      .then(d => { saved.current = d.billing_notify_hour; setHour(d.billing_notify_hour) })
+      .catch(e => toast(e.message || t('Failed to load')))
+    return () => clearTimeout(timer.current)
+  }, [])
+  const change = value => {
+    setHour(value)
+    clearTimeout(timer.current)
+    if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(value) || value === saved.current) return
+    timer.current = setTimeout(() => {
+      api('/api/admin/notifications/settings', { method: 'PUT', body: JSON.stringify({ billing_notify_hour: value }) })
+        .then(d => { saved.current = d.billing_notify_hour; toast(t('Horario de avisos guardado')) })
+        .catch(e => toast(e.message || t('Failed to save setting')))
+    }, 600)
+  }
+  return <div className="card">
+    <div className="row between" style={{ gap: 12 }}>
+      <h3 style={{ margin: 0 }}>{t('Horario de avisos de cuota')}</h3>
+      {hour == null ? <span className="dim small">{t('Loading…')}</span>
+        : <input {...NO_AUTOFILL} name="app-admin-billing-notify-hour" type="time" className="timef" aria-label={t('Horario de avisos de cuota')}
+          value={hour} onChange={e => change(e.target.value)} />}
+    </div>
+    <div className="small muted" style={{ marginTop: 8 }}>{t('Se usa para el aviso de vencimiento y el recordatorio de cuota')}</div>
+  </div>
+}
+
 export default function Notificaciones() {
-  return <div className="admin-single"><PushNotificationCard /></div>
+  return <div className="admin-single"><PushNotificationCard /><NotifyHourCard /></div>
 }

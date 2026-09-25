@@ -52,9 +52,12 @@ export default function Resumen() {
   const nav = useNavigate()
   const toast = useUI(s => s.toast)
   const openSheet = useUI(s => s.openSheet)
-  const { users, attendance, loadUsers, loadAttendance, refresh } = useAdmin()
+  const { users: allUsers, attendance, billingEnabled, loadUsers, loadAttendance, refresh } = useAdmin()
 
-  const openUser = id => openSheet(close => <UserDetail id={id} onChanged={loadUsers} close={close} />)
+  const openUser = id => openSheet(close => <UserDetail id={id} billingEnabled={billingEnabled} onChanged={loadUsers} close={close} />)
+  // Counters and tiles count app users only: a member record without a passkey (ficha) does not
+  // use the app, same as the attendance total.
+  const users = allUsers && allUsers.filter(u => u.hasApp)
   const liveUsers = (users || []).filter(u => u.live)
   const activeCount = (users || []).filter(u => u.lastSync && Date.now() - u.lastSync < 7 * 86400000).length
   const disabledCount = (users || []).filter(u => u.disabled).length

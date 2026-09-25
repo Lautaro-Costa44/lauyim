@@ -20,7 +20,8 @@ const EVENTS = [
   'admin.billing.plan_create', 'admin.billing.plan_update', 'admin.billing.assign', 'admin.billing.payment',
   'admin.billing.payment_void', 'admin.billing.settings', 'admin.billing.blocked', 'admin.billing.unblocked',
   'admin.member.create', 'admin.member.profile_update', 'admin.member.link_code', 'admin.member.link_code_revoke',
-  'admin.member.merge', 'owner.member.fields', 'auth.link.ok', 'auth.link.fail'
+  'admin.member.merge', 'owner.member.fields', 'auth.link.ok', 'auth.link.fail',
+  'owner.billing.enabled', 'owner.billing.disabled', 'admin.notifications.settings'
 ]
 const REASONS = [
   'challenge-expired', 'unknown-credential', 'verify-error', 'not-verified',

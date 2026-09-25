@@ -121,7 +121,8 @@ import {
 } from './members.js';
 import {
   getBillingSettings, validateBillingSettings, serializeBillingSetting, gymToday,
-  billingStatus, nextDueDate, debtFor, debtTotal, isIsoDate
+  billingStatus, nextDueDate, debtFor, debtTotal, isIsoDate,
+  isBillingEnabled, getBillingNotifyHour, isValidNotifyHour, BILLING_ENABLED_SETTING, BILLING_NOTIFY_HOUR_SETTING
 } from './billing.js';
 
 const PORT = +(process.env.PORT || 3000);
@@ -497,6 +498,14 @@ function requireActiveTargetUser(res, userId) {
 // y para el scheduler por igual.
 const billingSettingsNow = () => getBillingSettings(getDatabase());
 const billingToday = settings => gymToday(Date.now(), settings.gym_tz);
+// Interruptor de cuotas (lo cambia el owner). Apagado no borra ni toca ningún dato de cuotas:
+// solo deja de bloquear, de avisar vencimientos y de aceptar cambios.
+const billingEnabledNow = () => isBillingEnabled(getDatabase());
+function billingDisabled(res) {
+  if (billingEnabledNow()) return false;
+  json(res, 409, { error: 'billing_disabled' });
+  return true;
+}
 
 function billingView(billing, today, settings) {
   const status = billingStatus(billing, today, settings);
@@ -508,9 +517,10 @@ function billingView(billing, today, settings) {
 }
 
 // Bloqueo por cuota: distinto de users.disabled. El socio conserva la sesión; solo se le
-// rechazan las rutas de MEMBERSHIP_GATED. Admins y owner nunca quedan bloqueados.
+// rechazan las rutas de MEMBERSHIP_GATED. Admins y owner nunca quedan bloqueados, y nadie
+// queda bloqueado con cuotas apagado.
 function isMembershipBlocked(user) {
-  if (!user || isAdmin(user)) return false;
+  if (!user || isAdmin(user) || !billingEnabledNow()) return false;
   const settings = billingSettingsNow();
   return billingStatus(getMemberBilling(user.id), billingToday(settings), settings) === 'bloqueado';
 }
@@ -2062,14 +2072,44 @@ const routes = {
     json(res, 200, { token });
   },
 
+  // Interruptor de cuotas. Apagarlo no borra ni modifica datos de cuotas.
+  'PUT /api/owner/billing/enabled': async (req, res) => {
+    const owner = requireOwner(req, res); if (!owner) return;
+    const body = await readBody(req);
+    if (typeof body.enabled !== 'boolean') return json(res, 400, { error: 'enabled debe ser true o false' });
+    if (body.enabled !== billingEnabledNow()) {
+      setAdminSetting(BILLING_ENABLED_SETTING, body.enabled ? '1' : '0');
+      audit(req, body.enabled ? 'owner.billing.enabled' : 'owner.billing.disabled', { user: owner });
+    }
+    json(res, 200, { enabled: billingEnabledNow() });
+  },
+
+  // Qué pasaría al encender cuotas hoy: socios (no staff, no desactivados) por estado.
+  'GET /api/owner/billing/enable-preview': async (req, res) => {
+    if (!requireOwner(req, res)) return;
+    const settings = billingSettingsNow();
+    const today = billingToday(settings);
+    const counts = { bloqueado: 0, vencido: 0, por_vencer: 0 };
+    for (const b of getAllMemberBilling()) {
+      if (b.disabled || b.owner || isAdmin({ id: b.userId, admin: b.admin })) continue;
+      const status = billingStatus(b, today, settings);
+      if (status in counts) counts[status]++;
+    }
+    json(res, 200, { today, ...counts });
+  },
+
   'GET /api/me': async (req, res) => {
     const user = readSession(req);
     if (!user) return json(res, 401, { error: 'No has iniciado sesión' });
+    const me = { id: user.id, name: user.name, admin: isAdmin(user), owner: !!user.owner };
+    // Con cuotas apagado el socio no ve estado de cuota: billing null y sin bloqueo.
+    if (!billingEnabledNow()) return json(res, 200, { user: me, billingEnabled: false, billing: null });
     const settings = billingSettingsNow();
     const billing = getMemberBilling(user.id);
     const status = billingStatus(billing, billingToday(settings), settings);
     json(res, 200, {
-      user: { id: user.id, name: user.name, admin: isAdmin(user), owner: !!user.owner },
+      user: me,
+      billingEnabled: true,
       billing: { hasPlan: billing.planId != null, status, dueDate: billing.dueDate, planName: billing.planName, blocked: status === 'bloqueado' && !isAdmin(user) }
     });
   },
@@ -2650,7 +2690,7 @@ const routes = {
         billing: (b => ({ status: billingStatus(b, today, settings), dueDate: b.dueDate ?? null }))(billingByUser.get(u.id) || {})
       };
     });
-    json(res, 200, { users, invite_only: INVITE_ONLY, audit_enabled: AUDIT_ON, now: Date.now() });
+    json(res, 200, { users, invite_only: INVITE_ONLY, audit_enabled: AUDIT_ON, billing_enabled: billingEnabledNow(), now: Date.now() });
   },
 
   'GET /api/admin/attendance-heatmap': async (req, res) => {
@@ -2747,6 +2787,7 @@ const routes = {
   /* ---------- cuotas v1 ---------- */
   'GET /api/admin/billing': async (req, res) => {
     if (!requireAdmin(req, res)) return;
+    if (billingDisabled(res)) return;
     const settings = billingSettingsNow();
     const today = billingToday(settings);
     const members = getAllMemberBilling().map(b => {
@@ -2769,6 +2810,7 @@ const routes = {
 
   'POST /api/admin/billing/plans': async (req, res) => {
     const admin = requireAdmin(req, res); if (!admin) return;
+    if (billingDisabled(res)) return;
     const parsed = parsePlanBody(await readBody(req), false);
     if (parsed.error) return json(res, 400, { error: parsed.error });
     const plan = createPlan(parsed.value);
@@ -2778,6 +2820,7 @@ const routes = {
 
   'PUT /api/admin/billing/plans/:id': async (req, res) => {
     const admin = requireAdmin(req, res); if (!admin) return;
+    if (billingDisabled(res)) return;
     const id = Number(new URL(req.url, 'http://x').pathname.split('/').pop());
     if (!Number.isInteger(id) || id < 1) return json(res, 400, { error: 'id de plan inválido' });
     if (!getPlanById(id)) return json(res, 404, { error: 'El plan no existe' });
@@ -2796,6 +2839,7 @@ const routes = {
 
   'PUT /api/admin/billing/settings': async (req, res) => {
     const admin = requireAdmin(req, res); if (!admin) return;
+    if (billingDisabled(res)) return;
     const checked = validateBillingSettings(await readBody(req));
     if (checked.error) return json(res, 400, { error: checked.error });
     const keys = Object.keys(checked.value);
@@ -2816,6 +2860,7 @@ const routes = {
   // Asignar, cambiar o quitar (planId null) el plan, con el vencimiento vigente.
   'PUT /api/admin/users/:userId/billing': async (req, res) => {
     const admin = requireAdmin(req, res); if (!admin) return;
+    if (billingDisabled(res)) return;
     const userId = userIdFromPath(req);
     const target = getUserById(userId);
     if (!target) return json(res, 404, { error: 'El usuario no existe' });
@@ -2841,6 +2886,7 @@ const routes = {
   // desactivado — el pago no toca users.disabled.
   'POST /api/admin/users/:userId/payments': async (req, res) => {
     const admin = requireAdmin(req, res); if (!admin) return;
+    if (billingDisabled(res)) return;
     const userId = userIdFromPath(req);
     const target = getUserById(userId);
     if (!target) return json(res, 404, { error: 'El usuario no existe' });
@@ -2889,6 +2935,7 @@ const routes = {
   // movió el vencimiento después (otra asignación o pago); el pago queda en el historial, marcado.
   'POST /api/admin/users/:userId/payments/:paymentId/void': async (req, res) => {
     const admin = requireAdmin(req, res); if (!admin) return;
+    if (billingDisabled(res)) return;
     const parts = new URL(req.url, 'http://x').pathname.split('/');
     const userId = decodeURIComponent(parts[4] || '');
     const paymentId = Number(parts[6]);
@@ -2916,6 +2963,22 @@ const routes = {
     json(res, 200, { billing, payment: getPaymentById(paymentId) });
   },
 
+  /* ---------- horario de avisos de cuota ---------- */
+  // Hora del gym (gym_tz) desde la que salen el aviso de vencimiento y el recordatorio manual.
+  'GET /api/admin/notifications/settings': async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    json(res, 200, { billing_notify_hour: getBillingNotifyHour(getDatabase()), gym_tz: billingSettingsNow().gym_tz });
+  },
+
+  'PUT /api/admin/notifications/settings': async (req, res) => {
+    const admin = requireAdmin(req, res); if (!admin) return;
+    const body = await readBody(req);
+    if (!isValidNotifyHour(body.billing_notify_hour)) return json(res, 400, { error: 'billing_notify_hour debe tener el formato HH:MM' });
+    setAdminSetting(BILLING_NOTIFY_HOUR_SETTING, body.billing_notify_hour);
+    audit(req, 'admin.notifications.settings', { user: admin, summary: `Avisos de cuota desde las ${body.billing_notify_hour}` });
+    json(res, 200, { billing_notify_hour: getBillingNotifyHour(getDatabase()), gym_tz: billingSettingsNow().gym_tz });
+  },
+
   /* ---------- fichas de socio ---------- */
   // Config de campos: la leen los admins (arman los formularios con ella), la cambia el owner.
   'GET /api/admin/members/settings': async (req, res) => {
@@ -2941,6 +3004,7 @@ const routes = {
   'POST /api/admin/members': async (req, res) => {
     const admin = requireAdmin(req, res); if (!admin) return;
     const body = await readBody(req);
+    if (body.planId !== undefined && body.planId !== null && billingDisabled(res)) return;
     const fields = memberFieldsNow();
     const checked = validateMemberProfile(body, fields);
     if (checked.error) return json(res, 400, { error: checked.error, field: checked.field });

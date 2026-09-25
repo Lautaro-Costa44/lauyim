@@ -7,7 +7,8 @@
  * scheduler) con gymToday() y se pasa por parámetro: nada acá lee el reloj por su cuenta,
  * lo que también deja los tests sin mocks de tiempo.
  *
- * Única excepción a "sin I/O": getBillingSettings(db), que lee admin_settings.
+ * Únicas excepciones a "sin I/O": getBillingSettings(db), isBillingEnabled(db) y
+ * getBillingNotifyHour(db), que leen admin_settings.
  */
 
 export const BILLING_STATUSES = ['al_dia', 'por_vencer', 'vencido', 'bloqueado', 'sin_plan'];
@@ -120,6 +121,31 @@ export function getBillingSettings(db) {
     if (!checked.error) Object.assign(settings, checked.value);
   }
   return settings;
+}
+
+/* ---------- interruptor de cuotas y horario de avisos ---------- */
+// Fuera de BILLING_SETTING_KEYS a propósito: no los toca PUT /api/admin/billing/settings.
+// billing_enabled lo cambia solo el owner; billing_notify_hour sirve también sin cuotas
+// (el recordatorio manual del socio sale a esa hora).
+
+export const BILLING_ENABLED_SETTING = 'billing_enabled';
+export const BILLING_NOTIFY_HOUR_SETTING = 'billing_notify_hour';
+export const DEFAULT_BILLING_NOTIFY_HOUR = '12:00';
+
+// Encendido salvo que se haya apagado explícitamente: las instancias que ya usaban cuotas
+// (sin la clave guardada) siguen encendidas.
+export function isBillingEnabled(db) {
+  const row = db.prepare('SELECT value FROM admin_settings WHERE key = ?').get(BILLING_ENABLED_SETTING);
+  return row?.value !== '0';
+}
+
+const HH_MM = /^([01]\d|2[0-3]):[0-5]\d$/;
+export const isValidNotifyHour = value => typeof value === 'string' && HH_MM.test(value);
+
+// Un valor corrupto cae al default en vez de dejar de mandar avisos.
+export function getBillingNotifyHour(db) {
+  const row = db.prepare('SELECT value FROM admin_settings WHERE key = ?').get(BILLING_NOTIFY_HOUR_SETTING);
+  return isValidNotifyHour(row?.value) ? row.value : DEFAULT_BILLING_NOTIFY_HOUR;
 }
 
 /* ---------- estado, vencimiento y deuda ---------- */

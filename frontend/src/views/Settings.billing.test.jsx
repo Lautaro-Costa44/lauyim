@@ -28,8 +28,8 @@ const MEMBER = { id: 'm1', name: 'Socio', admin: false }
 let container, root
 const text = () => container.textContent
 
-async function render(billing) {
-  useStore.setState({ user: MEMBER, billing })
+async function render(billing, billingEnabled = true) {
+  useStore.setState({ user: MEMBER, billing, billingEnabled })
   container = document.createElement('div')
   document.body.appendChild(container)
   root = createRoot(container)
@@ -61,5 +61,17 @@ describe('Settings · cuota', () => {
     expect(row.textContent).toContain('Mensual')
     expect(row.textContent).toContain('Vence el 24/10/2026')
     expect(row.querySelector('[role="switch"]')).toBeNull()
+  })
+
+  it('con cuotas apagado en el gym vuelve el toggle del recordatorio manual', async () => {
+    await render(null, false)
+    expect(text()).toContain('Recibe un aviso cuando venza tu cuota.')
+    expect(text()).not.toContain('Cuota del gym')
+  })
+
+  it('con cuotas apagado ignora un plan viejo guardado en el dispositivo', async () => {
+    await render({ hasPlan: true, status: 'al_dia', dueDate: '2026-10-24', planName: 'Mensual', blocked: false }, false)
+    expect(text()).toContain('Recibe un aviso cuando venza tu cuota.')
+    expect(text()).not.toContain('Cuota del gym')
   })
 })

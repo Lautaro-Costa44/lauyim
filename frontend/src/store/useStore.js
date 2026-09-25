@@ -85,6 +85,9 @@ const TERMINAL_SYNC_REASONS = new Set(['set_meta_too_large', 'workout_meta_too_l
 // al recargar sin conexión; solo lo apaga un /api/me que diga blocked: false.
 const BLOCK_KEY = 'gym_membership_blocked'
 const BILLING_KEY = 'gym_billing'
+// Interruptor de cuotas del gym (billingEnabled de /api/me). Solo se guarda el apagado: sin la
+// clave, cuotas está encendido, como en el servidor.
+const BILLING_OFF_KEY = 'gym_billing_off'
 const readJSON = key => { try { return JSON.parse(localStorage.getItem(key)) || null } catch { return null } }
 export const isMembershipBlockedError = e => e?.data?.error === 'membership_blocked'
 
@@ -128,9 +131,14 @@ export const useStore = create((set, get) => {
   // /api/me trae el estado de cuota: se guarda para Settings (también offline) y decide el flag.
   const applyMeBilling = me => {
     const billing = me?.billing || null
-    try { billing ? localStorage.setItem(BILLING_KEY, JSON.stringify(billing)) : localStorage.removeItem(BILLING_KEY) } catch { /* storage off */ }
-    set({ billing })
-    if (me?.user?.admin) setMembershipBlocked(false)
+    const billingEnabled = me?.billingEnabled !== false
+    try {
+      billing ? localStorage.setItem(BILLING_KEY, JSON.stringify(billing)) : localStorage.removeItem(BILLING_KEY)
+      billingEnabled ? localStorage.removeItem(BILLING_OFF_KEY) : localStorage.setItem(BILLING_OFF_KEY, '1')
+    } catch { /* storage off */ }
+    set({ billing, billingEnabled })
+    // Con cuotas apagado nadie queda bloqueado: se apaga el flag (y su localStorage).
+    if (me?.user?.admin || !billingEnabled) setMembershipBlocked(false)
     else if (billing?.blocked === true) setMembershipBlocked(true)
     else if (billing?.blocked === false) setMembershipBlocked(false)
   }
@@ -172,6 +180,7 @@ export const useStore = create((set, get) => {
     ready: false,
     membershipBlocked: (() => { try { return localStorage.getItem(BLOCK_KEY) === '1' } catch { return false } })(),
     billing: readJSON(BILLING_KEY),        // { hasPlan, status, dueDate, planName, blocked } de /api/me
+    billingEnabled: (() => { try { return localStorage.getItem(BILLING_OFF_KEY) !== '1' } catch { return true } })(),
 
     // Mutate a draft of S via producer fn, then persist + schedule sync.
     update(mut, push = true) {
@@ -207,8 +216,8 @@ export const useStore = create((set, get) => {
       // El bloqueo por cuota y el estado de cuota guardados son de quien estaba: otra cuenta (o
       // ninguna) en este dispositivo no los hereda hasta que su propio /api/me diga lo suyo.
       if (!u || u.id !== get().user?.id) {
-        try { localStorage.removeItem(BLOCK_KEY); localStorage.removeItem(BILLING_KEY) } catch { /* storage off */ }
-        set({ membershipBlocked: false, billing: null })
+        try { localStorage.removeItem(BLOCK_KEY); localStorage.removeItem(BILLING_KEY); localStorage.removeItem(BILLING_OFF_KEY) } catch { /* storage off */ }
+        set({ membershipBlocked: false, billing: null, billingEnabled: true })
       }
       if (u) { localStorage.setItem('gym_user', JSON.stringify(u)); localStorage.removeItem('gym_guest') }
       else localStorage.removeItem('gym_user')

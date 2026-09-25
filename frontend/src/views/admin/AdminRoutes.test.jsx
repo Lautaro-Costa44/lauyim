@@ -24,10 +24,19 @@ window.matchMedia = query => ({
 })
 
 let auditOn
+let billingOn
+let dniEnabled
 let anaCreated = '2026-01-01'
-const ANA = { id: 'a', name: 'ana', lastSync: Date.now(), workouts: 1 }
-apiMock.mockImplementation(url => {
-  if (url === '/api/admin/users') return Promise.resolve({ users: [ANA], invite_only: false, audit_enabled: auditOn })
+const ANA = { id: 'a', name: 'ana', lastSync: Date.now(), workouts: 1, hasApp: true }
+// A member record without a passkey: listed in Usuarios, never counted in Resumen.
+const FICHA = { id: 'f', name: 'ficha', lastSync: null, workouts: 0, hasApp: false, disabled: true }
+const FIELDS = () => ({ full_name: { enabled: true, required: true }, dni: { enabled: dniEnabled, required: dniEnabled }, phone: { enabled: true, required: true }, email: { enabled: true, required: false } })
+apiMock.mockImplementation((url, opts) => {
+  if (url === '/api/admin/users') return Promise.resolve({ users: [ANA, FICHA], invite_only: false, audit_enabled: auditOn, billing_enabled: billingOn })
+  if (url === '/api/admin/members/settings') return Promise.resolve({ fields: FIELDS() })
+  if (url === '/api/owner/billing/enable-preview') return Promise.resolve({ today: '2026-09-24', bloqueado: 2, vencido: 1, por_vencer: 3 })
+  if (url === '/api/owner/billing/enabled') { billingOn = JSON.parse(opts.body).enabled; return Promise.resolve({ enabled: billingOn }) }
+  if (url.startsWith('/api/admin/users/') && url.endsWith('/billing')) return Promise.resolve({ billing: { planId: null, status: 'sin_plan', debt: 0 }, payments: [] })
   if (url === '/api/admin/invites') return Promise.resolve({ invites: [] })
   if (url === '/api/presets') return Promise.resolve({ presets: [] })
   if (url === '/api/admin/attendance-heatmap') return Promise.resolve({ start: 'monday', totalUsers: 1, days: {} })
@@ -59,6 +68,20 @@ const go = async hash => {
 const tabs = () => [...document.querySelectorAll('.admin-nav a')].map(a => a.textContent + (a.classList.contains('on') ? '*' : ''))
 const text = () => document.body.textContent
 const usersCalls = () => apiMock.mock.calls.filter(([u]) => u === '/api/admin/users').length
+const called = url => apiMock.mock.calls.some(([u]) => u === url)
+const sheetText = () => document.querySelector('#modal-root')?.textContent || ''
+const clickSwitch = async label => {
+  const sw = document.querySelector(`[role="switch"][aria-label="${label}"]`)
+  expect(sw, label).toBeTruthy()
+  await act(async () => { sw.click() })
+  await flush()
+}
+const clickButton = async (scope, label) => {
+  const btn = [...scope.querySelectorAll('button')].find(b => b.textContent === label)
+  expect(btn, label).toBeTruthy()
+  await act(async () => { btn.click() })
+  await flush()
+}
 
 let root, container
 async function mount(hash, user) {
@@ -78,6 +101,8 @@ beforeEach(async () => {
   await setLang('es')
   globalThis.IS_REACT_ACT_ENVIRONMENT = true
   auditOn = true
+  billingOn = true
+  dniEnabled = true
   anaCreated = '2026-01-01'
   desktop = false
   apiMock.mockClear()
@@ -114,16 +139,55 @@ describe('admin routes', () => {
     expect(text()).toContain('Deuda total')
   })
 
-  it('QR is owner only: hidden tab and redirect for a plain admin', async () => {
-    await mount('#/admin/qr', ADMIN)
-    expect(window.location.hash).toBe('#/admin/resumen')
-    expect(tabs()).not.toContain('QR')
+  it('tab order: Resumen, Usuarios, Cuotas, Rutinas, Notificaciones, Acceso, Logs', async () => {
+    await mount('#/admin/resumen', OWNER)
+    expect(tabs()).toEqual(['Resumen*', 'Usuarios', 'Cuotas', 'Rutinas', 'Notificaciones', 'Acceso', 'Logs', 'Volver a la app'])
   })
 
-  it('the owner gets the QR section', async () => {
-    await mount('#/admin/qr', OWNER)
-    expect(tabs()).toContain('QR*')
+  it('/admin/qr redirects to Acceso', async () => {
+    await mount('#/admin/qr', ADMIN)
+    expect(window.location.hash).toBe('#/admin/acceso')
+    expect(tabs()).toContain('Acceso*')
+  })
+
+  it('a plain admin sees Acceso with only the invites', async () => {
+    await mount('#/admin/acceso', ADMIN)
+    expect(tabs()).toContain('Acceso*')
+    expect(text()).toContain('Códigos de invitación')
+    expect(text()).not.toContain('Acceso por QR')
+    expect(text()).not.toContain('Datos del registro')
+    expect(text()).not.toContain('Cobro de cuotas')
+    expect(called('/api/owner/qr')).toBe(false)
+    expect(called('/api/admin/members/settings')).toBe(false)
+  })
+
+  it('the owner gets the four Acceso cards, in order', async () => {
+    await mount('#/admin/acceso', OWNER)
+    const titles = [...document.querySelectorAll('.admin-access > .card h2')].map(h => h.textContent)
+    expect(titles).toEqual(['Códigos de invitación', 'Acceso por QR', 'Datos del registro', 'Cobro de cuotas'])
     expect(text()).toContain('qr-token')
+    expect(text()).toContain('El nombre de usuario siempre se pide.')
+    expect(text()).not.toContain('Sin DNI no se pueden detectar socios duplicados')
+  })
+
+  it('invites moved out of Usuarios', async () => {
+    await mount('#/admin/usuarios', ADMIN)
+    expect(text()).not.toContain('Códigos de invitación')
+  })
+
+  it('registration fields: DNI off shows the warning and disables its "Obligatorio"', async () => {
+    dniEnabled = false
+    await mount('#/admin/acceso', OWNER)
+    expect(text()).toContain('Sin DNI no se pueden detectar socios duplicados')
+    expect(document.querySelector('[role="switch"][aria-label="DNI obligatorio"]').disabled).toBe(true)
+    expect(document.querySelector('[role="switch"][aria-label="Celular obligatorio"]').disabled).toBe(false)
+  })
+
+  it('turning "Pedir" off sends required: false too', async () => {
+    await mount('#/admin/acceso', OWNER)
+    await clickSwitch('Pedir Mail')
+    const put = apiMock.mock.calls.find(([u, o]) => u === '/api/admin/members/settings' && o?.method === 'PUT')
+    expect(JSON.parse(put[1].body)).toEqual({ fields: { email: { enabled: false, required: false } } })
   })
 
   it('Logs is hidden and redirects when the audit log is off', async () => {
@@ -138,6 +202,44 @@ describe('admin routes', () => {
     await mount('#/admin/resumen', ADMIN)
     expect(tabs().some(x => x.startsWith('Logs'))).toBe(false)
     expect(apiMock.mock.calls.some(([u]) => u.startsWith('/api/admin/audit'))).toBe(false)
+  })
+
+  it('billing off: no Cuotas tab and /admin/cuotas lands on Resumen without loading Cuotas', async () => {
+    billingOn = false
+    await mount('#/admin/cuotas', ADMIN)
+    expect(window.location.hash).toBe('#/admin/resumen')
+    expect(tabs().some(x => x.startsWith('Cuotas'))).toBe(false)
+    expect(called('/api/admin/billing')).toBe(false)
+    expect(called('/api/admin/billing/plans')).toBe(false)
+  })
+
+  it('turning billing off asks first, then hides Cuotas', async () => {
+    await mount('#/admin/acceso', OWNER)
+    await clickSwitch('Bloquear el acceso por cuota vencida')
+    expect(sheetText()).toContain('No se borra ningún dato')
+    expect(sheetText()).toContain('recordatorio manual')
+    expect(called('/api/owner/billing/enabled')).toBe(false)
+    await clickButton(document.querySelector('#modal-root'), 'Desactivar')
+    expect(called('/api/owner/billing/enabled')).toBe(true)
+    expect(tabs().some(x => x.startsWith('Cuotas'))).toBe(false)
+  })
+
+  it('turning billing on shows the enable-preview in the confirmation', async () => {
+    billingOn = false
+    await mount('#/admin/acceso', OWNER)
+    await clickSwitch('Bloquear el acceso por cuota vencida')
+    expect(called('/api/owner/billing/enable-preview')).toBe(true)
+    expect(sheetText()).toContain('Al activar, 2 socios quedan bloqueados y 1 vencido.')
+    await clickButton(document.querySelector('#modal-root'), 'Activar')
+    expect(billingOn).toBe(true)
+    expect(tabs()).toContain('Cuotas')
+  })
+
+  it('Resumen counts app users only', async () => {
+    await mount('#/admin/resumen', ADMIN)
+    const values = [...document.querySelectorAll('.tiles .tile .v')].map(el => el.textContent)
+    expect(values[0]).toBe('1')          // ana; the ficha (hasApp: false) is left out
+    expect(values[3]).toBe('0')          // the ficha is disabled, but not counted either
   })
 
   it('the app tab bar is marked on /admin/* only', async () => {
@@ -174,6 +276,20 @@ describe('Usuarios: member detail', () => {
     expect(useUI.getState().sheets).toHaveLength(1)
     expect(document.querySelector('#modal-root h3').textContent).toBe('ana')
     expect(document.querySelector('.admin-users .item.on')).toBeNull()
+  })
+
+  it('billing off hides the membership card in the member detail', async () => {
+    desktop = true
+    await mount('#/admin/usuarios', ADMIN)
+    await clickAna()
+    expect(document.querySelector('.admin-user-panel .billing-summary')).toBeTruthy()
+    await act(async () => { root.unmount() })
+    container.remove()
+    billingOn = false
+    await mount('#/admin/usuarios', ADMIN)
+    await clickAna()
+    expect(document.querySelector('.admin-user-panel h3').textContent).toBe('ana')
+    expect(document.querySelector('.admin-user-panel .billing-summary')).toBeNull()
   })
 
   it('does not crash when created is missing or not a string', async () => {

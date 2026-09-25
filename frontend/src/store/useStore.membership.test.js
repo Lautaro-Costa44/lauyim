@@ -23,7 +23,7 @@ beforeEach(() => {
   localStorage.clear()
   apiMock.mockReset()
   deferSpy.mockClear()
-  useStore.setState({ user: MEMBER, membershipBlocked: false, billing: null })
+  useStore.setState({ user: MEMBER, membershipBlocked: false, billing: null, billingEnabled: true })
 })
 
 describe('flag membershipBlocked', () => {
@@ -62,6 +62,30 @@ describe('flag membershipBlocked', () => {
     expect(await useStore.getState().retryMembership()).toBe(false)
     expect(useStore.getState().membershipBlocked).toBe(true)
     expect(apiMock.mock.calls.map(([url]) => url)).toEqual(['/api/me'])
+  })
+})
+
+describe('cuotas apagado en el gym', () => {
+  it('un /api/me con billingEnabled: false apaga el flag y su localStorage', async () => {
+    block()
+    apiMock.mockImplementation(url => url === '/api/me'
+      ? Promise.resolve({ user: MEMBER, billingEnabled: false, billing: null })
+      : Promise.resolve({ results: [], appliedIds: [], conflicts: [] }))
+
+    expect(await useStore.getState().retryMembership()).toBe(true)
+    expect(useStore.getState().membershipBlocked).toBe(false)
+    expect(localStorage.getItem('gym_membership_blocked')).toBeNull()
+    expect(useStore.getState().billingEnabled).toBe(false)
+    expect(localStorage.getItem('gym_billing_off')).toBe('1')
+  })
+
+  it('al volver a encenderse, el siguiente /api/me lo refleja', async () => {
+    localStorage.setItem('gym_billing_off', '1')
+    useStore.setState({ billingEnabled: false })
+    apiMock.mockResolvedValue({ user: MEMBER, billingEnabled: true, billing: { hasPlan: false, status: 'sin_plan', dueDate: null, planName: null, blocked: false } })
+    await useStore.getState().retryMembership()
+    expect(useStore.getState().billingEnabled).toBe(true)
+    expect(localStorage.getItem('gym_billing_off')).toBeNull()
   })
 })
 
