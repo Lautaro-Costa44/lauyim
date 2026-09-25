@@ -196,3 +196,22 @@ test('DNI desactivado: sin duplicados (ni del archivo ni de la base) y aviso glo
   assert.match(out.warnings.join(' '), /DNI está desactivado/);
   assert.ok(out.write.members.every(m => m.profile.dniNorm === null));
 });
+
+test('fila de ejemplo de la plantilla: por nombre o por DNI se ignora con un aviso, no es error', () => {
+  const out = run([
+    row({ fullName: 'EJEMPLO – borrá esta fila', dni: '30.123.456' }),
+    row({ fullName: 'Lucía Gómez', dni: '99.999.999' }),
+    row({ fullName: 'ejemplo - borra esta fila', dni: '' }),
+    row(),
+  ]);
+  assert.deepEqual([out.summary.nuevos, out.summary.errores, out.rows.length], [1, 0, 1]);
+  assert.deepEqual(out.warnings, ['Se ignoró la fila de ejemplo de la plantilla.']);
+  assert.deepEqual(run([row()]).warnings, []);
+});
+
+test('la fila de ejemplo es la misma constante en el frontend', async () => {
+  const { TEMPLATE_EXAMPLE_NAME, TEMPLATE_EXAMPLE_DNI } = await import('./member-import.js');
+  const front = (await import('node:fs')).readFileSync(new URL('../frontend/src/views/admin/members/import-parse.js', import.meta.url), 'utf8');
+  assert.ok(front.includes(`export const TEMPLATE_EXAMPLE_NAME = '${TEMPLATE_EXAMPLE_NAME}'`));
+  assert.ok(front.includes(`export const TEMPLATE_EXAMPLE_DNI = '${TEMPLATE_EXAMPLE_DNI}'`));
+});

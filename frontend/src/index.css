@@ -614,8 +614,33 @@ input[type="search"]::-webkit-search-cancel-button{display:none;-webkit-appearan
 .import-msg.error{color:var(--danger)}
 .import-msg.warning{color:var(--warning)}
 .pay-row.trial .lrow-t{color:var(--purple)}
+.import-table-wrap{margin-bottom:12px}
+.import-table{min-width:0}
+.billing-table.import-table tbody tr{cursor:default}
+.billing-table.import-table tbody tr:hover{background:none}
+.import-table td{vertical-align:top}
+.import-table td.strong{color:var(--label);font-weight:500}
+.import-table td.samples{color:var(--label-2);font-size:13px;line-height:1.45;word-break:break-word}
+.import-table th.pick,.import-table td.pick{width:230px}
+.import-table td.pick{vertical-align:middle}
+.import-table .empty{text-align:center;padding:24px}
+.import-col.ignored td.strong{color:var(--label-3)}
+.import-pick{display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;padding:8px 10px;border-radius:calc(var(--r) * .8);background:var(--surface-2);color:var(--label);font-size:15px;text-align:left}
+.import-pick.muted{color:var(--label-2)}
+.import-pick svg{flex:none;font-size:13px;color:var(--label-3)}
+.import-plans td{vertical-align:middle}
+.import-plan-inline{display:flex;gap:8px;align-items:center}
+.import-plan-inline .import-plan-name{flex:1;min-width:120px;max-width:none;text-align:left;background:var(--surface-2);border-radius:calc(var(--r) * .8);padding:8px 10px}
+.import-plan-inline .num{width:110px;flex:none}
+.import-preview{min-width:760px}
+.import-preview td.why{font-size:13px;line-height:1.4;min-width:260px}
+.import-preview .import-msg.info{color:var(--label-2)}
+.import-st.nuevo{background:color-mix(in srgb,var(--success) 16%,transparent);color:var(--success)}
+.import-st.existente{background:var(--surface-2);color:var(--label-2)}
+.import-st.error{background:color-mix(in srgb,var(--danger) 16%,transparent);color:var(--danger)}
 @media (min-width:1000px){
-  .import-members{max-width:760px;margin:0 auto}
+  /* El sheet es a pantalla completa; el contenido usa hasta 960px (con el margen del sheet). */
+  .import-members{width:100%;max-width:960px;margin:0 auto}
 }
 .link-code{display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center}
 .link-code-qr{background:#fff;border-radius:var(--r);padding:10px;line-height:0}

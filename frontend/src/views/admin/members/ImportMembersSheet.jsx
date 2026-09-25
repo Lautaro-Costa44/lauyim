@@ -6,15 +6,17 @@ import { t } from '../../../lib/i18n.js'
 import Icon from '../../../components/Icon.jsx'
 import { Button, NumberField, Row, Section, Segmented, SelectRow, TextField, usePickerStep, useSheetBack } from '../../../components/ui.jsx'
 import { methodLabel } from '../billing/common.jsx'
+import { useDesktop } from '../useDesktop.js'
 import {
   FIELD_OPTIONS, buildRows, distinctPlans, downloadText, errorsCsv, fieldLabel, autodetectColumns,
-  mappingProblems, planKey, readImportFile, sampleValues, templateCsv
+  maskDni, mappingProblems, planKey, readImportFile, sampleValues, templateCsv
 } from './import-parse.js'
 
 // Importar socios desde Excel/CSV (solo owner). UN sheet a pantalla completa con pasos internos
 // (atrás retrocede un paso, como MemberCreateSheet): archivo → columnas → planes (si se mapeó
 // Plan y cuotas está encendido) → opciones → vista previa (dry_run del servidor) → resultado.
 // Este chunk se descarga al abrir el sheet; el lector de .xlsx, recién al elegir un .xlsx.
+// En escritorio (>= 1000px) columnas, planes y vista previa son tablas; en el celular, filas.
 
 const IMPORT_URL = '/api/owner/members/import'
 const PREVIEW_LIMIT = 300          // filas por pestaña en la vista previa; el CSV de errores las trae todas
@@ -28,6 +30,13 @@ function Header({ title, subtitle, onClose }) {
     </div>
     <button type="button" className="iconbtn" onClick={onClose} aria-label={t('Close')}><Icon name="xmark" /></button>
   </div>
+}
+
+// Selector de una celda de tabla: abre el mismo paso de lista (picker) que SelectRow.
+function PickCell({ label, onClick, muted, ariaLabel }) {
+  return <button type="button" className={'import-pick' + (muted ? ' muted' : '')} onClick={onClick} aria-label={ariaLabel}>
+    <span>{label}</span><Icon name="chevronRight" />
+  </button>
 }
 
 const columnName = (header, i) => header || t('Columna {0}', String.fromCharCode(65 + (i % 26)) + (i >= 26 ? Math.floor(i / 26) : ''))
@@ -50,33 +59,77 @@ function FileStep({ file, error, reading, onPick }) {
   </>
 }
 
-function ColumnsStep({ file, mapping, setMapping, picker, problems }) {
+function ColumnsStep({ file, mapping, setMapping, picker, problems, desktop }) {
   const options = FIELD_OPTIONS.map(o => ({ value: o.value, label: t(o.label) }))
+  const choose = (h, i) => picker({ title: columnName(h, i), options, value: mapping[i], onChange: v => setMapping(m => m.map((x, j) => j === i ? v : x)) })
   return <>
     <p className="small muted import-note">{t('Elegí qué dato tiene cada columna. Las que no sirven quedan en Ignorar.')}</p>
-    <Section>
+    {desktop ? <div className="billing-table-wrap import-table-wrap">
+      <table className="billing-table import-table">
+        <thead><tr><th>{t('Columna del archivo')}</th><th>{t('Ejemplos')}</th><th className="pick">{t('Campo')}</th></tr></thead>
+        <tbody>
+          {file.headers.map((h, i) => {
+            const samples = sampleValues(file.data, i)
+            return <tr key={i} className={'import-col' + (mapping[i] === 'ignore' ? ' ignored' : '')}>
+              <td className="strong">{columnName(h, i)}</td>
+              <td className="samples">{samples.length ? samples.map((v, j) => <div key={j}>{v}</div>) : <span className="dim">{t('(vacía)')}</span>}</td>
+              <td className="pick"><PickCell label={t(fieldLabel(mapping[i]))} muted={mapping[i] === 'ignore'} ariaLabel={t('Campo de {0}', columnName(h, i))} onClick={() => choose(h, i)} /></td>
+            </tr>
+          })}
+        </tbody>
+      </table>
+    </div> : <Section>
       {file.headers.map((h, i) => {
         const samples = sampleValues(file.data, i)
         return <Row key={i} title={columnName(h, i)} subtitle={samples.length ? samples.join(' · ') : t('(vacía)')}
           value={t(fieldLabel(mapping[i]))} accessory="chevron" className={'import-col' + (mapping[i] === 'ignore' ? ' ignored' : '')}
-          onClick={() => picker({ title: columnName(h, i), options, value: mapping[i], onChange: v => setMapping(m => m.map((x, j) => j === i ? v : x)) })} />
+          onClick={() => choose(h, i)} />
       })}
-    </Section>
+    </Section>}
     {problems.map(p => <div key={p} className="form-error" role="alert">{t(p)}</div>)}
   </>
 }
 
 const planChoiceValue = c => c.action === 'existing' ? 'p:' + c.planId : c.action
 
-function PlansStep({ plans, activePlans, choices, setChoice, picker }) {
+function PlansStep({ plans, activePlans, choices, setChoice, picker, desktop }) {
   const options = [
     ...activePlans.map(p => ({ value: 'p:' + p.id, label: p.name, subtitle: `${fmtPesos(p.price)} · ${t('{0} días', p.durationDays)}` })),
     { value: 'create', label: t('Crear plan nuevo') },
     { value: 'none', label: t('Sin plan') },
   ]
   const pick = (key, v) => setChoice(key, v.startsWith('p:') ? { action: 'existing', planId: Number(v.slice(2)) } : { action: v })
+  const open = p => picker({ title: p.value, options, value: planChoiceValue(choices[p.key]), onChange: v => pick(p.key, v) })
+  const labelOf = c => options.find(o => o.value === planChoiceValue(c))?.label || ''
+  const intro = <p className="small muted import-note">{t('Cada plan del archivo con cuántos socios lo tienen. Elegí a qué plan corresponde.')}</p>
+  if (desktop) return <>
+    {intro}
+    <div className="billing-table-wrap import-table-wrap">
+      <table className="billing-table import-table import-plans">
+        <thead><tr><th>{t('Valor del archivo')}</th><th className="num">{t('Socios')}</th><th className="pick">{t('Acción')}</th><th>{t('Plan nuevo: nombre · precio ($) · días')}</th></tr></thead>
+        <tbody>
+          {plans.map(p => {
+            const c = choices[p.key]
+            const existing = c.action === 'existing' && activePlans.find(x => x.id === c.planId)
+            return <tr key={p.key}>
+              <td className="strong">{p.value}</td>
+              <td className="num">{p.count}</td>
+              <td className="pick"><PickCell label={labelOf(c)} muted={c.action === 'none'} ariaLabel={t('Plan para {0}', p.value)} onClick={() => open(p)} /></td>
+              <td>{c.action === 'create' ? <div className="import-plan-inline">
+                <TextField type="text" inputMode="text" className="import-plan-name" value={c.name} maxLength={60} aria-label={t('Nombre del plan')}
+                  onChange={e => setChoice(p.key, { ...c, name: e.target.value })} />
+                <NumberField className="row-num wide" value={c.price} decimal={false} nullable aria-label={t('Precio del plan')} placeholder="$" onChange={v => setChoice(p.key, { ...c, price: v })} />
+                <NumberField className="row-num" value={c.durationDays} decimal={false} nullable aria-label={t('Duración del plan')} onChange={v => setChoice(p.key, { ...c, durationDays: v })} />
+              </div> : existing ? <span className="dim">{`${fmtPesos(existing.price)} · ${t('{0} días', existing.durationDays)}`}</span>
+                : <span className="dim">—</span>}</td>
+            </tr>
+          })}
+        </tbody>
+      </table>
+    </div>
+  </>
   return <>
-    <p className="small muted import-note">{t('Cada plan del archivo con cuántos socios lo tienen. Elegí a qué plan corresponde.')}</p>
+    {intro}
     {plans.map(p => {
       const c = choices[p.key]
       return <Section key={p.key} title={t(p.count === 1 ? '"{0}" · 1 socio' : '"{0}" · {1} socios', p.value, p.count)}>
@@ -121,11 +174,14 @@ function OptionsStep({ options, setOptions, methods, showMethod, dniEnabled }) {
   </>
 }
 
-function PreviewStep({ preview, rows, tab, setTab }) {
+const STATUS_LABELS = { nuevo: 'Nuevo', existente: 'Ya existe', error: 'Error' }
+
+function PreviewStep({ preview, rows, tab, setTab, desktop }) {
   const s = preview.summary
   const counts = { nuevo: s.nuevos, existente: s.existentes, error: s.errores }
   const list = preview.rows.filter(r => r.status === tab)
-  const names = useMemo(() => new Map(rows.map(r => [r.rowNumber, r.fullName])), [rows])
+  const source = useMemo(() => new Map(rows.map(r => [r.rowNumber, r])), [rows])
+  const names = { get: n => source.get(n)?.fullName }
   return <>
     {preview.warnings.map(w => <div key={w} className="member-warn small import-warning" role="note">{t(w)}</div>)}
     <div className="import-totals">
@@ -137,7 +193,21 @@ function PreviewStep({ preview, rows, tab, setTab }) {
     <Segmented options={PREVIEW_TABS.map(([value, label]) => ({ value, label: `${t(label)} (${counts[value]})` }))} value={tab} onChange={setTab} className="import-tabs" />
     {s.errores > 0 && tab === 'error' && <Button size="sm" variant="tinted" icon="download" className="import-errors-dl"
       onClick={() => downloadText('errores-importacion.csv', errorsCsv(preview.rows, rows))}>{t('Descargar errores')}</Button>}
-    <div className="sect-b import-rows" role="list">
+    {desktop ? <div className="billing-table-wrap import-table-wrap">
+      <table className="billing-table import-table import-preview">
+        <thead><tr><th className="num">{t('Fila')}</th><th>{t('Nombre')}</th><th>DNI</th><th>{t('Estado')}</th><th>{t('Motivo')}</th></tr></thead>
+        <tbody>
+          {list.slice(0, PREVIEW_LIMIT).map(r => <tr key={r.rowNumber}>
+            <td className="num">{r.rowNumber}</td>
+            <td className="strong">{names.get(r.rowNumber) || <span className="dim">—</span>}</td>
+            <td className="num">{maskDni(source.get(r.rowNumber)?.dni) || <span className="dim">—</span>}</td>
+            <td><span className={'tag nocap import-st ' + r.status}>{t(STATUS_LABELS[r.status])}</span></td>
+            <td className="why">{r.messages.map((m, i) => <div key={i} className={'import-msg ' + m.level}>{t(m.text)}</div>)}</td>
+          </tr>)}
+          {!list.length && <tr><td colSpan={5} className="empty">{t('Nada en esta pestaña.')}</td></tr>}
+        </tbody>
+      </table>
+    </div> : <div className="sect-b import-rows" role="list">
       {list.slice(0, PREVIEW_LIMIT).map(r => <div key={r.rowNumber} role="listitem" className="lrow import-row">
         <span className="lrow-m">
           <span className="lrow-t">{t('Fila {0}', r.rowNumber)}{names.get(r.rowNumber) ? ' · ' + names.get(r.rowNumber) : ''}</span>
@@ -145,7 +215,7 @@ function PreviewStep({ preview, rows, tab, setTab }) {
         </span>
       </div>)}
       {!list.length && <div className="empty" style={{ padding: 20 }}>{t('Nada en esta pestaña.')}</div>}
-    </div>
+    </div>}
     {list.length > PREVIEW_LIMIT && <div className="dim small import-note">{t('Y {0} filas más.', list.length - PREVIEW_LIMIT)}</div>}
   </>
 }
@@ -164,6 +234,7 @@ function ResultStep({ result }) {
 export function ImportMembersSheet({ billingEnabled, close, setOnBack, onImported, onShowMembers }) {
   const toast = useUI(s => s.toast)
   const picker = usePickerStep()
+  const desktop = useDesktop()
   const [step, setStep] = useState('archivo')
   const [fields, setFields] = useState(null)
   const [plans, setPlans] = useState(billingEnabled ? null : [])
@@ -276,11 +347,11 @@ export function ImportMembersSheet({ billingEnabled, close, setOnBack, onImporte
       {loading && !error ? <div className="dim small">{t('Loading…')}</div> : <>
         {index > 0 && step !== 'resultado' && <><Button size="sm" icon="chevronLeft" onClick={back}>{t('Volver')}</Button><div style={{ height: 10 }} /></>}
         {step === 'archivo' && <FileStep file={file} error={error} reading={reading} onPick={pickFile} />}
-        {step === 'columnas' && <ColumnsStep file={file} mapping={mapping} setMapping={setMapping} picker={picker.open} problems={problems} />}
-        {step === 'planes' && <PlansStep plans={planValues} activePlans={activePlans} choices={choices} picker={picker.open}
+        {step === 'columnas' && <ColumnsStep file={file} mapping={mapping} setMapping={setMapping} picker={picker.open} problems={problems} desktop={desktop} />}
+        {step === 'planes' && <PlansStep plans={planValues} activePlans={activePlans} choices={choices} picker={picker.open} desktop={desktop}
           setChoice={(key, c) => setChoices(cur => ({ ...cur, [key]: c.action === 'create' && cur[key]?.action !== 'create' ? { name: planValues.find(p => p.key === key).value.slice(0, 60), price: null, durationDays: 30, ...c } : c }))} />}
         {step === 'opciones' && <OptionsStep options={options} setOptions={setOptions} methods={methods} showMethod={showMethod} dniEnabled={dniEnabled} />}
-        {step === 'preview' && preview && <PreviewStep preview={preview} rows={rows} tab={tab} setTab={setTab} />}
+        {step === 'preview' && preview && <PreviewStep preview={preview} rows={rows} tab={tab} setTab={setTab} desktop={desktop} />}
         {step === 'resultado' && result && <ResultStep result={result} />}
         {step !== 'archivo' && error && <div className="form-error" role="alert">{error}</div>}
         <div style={{ height: 12 }} />

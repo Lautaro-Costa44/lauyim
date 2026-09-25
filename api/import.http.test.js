@@ -175,3 +175,14 @@ test('historial: la prueba aparece junto a los pagos, con días, fechas y quién
   const [t2] = (await call('owner', 'GET', `/api/admin/users/${other}/billing`)).body.history;
   assert.deepEqual([t2.type, t2.createdByName], ['trial', 'Admin']);
 });
+
+test('plantilla sin borrar la fila de ejemplo: la ignora y avisa en la vista previa', async () => {
+  const r = await call('owner', 'POST', IMPORT, { dry_run: true, rows: [
+    { rowNumber: 2, fullName: 'EJEMPLO – borrá esta fila', dni: '99.999.999', phone: '11 2345-6789' },
+    { rowNumber: 3, fullName: 'Socia Real', dni: '40500001', phone: '1122334455' }
+  ] });
+  assert.equal(r.status, 200);
+  assert.deepEqual([r.body.summary.nuevos, r.body.summary.errores], [1, 0]);
+  assert.deepEqual(r.body.rows.map(x => x.rowNumber), [3]);
+  assert.match(r.body.warnings.join(), /fila de ejemplo/);
+});

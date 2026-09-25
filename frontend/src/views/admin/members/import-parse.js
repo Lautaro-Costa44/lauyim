@@ -97,7 +97,7 @@ export function decodeText(buffer) {
 // ';' (Excel en español), ',' o tab: el que más aparece en la primera línea con datos, fuera
 // de comillas.
 export function detectDelimiter(text) {
-  const line = String(text).replace(/^﻿/, '').split(/\r?\n/).find(l => l.trim()) || ''
+  const line = String(text).replace(/^\uFEFF/, '').split(/\r?\n/).find(l => l.trim()) || ''
   const counts = { ';': 0, ',': 0, '\t': 0 }
   let quoted = false
   for (const c of line) {
@@ -145,6 +145,12 @@ export async function readImportFile(file) {
   } catch {
     return { error: 'No se pudo leer el Excel. Probá guardarlo de nuevo como .xlsx o .csv' }
   }
+}
+
+// DNI para mostrar en la vista previa: solo los últimos 3 dígitos (como maskDni del servidor).
+export const maskDni = dni => {
+  const digits = String(dni ?? '').replace(/\D/g, '')
+  return digits ? '***' + digits.slice(-3) : ''
 }
 
 // Hasta 3 valores de ejemplo (no vacíos) de una columna.
@@ -203,12 +209,16 @@ export function csvCell(value) {
   return /[;"\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s
 }
 // Con BOM: sin él, Excel en Windows abre el UTF-8 como ANSI y rompe las tildes.
-export const toCsv = rows => '﻿' + rows.map(r => r.map(csvCell).join(';')).join('\r\n') + '\r\n'
+export const toCsv = rows => '\uFEFF' + rows.map(r => r.map(csvCell).join(';')).join('\r\n') + '\r\n'
 
+// Fila de ejemplo de la plantilla: mismos valores que api/member-import.js (un test del api lo
+// verifica). Si el owner no la borra, el servidor la ignora con un aviso.
+export const TEMPLATE_EXAMPLE_NAME = 'EJEMPLO – borrá esta fila'
+export const TEMPLATE_EXAMPLE_DNI = '99.999.999'
 export const TEMPLATE_HEADERS = ['Nombre y apellido', 'DNI', 'Celular', 'Mail', 'Plan', 'Vencimiento', 'Fecha último pago', 'Monto último pago']
 export const templateCsv = () => toCsv([
   TEMPLATE_HEADERS,
-  ['Lucía Gómez', '30.123.456', '11 2345-6789', 'lucia@mail.com', 'Mensual', '10/11/2026', '10/10/2026', '$30.000'],
+  [TEMPLATE_EXAMPLE_NAME, TEMPLATE_EXAMPLE_DNI, '11 2345-6789', 'ejemplo@mail.com', 'Mensual', '10/11/2026', '10/10/2026', '$30.000'],
 ])
 
 // Filas con error de la vista previa, con nombre y DNI del archivo para encontrarlas.

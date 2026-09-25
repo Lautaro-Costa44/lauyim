@@ -87,18 +87,19 @@ describe('fechas de Excel sin corrimiento', () => {
 
 describe('CSV', () => {
   it('separador ; o , (fuera de comillas) y UTF-8 con o sin BOM; si no es UTF-8, windows-1252', () => {
-    expect(detectDelimiter('﻿Nombre;DNI;Mail\nA;1;x')).toBe(';')
+    expect(detectDelimiter('\uFEFFNombre;DNI;Mail\nA;1;x')).toBe(';')
     expect(detectDelimiter('"Pérez; Ana",DNI,Mail')).toBe(',')
     expect(detectDelimiter('Nombre')).toBe(',')
-    const utf8 = new TextEncoder().encode('﻿Martínez')
+    const utf8 = new TextEncoder().encode('\uFEFFMartínez')
     expect(decodeText(utf8.buffer)).toBe('Martínez')
     expect(decodeText(new Uint8Array([0x4d, 0x61, 0x72, 0x74, 0xed, 0x6e, 0x65, 0x7a]).buffer)).toBe('Martínez')
   })
 
   it('plantilla: BOM, ";" y una fila de ejemplo', () => {
     const csv = templateCsv()
-    expect(csv.startsWith('﻿Nombre y apellido;DNI;Celular;Mail;Plan;Vencimiento;Fecha último pago;Monto último pago\r\n')).toBe(true)
+    expect(csv.startsWith('\uFEFFNombre y apellido;DNI;Celular;Mail;Plan;Vencimiento;Fecha último pago;Monto último pago\r\n')).toBe(true)
     expect(csv.trim().split('\r\n')).toHaveLength(2)
+    expect(csv.trim().split('\r\n')[1]).toMatch(/^EJEMPLO – borrá esta fila;99\.999\.999;/)
   })
 
   it('errores descargables: escapa lo que Excel tomaría como fórmula', () => {

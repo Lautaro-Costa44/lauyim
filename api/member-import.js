@@ -14,6 +14,17 @@ import {
 import { addDays, isIsoDate } from './billing.js';
 
 export const MAX_IMPORT_ROWS = 2000;
+
+// Fila de ejemplo de la plantilla (frontend: members/import-parse.js, mismos valores; un test
+// lo verifica). Si el owner no la borra, se ignora con un aviso: no es un socio ni un error.
+export const TEMPLATE_EXAMPLE_NAME = 'EJEMPLO – borrá esta fila';
+export const TEMPLATE_EXAMPLE_DNI = '99.999.999';
+const exampleKey = value => String(value ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+  .toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+const EXAMPLE_NAME_KEY = exampleKey(TEMPLATE_EXAMPLE_NAME);
+const EXAMPLE_DNI_NORM = TEMPLATE_EXAMPLE_DNI.replace(/\D/g, '');
+export const isTemplateExample = row => exampleKey(row.fullName) === EXAMPLE_NAME_KEY
+  || String(row.dni ?? '').replace(/\D/g, '').replace(/^0+/, '') === EXAMPLE_DNI_NORM;
 const MAX_CELL = 200;
 const MAX_USER_NAME = 40;
 const ROW_FIELDS = ['fullName', 'dni', 'phone', 'email', 'planValue', 'dueDate', 'lastPaymentDate', 'lastPaymentAmount'];
@@ -74,7 +85,7 @@ export function parseImportAmount(raw) {
 
 // Clave para agrupar valores de plan: sin tildes, mayúsculas ni espacios de más. El frontend
 // agrupa con la misma regla (members/import-parse.js).
-export const planKey = value => String(value ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '')
+export const planKey = value => String(value ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
   .trim().replace(/\s+/g, ' ').toLowerCase();
 
 // Mediodía UTC del día: cae en ese mismo día calendario en cualquier tz de -12 a +11.
@@ -138,8 +149,9 @@ const label = key => memberFieldLabel(key).toLowerCase();
 // → { error } (400: plan inexistente, método inválido, plan sin decidir) o
 //   { summary, rows, warnings, write: { plans, members, fills } } con members sin id (lo pone
 //   quien escribe).
-export function analyzeImport({ rows, planMap, options }, ctx) {
+export function analyzeImport({ rows: allRows, planMap, options }, ctx) {
   const fields = parseMemberFields(ctx.fields);
+  const rows = allRows.filter(r => !isTemplateExample(r));
   const dniOn = fields.dni.enabled;
   const billingOn = !!ctx.billingEnabled;
   const warnings = [];
@@ -158,6 +170,7 @@ export function analyzeImport({ rows, planMap, options }, ctx) {
     } else resolved.set(key, null);
   }
 
+  if (rows.length < allRows.length) warnings.push('Se ignoró la fila de ejemplo de la plantilla.');
   const hasBillingData = rows.some(r => BILLING_FIELDS.some(k => r[k]));
   if (!billingOn && hasBillingData) warnings.push('Cuotas está apagado: se ignoran plan, vencimiento y pagos del archivo.');
   if (!dniOn) warnings.push('El DNI está desactivado: no se detectan socios que ya existen ni repetidos, todas las filas se cargan como nuevas.');

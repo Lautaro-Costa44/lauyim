@@ -243,6 +243,52 @@ describe('importar socios', () => {
   })
 })
 
+describe('importar socios en escritorio (>= 1000px)', () => {
+  beforeEach(() => { window.matchMedia = query => ({ matches: /min-width: ?1000px/.test(query), media: query, addEventListener() {}, removeEventListener() {} }) })
+  afterEach(() => { window.matchMedia = query => ({ matches: false, media: query, addEventListener() {}, removeEventListener() {} }) })
+
+  it('columnas, planes y vista previa son tablas; DNI enmascarado y aviso de la fila de ejemplo', async () => {
+    preview = { ...PREVIEW, warnings: ['Se ignoró la fila de ejemplo de la plantilla.'] }
+    await mount('#/admin/usuarios', owner)
+    await click(button('Importar socios'))
+    await chooseFile('import-ejemplo.csv')
+    await click(button('Siguiente'))
+
+    const headers = table => [...table.querySelectorAll('thead th')].map(th => th.textContent)
+    const cols = sheet().querySelector('table.import-table')
+    expect(headers(cols)).toEqual(['Columna del archivo', 'Ejemplos', 'Campo'])
+    const nameRow = [...cols.querySelectorAll('tbody tr')][0]
+    expect([...nameRow.querySelectorAll('td.samples div')].map(d => d.textContent)).toEqual(['Lucía Gómez', 'Juan Carlos Ruiz', 'Ana Torres'])
+    expect(nameRow.querySelector('.import-pick').textContent).toBe('Nombre y apellido')
+    await click(sheet().querySelector('button[aria-label="Campo de Mail"]'))
+    await pickOption('Ignorar')
+    expect(sheet().querySelector('button[aria-label="Campo de Mail"]').textContent).toBe('Ignorar')
+    await click(button('Siguiente'))
+
+    const plans = sheet().querySelector('table.import-plans')
+    expect(headers(plans)).toEqual(['Valor del archivo', 'Socios', 'Acción', 'Plan nuevo: nombre · precio ($) · días'])
+    const planRow = value => [...plans.querySelectorAll('tbody tr')].find(tr => tr.querySelector('td').textContent === value)
+    expect(planRow('Musculación').querySelectorAll('td')[1].textContent).toBe('2')
+    expect(planRow('Mensual').textContent).toContain('$30.000 · 30 días')
+    await click(sheet().querySelector('button[aria-label="Plan para Pase Libre"]'))
+    await pickOption('Sin plan')
+    for (const value of ['Musculación', 'Funcional']) await type(planRow(value).querySelector('input[aria-label="Precio del plan"]'), '25000')
+    await flush()
+    await click(button('Siguiente'))
+    await click(button('Ver vista previa'))
+
+    expect(sheet().querySelector('.import-warning').textContent).toBe('Se ignoró la fila de ejemplo de la plantilla.')
+    const table = sheet().querySelector('table.import-preview')
+    expect(table.closest('.import-table-wrap')).toBeTruthy()
+    expect(headers(table)).toEqual(['Fila', 'Nombre', 'DNI', 'Estado', 'Motivo'])
+    expect([...table.querySelectorAll('tbody tr')[0].querySelectorAll('td')].map(td => td.textContent))
+      .toEqual(['2', 'Lucía Gómez', '***456', 'Nuevo', 'Mensual · vence 10/10/2026'])
+    await click(button('Errores (7)'))
+    expect([...sheet().querySelectorAll('table.import-preview tbody tr')].map(tr => tr.querySelectorAll('td')[2].textContent)).toEqual(['***789', '—'])
+    expect(table.textContent).not.toMatch(/30\.123\.456|123456789/)
+  }, 30000)
+})
+
 describe('historial de cuota', () => {
   it('la prueba se muestra con días, fechas y quién, monto $0 y sin anular; un pago importado tampoco se anula', async () => {
     apiMock.mockImplementation(url => {
