@@ -113,15 +113,19 @@ import {
   isLinkCodeUsable,
   recordLinkCodeFailure,
   consumeLinkCode,
-  mergeMember
+  mergeMember,
+  getTrialsByUserId,
+  getAllMemberProfiles,
+  importMembers
 } from './database.js';
 import {
   MEMBER_FIELDS_SETTING, parseMemberFields, validateMemberFields, validateMemberProfile,
-  normalizeDni, maskDni, profileChangeSummary, formatLinkCode, canonicalLinkCode
+  normalizeDni, maskDni, profileChangeSummary, formatLinkCode, canonicalLinkCode, missingRequiredFields
 } from './members.js';
+import { parseImportBody, analyzeImport } from './member-import.js';
 import {
   getBillingSettings, validateBillingSettings, serializeBillingSetting, gymToday,
-  billingStatus, nextDueDate, debtTotal, isIsoDate,
+  billingStatus, nextDueDate, debtTotal, isIsoDate, daysBetween,
   isBillingEnabled, getBillingNotifyHour, isValidNotifyHour, BILLING_ENABLED_SETTING, BILLING_NOTIFY_HOUR_SETTING,
   memberDebt, isTrialEnded, trialEndDate, hasActivePlan
 } from './billing.js';
@@ -201,6 +205,7 @@ const RATE_LIMIT_SHARE_MAX = envMax('RATE_LIMIT_SHARE_MAX', 20);
 const RATE_LIMIT_SUPPORT_MAX = envMax('RATE_LIMIT_SUPPORT_MAX', 5);
 const RATE_LIMIT_LINK_MAX = envMax('RATE_LIMIT_LINK_MAX', 30);                   // por IP: link/options, link/verify
 const RATE_LIMIT_PER_LINK_CODE_MAX = envMax('RATE_LIMIT_PER_LINK_CODE_MAX', 20); // por código: link/options
+const RATE_LIMIT_IMPORT_MAX = envMax('RATE_LIMIT_IMPORT_MAX', 30);               // por usuario: owner/members/import (vistas previas incluidas)
 // device/poll queda afuera: el cliente lo llama cada 2 s y el pairingId (128 bits) no se adivina.
 const RATE_LIMITS_BY_IP = {
   'POST /api/login/options': RATE_LIMIT_LOGIN_MAX,
@@ -531,6 +536,21 @@ const TRIAL_ERRORS = {
   trial_used: 'Este socio ya usó su prueba',
   has_plan: 'El socio tiene un plan vigente'
 };
+
+// Historial de cuota: pagos ({ type: 'payment', ...pago }) y pruebas ({ type: 'trial',
+// startDate, trialUntil, days, amount: 0, createdByName }) por fecha, el más nuevo primero.
+// days: null si el backfill no pudo reconstruir el último día.
+function billingHistory(payments, trials, settings) {
+  const items = [
+    ...payments.map(p => ({ type: 'payment', at: p.paidAt ?? 0, ...p })),
+    ...trials.map(tr => {
+      const startDate = gymToday(tr.startedAt, settings.gym_tz);
+      const days = isIsoDate(tr.trialUntil) ? daysBetween(startDate, tr.trialUntil) + 1 : null;
+      return { type: 'trial', at: tr.startedAt, id: tr.id, startDate, trialUntil: tr.trialUntil, days, amount: 0, createdByName: tr.createdByName };
+    })
+  ];
+  return items.sort((a, b) => b.at - a.at).map(({ at, ...item }) => item);
+}
 
 // Pago a registrar (pago suelto o primer pago del alta): plan, monto, método, fecha y el
 // vencimiento que deja. → { value } o { status, error }.
@@ -2714,6 +2734,9 @@ const routes = {
     const billingByUser = new Map(getAllMemberBilling().map(b => [b.userId, b]));
     const appUserIds = getAppUserIds();
     const profileUserIds = getProfileUserIds();
+    // "Datos incompletos": fichas con algún obligatorio vacío (típico de una importación).
+    const fields = memberFieldsNow();
+    const incomplete = new Set(getAllMemberProfiles().filter(p => missingRequiredFields(p, fields).length).map(p => p.userId));
     // Nunca DNI ni celular acá: solo si existen (hasProfile). La ficha completa va por /profile.
     const users = dbUsers.map(u => {
       const S = readState(u.id) || {};
@@ -2722,7 +2745,7 @@ const routes = {
       return {
         id: u.id, name: u.name, created: isoTimestamp(u.created_at),
         disabled: !!u.disabled, admin: isAdmin(u), owner: !!u.owner, invitedBy: u.invited_by || null,
-        hasApp: appUserIds.has(u.id), hasProfile: profileUserIds.has(u.id),
+        hasApp: appUserIds.has(u.id), hasProfile: profileUserIds.has(u.id), profileIncomplete: incomplete.has(u.id),
         workouts: workouts.length,
         lastWorkout: last ? last.d : null,
         lastSync: S._ts || null,
@@ -2898,9 +2921,13 @@ const routes = {
     const today = billingToday(settings);
     const billing = getMemberBilling(userId);
     const blocker = trialBlocker(userId, billing, today, settings);
+    const payments = getPaymentsByUserId(userId);
     json(res, 200, {
       billing: billingView(billing, today, settings),
-      payments: getPaymentsByUserId(userId),
+      payments,
+      // Pagos y pruebas juntos, el más nuevo primero. Una prueba no es un pago: monto 0, no se
+      // anula y no suma a recaudación ni a deuda.
+      history: billingHistory(payments, getTrialsByUserId(userId), settings),
       // Para la ficha de cuota: si se puede dar la prueba y, si no, por qué.
       trial: { days: settings.trial_days, until: trialEndDate(today, settings.trial_days), available: !blocker, blocker }
     });
@@ -2917,7 +2944,7 @@ const routes = {
     const blocker = trialBlocker(userId, getMemberBilling(userId), today, settings);
     if (blocker) return json(res, 409, { error: blocker, message: TRIAL_ERRORS[blocker] });
     const until = trialEndDate(today, settings.trial_days);
-    if (!startTrial(userId, until)) return json(res, 409, { error: 'trial_used', message: TRIAL_ERRORS.trial_used });
+    if (!startTrial(userId, until, admin.id)) return json(res, 409, { error: 'trial_used', message: TRIAL_ERRORS.trial_used });
     audit(req, 'admin.billing.trial_start', { user: admin, target, summary: `Prueba de ${settings.trial_days} día${settings.trial_days === 1 ? '' : 's'} · hasta ${until}` });
     json(res, 200, { billing: billingView(getMemberBilling(userId), billingToday(settings), settings) });
   },
@@ -2998,6 +3025,7 @@ const routes = {
     const body = await readBody(req);
     if (body.reason != null && (typeof body.reason !== 'string' || body.reason.length > MAX_PAYMENT_NOTE)) return json(res, 400, { error: `reason debe ser texto (máx. ${MAX_PAYMENT_NOTE})` });
     if (payment.voidedAt) return json(res, 409, { error: 'Este pago ya está anulado' });
+    if (payment.source === 'import') return json(res, 409, { error: 'Un pago importado no se puede anular' });
     if (getLatestActivePayment(userId)?.id !== payment.id) return json(res, 409, { error: 'Solo se puede anular el último pago registrado del socio' });
     const current = getMemberBilling(userId);
     if (current.dueDate !== payment.periodEnd || current.planId !== payment.planId) {
@@ -3115,7 +3143,7 @@ const routes = {
       periodStart: payment.period.periodStart, periodEnd: payment.period.periodEnd, dueDate: payment.period.dueDate, note: payment.note, createdBy: admin.id
     };
     try {
-      createMember({ id, name: name.value, profile, billing, start: paymentRow ? { payment: paymentRow } : trialUntil ? { trialUntil } : null });
+      createMember({ id, name: name.value, profile, billing, start: paymentRow ? { payment: paymentRow } : trialUntil ? { trialUntil, createdBy: admin.id } : null });
     } catch (error) {
       // Otra alta con el mismo DNI entró entre el chequeo y la transacción.
       const other = isDniUniqueError(error) && findMemberByDni(profile.dniNorm);
@@ -3128,6 +3156,45 @@ const routes = {
     if (payment) audit(req, 'admin.billing.payment', { user: admin, target: user, summary: `$${payment.amount} · ${payment.method} · ${payment.plan.name} · vence ${payment.period.dueDate}` });
     if (trialUntil) audit(req, 'admin.billing.trial_start', { user: admin, target: user, summary: `Prueba de ${settings.trial_days} día${settings.trial_days === 1 ? '' : 's'} · hasta ${trialUntil}` });
     json(res, 200, { member: { ...profileView(user, getMemberProfile(id)), billing: billingView(getMemberBilling(id), billingToday(settings), settings) } });
+  },
+
+  // Importar socios desde Excel/CSV (el frontend lee el archivo y manda las filas ya mapeadas).
+  // dry_run: qué pasaría fila por fila, sin escribir. Real: todo en una transacción.
+  'POST /api/owner/members/import': async (req, res) => {
+    const owner = requireOwner(req, res); if (!owner) return;
+    if (!rateLimit(res, `user:${owner.id} POST /api/owner/members/import`, RATE_LIMIT_IMPORT_MAX)) return;
+    const parsed = parseImportBody(await readBody(req), plan => parsePlanBody(plan, false));
+    if (parsed.error) return json(res, 400, { error: parsed.error });
+    const settings = billingSettingsNow();
+    const analysis = analyzeImport(parsed.value, {
+      fields: memberFieldsNow(),
+      billingEnabled: billingEnabledNow(),
+      paymentMethods: settings.payment_methods,
+      today: billingToday(settings),
+      plans: getPlans(),
+      existingProfiles: getAllMemberProfiles()
+    });
+    if (analysis.error) return json(res, 400, { error: analysis.error });
+    const { summary, rows, warnings, write } = analysis;
+    if (parsed.value.dryRun) return json(res, 200, { dry_run: true, summary, rows, warnings });
+
+    const members = write.members.map(m => ({ ...m, id: crypto.randomBytes(12).toString('base64url') }));
+    let result;
+    try {
+      result = importMembers({ plans: write.plans, members, fills: write.fills, createdBy: owner.id });
+    } catch (error) {
+      // Otra alta tomó un DNI del archivo entre la vista previa y la importación: nada se guardó.
+      if (isDniUniqueError(error)) return json(res, 409, { error: 'dni_duplicado', message: 'Otro socio con un DNI del archivo se cargó mientras tanto. No se importó nada: volvé a generar la vista previa.' });
+      throw error;
+    }
+    const skipped = summary.existentes - result.updated;
+    // Solo conteos: nunca DNIs ni nombres del archivo.
+    audit(req, 'owner.member.import', {
+      user: owner,
+      summary: [`${result.created} creados`, `${result.updated} completados`, `${skipped} salteados`, `${summary.errores} con error`,
+        write.plans.length ? `${write.plans.length} planes nuevos` : null, `${members.filter(m => m.payment).length} pagos importados`].filter(Boolean).join(' · ')
+    });
+    json(res, 200, { ok: true, created: result.created, updated: result.updated, skipped, errors: summary.errores });
   },
 
   // ¿Ya existe alguien con este DNI? Para ofrecer vincular en vez de duplicar.

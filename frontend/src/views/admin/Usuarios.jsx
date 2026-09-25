@@ -2,12 +2,13 @@ import { useEffect, useState } from 'react'
 import { useAdmin } from './context.js'
 import { useDesktop } from './useDesktop.js'
 import { useUI } from '../../store/useUI.js'
+import { useStore } from '../../store/useStore.js'
 import { fmtDate } from '../../lib/format.js'
 import { t } from '../../lib/i18n.js'
 import Icon from '../../components/Icon.jsx'
 import { Button, Row, TextField } from '../../components/ui.jsx'
 import { rel, UserDetail } from './shared.jsx'
-import { NoAppBadge, looksLikeDni, lookupDni, openMemberSheet } from './members/common.jsx'
+import { IncompleteBadge, NoAppBadge, looksLikeDni, lookupDni, openImportSheet, openMemberSheet } from './members/common.jsx'
 
 // Filtro por acceso a la app: las fichas (sin passkey) las carga el gimnasio.
 const APP_FILTERS = [['all', 'Todos'], ['app', 'Con app'], ['noapp', 'Sin app']]
@@ -16,6 +17,7 @@ const matchesAppFilter = (u, f) => f === 'all' || (f === 'app' ? u.hasApp !== fa
 export default function Usuarios() {
   const openSheet = useUI(s => s.openSheet)
   const { users, loadUsers, billingEnabled } = useAdmin()
+  const isOwner = !!useStore(s => s.user)?.owner
   const [userSearch, setUserSearch] = useState('')
   const [userPage, setUserPage] = useState(1)
   const desktop = useDesktop()
@@ -32,6 +34,13 @@ export default function Usuarios() {
     billingEnabled: billingEnabled !== false,
     onCreated: id => { loadUsers(); openUser(id) },
     onOpenExisting: openUser
+  })
+  // Importar socios: solo el owner (el servidor lo exige igual). "Ver socios" deja la lista en
+  // "Sin app", donde quedan las fichas importadas.
+  const importMembers = () => openImportSheet(openSheet, {
+    billingEnabled: billingEnabled !== false,
+    onImported: loadUsers,
+    onShowMembers: () => { setUserSearch(''); setAppFilter('noapp'); setUserPage(1) }
   })
   const disabledCount = (users || []).filter(u => u.disabled).length
   const filteredUsers = (users || []).filter(u => matchesAppFilter(u, appFilter) && u.name.toLocaleLowerCase().includes(userSearch.trim().toLocaleLowerCase()))
@@ -51,7 +60,10 @@ export default function Usuarios() {
 
   return <div className="admin-users">
     <div className="admin-users-list">
-    <Button variant="tinted" icon="plus" className="member-new" onClick={newMember}>{t('Nuevo socio (sin app)')}</Button>
+    <div className="member-actions">
+      <Button variant="tinted" icon="plus" className="member-new" onClick={newMember}>{t('Nuevo socio (sin app)')}</Button>
+      {isOwner && <Button variant="tinted" icon="upload" className="member-import" onClick={importMembers}>{t('Importar socios')}</Button>}
+    </div>
     <h4 className="sec">{t('Usuarios: {0} ({1} Desactivados)', users ? users.length : 0, disabledCount)}</h4>
     <div style={{ marginBottom: 10 }}>
       <TextField name="admin-user-search" value={userSearch} onChange={e => changeUserSearch(e.target.value)}
@@ -68,7 +80,7 @@ export default function Usuarios() {
     </div>}
     <div className="list">
       {visibleUsers.map(u => <div key={u.id} className={'item' + (desktop && selectedId === u.id ? ' on' : '')} onClick={() => openUser(u.id)} style={u.disabled ? { opacity: .55 } : null}>
-        <div className="grow"><div className="tt">{u.live && <Icon name="dot" style={{ fontSize: 9, color: 'var(--green)', display: 'inline-block', marginRight: 5 }} />}{u.name} {(u.owner || u.admin) && <span className="tag acc" style={{ marginLeft: 4 }}>{u.owner ? t('owner') : t('admin')}</span>}{u.disabled && <span className="tag" style={{ marginLeft: 4, color: 'var(--red)' }}>{t('off')}</span>}{u.hasApp === false && <NoAppBadge style={{ marginLeft: 4 }} />}</div>
+        <div className="grow"><div className="tt">{u.live && <Icon name="dot" style={{ fontSize: 9, color: 'var(--green)', display: 'inline-block', marginRight: 5 }} />}{u.name} {(u.owner || u.admin) && <span className="tag acc" style={{ marginLeft: 4 }}>{u.owner ? t('owner') : t('admin')}</span>}{u.disabled && <span className="tag" style={{ marginLeft: 4, color: 'var(--red)' }}>{t('off')}</span>}{u.hasApp === false && <NoAppBadge style={{ marginLeft: 4 }} />}{u.profileIncomplete && <IncompleteBadge style={{ marginLeft: 4 }} />}</div>
           <div className="ss">{u.hasApp === false ? t('Ficha cargada por el gimnasio') : u.live ? t('training now') + ' · ' + u.live.name : u.workouts + ' ' + t('workouts') + (u.lastWorkout ? ' · ' + t('last') + ' ' + fmtDate(u.lastWorkout) : '') + ' · ' + t('synced') + ' ' + rel(u.lastSync)}</div></div>
         {u.hasPush && <Icon name="bell" title="push enabled" style={{ fontSize: 15, color: 'var(--label-3)' }} />}<Icon name="chevronRight" className="chev" />
       </div>)}

@@ -21,6 +21,13 @@ export function NoAppBadge({ style }) {
   return <span className="tag nocap" style={{ marginLeft: 6, ...style }}>{t('Sin app')}</span>
 }
 
+// Algún dato obligatorio (según la config de campos) vacío: típico de una ficha importada.
+export function IncompleteBadge({ style }) {
+  return <span className="tag nocap member-incomplete" style={{ marginLeft: 6, ...style }}>{t('Datos incompletos')}</span>
+}
+export const profileIncomplete = (profile, fields) =>
+  MEMBER_FIELDS.some(f => fields[f.key]?.enabled && fields[f.key]?.required && !String(profile?.[f.prop] ?? '').trim())
+
 // ¿Hay otra persona con este DNI? → { userId, name, hasApp } o null. Un DNI mal escrito, el
 // DNI apagado en la config o un error de red cuentan como "no hay": el alta igual lo valida.
 export function lookupDni(dni) {
@@ -45,13 +52,14 @@ export function DuplicateNotice({ other, onOpen, onLink }) {
 
 // Los flujos pesados viven en otro chunk; se abren como un sheet a pantalla completa con pasos
 // internos (atrás retrocede un paso), igual que la ficha de cuota.
-export function openMemberSheet(openSheet, name, props) {
-  return import('./MemberSheets.jsx').then(mod => {
-    const Sheet = mod[name]
-    openSheet((close, { setOnBack } = {}) => <Sheet {...props} close={close} setOnBack={setOnBack} />,
-      { locked: true, fullScreen: true, backGesture: true })
-  })
-}
+const openLazySheet = (load, openSheet, name, props) => load().then(mod => {
+  const Sheet = mod[name]
+  openSheet((close, { setOnBack } = {}) => <Sheet {...props} close={close} setOnBack={setOnBack} />,
+    { locked: true, fullScreen: true, backGesture: true })
+})
+export const openMemberSheet = (openSheet, name, props) => openLazySheet(() => import('./MemberSheets.jsx'), openSheet, name, props)
+// Importar socios (solo owner): chunk propio, que además carga el lector de .xlsx recién al usarlo.
+export const openImportSheet = (openSheet, props) => openLazySheet(() => import('./ImportMembersSheet.jsx'), openSheet, 'ImportMembersSheet', props)
 
 // Card "Ficha" de UserDetail: los datos de identificación del socio y el botón para editarlos.
 // openSheet, openUser y onLink vienen de UserDetail (onLink abre "unir" con los dos elegidos).
@@ -67,7 +75,10 @@ export function FichaCard({ user, users, openSheet, openUser, onLink }) {
   const rows = MEMBER_FIELDS.filter(f => fields[f.key]?.enabled || profile[f.prop])
   return <div className="card member-ficha">
     <div className="row between">
-      <h2 style={{ margin: 0 }}>{t('Ficha')}</h2>
+      <div className="member-ficha-h">
+        <h2 style={{ margin: 0 }}>{t('Ficha')}</h2>
+        {data && profileIncomplete(profile, fields) && <IncompleteBadge style={{ marginLeft: 0 }} />}
+      </div>
       <Button size="sm" variant="tinted" icon="pencil" disabled={!data} onClick={edit}>{t('Editar')}</Button>
     </div>
     {error ? <div className="form-error" role="alert">{error}</div>

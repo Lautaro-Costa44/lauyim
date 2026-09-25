@@ -177,7 +177,7 @@ export function initDatabase() {
   try { db.exec(`ALTER TABLE workouts ADD COLUMN meta TEXT;`); } catch {}
   // Cuotas v1: anular pagos. payments ya existe acá (lo crea schema.sql), así que estos ALTER
   // van después del schema; en una base nueva fallan en silencio porque el CREATE los trae.
-  for (const col of ['previous_due_date TEXT', 'previous_plan_id INTEGER', 'previous_trial_until TEXT', 'voided_at INTEGER', 'voided_by TEXT', 'void_reason TEXT']) {
+  for (const col of ['previous_due_date TEXT', 'previous_plan_id INTEGER', 'previous_trial_until TEXT', 'voided_at INTEGER', 'voided_by TEXT', 'void_reason TEXT', 'source TEXT']) {
     try { db.exec(`ALTER TABLE payments ADD COLUMN ${col};`); } catch {}
   }
   // invites también viene de schema.sql: mismos ALTER después del schema.
@@ -191,6 +191,7 @@ export function initDatabase() {
   // persona (queda para siempre: una prueba por DNI).
   try { db.exec(`ALTER TABLE member_billing ADD COLUMN trial_until TEXT;`); } catch {}
   try { db.exec(`ALTER TABLE member_profile ADD COLUMN trial_used_at INTEGER;`); } catch {}
+  backfillMemberTrials(db);
   db.exec(`CREATE TABLE IF NOT EXISTS sync_operations (
     user_id TEXT NOT NULL,
     op_id TEXT NOT NULL,
@@ -282,6 +283,26 @@ export function initDatabase() {
   } catch {}
 
   return db;
+}
+
+// Pruebas dadas antes de member_trials: solo quedó member_profile.trial_used_at. Se crea una
+// fila por persona con lo que se pueda reconstruir: el inicio es trial_used_at; el último día,
+// la prueba vigente (member_billing.trial_until) o la que cerró el último pago
+// (payments.previous_trial_until); si no hay ninguna, NULL. Idempotente: solo quien no tiene
+// ninguna fila.
+function backfillMemberTrials(db) {
+  db.prepare(`
+    INSERT INTO member_trials (user_id, started_at, trial_until, created_by, created_at)
+    SELECT mp.user_id, mp.trial_used_at,
+      COALESCE(
+        (SELECT mb.trial_until FROM member_billing mb WHERE mb.user_id = mp.user_id),
+        (SELECT p.previous_trial_until FROM payments p WHERE p.user_id = mp.user_id AND p.previous_trial_until IS NOT NULL ORDER BY p.id DESC LIMIT 1)
+      ),
+      NULL, ?
+    FROM member_profile mp
+    WHERE mp.trial_used_at IS NOT NULL
+      AND NOT EXISTS (SELECT 1 FROM member_trials mt WHERE mt.user_id = mp.user_id)
+  `).run(Date.now());
 }
 
 export function closeDatabase() {
@@ -1707,12 +1728,15 @@ export function recordPayment(payment) {
   }
 }
 
-// Empieza la prueba: último día en member_billing y la marca de "ya la usó" en el perfil. Sin
-// transacción propia (ver startTrial y createMember). Si ya estaba marcada, no toca nada.
-// → true si la empezó.
-function beginTrial(db, userId, trialUntil) {
-  const marked = db.prepare('UPDATE member_profile SET trial_used_at = ? WHERE user_id = ? AND trial_used_at IS NULL').run(Date.now(), userId);
+// Empieza la prueba: último día en member_billing, la marca de "ya la usó" en el perfil y la
+// fila del historial (member_trials). Sin transacción propia (ver startTrial y createMember).
+// Si ya estaba marcada, no toca nada. → true si la empezó.
+function beginTrial(db, userId, trialUntil, createdBy = null) {
+  const now = Date.now();
+  const marked = db.prepare('UPDATE member_profile SET trial_used_at = ? WHERE user_id = ? AND trial_used_at IS NULL').run(now, userId);
   if (Number(marked.changes) !== 1) return false;
+  db.prepare('INSERT INTO member_trials (user_id, started_at, trial_until, created_by, created_at) VALUES (?, ?, ?, ?, ?)')
+    .run(userId, now, trialUntil, createdBy ?? null, now);
   db.prepare(`
     INSERT INTO member_billing (user_id, plan_id, due_date, trial_until, push_sent_for_due, updated_at)
     VALUES (?, NULL, NULL, ?, NULL, ?)
@@ -1723,11 +1747,11 @@ function beginTrial(db, userId, trialUntil) {
 
 // Prueba de un socio que ya existe. La marca de uso se re-chequea dentro de la transacción:
 // dos admins a la vez no le dan dos pruebas. → true, o false si ya la había usado.
-export function startTrial(userId, trialUntil) {
+export function startTrial(userId, trialUntil, createdBy = null) {
   const db = getDatabase();
   db.exec('BEGIN IMMEDIATE');
   try {
-    const ok = beginTrial(db, userId, trialUntil);
+    const ok = beginTrial(db, userId, trialUntil, createdBy);
     db.exec(ok ? 'COMMIT' : 'ROLLBACK');
     return ok;
   } catch (error) {
@@ -1757,7 +1781,8 @@ const paymentFromRow = row => row ? {
   voidedAt: row.voided_at,
   voidedBy: row.voided_by,
   voidedByName: row.voided_by_name ?? null,
-  voidReason: row.void_reason
+  voidReason: row.void_reason,
+  source: row.source ?? null
 } : null;
 
 const PAYMENT_SELECT = `
@@ -1781,6 +1806,22 @@ export function getPaymentById(id) {
 // guardó el vencimiento que había al cargarlo, así que solo se deshacen en orden inverso.
 export function getLatestActivePayment(userId) {
   return paymentFromRow(getDatabase().prepare(`${PAYMENT_SELECT} WHERE p.user_id = ? AND p.voided_at IS NULL ORDER BY p.id DESC LIMIT 1`).get(userId));
+}
+
+// Historial de pruebas del socio, la más nueva primero. createdByName: quién la dio (null en
+// las reconstruidas por el backfill).
+export function getTrialsByUserId(userId) {
+  return getDatabase().prepare(`
+    SELECT mt.*, u.name AS created_by_name FROM member_trials mt LEFT JOIN users u ON u.id = mt.created_by
+    WHERE mt.user_id = ? ORDER BY mt.started_at DESC, mt.id DESC
+  `).all(userId).map(row => ({
+    id: row.id,
+    userId: row.user_id,
+    startedAt: row.started_at,
+    trialUntil: row.trial_until ?? null,
+    createdBy: row.created_by ?? null,
+    createdByName: row.created_by_name ?? null
+  }));
 }
 
 // Anula un pago y devuelve al socio el plan, vencimiento y prueba que tenía antes, en una
@@ -1881,7 +1922,7 @@ function writeMemberProfile(db, userId, p, nowIso) {
 
 // Alta de ficha: usuario sin credencial (admin=0, owner=0) + perfil + (opcional) plan asignado,
 // primer pago o prueba. Todo o nada: si el pago o la prueba fallan, no queda la ficha.
-// start: { payment: {...recordPayment sin userId} } | { trialUntil } | null.
+// start: { payment: {...recordPayment sin userId} } | { trialUntil, createdBy? } | null.
 export function createMember({ id, name, profile, billing = null, start = null }) {
   const db = getDatabase();
   const nowIso = new Date().toISOString();
@@ -1891,7 +1932,7 @@ export function createMember({ id, name, profile, billing = null, start = null }
     writeMemberProfile(db, id, profile, nowIso);
     if (billing) setMemberBilling(id, billing);
     if (start?.payment) insertPayment(db, { ...start.payment, userId: id, userName: name });
-    if (start?.trialUntil && !beginTrial(db, id, start.trialUntil)) throw new Error('trial not started');
+    if (start?.trialUntil && !beginTrial(db, id, start.trialUntil, start.createdBy)) throw new Error('trial not started');
     db.exec('COMMIT');
   } catch (error) {
     try { db.exec('ROLLBACK'); } catch {}
@@ -2068,8 +2109,10 @@ export function mergeMember({ fichaId, targetId, keepBilling = null, dryRun = fa
     if (plan.profile.conflict) return stop('dni_conflict');
     const nowIso = new Date().toISOString();
 
-    // Pagos: cambian de dueño y conservan el snapshot user_name.
+    // Pagos: cambian de dueño y conservan el snapshot user_name. El historial de pruebas también
+    // (si no, se iría con la ficha por el ON DELETE CASCADE).
     db.prepare('UPDATE payments SET user_id = ? WHERE user_id = ?').run(targetId, fichaId);
+    db.prepare('UPDATE member_trials SET user_id = ? WHERE user_id = ?').run(targetId, fichaId);
 
     if (plan.billing.ficha && plan.billing.keep === 'ficha') {
       const fb = db.prepare('SELECT plan_id, due_date, trial_until FROM member_billing WHERE user_id = ?').get(fichaId);
@@ -2108,6 +2151,79 @@ export function mergeMember({ fichaId, targetId, keepBilling = null, dryRun = fa
     deleteUser(fichaId, { inTransaction: true });
     db.exec('COMMIT');
     return { result: plan };
+  } catch (error) {
+    try { db.exec('ROLLBACK'); } catch {}
+    throw error;
+  }
+}
+
+// --- importación de socios ---
+
+// Todos los perfiles (para "Datos incompletos" en el listado y los duplicados del import).
+export function getAllMemberProfiles() {
+  return getDatabase().prepare(`
+    SELECT mp.*, u.name AS user_name FROM member_profile mp JOIN users u ON u.id = mp.user_id
+  `).all().map(row => ({ ...profileFromRow(row), name: row.user_name }));
+}
+
+// Columnas del perfil que la importación puede completar, con su forma normalizada.
+const IMPORT_FILL = { fullName: ['full_name'], phone: ['phone', 'phone_norm'], email: ['email'] };
+const IMPORT_FILL_PROP = { full_name: 'fullName', phone: 'phone', phone_norm: 'phoneNorm', email: 'email' };
+
+// Importación de socios en UNA transacción: planes nuevos, fichas nuevas (con plan, vencimiento
+// y el último pago como historial) y datos vacíos de fichas existentes. Si algo falla (por
+// ejemplo, otra alta tomó un DNI entre la vista previa y esto: índice único), rollback completo.
+//   plans    [{ key, name, price, durationDays }] a crear; los socios los referencian por key.
+//   members  [{ id, name, profile, billing: { planId | planKey, dueDate } | null,
+//               payment: { planId | planKey, planName, amount, method, paidAt, periodStart, periodEnd } | null }]
+//   fills    [{ userId, values: { fullName?, phone?, phoneNorm?, email? } }]: solo se escriben
+//            las columnas que siguen vacías DENTRO de la transacción (nunca pisa datos cargados).
+// → { created, updated, plans: [{ key, id }] }.
+export function importMembers({ plans = [], members = [], fills = [], createdBy = null }) {
+  const db = getDatabase();
+  const now = Date.now();
+  const nowIso = new Date(now).toISOString();
+  db.exec('BEGIN IMMEDIATE');
+  try {
+    const planIds = new Map();
+    const insertPlan = db.prepare('INSERT INTO plans (name, price, duration_days, active, created_at, updated_at) VALUES (?, ?, ?, 1, ?, ?)');
+    for (const p of plans) planIds.set(p.key, Number(insertPlan.run(p.name, p.price, p.durationDays, now, now).lastInsertRowid));
+    const planIdOf = ref => ref.planId ?? planIds.get(ref.planKey);
+
+    const insertBilling = db.prepare(`
+      INSERT INTO member_billing (user_id, plan_id, due_date, trial_until, push_sent_for_due, updated_at) VALUES (?, ?, ?, NULL, NULL, ?)
+    `);
+    const insertPayment = db.prepare(`
+      INSERT INTO payments (user_id, user_name, plan_id, plan_name, amount, method, paid_at, period_start, period_end, note, created_by, created_at, source)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'Importado', ?, ?, 'import')
+    `);
+    for (const m of members) {
+      createUser({ id: m.id, name: m.name, created: nowIso, member: true });
+      writeMemberProfile(db, m.id, m.profile, nowIso);
+      if (m.billing) insertBilling.run(m.id, planIdOf(m.billing), m.billing.dueDate, now);
+      if (m.payment) {
+        const p = m.payment;
+        insertPayment.run(m.id, m.name, planIdOf(p), p.planName ?? null, p.amount, p.method, p.paidAt, p.periodStart, p.periodEnd, createdBy ?? null, now);
+      }
+    }
+
+    let updated = 0;
+    for (const f of fills) {
+      const current = db.prepare('SELECT * FROM member_profile WHERE user_id = ?').get(f.userId);
+      if (!current) continue;
+      const sets = [];
+      const values = [];
+      for (const [prop, cols] of Object.entries(IMPORT_FILL)) {
+        if (f.values[prop] == null || f.values[prop] === '') continue;
+        if (current[cols[0]] != null && current[cols[0]] !== '') continue;
+        for (const col of cols) { sets.push(`${col} = ?`); values.push(f.values[IMPORT_FILL_PROP[col]] ?? null); }
+      }
+      if (!sets.length) continue;
+      db.prepare(`UPDATE member_profile SET ${sets.join(', ')}, updated_at = ? WHERE user_id = ?`).run(...values, nowIso, f.userId);
+      updated++;
+    }
+    db.exec('COMMIT');
+    return { created: members.length, updated, plans: [...planIds].map(([key, id]) => ({ key, id })) };
   } catch (error) {
     try { db.exec('ROLLBACK'); } catch {}
     throw error;

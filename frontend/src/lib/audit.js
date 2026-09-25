@@ -66,6 +66,7 @@ const LABELS = {
   'owner.user.delete': 'Deleted an account',
   'owner.qr.regenerate': 'Regenerated the QR access token',
   'owner.member.fields': 'Changed member record fields',
+  'owner.member.import': 'Imported members',
   'owner.billing.enabled': 'Turned membership billing on',
   'owner.billing.disabled': 'Turned membership billing off',
   'admin.notifications.settings': 'Changed membership notice time'

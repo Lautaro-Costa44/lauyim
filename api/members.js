@@ -148,10 +148,12 @@ export const EMPTY_PROFILE = Object.freeze({ fullName: null, dni: null, dniNorm:
 //   current  perfil actual (PUT) o null (alta).
 //   partial  PUT: solo cambia lo presente en body; los obligatorios se chequean sobre el
 //            resultado. Alta (partial=false): todo lo que falta queda vacío.
+//   enforceRequired  false: no exige los obligatorios (importación: la ficha queda con "Datos
+//            incompletos", ver missingRequiredFields).
 // Un campo deshabilitado se ignora (ni se valida ni se escribe: conserva lo guardado).
 // → { value: perfil completo resultante, changed: [claves de config que cambiaron] } o
 //   { error, field }.
-export function validateMemberProfile(body, fields, { current = null, partial = false } = {}) {
+export function validateMemberProfile(body, fields, { current = null, partial = false, enforceRequired = true } = {}) {
   const config = parseMemberFields(fields);
   const out = { ...EMPTY_PROFILE, ...(current || {}) };
   const changed = [];
@@ -183,13 +185,25 @@ export function validateMemberProfile(body, fields, { current = null, partial = 
     const after = key === 'dni' ? out.dniNorm : key === 'phone' ? out.phone : key === 'full_name' ? out.fullName : out.email;
     if ((before ?? null) !== (after ?? null)) changed.push(key);
   }
-  for (const key of MEMBER_FIELDS) {
-    if (!config[key].required) continue;
-    const value = key === 'dni' ? out.dniNorm : key === 'phone' ? out.phone : key === 'full_name' ? out.fullName : out.email;
-    if (empty(value)) return { error: `${FIELD_LABELS[key]} es obligatorio`, field: key };
+  if (enforceRequired) {
+    const [missing] = missingRequiredFields(out, config);
+    if (missing) return { error: `${FIELD_LABELS[missing]} es obligatorio`, field: missing };
   }
   return { value: out, changed };
 }
+
+// Campos obligatorios (y habilitados) que el perfil tiene vacíos, en el orden de MEMBER_FIELDS.
+// Con alguno, la ficha tiene "Datos incompletos" (típico de una importación).
+export function missingRequiredFields(profile, fields) {
+  const config = parseMemberFields(fields);
+  return MEMBER_FIELDS.filter(key => {
+    if (!config[key].required) return false;
+    const value = key === 'dni' ? profile?.dniNorm : key === 'phone' ? profile?.phone : key === 'full_name' ? profile?.fullName : profile?.email;
+    return empty(value);
+  });
+}
+
+export const memberFieldLabel = key => FIELD_LABELS[key];
 
 // Resumen para auditoría: nombres de campos, DNI enmascarado, nunca el celular ni el mail.
 export function profileChangeSummary(changed, profile) {

@@ -1,0 +1,26 @@
+﻿Nombre y apellido;Nombre;Apellido;DNI;Celular;Mail;Plan;Vencimiento;Fecha último pago;Monto último pago
+Lucía Gómez;;;30.123.456;11 2345-6789;lucia@mail.com;Mensual;10/10/2026;10/09/2026;$30.000
+;Martín;Pérez;28111222;11 3456-7890;;Mensual;;01/09/2026;30000
+;Sofía;Martínez;35.222.333;351 555-1234;sofia@mail.com;Musculación;15/10/26;;
+Juan Carlos Ruiz;;;123456789;11 4444-5555;;Mensual;20/10/2026;;
+Ana Torres;;;40.555.666;11 5555-6666;;Mensual;22/10/2026;;
+Ana Torres Bis;;;40555666;11 5555-7777;;Mensual;22/10/2026;;
+Socio Existente;;;30.100.001;11 9999-8888;otro@mail.com;Mensual;30/10/2026;;
+Diego Fernández;;;29.333.444;11 4567-8901;;Mensual;31/02/2026;;
+Valentina López;;;33.444.555;11 7777-1111;;Mensual;46310;;
+Camila Díaz;;;31.555.666;11 7777-2222;;Pase Libre;20/10/2026;;
+Tomás Sánchez;;;27.666.777;11 7777-3333;;Mensual;;05/09/2026;$30.000
+Florencia Romero;;;34.777.888;;flor@mail.com;Mensual;30/10/2026;;
+Nicolás Álvarez;;;26.888.999;11 7777-4444;;;01/11/2026;;
+;;;32.999.000;11 7777-5555;;Mensual;12/10/2026;;
+Julieta Castro;;;38.123.123;11 7777-6666;;musculacion;12/10/2026;;
+Lautaro Molina;;;39.234.234;11 7777-7777;;Mensual;ayer;;
+Micaela Ortiz;;;36.345.345;11 7777-8888;;Mensual;2026-10-25;;
+Gonzalo Silva;;;37.456.456;+54 9 11 5678-1234;;Funcional;;20/09/2026;25.000,00
+Carolina Medina;;;25.567.567;11 7777-9999;;;;;
+Federico Herrera;;;24.678.678;11 6789 0123;fede@mail;Mensual;05/10/2026;;
+Paula Aguirre;;;41.789.789;11 6666-1111;;Mensual;;01/09/2026;treinta mil
+Ramiro Vega;;;23.890.890;11 6666-2222;;Funcional;18/10/2026;;
+Agustina Rojas;;;42.901.901;11 6666-3333;agus@mail.com;Mensual;08/10/2026;08/09/2026;30000
+=Pedro Test;;;;11 6666-4444;;;;;
+Bruno Acosta;;;22.012.012;11 6666-5555;;Mensual;28/09/2026;;

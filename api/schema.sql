@@ -498,9 +498,24 @@ CREATE TABLE IF NOT EXISTS payments (
   previous_trial_until TEXT,       -- prueba que el pago cerró; anularlo la devuelve
   voided_at INTEGER,
   voided_by TEXT,
-  void_reason TEXT
+  void_reason TEXT,
+  source TEXT                      -- 'import': cargado por la importación de socios (no se anula)
 );
 CREATE INDEX IF NOT EXISTS idx_payments_user_paid ON payments(user_id, paid_at);
+
+-- Historial de pruebas gratis: una fila por prueba dada (alta con prueba, POST trial o el
+-- backfill de las que solo dejaron member_profile.trial_used_at). Solo historial: el estado
+-- vigente sigue en member_billing.trial_until. No es un pago: no suma a recaudación ni a deuda.
+-- trial_until: último día (YYYY-MM-DD, tz del gym); NULL si el backfill no pudo reconstruirlo.
+CREATE TABLE IF NOT EXISTS member_trials (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  started_at INTEGER NOT NULL,
+  trial_until TEXT,
+  created_by TEXT,
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_member_trials_user ON member_trials(user_id, started_at);
 
 -- Fichas de socio: datos personales de un socio, tenga o no la app. Una ficha sin credenciales
 -- es un users sin passkey (admin=0, owner=0) creado por un admin; no cuenta como usuario de la

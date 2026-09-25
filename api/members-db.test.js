@@ -255,3 +255,83 @@ test('merge: la prueba usada se conserva; la prueba en curso sigue la regla del 
   assert.ok(dbMod.getMemberProfile('acc-tr2').trialUsedAt > 0);
   assert.equal(dbMod.getMemberBilling('acc-tr2').trialUntil, null);
 });
+
+test('member_trials: alta con prueba y startTrial dejan una fila con quién la dio', () => {
+  dbMod.createMember({ id: 'f-hist', name: 'Hist', profile: profile({ dni: '30000040', dniNorm: '30000040' }), start: { trialUntil: '2026-09-26', createdBy: 'owner' } });
+  const [row] = dbMod.getTrialsByUserId('f-hist');
+  assert.deepEqual([row.trialUntil, row.createdBy, row.createdByName], ['2026-09-26', 'owner', 'Dueña']);
+  assert.ok(row.startedAt > 0);
+
+  dbMod.createMember({ id: 'f-hist2', name: 'Hist 2', profile: profile({ dni: '30000041', dniNorm: '30000041' }) });
+  assert.equal(dbMod.startTrial('f-hist2', '2026-09-25', 'owner'), true);
+  assert.equal(dbMod.startTrial('f-hist2', '2026-09-30', 'owner'), false);   // ya la usó: no suma otra fila
+  assert.equal(dbMod.getTrialsByUserId('f-hist2').length, 1);
+});
+
+test('member_trials: backfill idempotente desde trial_used_at (prueba vigente, cerrada por un pago o sin datos)', () => {
+  const used = Date.UTC(2026, 7, 1, 15);
+  for (const [id, dni] of [['f-bf1', '30000050'], ['f-bf2', '30000051'], ['f-bf3', '30000052']]) {
+    dbMod.createMember({ id, name: id, profile: profile({ dni, dniNorm: dni }) });
+    q().prepare('UPDATE member_profile SET trial_used_at = ? WHERE user_id = ?').run(used, id);
+  }
+  q().prepare("INSERT INTO member_billing (user_id, trial_until, updated_at) VALUES ('f-bf1', '2026-08-03', 1)").run();
+  const paid = payment('f-bf2');
+  q().prepare("UPDATE payments SET previous_trial_until = '2026-08-02' WHERE id = ?").run(paid);
+  dbMod.initDatabase();
+  dbMod.initDatabase();                                  // dos arranques: sigue una fila por persona
+  const trial = id => dbMod.getTrialsByUserId(id);
+  assert.deepEqual(trial('f-bf1').map(r => [r.startedAt, r.trialUntil, r.createdBy]), [[used, '2026-08-03', null]]);
+  assert.deepEqual(trial('f-bf2').map(r => r.trialUntil), ['2026-08-02']);
+  assert.deepEqual(trial('f-bf3').map(r => r.trialUntil), [null]);
+  assert.equal(trial('f-hist').length, 1);             // quien ya tenía fila no se duplica
+});
+
+test('merge: el historial de pruebas pasa a la cuenta', () => {
+  account('acc-mt', 'cred-mt');
+  dbMod.createMember({ id: 'f-mt', name: 'Mt', profile: profile({ dni: '30000060', dniNorm: '30000060' }), start: { trialUntil: '2026-09-20', createdBy: 'owner' } });
+  assert.ok(dbMod.mergeMember({ fichaId: 'f-mt', targetId: 'acc-mt' }).result);
+  assert.deepEqual(dbMod.getTrialsByUserId('acc-mt').map(r => r.trialUntil), ['2026-09-20']);
+  assert.equal(q().prepare("SELECT COUNT(*) AS n FROM member_trials WHERE user_id = 'f-mt'").get().n, 0);
+});
+
+test('importMembers: planes, fichas, cuota y pago importado; fill solo completa lo vacío', () => {
+  dbMod.createMember({ id: 'f-exist', name: 'Existe', profile: profile({ dni: '30000070', dniNorm: '30000070', phone: null, phoneNorm: null, email: 'ya@mail.com' }) });
+  const out = dbMod.importMembers({
+    plans: [{ key: 'funcional', name: 'Funcional', price: 15000, durationDays: 30 }],
+    members: [
+      { id: 'imp-1', name: 'Imp Uno', profile: profile({ fullName: 'Imp Uno', dni: '30000071', dniNorm: '30000071' }), billing: { planKey: 'funcional', dueDate: '2026-10-01' },
+        payment: { planKey: 'funcional', planName: 'Funcional', amount: 15000, method: 'efectivo', paidAt: Date.UTC(2026, 8, 1, 12), periodStart: '2026-09-01', periodEnd: '2026-10-01' } },
+      { id: 'imp-2', name: 'Imp Dos', profile: profile({ fullName: 'Imp Dos', dni: '30000072', dniNorm: '30000072' }), billing: { planId: plan.id, dueDate: '2026-11-01' }, payment: null },
+    ],
+    fills: [{ userId: 'f-exist', values: { phone: '11 4444-5555', phoneNorm: '+5491144445555', email: 'pisado@mail.com', fullName: 'No Pisa' } }],
+    createdBy: 'owner'
+  });
+  assert.equal(out.created, 2);
+  assert.equal(out.updated, 1);
+  const newPlan = dbMod.getPlans().find(p => p.name === 'Funcional');
+  assert.deepEqual([newPlan.price, newPlan.durationDays, newPlan.active], [15000, 30, true]);
+  assert.deepEqual([dbMod.getMemberBilling('imp-1').planId, dbMod.getMemberBilling('imp-1').dueDate], [newPlan.id, '2026-10-01']);
+  const [pay] = dbMod.getPaymentsByUserId('imp-1');
+  assert.deepEqual([pay.source, pay.note, pay.amount, pay.method, pay.createdBy, pay.previousDueDate], ['import', 'Importado', 15000, 'efectivo', 'owner', null]);
+  assert.equal(dbMod.getUserById('imp-1').admin, 0);
+  const filled = dbMod.getMemberProfile('f-exist');
+  assert.deepEqual([filled.fullName, filled.phone, filled.phoneNorm, filled.email], ['Ana Pérez', '11 4444-5555', '+5491144445555', 'ya@mail.com']);
+});
+
+test('importMembers: si algo falla, rollback completo (ni planes, ni fichas, ni datos completados)', () => {
+  dbMod.createMember({ id: 'f-rb', name: 'Rb', profile: profile({ dni: '30000080', dniNorm: '30000080', phone: null, phoneNorm: null }) });
+  const before = snapshot();
+  const plansBefore = dbMod.getPlans().length;
+  assert.throws(() => dbMod.importMembers({
+    plans: [{ key: 'x', name: 'X', price: 1, durationDays: 7 }],
+    members: [
+      { id: 'rb-1', name: 'Rb Uno', profile: profile({ dni: '30000081', dniNorm: '30000081' }), billing: { planKey: 'x', dueDate: '2026-10-01' }, payment: null },
+      // Mismo DNI que una ficha existente: el índice único corta a mitad de camino.
+      { id: 'rb-2', name: 'Rb Dos', profile: profile({ dni: '30000080', dniNorm: '30000080' }), billing: null, payment: null },
+    ],
+    fills: [{ userId: 'f-rb', values: { phone: '11 1111-2222', phoneNorm: '+5491111112222' } }]
+  }), dbMod.isDniUniqueError);
+  assert.equal(snapshot(), before);
+  assert.equal(dbMod.getPlans().length, plansBefore);
+  assert.equal(dbMod.getUserById('rb-1'), undefined);
+});

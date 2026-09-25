@@ -193,6 +193,16 @@ function AssignForm({ member, billing, plans, today, picker, onDone }) {
   </>
 }
 
+// Prueba gratis en el historial: no es un pago (monto 0, no se anula, no suma a nada).
+const dayMonth = iso => fmtDateDMY(iso).slice(0, 5)
+export function TrialRow({ trial }) {
+  const parts = [t('Prueba gratis')]
+  if (trial.days) parts.push(t(trial.days === 1 ? '1 día' : '{0} días', trial.days), `${dayMonth(trial.startDate)}–${dayMonth(trial.trialUntil)}`)
+  else parts.push(t('desde el {0}', dayMonth(trial.startDate)))
+  if (trial.createdByName) parts.push(trial.createdByName)
+  return <Row className="pay-row trial" title={parts.join(' · ')} value={fmtPesos(0)} />
+}
+
 function PaymentRow({ payment, voidable, onVoid }) {
   const paid = fmtDateDMY(isoOf(new Date(payment.paidAt)))
   const period = payment.periodStart && payment.periodEnd ? t('Período {0} – {1}', fmtDateDMY(payment.periodStart), fmtDateDMY(payment.periodEnd)) : null
@@ -273,8 +283,12 @@ export function MemberBillingSheet({ userId, userName, members, startWith = 'det
 
   const ready = data && plans && methods
   const billing = data?.billing
-  // El último pago vigente es el último registrado (id más alto), igual que en el servidor.
+  // El último pago vigente es el último registrado (id más alto), igual que en el servidor. Uno
+  // importado no se anula (y tapa a los anteriores: solo se deshacen en orden).
   const voidableId = (data?.payments || []).filter(p => !p.voidedAt).reduce((max, p) => Math.max(max, p.id), 0)
+  const isVoidable = p => p.id === voidableId && p.source !== 'import'
+  // Pagos y pruebas por fecha (history); un servidor viejo solo manda payments.
+  const history = data?.history || (data?.payments || []).map(p => ({ type: 'payment', ...p }))
   const back = step !== 'detail' && <Button size="sm" icon="chevronLeft" onClick={goBack}>{t('Volver')}</Button>
 
   const trial = data?.trial
@@ -307,7 +321,8 @@ export function MemberBillingSheet({ userId, userName, members, startWith = 'det
           {trial?.blocker === 'trial_used' && <div className="dim small billing-trial-note">{t('Ya usó su prueba')}</div>}
           {trial?.blocker === 'trial_requires_dni' && <div className="dim small billing-trial-note">{t('Para darle una prueba, cargá su DNI en la ficha.')}</div>}
           <Section title={t('Historial de pagos')}>
-            {data.payments.length ? data.payments.map(p => <PaymentRow key={p.id} payment={p} voidable={p.id === voidableId} onVoid={voidPayment} />)
+            {history.length ? history.map(h => h.type === 'trial' ? <TrialRow key={'t' + h.id} trial={h} />
+              : <PaymentRow key={h.id} payment={h} voidable={isVoidable(h)} onVoid={voidPayment} />)
               : <div className="empty" style={{ padding: '20px' }}>{t('Todavía no hay pagos registrados.')}</div>}
           </Section>
         </>}
