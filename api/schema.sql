@@ -498,3 +498,36 @@ CREATE TABLE IF NOT EXISTS payments (
   void_reason TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_payments_user_paid ON payments(user_id, paid_at);
+
+-- Fichas de socio: datos personales de un socio, tenga o no la app. Una ficha sin credenciales
+-- es un users sin passkey (admin=0, owner=0) creado por un admin; no cuenta como usuario de la
+-- app. users.name es el nombre de usuario; full_name, el nombre y apellido real.
+-- dni/phone guardan lo ingresado; dni_norm (solo dígitos, sin ceros adelante) y phone_norm
+-- (E.164 best-effort, NULL si no se pudo) son para buscar y comparar. Fechas en ISO.
+CREATE TABLE IF NOT EXISTS member_profile (
+  user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  full_name TEXT,
+  dni TEXT,
+  dni_norm TEXT,
+  phone TEXT,
+  phone_norm TEXT,
+  email TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_member_profile_dni_norm ON member_profile(dni_norm) WHERE dni_norm IS NOT NULL;
+
+-- Códigos de vinculación ficha → passkey. Solo el hash sha256 del código; un solo uso, con
+-- vencimiento. failed_attempts: verificaciones fallidas con este código (a las 5 se revoca).
+CREATE TABLE IF NOT EXISTS link_codes (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  code_hash TEXT NOT NULL UNIQUE,
+  created_by TEXT,
+  created_at TEXT NOT NULL,
+  expires_at TEXT NOT NULL,
+  used_at TEXT,
+  revoked_at TEXT,
+  failed_attempts INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_link_codes_user_id ON link_codes(user_id);

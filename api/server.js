@@ -97,8 +97,28 @@ import {
   getPaymentsByUserId,
   getPaymentById,
   getLatestActivePayment,
-  voidPayment
+  voidPayment,
+  getMemberProfile,
+  findMemberByDni,
+  countCredentials,
+  getAppUserIds,
+  getProfileUserIds,
+  countAppUsers,
+  isDniUniqueError,
+  createMember,
+  updateMemberProfile,
+  issueLinkCode,
+  revokeLinkCodes,
+  getLinkCodeByHash,
+  isLinkCodeUsable,
+  recordLinkCodeFailure,
+  consumeLinkCode,
+  mergeMember
 } from './database.js';
+import {
+  MEMBER_FIELDS_SETTING, parseMemberFields, validateMemberFields, validateMemberProfile,
+  normalizeDni, maskDni, profileChangeSummary, formatLinkCode, canonicalLinkCode
+} from './members.js';
 import {
   getBillingSettings, validateBillingSettings, serializeBillingSetting, gymToday,
   billingStatus, nextDueDate, debtFor, debtTotal, isIsoDate
@@ -177,6 +197,8 @@ const RATE_LIMIT_PER_CREDENTIAL_MAX = envMax('RATE_LIMIT_PER_CREDENTIAL_MAX', 10
 const RATE_LIMIT_PER_USER_MAX = envMax('RATE_LIMIT_PER_USER_MAX', 10);           // por usuario: device/claim, device/confirm
 const RATE_LIMIT_SHARE_MAX = envMax('RATE_LIMIT_SHARE_MAX', 20);
 const RATE_LIMIT_SUPPORT_MAX = envMax('RATE_LIMIT_SUPPORT_MAX', 5);
+const RATE_LIMIT_LINK_MAX = envMax('RATE_LIMIT_LINK_MAX', 30);                   // por IP: link/options, link/verify
+const RATE_LIMIT_PER_LINK_CODE_MAX = envMax('RATE_LIMIT_PER_LINK_CODE_MAX', 20); // por código: link/options
 // device/poll queda afuera: el cliente lo llama cada 2 s y el pairingId (128 bits) no se adivina.
 const RATE_LIMITS_BY_IP = {
   'POST /api/login/options': RATE_LIMIT_LOGIN_MAX,
@@ -188,7 +210,9 @@ const RATE_LIMITS_BY_IP = {
   'POST /api/auth/device/claim': RATE_LIMIT_DEVICE_MAX,
   'POST /api/auth/device/confirm': RATE_LIMIT_DEVICE_MAX,
   'POST /api/share/plan': RATE_LIMIT_SHARE_MAX,
-  'POST /api/support': RATE_LIMIT_SUPPORT_MAX
+  'POST /api/support': RATE_LIMIT_SUPPORT_MAX,
+  'POST /api/link/options': RATE_LIMIT_LINK_MAX,
+  'POST /api/link/verify': RATE_LIMIT_LINK_MAX
 };
 // Secure cookies require HTTPS; over plain http://localhost the flag would drop the cookie
 const SECURE = /^https:/i.test(ORIGIN) ? ' Secure;' : '';
@@ -532,6 +556,60 @@ function parsePlanBody(body, partial) {
 
 const planSummary = plan => `${plan.name} · $${plan.price} · ${plan.durationDays} días${plan.active === false ? ' · inactivo' : ''}`;
 const userIdFromPath = req => decodeURIComponent(new URL(req.url, 'http://x').pathname.split('/')[4] || '');
+
+// Plan + vencimiento a asignar (PUT billing y alta de ficha). body.planId null quita el plan.
+// → { value: { plan, dueDate } | { plan: null } } o { status, error }.
+function checkPlanAssignment(body, currentPlanId) {
+  if (body.planId === null) return { value: { plan: null } };
+  if (!Number.isInteger(body.planId) || body.planId < 1) return { status: 400, error: 'planId debe ser un id de plan o null' };
+  const plan = getPlanById(body.planId);
+  if (!plan) return { status: 404, error: 'El plan no existe' };
+  // Un plan inactivo no se asigna de nuevo, pero quien ya lo tiene puede cambiar su vencimiento.
+  if (!plan.active && plan.id !== currentPlanId) return { status: 409, error: 'El plan está inactivo' };
+  if (!isIsoDate(body.dueDate)) return { status: 400, error: 'dueDate es obligatorio (YYYY-MM-DD) al asignar un plan' };
+  return { value: { plan, dueDate: body.dueDate } };
+}
+
+/* ---------- fichas de socio (reglas de campos en members.js) ---------- */
+const LINK_CODE_TTL_MS = 72 * 3600000;
+const MAX_USER_NAME = 40;
+const memberFieldsNow = () => parseMemberFields(getAdminSetting(MEMBER_FIELDS_SETTING));
+const sha256 = value => crypto.createHash('sha256').update(String(value)).digest('hex');
+
+// users.name: nombre de usuario (el mismo tope que el registro).
+function parseUserName(raw) {
+  const name = typeof raw === 'string' ? raw.trim().replace(/\s+/g, ' ') : '';
+  if (!name || name.length > MAX_USER_NAME) return { error: `El nombre es obligatorio (máx. ${MAX_USER_NAME} caracteres)` };
+  return { value: name };
+}
+
+// La ficha completa: solo para GET/PUT profile, nunca en listados.
+const profileView = (user, profile) => ({
+  userId: user.id,
+  name: user.name,
+  hasApp: countCredentials(user.id) > 0,
+  disabled: !!user.disabled,
+  fullName: profile?.fullName ?? null,
+  dni: profile?.dni ?? null,
+  phone: profile?.phone ?? null,
+  phoneNorm: profile?.phoneNorm ?? null,
+  email: profile?.email ?? null,
+  updated: profile?.updated ?? null
+});
+
+// Otra persona ya tiene ese DNI: datos mínimos para que la UI ofrezca vincular.
+const dniDuplicate = (res, other) => json(res, 409, { error: 'dni_duplicado', userId: other.userId, name: other.name, hasApp: other.hasApp });
+
+const MERGE_ERRORS = {
+  same_user: [400, 'La ficha y la cuenta son la misma persona'],
+  ficha_not_found: [404, 'La ficha no existe'],
+  target_not_found: [404, 'La cuenta no existe'],
+  ficha_has_app: [409, 'La ficha ya tiene acceso a la app'],
+  target_without_app: [409, 'La cuenta destino no tiene acceso a la app'],
+  target_is_staff: [409, 'No se puede unir una ficha a un admin'],
+  billing_conflict: [409, 'Las dos tienen plan: elegí cuál conservar (keepBilling)'],
+  dni_conflict: [409, 'La ficha y la cuenta tienen DNI distintos']
+};
 const expireCookie = name => `${name}=; Path=/; Max-Age=0; HttpOnly;${SECURE} SameSite=Lax`;
 function sessionCookie(user) {
   const fresh = `${COOKIE}=${makeSession(user)}; Path=/; Max-Age=${SESSION_DAYS * 86400}; HttpOnly;${SECURE} SameSite=Lax`;
@@ -547,7 +625,8 @@ const CSRF_EXEMPT = new Set([
   'POST /api/register/options', 'POST /api/register/verify',
   'POST /api/login/options', 'POST /api/login/verify',
   'POST /api/auth/device/start', 'GET /api/auth/device/poll',
-  'POST /api/share/plan'
+  'POST /api/share/plan',
+  'POST /api/link/options', 'POST /api/link/verify'
 ]);
 
 /* ---------- Shared Plans Store (QR sharing, TTL 10 mins) ---------- */
@@ -667,10 +746,9 @@ function clientIp(req) {
 }
 
 // Claves de rate limit: 'ip:<ip> <ruta>', 'cred:<credential id> <ruta>', 'user:<uid> <ruta>'.
-// Una ruta puede chequear varias (primero la IP, después la más específica). Para link/* de
-// la entrega 2: por IP con ipRateKey(req, routeKey) en RATE_LIMITS_BY_IP, y en el handler,
-// después de leer el body, rateLimit(res, 'code:' + sha256(code) + ' ' + routeKey, N) antes de
-// buscar el código (hasheado para no dejar el código en claro en memoria).
+// Una ruta puede chequear varias (primero la IP, después la más específica). link/options suma
+// 'code:<sha256 del código> <ruta>' antes de buscar el código (hasheado para no dejarlo en claro
+// en memoria); los fallos de verify se cuentan en link_codes.failed_attempts.
 const rateLimits = new Map();
 const ipRateKey = (req, routeKey) => {
   const ip = rawClientIp(req);
@@ -1137,7 +1215,7 @@ if (AUDIT_ON) {
 
 /* ---------- routes ---------- */
 const routes = {
-  'GET /api/health': async (req, res) => json(res, 200, { ok: true, users: getAllUsers().length }),
+  'GET /api/health': async (req, res) => json(res, 200, { ok: true, users: countAppUsers() }),
 
   'GET /api/alimentos/buscar': async (req, res) => {
     const query = normalizarTexto(new URL(req.url, 'http://x').searchParams.get('q')).slice(0, 100);
@@ -2090,6 +2168,88 @@ const routes = {
     json(res, 200, { user: { id: user.id, name: user.name, admin: isAdmin(user), owner: !!user.owner } }, { 'Set-Cookie': sessionCookie(user) });
   },
 
+  /* ---------- vinculación ficha → passkey (código de un solo uso) ---------- */
+  // Un socio bloqueado por cuota vincula igual: el cartel lo ve después, ya con sesión.
+  'POST /api/link/options': async (req, res) => {
+    const body = await readBody(req);
+    const code = canonicalLinkCode(body.code);
+    if (!code) {
+      audit(req, 'auth.link.fail', { ok: false, msg: 'link-invalid' });
+      return json(res, 400, { error: 'link_invalid' });
+    }
+    // Hasheado: el código no queda en claro ni en las claves del rate limit.
+    const codeHash = sha256(code);
+    if (!rateLimit(res, `code:${codeHash} POST /api/link/options`, RATE_LIMIT_PER_LINK_CODE_MAX)) return;
+    const row = getLinkCodeByHash(codeHash);
+    if (!isLinkCodeUsable(row)) {
+      audit(req, 'auth.link.fail', { ok: false, msg: 'link-invalid' });
+      return json(res, 400, { error: 'link_invalid' });
+    }
+    const user = getUserById(row.user_id);
+    if (!user || user.disabled || countCredentials(user.id) > 0) {
+      audit(req, 'auth.link.fail', { ok: false, user, msg: 'link-unavailable' });
+      return json(res, 409, { error: 'link_unavailable' });
+    }
+    const fullName = getMemberProfile(user.id)?.fullName ?? null;
+    const options = await generateRegistrationOptions({
+      rpName: RP_NAME, rpID: RP_ID,
+      userID: Buffer.from(user.id), userName: user.name, userDisplayName: fullName || user.name,
+      attestationType: 'none',
+      authenticatorSelection: { residentKey: 'required', userVerification: 'preferred' },
+      excludeCredentials: []
+    });
+    const cid = putChallenge({ challenge: options.challenge, link: { id: row.id, userId: user.id } });
+    json(res, 200, { cid, options, name: user.name, fullName });
+  },
+
+  'POST /api/link/verify': async (req, res) => {
+    const body = await readBody(req);
+    const c = takeChallenge(body.cid);
+    if (!c || !c.link) {
+      audit(req, 'auth.link.fail', { ok: false, msg: 'challenge-expired' });
+      return json(res, 400, { error: 'challenge expired — try again' });
+    }
+    const ficha = getUserById(c.link.userId);
+    // Fallo atribuible al código: suma un intento y al quinto lo revoca.
+    const fail = (status, error, msg) => {
+      const revoked = recordLinkCodeFailure(c.link.id);
+      audit(req, 'auth.link.fail', { ok: false, user: ficha, uid: c.link.userId, msg: revoked ? 'link-revoked' : msg });
+      return json(res, status, { error });
+    };
+    let verification;
+    try {
+      verification = await verifyRegistrationResponse({
+        response: body.credential,
+        expectedChallenge: c.challenge,
+        expectedOrigin: ORIGIN,
+        expectedRPID: RP_ID,
+        requireUserVerification: false
+      });
+    } catch (e) {
+      return fail(400, verifyError(e, { rpId: RP_ID, origin: ORIGIN }), 'verify-error');
+    }
+    if (!verification.verified) return fail(400, 'not verified', 'not-verified');
+    const { credential } = verification.registrationInfo;
+    const out = consumeLinkCode({
+      linkId: c.link.id,
+      userId: c.link.userId,
+      credential: {
+        id: credential.id,
+        publicKey: Buffer.from(credential.publicKey).toString('base64url'),
+        counter: credential.counter || 0,
+        transports: body.credential?.response?.transports || []
+      }
+    });
+    if (out.error === 'credential-exists') return fail(409, 'credential already registered', 'credential-exists');
+    if (out.error) {
+      audit(req, 'auth.link.fail', { ok: false, user: ficha, uid: c.link.userId, msg: out.error });
+      return json(res, out.error === 'link-invalid' ? 400 : 409, { error: out.error === 'link-invalid' ? 'link_invalid' : 'link_unavailable' });
+    }
+    const user = out.user;
+    audit(req, 'auth.link.ok', { user });
+    json(res, 200, { user: { id: user.id, name: user.name, admin: isAdmin(user), owner: !!user.owner } }, { 'Set-Cookie': sessionCookie(user) });
+  },
+
   'POST /api/login/options': async (req, res) => {
     const options = await generateAuthenticationOptions({
       rpID: RP_ID, userVerification: 'preferred', allowCredentials: []
@@ -2471,6 +2631,9 @@ const routes = {
     const settings = billingSettingsNow();
     const today = billingToday(settings);
     const billingByUser = new Map(getAllMemberBilling().map(b => [b.userId, b]));
+    const appUserIds = getAppUserIds();
+    const profileUserIds = getProfileUserIds();
+    // Nunca DNI ni celular acá: solo si existen (hasProfile). La ficha completa va por /profile.
     const users = dbUsers.map(u => {
       const S = readState(u.id) || {};
       const workouts = S.workouts || [];
@@ -2478,6 +2641,7 @@ const routes = {
       return {
         id: u.id, name: u.name, created: isoTimestamp(u.created_at),
         disabled: !!u.disabled, admin: isAdmin(u), owner: !!u.owner, invitedBy: u.invited_by || null,
+        hasApp: appUserIds.has(u.id), hasProfile: profileUserIds.has(u.id),
         workouts: workouts.length,
         lastWorkout: last ? last.d : null,
         lastSync: S._ts || null,
@@ -2499,7 +2663,8 @@ const routes = {
     const iso = d => d.toISOString().slice(0, 10);
     const rows = getAttendanceByDate(iso(startDate), iso(endDate));
     const days = Object.fromEntries(rows.map(r => [r.date, Number(r.users) || 0]));
-    json(res, 200, { start, days, totalUsers: getAllUsers().length, now: Date.now() });
+    // Las fichas sin passkey no entrenan con la app: no cuentan en el total.
+    json(res, 200, { start, days, totalUsers: countAppUsers(), now: Date.now() });
   },
 
   'POST /api/admin/attendance-week-start': async (req, res) => {
@@ -2519,7 +2684,10 @@ const routes = {
     if (!u) return json(res, 404, { error: 'El usuario no existe' });
     const S = readState(u.id) || {};
     json(res, 200, {
-      user: { id: u.id, name: u.name, created: isoTimestamp(u.created_at), disabled: !!u.disabled, admin: isAdmin(u), owner: !!u.owner, invitedBy: u.invited_by || null },
+      user: {
+        id: u.id, name: u.name, created: isoTimestamp(u.created_at), disabled: !!u.disabled, admin: isAdmin(u), owner: !!u.owner, invitedBy: u.invited_by || null,
+        hasApp: countCredentials(u.id) > 0, hasProfile: !!getMemberProfile(u.id)
+      },
       unit: S.unit || 'kg',
       lastSync: S._ts || null,
       routines: (S.routines || []).map(r => ({ id: r.id, name: r.name, emoji: r.emoji, count: (r.ex || []).length })),
@@ -2583,7 +2751,7 @@ const routes = {
     const today = billingToday(settings);
     const members = getAllMemberBilling().map(b => {
       const view = billingView(b, today, settings);
-      return { id: b.userId, name: b.name, disabled: b.disabled, admin: isAdmin({ id: b.userId, admin: b.admin }), planId: view.planId, planName: view.planName, dueDate: view.dueDate, status: view.status, debt: view.debt };
+      return { id: b.userId, name: b.name, disabled: b.disabled, admin: isAdmin({ id: b.userId, admin: b.admin }), hasApp: b.hasApp, planId: view.planId, planName: view.planName, dueDate: view.dueDate, status: view.status, debt: view.debt };
     });
     // El resumen cuenta socios activos y no admins: un desactivado no es deuda por cobrar ni un
     // cupo, y admins/owner no quedan bloqueados por cuota. Siguen en members con admin: true.
@@ -2653,19 +2821,16 @@ const routes = {
     if (!target) return json(res, 404, { error: 'El usuario no existe' });
     const body = await readBody(req);
     const current = getMemberBilling(userId);
+    const checked = checkPlanAssignment(body, current.planId);
+    if (checked.error) return json(res, checked.status, { error: checked.error });
+    const { plan, dueDate } = checked.value;
     let summary;
-    if (body.planId === null) {
+    if (!plan) {
       setMemberBilling(userId, { planId: null });
       summary = 'Plan quitado';
     } else {
-      if (!Number.isInteger(body.planId) || body.planId < 1) return json(res, 400, { error: 'planId debe ser un id de plan o null' });
-      const plan = getPlanById(body.planId);
-      if (!plan) return json(res, 404, { error: 'El plan no existe' });
-      // Un plan inactivo no se asigna de nuevo, pero quien ya lo tiene puede cambiar su vencimiento.
-      if (!plan.active && plan.id !== current.planId) return json(res, 409, { error: 'El plan está inactivo' });
-      if (!isIsoDate(body.dueDate)) return json(res, 400, { error: 'dueDate es obligatorio (YYYY-MM-DD) al asignar un plan' });
-      setMemberBilling(userId, { planId: plan.id, dueDate: body.dueDate });
-      summary = `Plan: ${plan.name} · vence ${body.dueDate}`;
+      setMemberBilling(userId, { planId: plan.id, dueDate });
+      summary = `Plan: ${plan.name} · vence ${dueDate}`;
     }
     audit(req, 'admin.billing.assign', { user: admin, target, summary });
     const settings = billingSettingsNow();
@@ -2749,6 +2914,181 @@ const routes = {
     audit(req, 'admin.billing.payment_void', { user: admin, target, summary: `$${payment.amount} · vuelve a vencer ${payment.previousDueDate}${reason ? ' · ' + reason : ''}` });
     if (billing.status === 'bloqueado' && !isAdmin(target)) audit(req, 'admin.billing.blocked', { user: admin, target, summary: `Venció ${payment.previousDueDate}` });
     json(res, 200, { billing, payment: getPaymentById(paymentId) });
+  },
+
+  /* ---------- fichas de socio ---------- */
+  // Config de campos: la leen los admins (arman los formularios con ella), la cambia el owner.
+  'GET /api/admin/members/settings': async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    json(res, 200, { fields: memberFieldsNow() });
+  },
+
+  'PUT /api/admin/members/settings': async (req, res) => {
+    const owner = requireOwner(req, res); if (!owner) return;
+    const body = await readBody(req);
+    const checked = validateMemberFields(body.fields, memberFieldsNow());
+    if (checked.error) return json(res, 400, { error: checked.error });
+    setAdminSetting(MEMBER_FIELDS_SETTING, JSON.stringify(checked.value));
+    const fields = memberFieldsNow();
+    audit(req, 'owner.member.fields', {
+      user: owner,
+      summary: Object.entries(fields).map(([k, f]) => `${k}=${!f.enabled ? 'no' : f.required ? 'obligatorio' : 'opcional'}`).join(' · ')
+    });
+    json(res, 200, { fields });
+  },
+
+  // Alta de ficha: socio sin passkey, cargado por un admin. Datos según la config de campos.
+  'POST /api/admin/members': async (req, res) => {
+    const admin = requireAdmin(req, res); if (!admin) return;
+    const body = await readBody(req);
+    const fields = memberFieldsNow();
+    const checked = validateMemberProfile(body, fields);
+    if (checked.error) return json(res, 400, { error: checked.error, field: checked.field });
+    const profile = checked.value;
+    // Sin nombre de usuario explícito, se usa el nombre y apellido.
+    const rawName = typeof body.name === 'string' && body.name.trim() ? body.name : (profile.fullName || '').slice(0, MAX_USER_NAME);
+    const name = parseUserName(rawName);
+    if (name.error) return json(res, 400, { error: name.error, field: 'name' });
+
+    let plan = null;
+    let billing = null;
+    if (body.planId !== undefined && body.planId !== null) {
+      const assigned = checkPlanAssignment(body, null);
+      if (assigned.error) return json(res, assigned.status, { error: assigned.error });
+      plan = assigned.value.plan;
+      billing = { planId: plan.id, dueDate: assigned.value.dueDate };
+    }
+    if (profile.dniNorm) {
+      const other = findMemberByDni(profile.dniNorm);
+      if (other) return dniDuplicate(res, other);
+    }
+
+    const id = crypto.randomBytes(12).toString('base64url');
+    try {
+      createMember({ id, name: name.value, profile, billing });
+    } catch (error) {
+      // Otra alta con el mismo DNI entró entre el chequeo y la transacción.
+      const other = isDniUniqueError(error) && findMemberByDni(profile.dniNorm);
+      if (other) return dniDuplicate(res, other);
+      throw error;
+    }
+    const user = getUserById(id);
+    const summary = [profile.dniNorm ? `DNI ${maskDni(profile.dniNorm)}` : null, plan ? `Plan: ${plan.name} · vence ${billing.dueDate}` : null].filter(Boolean).join(' · ');
+    audit(req, 'admin.member.create', { user: admin, target: user, summary });
+    const settings = billingSettingsNow();
+    json(res, 200, { member: { ...profileView(user, getMemberProfile(id)), billing: billingView(getMemberBilling(id), billingToday(settings), settings) } });
+  },
+
+  // ¿Ya existe alguien con este DNI? Para ofrecer vincular en vez de duplicar.
+  'GET /api/admin/members/lookup': async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    if (!memberFieldsNow().dni.enabled) return json(res, 409, { error: 'dni_deshabilitado' });
+    const dni = normalizeDni(new URL(req.url, 'http://x').searchParams.get('dni') || '');
+    if (dni.error) return json(res, 400, { error: dni.error });
+    const found = findMemberByDni(dni.value.dniNorm);
+    if (!found) return json(res, 404, { error: 'No hay ningún socio con ese DNI' });
+    json(res, 200, found);
+  },
+
+  'GET /api/admin/users/:userId/profile': async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    const user = getUserById(userIdFromPath(req));
+    if (!user) return json(res, 404, { error: 'El usuario no existe' });
+    json(res, 200, { profile: profileView(user, getMemberProfile(user.id)), fields: memberFieldsNow() });
+  },
+
+  // Edición parcial: solo cambia lo que viene; '' o null borran. Vale para fichas y cuentas con app.
+  'PUT /api/admin/users/:userId/profile': async (req, res) => {
+    const admin = requireAdmin(req, res); if (!admin) return;
+    const user = getUserById(userIdFromPath(req));
+    if (!user) return json(res, 404, { error: 'El usuario no existe' });
+    const body = await readBody(req);
+    const fields = memberFieldsNow();
+
+    let name;
+    if (body.name !== undefined) {
+      const parsed = parseUserName(body.name);
+      if (parsed.error) return json(res, 400, { error: parsed.error, field: 'name' });
+      if (parsed.value !== user.name) name = parsed.value;
+    }
+    let profile = null;
+    let changed = [];
+    if (['fullName', 'dni', 'phone', 'email'].some(k => Object.prototype.hasOwnProperty.call(body, k))) {
+      const checked = validateMemberProfile(body, fields, { current: getMemberProfile(user.id), partial: true });
+      if (checked.error) return json(res, 400, { error: checked.error, field: checked.field });
+      ({ changed } = checked);
+      profile = checked.value;
+      if (changed.includes('dni') && profile.dniNorm) {
+        const other = findMemberByDni(profile.dniNorm, user.id);
+        if (other) return dniDuplicate(res, other);
+      }
+    }
+    if (name !== undefined || changed.length) {
+      try {
+        updateMemberProfile(user.id, { name, profile: changed.length ? profile : null });
+      } catch (error) {
+        const other = isDniUniqueError(error) && findMemberByDni(profile.dniNorm, user.id);
+        if (other) return dniDuplicate(res, other);
+        throw error;
+      }
+      const summary = [name !== undefined ? 'nombre de usuario' : null, changed.length ? profileChangeSummary(changed, profile) : null].filter(Boolean).join(', ');
+      audit(req, 'admin.member.profile_update', { user: admin, target: getUserById(user.id), summary: 'Cambió: ' + summary });
+    }
+    json(res, 200, { profile: profileView(getUserById(user.id), getMemberProfile(user.id)) });
+  },
+
+  // Código para que el socio de una ficha cree su passkey. Se muestra una sola vez.
+  'POST /api/admin/users/:userId/link-code': async (req, res) => {
+    const admin = requireAdmin(req, res); if (!admin) return;
+    const user = getUserById(userIdFromPath(req));
+    if (!user) return json(res, 404, { error: 'El usuario no existe' });
+    if (user.disabled) return json(res, 409, { error: 'El socio está desactivado' });
+    if (countCredentials(user.id) > 0) return json(res, 409, { error: 'El socio ya tiene acceso a la app' });
+    let code;
+    let codeHash;
+    do {
+      code = formatLinkCode(n => crypto.randomInt(0, n));
+      codeHash = sha256(code);
+    } while (getLinkCodeByHash(codeHash));
+    const expiresAt = new Date(Date.now() + LINK_CODE_TTL_MS).toISOString();
+    issueLinkCode({ userId: user.id, codeHash, createdBy: admin.id, expiresAt });
+    audit(req, 'admin.member.link_code', { user: admin, target: user, summary: `Vence ${expiresAt.slice(0, 16).replace('T', ' ')} UTC` });
+    json(res, 200, { code, link: ORIGIN.replace(/\/+$/, '') + '/?link=' + code, expiresAt });
+  },
+
+  'DELETE /api/admin/users/:userId/link-code': async (req, res) => {
+    const admin = requireAdmin(req, res); if (!admin) return;
+    const user = getUserById(userIdFromPath(req));
+    if (!user) return json(res, 404, { error: 'El usuario no existe' });
+    const revoked = revokeLinkCodes(user.id);
+    if (revoked) audit(req, 'admin.member.link_code_revoke', { user: admin, target: user });
+    json(res, 200, { ok: true, revoked });
+  },
+
+  // Une una ficha a la cuenta con app de la misma persona. dry_run: qué pasaría, sin escribir.
+  'POST /api/admin/users/:userId/merge': async (req, res) => {
+    const admin = requireAdmin(req, res); if (!admin) return;
+    const fichaId = userIdFromPath(req);
+    const body = await readBody(req);
+    const targetId = typeof body.targetId === 'string' ? body.targetId.trim() : '';
+    if (!targetId) return json(res, 400, { error: 'targetId es obligatorio' });
+    const keepBilling = body.keepBilling ?? null;
+    if (keepBilling !== null && keepBilling !== 'ficha' && keepBilling !== 'cuenta') return json(res, 400, { error: "keepBilling debe ser 'ficha' o 'cuenta'" });
+    const dryRun = body.dry_run === true;
+    const out = mergeMember({ fichaId, targetId, keepBilling, dryRun });
+    if (out.error) {
+      const [status, message] = MERGE_ERRORS[out.error];
+      return json(res, status, { error: out.error, message, ...(out.plan ? { preview: out.plan } : {}) });
+    }
+    if (dryRun) return json(res, 200, { dry_run: true, ...out.plan });
+    const r = out.result;
+    const lostTotal = Object.values(r.lost).reduce((a, b) => a + b, 0);
+    audit(req, 'admin.member.merge', {
+      user: admin,
+      target: { id: r.target.id, name: r.target.name },
+      summary: [`Ficha ${r.ficha.name}`, `${r.payments} pagos`, r.billing.ficha || r.billing.cuenta ? `plan de la ${r.billing.keep}` : null, lostTotal ? `${lostTotal} datos descartados` : null].filter(Boolean).join(' · ')
+    });
+    json(res, 200, { ok: true, ...r });
   },
 
   'GET /api/admin/invites': async (req, res) => {
@@ -2940,6 +3280,12 @@ http.createServer(async (req, res) => {
       ? 'POST /api/admin/users/:userId/payments'
     : req.method === 'POST' && /^\/api\/admin\/users\/[^/]+\/payments\/\d+\/void$/.test(url.pathname)
       ? 'POST /api/admin/users/:userId/payments/:paymentId/void'
+    : (req.method === 'GET' || req.method === 'PUT') && /^\/api\/admin\/users\/[^/]+\/profile$/.test(url.pathname)
+      ? req.method + ' /api/admin/users/:userId/profile'
+    : (req.method === 'POST' || req.method === 'DELETE') && /^\/api\/admin\/users\/[^/]+\/link-code$/.test(url.pathname)
+      ? req.method + ' /api/admin/users/:userId/link-code'
+    : req.method === 'POST' && /^\/api\/admin\/users\/[^/]+\/merge$/.test(url.pathname)
+      ? 'POST /api/admin/users/:userId/merge'
     : req.method === 'PUT' && /^\/api\/admin\/nutrition\/templates\/[^/]+$/.test(url.pathname)
       ? 'PUT /api/admin/nutrition/templates/:id'
     : req.method === 'DELETE' && /^\/api\/admin\/nutrition\/templates\/[^/]+$/.test(url.pathname)

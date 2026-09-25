@@ -23,6 +23,8 @@ const LABELS = {
   'auth.device.approved': 'Approved a device',
   'auth.device.login': 'Signed in from a paired device',
   'auth.cred.added': 'Added a passkey',
+  'auth.link.ok': 'Linked app access to a member record',
+  'auth.link.fail': 'App access linking failed',
   'admin.user.disable': 'Disabled an account',
   'admin.user.enable': 'Re-enabled an account',
   'admin.preset.create': 'Created a preset',
@@ -51,12 +53,18 @@ const LABELS = {
   'admin.billing.settings': 'Changed membership settings',
   'admin.billing.blocked': 'Membership blocked',
   'admin.billing.unblocked': 'Membership unblocked',
+  'admin.member.create': 'Created a member record',
+  'admin.member.profile_update': 'Updated member details',
+  'admin.member.link_code': 'Generated an app link code',
+  'admin.member.link_code_revoke': 'Revoked an app link code',
+  'admin.member.merge': 'Merged a member record into an account',
   'admin.denied': 'Blocked from the admin dashboard',
   'owner.denied': 'Blocked: owner access required',
   'owner.user.promote': 'Promoted to Admin',
   'owner.user.demote': 'Removed as Admin',
   'owner.user.delete': 'Deleted an account',
-  'owner.qr.regenerate': 'Regenerated the QR access token'
+  'owner.qr.regenerate': 'Regenerated the QR access token',
+  'owner.member.fields': 'Changed member record fields'
 }
 
 const UNKNOWN_EVENT = 'Unknown activity'
@@ -83,7 +91,10 @@ const REASONS = {
   'credential-exists': 'that passkey already belongs to a profile',
   'invite-invalid': 'the invite code was used or revoked in the meantime',
   'invite-rejected': 'wrong or already-used invite code',
-  'qr-invalid': 'invalid or outdated QR access token'
+  'qr-invalid': 'invalid or outdated QR access token',
+  'link-invalid': 'wrong, used, expired or revoked link code',
+  'link-unavailable': 'the member already has app access or is disabled',
+  'link-revoked': 'too many failed attempts, the link code was revoked'
 }
 export const auditReason = msg => t(REASONS[msg] || (msg ? String(msg) : ''))
 

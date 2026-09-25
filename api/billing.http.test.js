@@ -113,7 +113,7 @@ test('panel de cuotas y lista de usuarios', async () => {
   assert.deepEqual(billing.body.summary, { al_dia: 0, por_vencer: 0, vencido: 0, bloqueado: 1, sin_plan: 1, deuda_total: 20000 });
   assert.equal(billing.body.members.find(m => m.id === 'owner').admin, true);
   assert.equal(billing.body.members.find(m => m.id === 'owner').status, 'bloqueado');
-  assert.deepEqual(billing.body.members.find(m => m.id === 'm2'), { id: 'm2', name: 'Socio Dos', disabled: false, admin: false, planId: null, planName: null, dueDate: null, status: 'sin_plan', debt: 0 });
+  assert.deepEqual(billing.body.members.find(m => m.id === 'm2'), { id: 'm2', name: 'Socio Dos', disabled: false, admin: false, hasApp: false, planId: null, planName: null, dueDate: null, status: 'sin_plan', debt: 0 });
 
   const users = await call('owner', 'GET', '/api/admin/users');
   assert.equal(users.body.audit_enabled, true);

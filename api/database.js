@@ -183,6 +183,10 @@ export function initDatabase() {
   // invites también viene de schema.sql: mismos ALTER después del schema.
   try { db.exec(`ALTER TABLE invites ADD COLUMN note TEXT;`); } catch {}
   try { db.exec(`ALTER TABLE invites ADD COLUMN used_at TEXT;`); } catch {}
+  // Fichas de socio: columnas agregadas después de la primera versión de las tablas.
+  try { db.exec(`ALTER TABLE member_profile ADD COLUMN full_name TEXT;`); } catch {}
+  try { db.exec(`ALTER TABLE member_profile ADD COLUMN phone_norm TEXT;`); } catch {}
+  try { db.exec(`ALTER TABLE link_codes ADD COLUMN failed_attempts INTEGER NOT NULL DEFAULT 0;`); } catch {}
   db.exec(`CREATE TABLE IF NOT EXISTS sync_operations (
     user_id TEXT NOT NULL,
     op_id TEXT NOT NULL,
@@ -318,11 +322,12 @@ export function isoTimestamp(value) {
   return Number.isFinite(ms) ? new Date(ms).toISOString() : null;
 }
 
+// user.member: ficha de socio creada por un admin; nunca admin ni owner, aunque sea la primera fila.
 export function createUser(user) {
   const db = getDatabase();
-  const isFirstUser = Number(db.prepare('SELECT COUNT(*) AS count FROM users').get().count) === 0;
-  const owner = isFirstUser ? 1 : (user.owner ? 1 : 0);
-  const admin = owner ? 1 : (user.admin ? 1 : 0);
+  const isFirstUser = !user.member && Number(db.prepare('SELECT COUNT(*) AS count FROM users').get().count) === 0;
+  const owner = user.member ? 0 : isFirstUser ? 1 : (user.owner ? 1 : 0);
+  const admin = user.member ? 0 : owner ? 1 : (user.admin ? 1 : 0);
   if (owner) db.prepare('UPDATE users SET owner = 0 WHERE owner = 1').run();
   const stmt = getDatabase().prepare(`
     INSERT INTO users (id, name, admin, owner, disabled, created_at, invited_by)
@@ -352,16 +357,23 @@ export function updateUser(id, updates) {
 
 // Permanent account deletion. Keep the operation transactional because invites reference
 // users without ON DELETE CASCADE, while the rest of the user's data cascades from users.id.
-export function deleteUser(id) {
+// inTransaction: the caller already opened the transaction (merge de fichas) and owns the
+// COMMIT/ROLLBACK; a failure here just throws so the caller rolls everything back.
+export function deleteUser(id, { inTransaction = false } = {}) {
   const db = getDatabase();
   const user = db.prepare('SELECT * FROM users WHERE id = ?').get(id);
   if (!user) return null;
 
-  db.exec('BEGIN IMMEDIATE');
-  try {
+  const run = () => {
     db.prepare('DELETE FROM invites WHERE created_by = ? OR used_by = ?').run(id, id);
     const result = db.prepare('DELETE FROM users WHERE id = ?').run(id);
     if (result.changes !== 1) throw new Error('user deletion did not affect exactly one row');
+  };
+  if (inTransaction) { run(); return user; }
+
+  db.exec('BEGIN IMMEDIATE');
+  try {
+    run();
     db.exec('COMMIT');
     return user;
   } catch (error) {
@@ -1623,7 +1635,8 @@ export function getMemberBilling(userId) {
 // de usuarios del admin).
 export function getAllMemberBilling() {
   return getDatabase().prepare(`
-    SELECT u.id AS user_id, u.name, u.disabled, u.admin, u.owner, ${BILLING_SELECT}
+    SELECT u.id AS user_id, u.name, u.disabled, u.admin, u.owner, ${BILLING_SELECT},
+      EXISTS (SELECT 1 FROM credentials c WHERE c.user_id = u.id) AS has_app
     FROM users u
     LEFT JOIN member_billing mb ON mb.user_id = u.id
     LEFT JOIN plans p ON p.id = mb.plan_id
@@ -1633,7 +1646,8 @@ export function getAllMemberBilling() {
     name: row.name,
     disabled: !!row.disabled,
     admin: row.admin === 1,
-    owner: row.owner === 1
+    owner: row.owner === 1,
+    hasApp: row.has_app === 1
   }));
 }
 
@@ -1754,4 +1768,293 @@ export function voidPayment({ paymentId, userId, voidedBy, reason, planId, dueDa
 // lo movió mientras el push salía, el período nuevo conserva su propio aviso.
 export function markDuePushSent(userId, dueDate) {
   getDatabase().prepare('UPDATE member_billing SET push_sent_for_due = ? WHERE user_id = ? AND due_date = ?').run(dueDate, userId, dueDate);
+}
+
+// ============================================================
+// Fichas de socio (member_profile) y códigos de vinculación
+// (normalización y config de campos en members.js)
+// ============================================================
+
+const profileFromRow = row => row ? {
+  userId: row.user_id,
+  fullName: row.full_name ?? null,
+  dni: row.dni ?? null,
+  dniNorm: row.dni_norm ?? null,
+  phone: row.phone ?? null,
+  phoneNorm: row.phone_norm ?? null,
+  email: row.email ?? null,
+  created: row.created_at ?? null,
+  updated: row.updated_at ?? null
+} : null;
+
+export function getMemberProfile(userId) {
+  return profileFromRow(getDatabase().prepare('SELECT * FROM member_profile WHERE user_id = ?').get(userId));
+}
+
+// Quién tiene ya ese DNI (otro que excludeUserId). → { userId, name, hasApp } o null.
+export function findMemberByDni(dniNorm, excludeUserId = null) {
+  if (!dniNorm) return null;
+  const row = getDatabase().prepare(`
+    SELECT u.id, u.name, EXISTS (SELECT 1 FROM credentials c WHERE c.user_id = u.id) AS has_app
+    FROM member_profile mp JOIN users u ON u.id = mp.user_id
+    WHERE mp.dni_norm = ? AND (? IS NULL OR u.id <> ?)
+  `).get(dniNorm, excludeUserId, excludeUserId);
+  return row ? { userId: row.id, name: row.name, hasApp: row.has_app === 1 } : null;
+}
+
+export function countCredentials(userId) {
+  return Number(getDatabase().prepare('SELECT COUNT(*) AS n FROM credentials WHERE user_id = ?').get(userId).n);
+}
+
+// Para los listados: una query por conjunto, no una por usuario.
+export function getAppUserIds() {
+  return new Set(getDatabase().prepare('SELECT DISTINCT user_id FROM credentials').all().map(r => r.user_id));
+}
+export function getProfileUserIds() {
+  return new Set(getDatabase().prepare('SELECT user_id FROM member_profile').all().map(r => r.user_id));
+}
+
+// Usuarios de la app = con al menos una passkey. Las fichas sin credencial no cuentan.
+export function countAppUsers() {
+  return Number(getDatabase().prepare('SELECT COUNT(DISTINCT user_id) AS n FROM credentials').get().n);
+}
+
+// La violación del índice único de dni_norm (dos altas simultáneas con el mismo DNI).
+export const isDniUniqueError = error => /UNIQUE constraint failed: member_profile\.dni_norm/.test(String(error?.message || ''));
+
+function writeMemberProfile(db, userId, p, nowIso) {
+  db.prepare(`
+    INSERT INTO member_profile (user_id, full_name, dni, dni_norm, phone, phone_norm, email, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(user_id) DO UPDATE SET
+      full_name = excluded.full_name, dni = excluded.dni, dni_norm = excluded.dni_norm,
+      phone = excluded.phone, phone_norm = excluded.phone_norm, email = excluded.email,
+      updated_at = excluded.updated_at
+  `).run(userId, p.fullName ?? null, p.dni ?? null, p.dniNorm ?? null, p.phone ?? null, p.phoneNorm ?? null, p.email ?? null, nowIso, nowIso);
+}
+
+// Alta de ficha: usuario sin credencial (admin=0, owner=0) + perfil + plan opcional, todo o nada.
+export function createMember({ id, name, profile, billing = null }) {
+  const db = getDatabase();
+  const nowIso = new Date().toISOString();
+  db.exec('BEGIN IMMEDIATE');
+  try {
+    createUser({ id, name, created: nowIso, member: true });
+    writeMemberProfile(db, id, profile, nowIso);
+    if (billing) setMemberBilling(id, billing);
+    db.exec('COMMIT');
+  } catch (error) {
+    try { db.exec('ROLLBACK'); } catch {}
+    throw error;
+  }
+}
+
+// Edición: users.name (si viene) y el perfil completo resultante (si viene), juntos.
+export function updateMemberProfile(userId, { name, profile }) {
+  const db = getDatabase();
+  db.exec('BEGIN IMMEDIATE');
+  try {
+    if (name !== undefined) db.prepare('UPDATE users SET name = ? WHERE id = ?').run(name, userId);
+    if (profile) writeMemberProfile(db, userId, profile, new Date().toISOString());
+    db.exec('COMMIT');
+  } catch (error) {
+    try { db.exec('ROLLBACK'); } catch {}
+    throw error;
+  }
+}
+
+// --- códigos de vinculación ---
+
+export const LINK_CODE_MAX_FAILURES = 5;
+const linkCodeUsable = (row, nowIso) => !!row && !row.used_at && !row.revoked_at && row.expires_at > nowIso;
+
+// Revoca los códigos vigentes del socio y guarda el nuevo (solo su hash).
+export function issueLinkCode({ userId, codeHash, createdBy, expiresAt }) {
+  const db = getDatabase();
+  const nowIso = new Date().toISOString();
+  db.exec('BEGIN IMMEDIATE');
+  try {
+    db.prepare('UPDATE link_codes SET revoked_at = ? WHERE user_id = ? AND used_at IS NULL AND revoked_at IS NULL').run(nowIso, userId);
+    db.prepare('INSERT INTO link_codes (user_id, code_hash, created_by, created_at, expires_at) VALUES (?, ?, ?, ?, ?)')
+      .run(userId, codeHash, createdBy ?? null, nowIso, expiresAt);
+    db.exec('COMMIT');
+  } catch (error) {
+    try { db.exec('ROLLBACK'); } catch {}
+    throw error;
+  }
+}
+
+export function revokeLinkCodes(userId) {
+  return Number(getDatabase().prepare('UPDATE link_codes SET revoked_at = ? WHERE user_id = ? AND used_at IS NULL AND revoked_at IS NULL')
+    .run(new Date().toISOString(), userId).changes);
+}
+
+export function getLinkCodeByHash(codeHash) {
+  return getDatabase().prepare('SELECT * FROM link_codes WHERE code_hash = ?').get(codeHash) || null;
+}
+
+export const isLinkCodeUsable = row => linkCodeUsable(row, new Date().toISOString());
+
+// Un intento fallido con este código; al llegar a LINK_CODE_MAX_FAILURES queda revocado.
+// → true si este fallo lo revocó.
+export function recordLinkCodeFailure(id) {
+  const db = getDatabase();
+  const nowIso = new Date().toISOString();
+  db.prepare('UPDATE link_codes SET failed_attempts = failed_attempts + 1 WHERE id = ?').run(id);
+  const revoked = db.prepare(`
+    UPDATE link_codes SET revoked_at = ? WHERE id = ? AND failed_attempts >= ? AND used_at IS NULL AND revoked_at IS NULL
+  `).run(nowIso, id, LINK_CODE_MAX_FAILURES);
+  return Number(revoked.changes) === 1;
+}
+
+// Canjea el código: re-chequea todo dentro de BEGIN IMMEDIATE (código vigente y de este socio,
+// socio activo y todavía sin credencial, passkey nueva) y recién ahí crea la credencial.
+// → { user } o { error: 'link-invalid' | 'link-unavailable' | 'credential-exists' }.
+export function consumeLinkCode({ linkId, userId, credential }) {
+  const db = getDatabase();
+  const nowIso = new Date().toISOString();
+  db.exec('BEGIN IMMEDIATE');
+  try {
+    const fail = error => { db.exec('ROLLBACK'); return { error }; };
+    const row = db.prepare('SELECT * FROM link_codes WHERE id = ?').get(linkId);
+    if (!linkCodeUsable(row, nowIso) || row.user_id !== userId) return fail('link-invalid');
+    const user = db.prepare('SELECT * FROM users WHERE id = ?').get(userId);
+    if (!user || user.disabled) return fail('link-unavailable');
+    if (countCredentials(userId) > 0) return fail('link-unavailable');
+    if (getCredentialById(credential.id)) return fail('credential-exists');
+    createCredential({ ...credential, userId });
+    db.prepare('UPDATE link_codes SET used_at = ? WHERE id = ?').run(nowIso, linkId);
+    db.exec('COMMIT');
+    return { user };
+  } catch (error) {
+    try { db.exec('ROLLBACK'); } catch {}
+    throw error;
+  }
+}
+
+// --- merge ficha → cuenta con app ---
+
+// Datos propios de la ficha que no se mueven y se pierden con el borrado (rutinas o nutrición
+// que un admin le haya cargado). Clave de la respuesta → tabla.
+const FICHA_OWN_DATA = [
+  ['state', 'user_state'], ['routines', 'routines'], ['weekPlan', 'week_plan'], ['dayPlan', 'day_plan'],
+  ['workouts', 'workouts'], ['exerciseWeights', 'exercise_weights'], ['bodyweight', 'bodyweight'],
+  ['customExercises', 'custom_exercises'], ['exerciseNotes', 'exercise_notes'], ['reminders', 'reminder_settings'],
+  ['equipProfiles', 'equip_profiles'], ['meals', 'comidas_registradas'], ['mealTemplates', 'plantillas_comida'],
+  ['subscriptions', 'subscriptions']
+];
+
+const billingBrief = row => row?.plan_id != null
+  ? { planId: row.plan_id, planName: row.plan_name ?? null, dueDate: row.due_date ?? null }
+  : null;
+
+// Todo lo que el merge haría, sin escribir. keepBilling: 'ficha' | 'cuenta' | null.
+// → { error } si no se puede, o { plan, fichaProfile, targetProfile }.
+function mergePlan(db, fichaId, targetId, keepBilling) {
+  if (fichaId === targetId) return { error: 'same_user' };
+  const ficha = db.prepare('SELECT * FROM users WHERE id = ?').get(fichaId);
+  if (!ficha) return { error: 'ficha_not_found' };
+  const target = db.prepare('SELECT * FROM users WHERE id = ?').get(targetId);
+  if (!target) return { error: 'target_not_found' };
+  if (countCredentials(fichaId) > 0) return { error: 'ficha_has_app' };
+  if (countCredentials(targetId) < 1) return { error: 'target_without_app' };
+  if (target.admin === 1 || target.owner === 1) return { error: 'target_is_staff' };
+
+  const billingRow = id => db.prepare(`
+    SELECT mb.plan_id, mb.due_date, p.name AS plan_name
+    FROM member_billing mb LEFT JOIN plans p ON p.id = mb.plan_id WHERE mb.user_id = ?
+  `).get(id);
+  const fichaBilling = billingBrief(billingRow(fichaId));
+  const targetBilling = billingBrief(billingRow(targetId));
+  const billingConflict = !!fichaBilling && !!targetBilling;
+  const billingKeep = !fichaBilling ? 'cuenta' : !targetBilling ? 'ficha' : (keepBilling || null);
+
+  const fichaProfile = db.prepare('SELECT * FROM member_profile WHERE user_id = ?').get(fichaId);
+  const targetProfile = db.prepare('SELECT * FROM member_profile WHERE user_id = ?').get(targetId);
+  const dniConflict = !!fichaProfile?.dni_norm && !!targetProfile?.dni_norm && fichaProfile.dni_norm !== targetProfile.dni_norm;
+  const profileAction = !fichaProfile ? 'none' : !targetProfile ? 'move' : 'fill';
+
+  const payments = Number(db.prepare('SELECT COUNT(*) AS n FROM payments WHERE user_id = ?').get(fichaId).n);
+  const lost = {};
+  for (const [key, table] of FICHA_OWN_DATA) {
+    const n = Number(db.prepare(`SELECT COUNT(*) AS n FROM ${table} WHERE user_id = ?`).get(fichaId).n);
+    if (n) lost[key] = n;
+  }
+  return {
+    plan: {
+      ficha: { id: ficha.id, name: ficha.name },
+      target: { id: target.id, name: target.name },
+      payments,
+      billing: { ficha: fichaBilling, cuenta: targetBilling, conflict: billingConflict, keep: billingKeep },
+      profile: { ficha: !!fichaProfile, cuenta: !!targetProfile, conflict: dniConflict, action: profileAction },
+      lost
+    },
+    fichaProfile,
+    targetProfile
+  };
+}
+
+// Columnas que se completan juntas (el valor ingresado va con su forma normalizada).
+const PROFILE_FILL = [['full_name'], ['dni', 'dni_norm'], ['phone', 'phone_norm'], ['email']];
+
+// Une una ficha (sin credencial) a la cuenta con app del mismo socio: pagos, plan y perfil
+// pasan a la cuenta y la ficha se borra, en una sola transacción BEGIN IMMEDIATE.
+// dryRun: devuelve el plan (conteos y conflictos) sin escribir.
+// → { error, plan? } | { plan } (dry run) | { result }.
+export function mergeMember({ fichaId, targetId, keepBilling = null, dryRun = false }) {
+  const db = getDatabase();
+  if (dryRun) {
+    const checked = mergePlan(db, fichaId, targetId, keepBilling);
+    return checked.error ? { error: checked.error } : { plan: checked.plan };
+  }
+  db.exec('BEGIN IMMEDIATE');
+  try {
+    const checked = mergePlan(db, fichaId, targetId, keepBilling);
+    const stop = error => { db.exec('ROLLBACK'); return { error, plan: checked.plan }; };
+    if (checked.error) return stop(checked.error);
+    const { plan, fichaProfile, targetProfile } = checked;
+    if (plan.billing.conflict && !plan.billing.keep) return stop('billing_conflict');
+    if (plan.profile.conflict) return stop('dni_conflict');
+    const nowIso = new Date().toISOString();
+
+    // Pagos: cambian de dueño y conservan el snapshot user_name.
+    db.prepare('UPDATE payments SET user_id = ? WHERE user_id = ?').run(targetId, fichaId);
+
+    if (plan.billing.ficha && plan.billing.keep === 'ficha') {
+      const fb = db.prepare('SELECT plan_id, due_date FROM member_billing WHERE user_id = ?').get(fichaId);
+      db.prepare(`
+        INSERT INTO member_billing (user_id, plan_id, due_date, push_sent_for_due, updated_at)
+        VALUES (?, ?, ?, NULL, ?)
+        ON CONFLICT(user_id) DO UPDATE SET
+          plan_id = excluded.plan_id, due_date = excluded.due_date,
+          push_sent_for_due = NULL, updated_at = excluded.updated_at
+      `).run(targetId, fb.plan_id, fb.due_date, Date.now());
+    }
+
+    if (plan.profile.action === 'move') {
+      db.prepare('UPDATE member_profile SET user_id = ?, updated_at = ? WHERE user_id = ?').run(targetId, nowIso, fichaId);
+    } else if (plan.profile.action === 'fill') {
+      // Primero se va el perfil de la ficha: si no, pasarle su DNI a la cuenta chocaría con el
+      // índice único mientras las dos filas existen.
+      db.prepare('DELETE FROM member_profile WHERE user_id = ?').run(fichaId);
+      const sets = [];
+      const values = [];
+      for (const cols of PROFILE_FILL) {
+        const [main] = cols;
+        if (targetProfile[main] != null && targetProfile[main] !== '') continue;
+        if (fichaProfile[main] == null || fichaProfile[main] === '') continue;
+        for (const col of cols) { sets.push(`${col} = ?`); values.push(fichaProfile[col] ?? null); }
+      }
+      if (sets.length) {
+        db.prepare(`UPDATE member_profile SET ${sets.join(', ')}, updated_at = ? WHERE user_id = ?`).run(...values, nowIso, targetId);
+      }
+    }
+
+    deleteUser(fichaId, { inTransaction: true });
+    db.exec('COMMIT');
+    return { result: plan };
+  } catch (error) {
+    try { db.exec('ROLLBACK'); } catch {}
+    throw error;
+  }
 }

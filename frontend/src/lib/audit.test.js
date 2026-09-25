@@ -18,11 +18,14 @@ const EVENTS = [
   'admin.injury.exercise_warning.override', 'admin.routine.update',
   'owner.user.promote', 'owner.user.demote', 'owner.user.delete', 'owner.qr.regenerate',
   'admin.billing.plan_create', 'admin.billing.plan_update', 'admin.billing.assign', 'admin.billing.payment',
-  'admin.billing.payment_void', 'admin.billing.settings', 'admin.billing.blocked', 'admin.billing.unblocked'
+  'admin.billing.payment_void', 'admin.billing.settings', 'admin.billing.blocked', 'admin.billing.unblocked',
+  'admin.member.create', 'admin.member.profile_update', 'admin.member.link_code', 'admin.member.link_code_revoke',
+  'admin.member.merge', 'owner.member.fields', 'auth.link.ok', 'auth.link.fail'
 ]
 const REASONS = [
   'challenge-expired', 'unknown-credential', 'verify-error', 'not-verified',
-  'user-missing', 'account-disabled', 'credential-exists', 'invite-invalid', 'invite-rejected', 'qr-invalid'
+  'user-missing', 'account-disabled', 'credential-exists', 'invite-invalid', 'invite-rejected', 'qr-invalid',
+  'link-invalid', 'link-unavailable', 'link-revoked'
 ]
 
 describe('auditLabel', () => {
