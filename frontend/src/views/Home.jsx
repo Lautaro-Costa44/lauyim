@@ -12,7 +12,7 @@ import { Button } from '../components/ui.jsx'
 import { glyphOf } from '../lib/glyphs.js'
 import { startTourA } from '../lib/onboarding.js'
 import { api } from '../lib/api.js'
-import { routinesFromPresets, presetSourceFor } from '../lib/starter.js'
+import { routinesFromPresets, presetSourceFor, addPresetCustomExercises } from '../lib/starter.js'
 import { applyPlannedDays, createRoutineGroup, syncActiveGroupInState } from '../lib/routineGroups.js'
 
 
@@ -29,7 +29,8 @@ export default function Home() {
   const chooseGroup = async name => {
     try {
       const d = await api('/api/presets')
-      const rs = routinesFromPresets((d.presets || []).filter(p => (p.group_name || p.groupName || 'General') === name))
+      const presets = (d.presets || []).filter(p => (p.group_name || p.groupName || 'General') === name)
+      const rs = routinesFromPresets(presets)
       const result = applyPlannedDays(rs, {}, { groupRoutines: rs })
       if (!result.ok) {
         toast(`La rutina “${result.conflict.routine?.name || 'Routine'}” ya está planeada para el ${t(DAYN[result.conflict.day])}.`)
@@ -41,6 +42,7 @@ export default function Home() {
       update(s => {
         s.routines = rs
         s.week = result.week
+        addPresetCustomExercises(s, presets, d.customExercises)
         if (!(s.routineGroups || []).length) {
           const group = createRoutineGroup(name, rs, result.week, { source })
           s.routineGroups = [group]

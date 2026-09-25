@@ -18,6 +18,27 @@ export const routinesFromPresets = presets => (presets || []).map(p => ({
   ex: (p.ex || []).map(e => ({ ...e }))
 }))
 
+/**
+ * Custom exercises (the gym's own, created by an admin) used by these presets, added to the
+ * member's S.customEx when missing — so they show by name and count in the muscle/fatigue maps
+ * right away. Each keeps the original id (what the routines reference) plus `origin`, which the
+ * server stores as the member's own copy. `defs` is GET /api/presets' customExercises. Mutates
+ * `state`; returns how many were added. Applying the same program twice adds nothing.
+ */
+export function addPresetCustomExercises(state, presets, defs) {
+  const used = new Set((presets || []).flatMap(p => (p.ex || []).map(e => String(e.id))))
+  const have = new Set((state.customEx || []).flatMap(ex => [String(ex.id), ex.origin && String(ex.origin)]).filter(Boolean))
+  let added = 0
+  for (const def of defs || []) {
+    const id = String(def?.id || '')
+    if (!id || !used.has(id) || have.has(id)) continue
+    state.customEx = [...(state.customEx || []), { ...def, id, origin: id, custom: true, shared: undefined }]
+    have.add(id)
+    added++
+  }
+  return added
+}
+
 // Group name of a preset as the member app reads it.
 export const presetGroupOf = p => String(p?.group_name || p?.groupName || 'General').trim() || 'General'
 
@@ -38,7 +59,7 @@ export function presetSourceFor(data, name) {
  * member's other groups stay, the new one gets fresh routine ids and its planned days.
  * Mutates `state`. Returns { ok: true, group } or { ok: false, error: 'limit'|'exists'|'day', … }.
  */
-export function addProgramToState(state, { name, presets, source, activate = true }) {
+export function addProgramToState(state, { name, presets, source, activate = true, customDefs }) {
   const groups = state.routineGroups || []
   // A member with routines but no groups yet (from before groups existed) gets them wrapped
   // in a default group first, as the app itself does on load.
@@ -49,5 +70,6 @@ export function addProgramToState(state, { name, presets, source, activate = tru
   const result = applyPlannedDays(routines, {}, { groupRoutines: routines })
   if (!result.ok) return { ok: false, error: 'day', conflict: result.conflict }
   const group = addGroupToState(state, name, routines, result.week, activate, source ? { source } : {})
+  addPresetCustomExercises(state, presets, customDefs)
   return { ok: true, group }
 }

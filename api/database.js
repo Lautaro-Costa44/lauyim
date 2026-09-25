@@ -163,6 +163,7 @@ export function initDatabase() {
       sm TEXT,
       st TEXT,
       created_at INTEGER NOT NULL,
+      origin_id TEXT,
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     );
     CREATE TABLE IF NOT EXISTS public_custom_exercises (id TEXT PRIMARY KEY, payload TEXT NOT NULL, updated_at INTEGER NOT NULL);
@@ -285,6 +286,12 @@ export function initDatabase() {
   try {
     db.exec(`ALTER TABLE workouts ADD COLUMN partial INTEGER DEFAULT 0;`);
   } catch {}
+  // Ejercicios custom de presets: la copia que recibe un socio guarda de qué ejercicio salió
+  // (origin_id) y el preset guarda la definición del original, por si su dueño lo borra.
+  try { db.exec(`ALTER TABLE custom_exercises ADD COLUMN origin_id TEXT;`); } catch {}
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_custom_exercises_user_origin ON custom_exercises(user_id, origin_id)`);
+  db.exec(`CREATE TABLE IF NOT EXISTS preset_custom_exercises (id TEXT PRIMARY KEY, payload TEXT NOT NULL, updated_at INTEGER NOT NULL)`);
+  backfillPresetCustomExercises(db);
 
   return db;
 }
@@ -639,6 +646,7 @@ export function getPresetWithExercises(id) {
 }
 
 function insertPresetExercises(db, presetId, exercises) {
+  snapshotPresetCustomExercises((exercises || []).map(ex => ex.id));
   const exStmt = db.prepare(`
     INSERT INTO preset_exercises (preset_id, exercise_id, sets, reps, weight, mode, min, speed, sec, bodyweight, side, progression_type, progression_config, extra)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -957,6 +965,9 @@ export function saveUserState(userId, S) {
   // Guardar equipment profiles
   saveEquipProfiles(userId, S.equipProfiles || []);
   saveRoutineGroups(userId, S.routineGroups || [], S.activeGroupId || null);
+  // Ejercicios custom de presets que usan sus rutinas: el socio recibe su copia (punto de
+  // encuentro de todos los caminos: plan inicial, planes prearmados, asignación del admin).
+  ensurePresetCustomCopies(userId, routineExerciseIds(S));
   db.prepare('UPDATE user_state SET sync_versions = ? WHERE user_id = ?')
     .run(JSON.stringify(S._syncVersions || {}), userId);
   db.prepare('UPDATE user_state SET nutrition_goals = ? WHERE user_id = ?')
@@ -1630,9 +1641,9 @@ function saveBodyweight(userId, bodyweight) {
 // Operaciones de custom exercises
 // ============================================================
 
-export function getCustomExercisesByUserId(userId) {
-  const stmt = getDatabase().prepare('SELECT * FROM custom_exercises WHERE user_id = ?');
-  return stmt.all(userId).map(row => ({
+// Ejercicio custom tal como lo ve el cliente, a partir de una fila de custom_exercises.
+function customRowToDef(row) {
+  return {
     id: row.id,
     n: row.n,
     tipo: row.tipo,
@@ -1646,7 +1657,22 @@ export function getCustomExercisesByUserId(userId) {
     st: safeJsonParse(row.st, []),
     created: row.created_at,
     custom: true
-  }));
+  };
+}
+
+// Id de la fila de la copia de un socio. custom_exercises.id es PRIMARY KEY de toda la tabla, así
+// que la copia no puede reusar el id del original (INSERT OR REPLACE se lo quitaría a su dueño):
+// guarda uno propio y el id original en origin_id. Determinístico: aplicar el mismo preset dos
+// veces, o desde dos dispositivos, no duplica.
+export const customCopyId = (originId, userId) => `${originId}@${userId}`;
+
+// Las copias se le entregan al socio con el id del original (origin), que es el que usan sus
+// rutinas, sus grupos y su historial: nada de eso se reescribe.
+export function getCustomExercisesByUserId(userId) {
+  const stmt = getDatabase().prepare('SELECT * FROM custom_exercises WHERE user_id = ?');
+  return stmt.all(userId).map(row => row.origin_id
+    ? { ...customRowToDef(row), id: row.origin_id, origin: row.origin_id }
+    : customRowToDef(row));
 }
 
 export function getPublicCustomExercises() {
@@ -1657,33 +1683,125 @@ export function savePublicCustomExercise(ex) {
 }
 export function deletePublicCustomExercise(id) { getDatabase().prepare('DELETE FROM public_custom_exercises WHERE id = ?').run(id); }
 
+function insertCustomRow(db, rowId, userId, ex, originId) {
+  const equipArr = Array.isArray(ex.equipamiento) ? ex.equipamiento : (ex.eq ? [ex.eq] : ['body weight']);
+  db.prepare(`
+    INSERT OR REPLACE INTO custom_exercises (id, user_id, n, tipo, equipamiento, grupo_muscular, bp, eq, tg, mg, sm, st, created_at, origin_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    rowId,
+    userId,
+    String(ex.n || '').slice(0, 200) || rowId,
+    ex.tipo || null,
+    JSON.stringify(equipArr),
+    ex.grupo_muscular || ex.tg || ex.bp || '',
+    ex.bp || '',
+    equipArr[0] || ex.eq || 'body weight',
+    ex.tg || ex.grupo_muscular || ex.bp || '',
+    ex.mg || '',
+    JSON.stringify(ex.sm || []),
+    JSON.stringify(ex.st || []),
+    ex.created || Date.now(),
+    originId || null
+  );
+}
+
+// El estado completo del socio trae S.customEx entero. Se reemplazan sus ejercicios propios; las
+// copias (origin) se actualizan pero no se borran por faltar (las administra el servidor y las
+// usan sus rutinas). Nunca se escribe una fila de otro usuario: antes, un id repetido le robaba
+// el ejercicio a su dueño vía INSERT OR REPLACE. Los compartidos (shared) no se guardan.
 function saveCustomExercises(userId, customEx) {
   const db = getDatabase();
-  const deleteStmt = db.prepare('DELETE FROM custom_exercises WHERE user_id = ?');
-  deleteStmt.run(userId);
-
-  const stmt = db.prepare(`
-    INSERT OR REPLACE INTO custom_exercises (id, user_id, n, tipo, equipamiento, grupo_muscular, bp, eq, tg, mg, sm, st, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `);
-  for (const ex of customEx) {
-    const equipArr = Array.isArray(ex.equipamiento) ? ex.equipamiento : (ex.eq ? [ex.eq] : ['body weight']);
-    stmt.run(
-      ex.id,
-      userId,
-      ex.n,
-      ex.tipo || null,
-      JSON.stringify(equipArr),
-      ex.grupo_muscular || ex.tg || ex.bp || '',
-      ex.bp || '',
-      equipArr[0] || ex.eq || 'body weight',
-      ex.tg || ex.grupo_muscular || ex.bp || '',
-      ex.mg || '',
-      JSON.stringify(ex.sm || []),
-      JSON.stringify(ex.st || []),
-      ex.created || Date.now()
-    );
+  db.prepare('DELETE FROM custom_exercises WHERE user_id = ? AND origin_id IS NULL').run(userId);
+  const ownerOf = db.prepare('SELECT user_id FROM custom_exercises WHERE id = ?');
+  for (const ex of customEx || []) {
+    if (!ex || typeof ex !== 'object' || ex.shared || !ex.id) continue;
+    const origin = ex.origin ? String(ex.origin) : null;
+    const rowId = origin ? customCopyId(origin, userId) : String(ex.id);
+    const owner = ownerOf.get(rowId)?.user_id;
+    if (owner && owner !== userId) continue;
+    insertCustomRow(db, rowId, userId, ex, origin);
   }
+}
+
+// ---- ejercicios custom usados en presets ----
+
+// Definición de un ejercicio custom usado en un preset: la del original si todavía existe (así un
+// cambio de nombre llega), si no la que se guardó con el preset, si no la compartida.
+function presetCustomDef(db, id) {
+  const snapshot = db.prepare('SELECT payload FROM preset_custom_exercises WHERE id = ?').get(id);
+  if (snapshot) {
+    const live = db.prepare('SELECT * FROM custom_exercises WHERE id = ? AND origin_id IS NULL').get(id);
+    return live ? { ...customRowToDef(live), created: undefined } : safeJsonParse(snapshot.payload, null);
+  }
+  const pub = db.prepare('SELECT payload FROM public_custom_exercises WHERE id = ?').get(id);
+  return pub ? { ...safeJsonParse(pub.payload, {}), custom: true } : null;
+}
+
+// Guarda la definición de los ejercicios custom que usa un preset. Solo ids que son ejercicios
+// custom de alguien (los del catálogo no tienen fila).
+export function snapshotPresetCustomExercises(ids) {
+  const db = getDatabase();
+  const live = db.prepare('SELECT * FROM custom_exercises WHERE id = ? AND origin_id IS NULL');
+  const upsert = db.prepare('INSERT OR REPLACE INTO preset_custom_exercises (id, payload, updated_at) VALUES (?, ?, ?)');
+  for (const id of new Set((ids || []).map(String))) {
+    const row = live.get(id);
+    if (row) upsert.run(id, JSON.stringify({ ...customRowToDef(row), created: undefined }), Date.now());
+  }
+}
+
+/** Definiciones de los ejercicios custom de estos presets (GET /api/presets), sin repetir. */
+export function getPresetCustomExercises(presets) {
+  const db = getDatabase();
+  const ids = [...new Set((presets || []).flatMap(p => (p.ex || []).map(e => String(e.id))))];
+  return ids.map(id => presetCustomDef(db, id)).filter(Boolean).map(def => ({ ...def, custom: true }));
+}
+
+/**
+ * Le da al socio su copia de cada ejercicio custom de preset que usan sus rutinas y todavía no
+ * tiene. Idempotente (id de copia determinístico; solo inserta lo que falta). Solo ejercicios que
+ * alguna vez estuvieron en un preset (preset_custom_exercises) o compartidos: nunca copia el
+ * ejercicio privado de otro socio. Devuelve cuántas copias creó.
+ */
+export function ensurePresetCustomCopies(userId, exerciseIds) {
+  const db = getDatabase();
+  const ids = [...new Set((exerciseIds || []).map(String).filter(Boolean))];
+  if (!ids.length) return 0;
+  const own = db.prepare('SELECT 1 FROM custom_exercises WHERE user_id = ? AND (id = ? OR origin_id = ?)');
+  const known = db.prepare('SELECT 1 FROM preset_custom_exercises WHERE id = ? UNION SELECT 1 FROM public_custom_exercises WHERE id = ?');
+  let created = 0;
+  for (const id of ids) {
+    if (own.get(userId, id, id) || !known.get(id, id)) continue;
+    const def = presetCustomDef(db, id);
+    if (!def) continue;
+    insertCustomRow(db, customCopyId(id, userId), userId, { ...def, created: Date.now() }, id);
+    created++;
+  }
+  return created;
+}
+
+// Ids de ejercicio que usan las rutinas de un estado: las sueltas y las de cada grupo.
+export function routineExerciseIds(S) {
+  const routines = [...(S?.routines || []), ...(S?.routineGroups || []).flatMap(g => g?.routines || [])];
+  return routines.flatMap(r => (r?.ex || []).map(e => e?.id)).filter(Boolean);
+}
+
+// Arranque: presets guardados antes de preset_custom_exercises reciben su definición, y los
+// socios que ya tenían rutinas con esos ejercicios ("Unknown exercise") reciben su copia.
+// Idempotente: una segunda pasada no encuentra nada que hacer.
+function backfillPresetCustomExercises(db) {
+  const presetIds = db.prepare('SELECT DISTINCT exercise_id AS id FROM preset_exercises').all().map(r => r.id);
+  snapshotPresetCustomExercises(presetIds);
+  const known = new Set(db.prepare('SELECT id FROM preset_custom_exercises UNION SELECT id FROM public_custom_exercises').all().map(r => r.id));
+  if (!known.size) return;
+  const byUser = new Map();
+  const add = (userId, ids) => { if (ids.length) byUser.set(userId, [...(byUser.get(userId) || []), ...ids]); };
+  const rows = db.prepare('SELECT r.user_id AS userId, re.exercise_id AS id FROM routine_exercises re JOIN routines r ON r.id = re.routine_id').all();
+  for (const { userId, id } of rows) if (known.has(id)) add(userId, [id]);
+  for (const row of db.prepare('SELECT user_id, routine_groups FROM user_state WHERE routine_groups IS NOT NULL').all()) {
+    add(row.user_id, routineExerciseIds({ routineGroups: safeJsonParse(row.routine_groups, []) }).filter(id => known.has(id)));
+  }
+  for (const [userId, ids] of byUser) ensurePresetCustomCopies(userId, ids);
 }
 
 // ============================================================

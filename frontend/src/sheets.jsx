@@ -8,7 +8,7 @@ import { lastEntryFor, bestWeightFor, buildSets, effectiveRoutineId, workoutVolu
 import { beep, vibrate } from './lib/sound.js'
 import { t, instrFor, exerciseNameFor, getLang, INSTR_LANGS } from './lib/i18n.js'
 import { nav } from './lib/nav.js'
-import { starterRoutines, routinesFromPresets, presetGroupOf, presetsOfGroup } from './lib/starter.js'
+import { starterRoutines, routinesFromPresets, presetGroupOf, presetsOfGroup, addPresetCustomExercises } from './lib/starter.js'
 import { api } from './lib/api.js'
 import Media, { Thumb } from './components/Media.jsx'
 import Stepper from './components/Stepper.jsx'
@@ -71,13 +71,16 @@ export function inputSheet(opts) {
 /* ============================ starter plan ============================ */
 export async function loadStarterPlan() {
   let routines = null
+  let presets = [], customDefs = []
   if (useStore.getState().user) {
     try {
       const result = await api('/api/presets')
       // One program only (the first one the gym lists): every program plans its own week, so
       // loading them all together always collided on some day once there were two.
       const first = result.groups?.[0]?.name ?? presetGroupOf(result.presets?.[0])
-      routines = routinesFromPresets(presetsOfGroup(result.presets, first))
+      presets = presetsOfGroup(result.presets, first)
+      customDefs = result.customExercises || []
+      routines = routinesFromPresets(presets)
     } catch (e) { /* use the built-in fallback when the server is unavailable */ }
   }
   if (!routines?.length) routines = starterRoutines()
@@ -88,6 +91,7 @@ export async function loadStarterPlan() {
     if (!result.ok) return
     st.routines.push(...routines)
     st.week = result.week
+    addPresetCustomExercises(st, presets, customDefs)
     st.estadoInicial = 'plan_predeterminado'
   })
   if (result && !result.ok) {

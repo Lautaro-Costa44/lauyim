@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { addProgramToState, presetSourceFor, presetsOfGroup } from './starter.js'
+import { addProgramToState, addPresetCustomExercises, presetSourceFor, presetsOfGroup } from './starter.js'
 
 const PRESETS = [
   { id: 'p1', name: 'Push', emoji: 'barbell', group_name: 'PPL', planned_day: 1, ex: [{ id: '0025', sets: 4, reps: 8 }] },
@@ -46,5 +46,33 @@ describe('addProgramToState', () => {
     const full = { routines: [], week: {}, routineGroups: [1, 2, 3, 4, 5].map(i => group('g' + i, 'G' + i)), activeGroupId: 'g1' }
     expect(addProgramToState(full, { name: 'PPL', presets: PRESETS.slice(0, 2) })).toMatchObject({ ok: false, error: 'limit' })
     expect(full.routineGroups).toHaveLength(5)
+  })
+})
+
+describe('ejercicios custom del gym en un programa', () => {
+  const DEF = { id: 'cx-remo', n: 'Remo del gym', tg: 'upper back', bp: 'back', mg: 'lats', sm: [], custom: true, shared: true }
+  const WITH_CUSTOM = [{ id: 'q1', name: 'Espalda', group_name: 'Gym', planned_day: 2, ex: [{ id: 'cx-remo', sets: 3, reps: 10 }, { id: '0027', sets: 3, reps: 8 }] }]
+
+  it('agrega solo los que usa el programa, con origin, y no duplica al aplicar dos veces', () => {
+    const state = { customEx: [{ id: 'mine', n: 'Mío' }] }
+    const other = { id: 'cx-otro', n: 'No usado' }
+    expect(addPresetCustomExercises(state, WITH_CUSTOM, [DEF, other])).toBe(1)
+    expect(addPresetCustomExercises(state, WITH_CUSTOM, [DEF, other])).toBe(0)
+    expect(state.customEx.map(e => e.id)).toEqual(['mine', 'cx-remo'])
+    expect(state.customEx[1]).toMatchObject({ origin: 'cx-remo', n: 'Remo del gym', custom: true })
+    expect(state.customEx[1].shared).toBeUndefined()
+  })
+
+  it('una copia que ya vino del servidor (mismo id / origin) cuenta como tenida', () => {
+    const state = { customEx: [{ id: 'cx-remo', origin: 'cx-remo', n: 'Mi remo' }] }
+    expect(addPresetCustomExercises(state, WITH_CUSTOM, [DEF])).toBe(0)
+    expect(state.customEx[0].n).toBe('Mi remo')
+  })
+
+  it('addProgramToState los suma junto con el grupo', () => {
+    const state = { routines: [], week: {}, routineGroups: [], activeGroupId: null, customEx: [] }
+    expect(addProgramToState(state, { name: 'Gym', presets: WITH_CUSTOM, customDefs: [DEF] }).ok).toBe(true)
+    expect(state.customEx.map(e => e.id)).toEqual(['cx-remo'])
+    expect(state.routines[0].ex.map(e => e.id)).toEqual(['cx-remo', '0027'])
   })
 })

@@ -327,7 +327,16 @@ CREATE TABLE IF NOT EXISTS custom_exercises (
   sm TEXT,                     -- JSON array (secondary muscles)
   st TEXT,                     -- JSON array (instructions)
   created_at INTEGER NOT NULL,
+  origin_id TEXT,              -- copia de un ejercicio custom de preset: id del original
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+-- Definición de los ejercicios custom usados en presets (snapshot al guardar el preset): el socio
+-- recibe su copia aunque el dueño del original lo haya borrado.
+CREATE TABLE IF NOT EXISTS preset_custom_exercises (
+  id TEXT PRIMARY KEY,
+  payload TEXT NOT NULL,       -- JSON con n, tipo, equipamiento, grupo_muscular, bp, eq, tg, mg, sm, st
+  updated_at INTEGER NOT NULL
 );
  
 -- COMANDOS ALTER TABLE PARA BASES YA EXISTENTES (custom_exercises):

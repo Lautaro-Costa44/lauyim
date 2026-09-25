@@ -58,6 +58,9 @@ import {
   getPresetProgramById,
   getPresetProgramByName,
   getPresetProgramUsage,
+  getPresetCustomExercises,
+  ensurePresetCustomCopies,
+  routineExerciseIds,
   getUserState,
   saveUserState,
   getWorkoutsByUserId,
@@ -1858,6 +1861,8 @@ const routes = {
     saveWeekPlan(userId, parsed.week, validRoutineIds);
     saveDayPlan(userId, parsed.dayPlan, validRoutineIds);
     if (body.routineGroups !== undefined) saveRoutineGroups(userId, parsed.routineGroups, parsed.activeGroupId);
+    // Un programa asignado con ejercicios custom del admin: el socio recibe su copia.
+    ensurePresetCustomCopies(userId, routineExerciseIds({ routines: parsed.routines, routineGroups: body.routineGroups === undefined ? [] : parsed.routineGroups }));
     const auditBefore = alignActiveGroupForAudit(before, before.routines, before.week);
     const auditAfter = body.routineGroups === undefined
       ? {
@@ -2730,7 +2735,9 @@ const routes = {
   'GET /api/presets': async (req, res) => {
     if (!readSession(req)) return json(res, 401, { error: 'No has iniciado sesión' });
     const presets = getAllPresets().map(p => getPresetWithExercises(p.id));
-    json(res, 200, { presets, groups: getPresetGroups(), programs: getPresetPrograms() });
+    // customExercises: definición de los ejercicios custom (del admin) que usan los presets, para
+    // que el socio los vea y los cuente el modelo de fatiga antes de que llegue su copia.
+    json(res, 200, { presets, groups: getPresetGroups(), programs: getPresetPrograms(), customExercises: getPresetCustomExercises(presets) });
   },
 
   'POST /api/admin/presets': async (req, res) => {
