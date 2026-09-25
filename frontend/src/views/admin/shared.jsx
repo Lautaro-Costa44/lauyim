@@ -12,6 +12,7 @@ import { FoodPicker, GrupoComidaRow, totalesDeIngredientes, FRANJAS } from '../N
 import RoutineEditor from '../RoutineEditor.jsx'
 import { LESIONES_OPTIONS, OBJETIVO_OPTIONS, CheckPill } from '../SurveyWizard.jsx'
 import { BillingSummaryCard } from './billing/common.jsx'
+import { FichaCard, NoAppBadge, openMemberSheet } from './members/common.jsx'
 import { MAX_ROUTINE_GROUPS, canAddGroup, validateGroupName, syncActiveGroupInState, switchActiveGroup, addGroupToState, removeGroupFromState } from '../../lib/routineGroups.js'
 
 // Shared by more than one admin section: UserDetail opens from Resumen ("Training now") and
@@ -692,10 +693,13 @@ export function AdminManageSheet({ userId, userName, close, setOnBack }) {
 }
 
 // billingEnabled comes from the admin users poll; false hides the membership card (cuotas off).
-export function UserDetail({ id, billingEnabled = true, onChanged, close }) {
+// users (the same poll) feeds the account picker of "Vincular". openUser shows another member
+// (Usuarios: the desktop panel or a sheet); without it, a sheet on top.
+export function UserDetail({ id, billingEnabled = true, users, openUser, onChanged, close }) {
   const [d, setD] = useState(null)
   const toast = useUI(s => s.toast)
   const openSheet = useUI(s => s.openSheet)
+  const showUser = openUser || (otherId => openSheet(c => <UserDetail id={otherId} billingEnabled={billingEnabled} users={users} onChanged={onChanged} close={c} />))
   const currentUser = useStore(s => s.user)
   useEffect(() => { api('/api/admin/user?id=' + encodeURIComponent(id)).then(setD).catch(e => toast(e.message)) }, [id])
   if (!d) return <div className="muted small">{t('Loading…')}</div>
@@ -715,26 +719,40 @@ export function UserDetail({ id, billingEnabled = true, onChanged, close }) {
       .then(() => { toast(admin ? t('User promoted to admin') : t('Admin role removed')); onChanged(); close() })
       .catch(e => toast(e.message))
   }
+  // Ficha without a passkey: nothing to train or sync, so the training parts stay out.
+  const hasApp = u.hasApp !== false
+  // The ficha is gone after a merge: close its detail and show the account it joined.
+  const merge = ({ fichaId, fichaName, targetId }) => openMemberSheet(openSheet, 'MergeSheet', {
+    ficha: { id: fichaId, name: fichaName }, users, targetId,
+    onMerged: destId => { onChanged(); close(); showUser(destId) }
+  })
   return <>
     <h3 className="capitalize">{u.name}</h3>
     <div className="row" style={{ gap: 6, flexWrap: 'wrap', margin: '8px 0 12px' }}>
+      {!hasApp && <NoAppBadge style={{ marginLeft: 0 }} />}
       {(u.owner || u.admin) && <span className="tag acc">{u.owner ? t('owner') : t('admin')}</span>}
       {u.disabled && <span className="tag" style={{ color: 'var(--red)' }}>{t('disabled')}</span>}
       {u.invitedBy && <span className="tag">{t('invite')} {u.invitedBy}</span>}
       <span className="tag">{t('joined')} {typeof u.created === 'string' && u.created ? fmtDate(u.created.slice(0, 10)) : '—'}</span>
     </div>
-    <div className="tiles" style={{ textAlign: 'left' }}>
+    {hasApp && <div className="tiles" style={{ textAlign: 'left' }}>
       <div className="tile"><div className="l">{t('Workouts')}</div><div className="v" style={{ fontSize: '1.1rem' }}>{d.workouts.length}</div></div>
       <div className="tile"><div className="l">{t('Weigh-ins')}</div><div className="v" style={{ fontSize: '1.1rem' }}>{d.bodyweight.length}</div></div>
       <div className="tile"><div className="l">{t('Routines')}</div><div className="v" style={{ fontSize: '1.1rem' }}>{d.routines.length}</div></div>
       <div className="tile"><div className="l">{t('Last sync')}</div><div className="v" style={{ fontSize: '.95rem' }}>{rel(d.lastSync)}</div></div>
-    </div>
+    </div>}
+    {!hasApp && <div className="member-noapp">
+      <div className="small muted">{t('Este socio todavía no usa la app. Dale un código para que cree su acceso, o unilo a su cuenta si ya tiene una.')}</div>
+      <Button variant="primary" onClick={() => openMemberSheet(openSheet, 'LinkCodeSheet', { user: u })}>{t('Generar código de vinculación')}</Button>
+      <Button variant="tinted" onClick={() => merge({ fichaId: u.id, fichaName: u.name })}>{t('Vincular con cuenta existente')}</Button>
+    </div>}
+    <FichaCard user={{ ...u, hasApp }} users={users} openSheet={openSheet} openUser={showUser} onLink={merge} />
     {billingEnabled !== false && <BillingSummaryCard userId={u.id} userName={u.name} openSheet={openSheet} onChanged={onChanged} />}
-    <Button variant="tinted" style={{ width: '100%', margin: '4px 0 4px' }}
+    {hasApp && <Button variant="tinted" style={{ width: '100%', margin: '4px 0 4px' }}
       onClick={() => openSheet((c, { setOnBack }) => <AdminManageSheet userId={u.id} userName={u.name} close={c} setOnBack={setOnBack} />, { locked: true, fullScreen: true, backGesture: true })}>
       {t('Administrar Nutrición/Rutina')}
-    </Button>
-    {currentUser?.owner && !u.owner && <button className="btn primary" style={{ margin: '12px 0 4px' }}
+    </Button>}
+    {hasApp && currentUser?.owner && !u.owner && <button className="btn primary" style={{ margin: '12px 0 4px' }}
       onClick={() => confirmSheet({ title: u.admin ? t('Remove admin from {0}?', u.name) : t('Make {0} an admin?', u.name), message: u.admin ? t('They will keep access to normal administrative tools only if promoted again.') : t('This gives the user access to the admin dashboard and administrative tools.'), confirmText: u.admin ? t('Remove admin') : t('Make admin'), danger: false, onConfirm: () => setAdmin(!u.admin) })}>
       {u.admin ? t('Remove admin role') : t('Make admin')}</button>}
     {!u.admin && !u.owner && <button className={'btn ' + (u.disabled ? 'primary' : 'danger')} style={{ margin: '8px 0 4px' }}
@@ -744,8 +762,8 @@ export function UserDetail({ id, billingEnabled = true, onChanged, close }) {
     {currentUser?.owner && u.disabled && !u.owner && <button className="btn danger" style={{ margin: '8px 0 4px' }}
       onClick={() => confirmSheet({ title: t('Delete {0} permanently?', u.name), message: t('This permanently deletes the disabled account and all of its stored training data. This cannot be undone.'), confirmText: t('Delete permanently'), danger: true, onConfirm: deleteAccount })}>
       {t('Delete account permanently')}</button>}
-    <h4 className="sec">{t('Workout history')}</h4>
-    {d.workouts.length ? <div className="list" style={{ gap: 0 }}>
+    {hasApp && <h4 className="sec">{t('Workout history')}</h4>}
+    {!hasApp ? null : d.workouts.length ? <div className="list" style={{ gap: 0 }}>
       {d.workouts.slice(0, 60).map(w => <div key={w.id} className="row between" style={{ padding: '9px 2px', borderBottom: '1px solid var(--sep)' }}>
         <div><div className="small" style={{ fontWeight: 600 }}>{w.name}</div>
           <div className="dim" style={{ fontSize: '.72rem' }}>{fmtDate(w.d, true)} · {fmtDur((w.end || w.start) - w.start)} · {setsDone(w)} {t('sets')}{w.prs?.length ? ' · ' + w.prs.length + ' PR' : ''}</div></div>

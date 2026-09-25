@@ -576,6 +576,27 @@ input[type="search"]::-webkit-search-cancel-button{display:none;-webkit-appearan
 .access-col{width:60px;display:flex;justify-content:center;white-space:nowrap}
 .access-name{font-size:17px;letter-spacing:-.012em;line-height:1.25;color:var(--label);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .access-warn{grid-column:1/-1;color:var(--warning);line-height:1.35;padding-top:4px}
+
+/* --- admin · fichas de socio (alta, ficha, código de vinculación) --- */
+.member-new{width:100%;margin-bottom:4px}
+.member-filter{margin-bottom:10px}
+.member-dni-match{margin-bottom:10px}
+.member-form{display:flex;flex-direction:column;gap:12px;margin-bottom:14px}
+.member-field{display:flex;flex-direction:column;gap:5px}
+.member-field-l{font-size:13px;color:var(--label-2)}
+.member-field .form-error{margin-top:0}
+.member-dup{background:color-mix(in srgb,var(--warning) 12%,transparent);border-radius:var(--r);padding:12px 14px;margin-bottom:12px}
+.member-dup-t{font-size:15px;line-height:1.35;color:var(--label)}
+.member-dup-a{display:flex;gap:8px;margin-top:10px}
+.member-privacy{margin:14px 2px 0;line-height:1.4;text-align:center}
+.member-noapp{display:flex;flex-direction:column;gap:8px;margin:0 0 12px}
+.member-ficha-rows{margin:6px -16px -8px}
+.member-warn{color:var(--warning);line-height:1.4}
+.link-code{display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center}
+.link-code-qr{background:#fff;border-radius:var(--r);padding:10px;line-height:0}
+.link-code-qr canvas{width:220px;height:220px;image-rendering:pixelated}
+.link-code-v{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:34px;font-weight:700;letter-spacing:.14em;color:var(--label);user-select:all}
+.link-code-a{display:flex;flex-wrap:wrap;justify-content:center;gap:8px;margin:4px 0}
 :root[data-theme="light"] .timef::-webkit-calendar-picker-indicator{filter:none}
 
 /* --- stepper --- */

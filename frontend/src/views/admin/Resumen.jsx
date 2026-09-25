@@ -54,7 +54,7 @@ export default function Resumen() {
   const openSheet = useUI(s => s.openSheet)
   const { users: allUsers, attendance, billingEnabled, loadUsers, loadAttendance, refresh } = useAdmin()
 
-  const openUser = id => openSheet(close => <UserDetail id={id} billingEnabled={billingEnabled} onChanged={loadUsers} close={close} />)
+  const openUser = id => openSheet(close => <UserDetail id={id} billingEnabled={billingEnabled} users={allUsers} onChanged={loadUsers} close={close} />)
   // Counters and tiles count app users only: a member record without a passkey (ficha) does not
   // use the app, same as the attendance total.
   const users = allUsers && allUsers.filter(u => u.hasApp)

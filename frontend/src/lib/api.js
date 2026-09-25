@@ -77,6 +77,18 @@ export async function passkeyRegister(name, code, qr) {
   const res = await api('/api/register/verify', { method: 'POST', body: JSON.stringify({ cid, credential: credToJSON(cred) }) })
   return res.user
 }
+// Vinculación de una ficha con un código del gym, en dos pasos para poder mostrar a quién se
+// vincula antes de crear la passkey: linkOptions valida el código (devuelve el nombre) y
+// linkPasskey crea la credencial con esas opciones. Se clonan en cada intento porque
+// toCreationOptions las convierte en el lugar: cancelar la passkey y reintentar sigue andando.
+export async function linkOptions(code) {
+  return api('/api/link/options', { method: 'POST', body: JSON.stringify({ code }) })
+}
+export async function linkPasskey({ cid, options }) {
+  const cred = await navigator.credentials.create({ publicKey: toCreationOptions(structuredClone(options)) })
+  const res = await api('/api/link/verify', { method: 'POST', body: JSON.stringify({ cid, credential: credToJSON(cred) }) })
+  return res.user
+}
 export async function passkeyLogin() {
   const { cid, options } = await api('/api/login/options', { method: 'POST', body: '{}' })
   const cred = await navigator.credentials.get({ publicKey: toRequestOptions(options) })

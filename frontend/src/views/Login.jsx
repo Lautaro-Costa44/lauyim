@@ -1,6 +1,7 @@
 import { useStore } from '../store/useStore.js'
 import { useUI } from '../store/useUI.js'
-import { webauthnOK, passkeyLogin, passkeyRegister, BIO, api } from '../lib/api.js'
+import { webauthnOK, passkeyLogin, passkeyRegister, linkOptions, linkPasskey, BIO, api } from '../lib/api.js'
+import { formatLinkCodeInput, isCompleteLinkCode } from '../lib/link-code.js'
 import { hasData } from '../store/useStore.js'
 import { t } from '../lib/i18n.js'
 import { DEMO, REPO } from '../lib/demo.js'
@@ -123,8 +124,84 @@ function DevicePairingSheet({ close }) {
   </>
 }
 
+// Errores del código del gym en palabras del socio. Lo demás (red, verificación) va tal cual.
+export function linkErrorMessage(e) {
+  if (e?.status === 429) return t('Demasiados intentos, probá en unos minutos.')
+  if (e?.data?.error === 'link_invalid') return t('El código no es válido o venció. Pedí uno nuevo en recepción.')
+  if (e?.data?.error === 'link_unavailable') return t('Este socio ya tiene acceso. Iniciá sesión.')
+  return e?.message || t('No se pudo vincular. Probá de nuevo.')
+}
+const passkeyCancelled = e => e?.name === 'NotAllowedError' || e?.name === 'AbortError'
+
+// Ficha cargada por el gym → passkey del socio. Paso 1: el código (a mano o desde ?link=).
+// Paso 2: a quién se vincula, y recién ahí la passkey. Cancelar la passkey vuelve al paso 2
+// sin error. Al terminar sigue el boot normal: /api/me (cuota) y los datos del socio.
+function LinkSheet({ close, initialCode = '' }) {
+  const [code, setCode] = useState(() => formatLinkCodeInput(initialCode))
+  const [found, setFound] = useState(null)         // respuesta de /api/link/options
+  const [error, setError] = useState(null)
+  const [busy, setBusy] = useState(false)
+  const check = async () => {
+    setBusy(true); setError(null)
+    try { setFound(await linkOptions(code)) }
+    catch (e) { setError(linkErrorMessage(e)) }
+    setBusy(false)
+  }
+  const confirm = async () => {
+    setBusy(true); setError(null)
+    try {
+      const u = await linkPasskey(found)
+      const store = useStore.getState()
+      store.setUser(u)
+      close()
+      useUI.getState().toast(t('Welcome, {0}', u.name))
+      // Igual que al abrir la app: estado de cuota (y el cartel si está bloqueado) y sus datos.
+      await store.retryMembership().catch(() => store.pullState())
+    } catch (e) {
+      if (!passkeyCancelled(e)) setError(linkErrorMessage(e))
+      setBusy(false)
+    }
+  }
+  if (found) return <>
+    <h3>{t('Tu acceso a la app')}</h3>
+    <div className="muted" style={{ margin: '4px 0 16px', lineHeight: 1.5 }}>{t('Vas a crear tu acceso como {0}', found.fullName || found.name)}</div>
+    <div className="muted small" style={{ marginBottom: 16 }}>{t('Confirmá con {0}. La passkey queda guardada en tu dispositivo, sin contraseña.', BIO)}</div>
+    {error && <div className="form-error" role="alert" style={{ marginBottom: 10 }}>{error}</div>}
+    <Button variant="primary" disabled={busy} onClick={confirm}>{t('Confirmar')}</Button>
+    <div style={{ height: 8 }} />
+    <Button variant="ghost" className="dim" onClick={close}>{t('Cancelar')}</Button>
+  </>
+  return <>
+    <h3>{t('Tengo un código del gym')}</h3>
+    <div className="muted small" style={{ marginBottom: 14 }}>{t('Ingresá el código que te dieron en recepción para entrar con tus datos del gimnasio.')}</div>
+    <input {...NO_AUTOFILL} name="app-link-code" className="input" placeholder="XXXX-XXXX" aria-label={t('Código del gym')}
+      autoCapitalize="characters" spellCheck={false} maxLength={9} value={code}
+      onChange={e => { setCode(formatLinkCodeInput(e.target.value)); setError(null) }}
+      onKeyDown={e => { if (e.key === 'Enter' && isCompleteLinkCode(code) && !busy) check() }}
+      style={{ letterSpacing: '.18em', fontWeight: 600, textAlign: 'center', fontFamily: 'ui-monospace,SFMono-Regular,Menlo,monospace' }} />
+    {error && <div className="form-error" role="alert">{error}</div>}
+    <div style={{ height: 12 }} />
+    <Button variant="primary" disabled={busy || !isCompleteLinkCode(code)} onClick={check}>{busy ? t('Verificando…') : t('Continuar')}</Button>
+    <div style={{ height: 8 }} />
+    <Button variant="ghost" className="dim" onClick={close}>{t('Cancelar')}</Button>
+  </>
+}
+const openLinkSheet = code => useUI.getState().openSheet(close => <LinkSheet close={close} initialCode={code} />)
+
 export default function Login() {
   const { setUser, pullState, setGuest } = useStore()
+  // ?link=CODE (fuera del hash, como ?qr=): abre el flujo con el código cargado y lo saca de la
+  // URL en el acto, para que no quede en el historial ni se reabra al recargar.
+  useEffect(() => {
+    if (DEMO) return
+    const params = new URLSearchParams(window.location.search)
+    const code = params.get('link')
+    if (!code) return
+    params.delete('link')
+    const qs = params.toString()
+    window.history.replaceState(window.history.state, '', window.location.pathname + (qs ? '?' + qs : '') + window.location.hash)
+    openLinkSheet(code)
+  }, [])
   const signIn = async () => {
     try { const u = await passkeyLogin(); setUser(u); await pullState(); useUI.getState().toast(t('Welcome back, {0}', u.name)) }
     catch (e) { if (e.name !== 'NotAllowedError' && e.name !== 'AbortError') useUI.getState().toast(e.message || t('SIGN_IN_FAILED_LOGIN')) }
@@ -162,7 +239,9 @@ export default function Login() {
         <Button variant="tinted" icon="phone" onClick={() => useUI.getState().openSheet(c => <DevicePairingSheet close={c} />)}>{t('Continuar con codigo de sincronizacion')}</Button>
         <div style={{ height: 10 }} />
         <Button icon="sparkles" onClick={() => useUI.getState().openSheet(close => <RegisterSheet close={close} />)}>{t('Crear nuevo perfil')}</Button>
-      </> : <div className="card small muted" style={{ textAlign: 'left' }}>
+        <div style={{ height: 6 }} />
+        <Button variant="ghost" onClick={() => openLinkSheet('')}>{t('Tengo un código del gym')}</Button>
+      </> :<div className="card small muted" style={{ textAlign: 'left' }}>
         {t("This browser doesn't support passkeys, and this instance requires an account. Try a browser or device with passkey support.")}
       </div>}
       <div className="dim small" style={{ marginTop: 26, lineHeight: 1.5 }}>{t('Passkeys use {0} — no passwords.', BIO)}<br />{t('Each profile keeps its own plan, workouts & body weight.')}</div>

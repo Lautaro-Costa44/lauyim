@@ -9,6 +9,7 @@ import { useDesktop } from './useDesktop.js'
 import { STATUS_ORDER, StatusBadge, openMemberBilling, statusLabel } from './billing/common.jsx'
 import { PlansSheet } from './billing/PlansSheet.jsx'
 import { SettingsSheet } from './billing/SettingsSheet.jsx'
+import { NoAppBadge } from './members/common.jsx'
 
 // Tablero de Cuotas (GET /api/admin/billing). Las tarjetas resumen cuentan socios activos y no
 // staff (así las calcula el servidor); la lista muestra también a los desactivados, con badge.
@@ -22,6 +23,7 @@ function MemberName({ m }) {
     {m.name}
     {m.disabled && <span className="tag nocap" style={{ marginLeft: 6 }}>{t('Inactivo')}</span>}
     {m.admin && <span className="tag acc nocap" style={{ marginLeft: 6 }}>{t('Staff')}</span>}
+    {m.hasApp === false && <NoAppBadge />}
   </>
 }
 
