@@ -9,8 +9,13 @@ export const VAULT = IS_APPLE ? 'iCloud Keychain' : IS_ANDROID ? 'Google Passwor
 // only after the user chooses a passkey action and surface any genuine browser error there.
 export const webauthnOK = () => typeof window.PublicKeyCredential !== 'undefined'
 
+// What this build knows how to round-trip. 'routine-extras': routine exercises carry intensifier,
+// target reps, warm-ups and double progression; the server trusts their absence as "none" (an
+// older build without the header keeps what is stored instead).
+export const CLIENT_CAPABILITIES = 'routine-extras'
+
 export async function api(path, opts) {
-  const headers = Object.assign({ 'Content-Type': 'application/json' }, opts && opts.headers)
+  const headers = Object.assign({ 'Content-Type': 'application/json', 'X-Lauyim-Client': CLIENT_CAPABILITIES }, opts && opts.headers)
   // A disconnected mobile browser may leave fetch pending for a long time instead of
   // rejecting promptly. Keep boot and background sync responsive; callers can retry later.
   const controller = new AbortController()

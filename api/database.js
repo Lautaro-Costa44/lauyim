@@ -179,6 +179,7 @@ export function initDatabase() {
   // Presets: orden de días, campos del ejercicio sin columna propia y programas con id.
   try { db.exec(`ALTER TABLE presets ADD COLUMN position INTEGER NOT NULL DEFAULT 0;`); } catch {}
   try { db.exec(`ALTER TABLE preset_exercises ADD COLUMN extra TEXT;`); } catch {}
+  try { db.exec(`ALTER TABLE routine_exercises ADD COLUMN extra TEXT;`); } catch {}
   backfillPresetPrograms(db);
   // Cuotas v1: anular pagos. payments ya existe acá (lo crea schema.sql), así que estos ALTER
   // van después del schema; en una base nueva fallan en silencio porque el CREATE los trae.
@@ -872,7 +873,8 @@ export function getUserState(userId) {
   return S;
 }
 
-export function saveUserState(userId, S) {
+// opts.preserveExtras: ver saveRoutines.
+export function saveUserState(userId, S, opts = {}) {
   const db = getDatabase();
   const validRoutineIds = new Set((S.routines || []).map(r => String(r?.id || '')).filter(Boolean));
   // nutrition_goals is set only through the admin nutrition endpoints, never part of the
@@ -936,7 +938,7 @@ export function saveUserState(userId, S) {
   );
 
   // Guardar rutinas
-  saveRoutines(userId, S.routines || []);
+  saveRoutines(userId, S.routines || [], opts);
 
   // Guardar week plan
   saveWeekPlan(userId, S.week || {}, validRoutineIds);
@@ -1287,11 +1289,57 @@ export function getRoutinesByUserId(userId) {
       side: row.side ? true : undefined,
       note: row.note,
       progressionType: row.progression_type || undefined,
-      progressionConfig: safeJsonParse(row.progression_config, null)
+      progressionConfig: safeJsonParse(row.progression_config, null),
+      ...routineExtraFromRow(row)
     }));
   }
 
   return routines;
+}
+
+// Campos de un ejercicio de rutina sin columna propia (lo que agrega el editor de ejercicio:
+// intensificador, reps objetivo, calentamiento, progresión doble). Viajan en
+// routine_exercises.extra como JSON, igual que preset_exercises.extra. nota y superset ya tienen
+// columna (note, sg).
+const ROUTINE_EXTRA_KEYS = ['intensifier', 'repsMin', 'repsMax', 'warmupSets', 'prog', 'inc'];
+const ROUTINE_EXTRA_MAX_BYTES = 4096;
+
+function routineExtraOf(ex) {
+  const extra = {};
+  for (const key of ROUTINE_EXTRA_KEYS) if (ex[key] !== undefined && ex[key] !== null) extra[key] = ex[key];
+  // bodyweight tiene columna pero solo guarda true; un false explícito (desmarcado en un ejercicio
+  // que el catálogo marca como peso corporal) va acá.
+  if (ex.bodyweight === false) extra.bodyweight = false;
+  if (!Object.keys(extra).length) return null;
+  const json = JSON.stringify(extra);
+  return Buffer.byteLength(json, 'utf8') <= ROUTINE_EXTRA_MAX_BYTES ? json : null;
+}
+
+function routineExtraFromRow(row) {
+  const extra = safeJsonParse(row.extra, null);
+  return extra && typeof extra === 'object' && !Array.isArray(extra) ? extra : {};
+}
+
+// Extras guardados por rutina, para no perderlos ante un cliente que no los conoce.
+function storedRoutineExtras(db, userId) {
+  const rows = db.prepare(`
+    SELECT re.routine_id, re.exercise_id, re.position, re.extra FROM routine_exercises re
+    JOIN routines r ON r.id = re.routine_id WHERE r.user_id = ? AND re.extra IS NOT NULL
+  `).all(userId);
+  const byRoutine = new Map();
+  for (const row of rows) byRoutine.set(row.routine_id, [...(byRoutine.get(row.routine_id) || []), { ...row, used: false }]);
+  return byRoutine;
+}
+
+// El extra guardado para el ejercicio `index` (id `exerciseId`) de una rutina: el de la misma
+// posición si es el mismo ejercicio; si no (se reordenó), el primero sin usar de ese ejercicio.
+function takeStoredExtra(stored, exerciseId, index) {
+  if (!stored) return null;
+  const same = stored.find(s => !s.used && s.exercise_id === exerciseId && s.position === index)
+    || stored.find(s => !s.used && s.exercise_id === exerciseId);
+  if (!same) return null;
+  same.used = true;
+  return same.extra;
 }
 
 export function getRoutineGroups(userId) {
@@ -1310,8 +1358,16 @@ export function saveRoutineGroups(userId, routineGroups, activeGroupId) {
   `).run(userId, stamp, JSON.stringify(routineGroups || []), activeGroupId || null);
 }
 
-export function saveRoutines(userId, routines) {
+/**
+ * Reemplaza las rutinas del usuario. `preserveExtras`: el cliente que escribe no conoce los campos
+ * de routine_exercises.extra (versión anterior de la app, o un estado que bajó del servidor antes
+ * de que existiera la columna). Para ese cliente un ejercicio sin esos campos significa "no sé",
+ * no "sin intensificador": se conserva lo guardado. Un cliente que los conoce (header
+ * X-Lauyim-Client, ver server.js) es la verdad: si no los manda, se borran.
+ */
+export function saveRoutines(userId, routines, { preserveExtras = false } = {}) {
   const db = getDatabase();
+  const stored = preserveExtras ? storedRoutineExtras(db, userId) : null;
 
   db.prepare(`
     INSERT INTO user_state (user_id, _ts) VALUES (?, ?)
@@ -1328,14 +1384,16 @@ export function saveRoutines(userId, routines) {
   `);
 
   const exStmt = db.prepare(`
-    INSERT INTO routine_exercises (routine_id, exercise_id, position, sg, sets, reps, weight, mode, min, speed, sec, bodyweight, side, note, progression_type, progression_config)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO routine_exercises (routine_id, exercise_id, position, sg, sets, reps, weight, mode, min, speed, sec, bodyweight, side, note, progression_type, progression_config, extra)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   for (const routine of routines) {
     routineStmt.run(routine.id, userId, routine.name, routine.emoji || 'dumbbell', routine.created || Date.now());
     for (let i = 0; i < (routine.ex || []).length; i++) {
       const ex = routine.ex[i];
+      let extra = routineExtraOf(ex);
+      if (!extra && stored) extra = takeStoredExtra(stored.get(routine.id), String(ex.id), i);
       exStmt.run(
         routine.id,
         ex.id,
@@ -1352,7 +1410,8 @@ export function saveRoutines(userId, routines) {
         ex.side ? 1 : 0,
         ex.note || null,
         ex.progressionType || null,
-        ex.progressionConfig ? JSON.stringify(ex.progressionConfig) : null
+        ex.progressionConfig ? JSON.stringify(ex.progressionConfig) : null,
+        extra
       );
     }
   }

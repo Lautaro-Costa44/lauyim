@@ -314,6 +314,15 @@ function cleanPresetExtras(item, mode) {
   return out;
 }
 
+// Un cliente que conoce los campos de routine_exercises.extra (intensificador, reps objetivo,
+// calentamiento…) lo dice con este header, que manda lib/api.js en cada request. Sin él (una
+// versión anterior de la app todavía cacheada en un teléfono), un ejercicio que llega sin esos
+// campos no los borra: saveRoutines conserva los guardados.
+const ROUTINE_EXTRAS_CLIENT = 'routine-extras';
+const routineSaveOpts = req => ({
+  preserveExtras: !String(req.headers['x-lauyim-client'] || '').split(',').map(v => v.trim()).includes(ROUTINE_EXTRAS_CLIENT)
+});
+
 function cleanPreset(body, existingId) {
   const name = String(body.name || '').trim().slice(0, 80);
   if (!name) return { error: 'name required' };
@@ -1857,7 +1866,7 @@ const routes = {
       ...getRoutineGroups(userId)
     };
     const validRoutineIds = new Set(parsed.routines.map(r => r.id));
-    saveRoutines(userId, parsed.routines);
+    saveRoutines(userId, parsed.routines, routineSaveOpts(req));
     saveWeekPlan(userId, parsed.week, validRoutineIds);
     saveDayPlan(userId, parsed.dayPlan, validRoutineIds);
     if (body.routineGroups !== undefined) saveRoutineGroups(userId, parsed.routineGroups, parsed.activeGroupId);
@@ -2628,7 +2637,8 @@ const routes = {
     const user = readSession(req);
     if (!user) return json(res, 401, { error: 'No has iniciado sesión' });
     const body = await readBody(req);
-    const { status, body: payload } = applyStatePut({ db: getDatabase(), userId: user.id, state: body.state, getUserState, saveUserState });
+    const saveOpts = routineSaveOpts(req);
+    const { status, body: payload } = applyStatePut({ db: getDatabase(), userId: user.id, state: body.state, getUserState, saveUserState: (uid, st) => saveUserState(uid, st, saveOpts) });
     json(res, status, payload);
   },
 
@@ -2641,7 +2651,8 @@ const routes = {
     if (!user) return json(res, 401, { error: 'No has iniciado sesión' });
     const body = await readBody(req);
     if (!Array.isArray(body.operations) || body.operations.length > 50) return json(res, 400, { error: 'invalid operations batch' });
-    const processed = processSyncBatch({ db: getDatabase(), userId: user.id, operations: body.operations, getUserState, saveUserState });
+    const saveOpts = routineSaveOpts(req);
+    const processed = processSyncBatch({ db: getDatabase(), userId: user.id, operations: body.operations, getUserState, saveUserState: (uid, st) => saveUserState(uid, st, saveOpts) });
     return json(res, 200, processed);
   },
 

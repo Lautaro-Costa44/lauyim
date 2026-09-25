@@ -194,6 +194,7 @@ CREATE TABLE IF NOT EXISTS routine_exercises (
   note TEXT,
   progression_type TEXT NULL,
   progression_config TEXT NULL,
+  extra TEXT NULL,            -- JSON: intensifier, repsMin, repsMax, warmupSets, prog, inc
   FOREIGN KEY (routine_id) REFERENCES routines(id) ON DELETE CASCADE
 );
  
