@@ -69,6 +69,16 @@ describe('MembershipBlocked', () => {
     expect(apiMock.mock.calls.some(([url]) => url === '/api/data/sync' || url === '/api/data')).toBe(false)
   })
 
+  it('bloqueo por prueba terminada: texto de prueba, sin vencimiento de cuota', async () => {
+    const me = { user: MEMBER, billing: { hasPlan: false, status: 'bloqueado', dueDate: null, planName: null, blocked: true, trialUntil: '2026-09-23', trialEnded: true } }
+    apiMock.mockImplementation(url => url === '/api/me' ? Promise.resolve(me) : Promise.resolve({ allow_guest: true }))
+    await mount({ realBoot: true })
+    expect(text()).toContain('Prueba terminada')
+    expect(text()).toContain('Tu prueba terminó. Aboná en recepción para seguir usando la app')
+    expect(text()).not.toContain(TEXT)
+    expect(text()).not.toContain('Venció el')
+  })
+
   it('persiste: con el flag guardado se muestra de entrada', async () => {
     useStore.setState({ membershipBlocked: true })
     await mount()

@@ -29,8 +29,8 @@ export function lookupDni(dni) {
   return api('/api/admin/members/lookup?dni=' + encodeURIComponent(clean)).catch(() => null)
 }
 
-// Solo dígitos, 6 a 9: la búsqueda de Usuarios también pregunta por DNI.
-export const looksLikeDni = q => /^\d{6,9}$/.test(String(q || '').replace(/[.\s]/g, ''))
+// Solo dígitos, 6 a 8 (igual que el servidor): la búsqueda de Usuarios también pregunta por DNI.
+export const looksLikeDni = q => /^\d{6,8}$/.test(String(q || '').replace(/[.\s]/g, ''))
 
 // "Ya existe {nombre} (con app / sin app)" con Abrir y, si corresponde, Vincular.
 export function DuplicateNotice({ other, onOpen, onLink }) {

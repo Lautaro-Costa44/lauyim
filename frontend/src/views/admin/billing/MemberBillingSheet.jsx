@@ -5,8 +5,8 @@ import { addDaysISO, fmtDateDMY, fmtPesos, isoOf, todayISO } from '../../../lib/
 import { t } from '../../../lib/i18n.js'
 import { confirmSheet } from '../../../sheets.jsx'
 import Icon from '../../../components/Icon.jsx'
-import { Button, NumberField, Row, SearchField, Section, Segmented, SelectRow, TextField } from '../../../components/ui.jsx'
-import { StatusBadge, methodLabel, statusLabel } from './common.jsx'
+import { Button, NumberField, Row, SearchField, Section, Segmented, SelectRow, TextField, usePickerStep } from '../../../components/ui.jsx'
+import { StatusBadge, methodLabel, paidAtFor, statusLabel } from './common.jsx'
 
 // Ficha de cuota de un socio: estado, plan, historial y las acciones que lo cambian (registrar
 // pago, asignar plan, anular el último pago). UN solo sheet real con pasos internos, como el
@@ -18,14 +18,8 @@ import { StatusBadge, methodLabel, statusLabel } from './common.jsx'
 
 const billingUrl = userId => '/api/admin/users/' + encodeURIComponent(userId) + '/billing'
 const paymentsUrl = userId => '/api/admin/users/' + encodeURIComponent(userId) + '/payments'
+const userUrl = (userId, rest) => '/api/admin/users/' + encodeURIComponent(userId) + rest
 
-// Un pago cargado para hoy va sin paidAt (el servidor usa "ahora"); para otro día, el mediodía
-// de Buenos Aires (15:00 UTC), que cae en esa misma fecha en cualquier tz de América.
-const paidAtFor = (date, today) => {
-  if (!date || date === today) return undefined
-  const [y, m, d] = date.split('-').map(Number)
-  return Date.UTC(y, m - 1, d, 15)
-}
 
 function Header({ title, subtitle, onClose, badge }) {
   return <div className="row between compound-builder-header">
@@ -73,7 +67,7 @@ function MemberPicker({ members, onPick }) {
   </>
 }
 
-function PaymentForm({ member, billing, plans, methods, today, onDone }) {
+function PaymentForm({ member, billing, plans, methods, today, picker, onDone }) {
   const toast = useUI(s => s.toast)
   // Solo planes activos, más el que ya tiene asignado aunque esté inactivo: el servidor le deja
   // seguir pagándolo y es el default.
@@ -121,7 +115,7 @@ function PaymentForm({ member, billing, plans, methods, today, onDone }) {
   if (!options.length) return <div className="empty">{t('No hay planes activos. Creá uno desde Planes.')}</div>
   return <>
     <Section title={t('Pago')}>
-      <SelectRow title={t('Plan')} value={planId} onChange={changePlan} sheetTitle={t('Plan')}
+      <SelectRow title={t('Plan')} value={planId} onChange={changePlan} sheetTitle={t('Plan')} picker={picker}
         options={options.map(p => ({ value: p.id, label: p.name + (p.active ? '' : ' · ' + t('inactivo')), subtitle: `${fmtPesos(p.price)} · ${t('{0} días', p.durationDays)}` }))} />
       <Row title={t('Monto ($)')}>
         <NumberField className="row-num wide" value={amount} onChange={setAmount} decimal={false} nullable />
@@ -151,7 +145,7 @@ function PaymentForm({ member, billing, plans, methods, today, onDone }) {
   </>
 }
 
-function AssignForm({ member, billing, plans, today, onDone }) {
+function AssignForm({ member, billing, plans, today, picker, onDone }) {
   const toast = useUI(s => s.toast)
   const active = plans.filter(p => p.active)
   const initialPlan = active.find(p => p.id === billing.planId) || active[0] || null
@@ -182,7 +176,7 @@ function AssignForm({ member, billing, plans, today, onDone }) {
 
   return <>
     {active.length ? <Section title={t('Plan y vencimiento')} footer={t('El vencimiento es el día en que el socio vuelve a deber. Se propone hoy + la duración del plan.')}>
-      <SelectRow title={t('Plan')} value={planId} onChange={changePlan} sheetTitle={t('Plan')}
+      <SelectRow title={t('Plan')} value={planId} onChange={changePlan} sheetTitle={t('Plan')} picker={picker}
         options={active.map(p => ({ value: p.id, label: p.name, subtitle: `${fmtPesos(p.price)} · ${t('{0} días', p.durationDays)}` }))} />
       <Row title={t('Vence')}>
         <input name="app-billing-due-date" type="date" className="timef" value={dueDate} onChange={e => { setDateTouched(true); setDueDate(e.target.value) }} />
@@ -223,6 +217,8 @@ export function MemberBillingSheet({ userId, userName, members, startWith = 'det
   const [plans, setPlans] = useState(null)
   const [methods, setMethods] = useState(null)
   const [error, setError] = useState(null)
+  // Elegir plan es un paso más de este sheet, no otro sheet encima.
+  const picker = usePickerStep()
 
   // Pago elegido desde "Registrar pago" global: atrás vuelve a la lista de socios, no a la ficha.
   const fromPick = useRef(false)
@@ -230,6 +226,7 @@ export function MemberBillingSheet({ userId, userName, members, startWith = 'det
   stepRef.current = step
   // Atrás (gesto o botón "Volver"): un paso hacia atrás; desde la ficha o la lista, cierra.
   const goBack = () => {
+    if (picker.isOpen) return picker.close()
     const cur = stepRef.current
     if (cur === 'pay' && fromPick.current) return setStep('pick')
     if (cur === 'pay' || cur === 'assign') return setStep('detail')
@@ -254,6 +251,15 @@ export function MemberBillingSheet({ userId, userName, members, startWith = 'det
   const changed = () => { if (member) load(member.id); onChanged?.() }
   const afterAction = () => { changed(); fromPick.current = false; setStep('detail') }
 
+  const startTrial = () => confirmSheet({
+    title: t('¿Iniciar prueba?'),
+    message: t(data.trial.days === 1 ? 'Prueba de 1 día: puede usar la app solo hoy. Es una sola por persona.' : 'Prueba de {0} días, vence el {1}. Es una sola por persona.', data.trial.days, fmtDateDMY(data.trial.until)),
+    confirmText: t('Iniciar prueba'),
+    onConfirm: () => api(userUrl(member.id, '/trial'), { method: 'POST', body: '{}' })
+      .then(() => { toast(t('Prueba iniciada')); changed() })
+      .catch(e => setError(e.data?.message || e.message))
+  })
+
   const voidPayment = payment => openSheet(c => <VoidDialog payment={payment} close={c} onConfirm={reason =>
     api(paymentsUrl(member.id) + '/' + payment.id + '/void', { method: 'POST', body: JSON.stringify(reason ? { reason } : {}) })
       .then(() => { toast(t('Pago anulado')); changed() })
@@ -271,32 +277,41 @@ export function MemberBillingSheet({ userId, userName, members, startWith = 'det
   const voidableId = (data?.payments || []).filter(p => !p.voidedAt).reduce((max, p) => Math.max(max, p.id), 0)
   const back = step !== 'detail' && <Button size="sm" icon="chevronLeft" onClick={goBack}>{t('Volver')}</Button>
 
+  const trial = data?.trial
   return <div className="compound-builder">
     <div className="compound-builder-content">
+      {picker.view}
+      <div hidden={picker.isOpen}>
       <Header title={step === 'pay' ? t('Registrar pago') : step === 'assign' ? t('Asignar plan') : t('Cuota')}
         subtitle={member?.name} onClose={close} badge={billing && step === 'detail' ? <StatusBadge status={billing.status} /> : null} />
       {error && <div className="form-error" role="alert" style={{ marginBottom: 10 }}>{error}</div>}
       {!ready ? <div className="dim small">{t('Loading…')}</div>
         : step === 'pay' ? <>{back}<div style={{ height: 10 }} />
-          <PaymentForm member={member} billing={billing} plans={plans} methods={methods} today={today} onDone={afterAction} /></>
+          <PaymentForm member={member} billing={billing} plans={plans} methods={methods} today={today} picker={picker.open} onDone={afterAction} /></>
         : step === 'assign' ? <>{back}<div style={{ height: 10 }} />
-          <AssignForm member={member} billing={billing} plans={plans} today={today} onDone={afterAction} /></>
+          <AssignForm member={member} billing={billing} plans={plans} today={today} picker={picker.open} onDone={afterAction} /></>
         : <>
           <Section>
             <Row title={t('Estado')} value={statusLabel(billing.status)} />
             <Row title={t('Plan')} value={billing.planName || t('Sin plan')} />
-            <Row title={t('Vence')} value={billing.dueDate ? fmtDateDMY(billing.dueDate) : '—'} />
+            {billing.trialUntil ? <Row title={t('Prueba hasta')} value={fmtDateDMY(billing.trialUntil)} />
+              : <Row title={t('Vence')} value={billing.dueDate ? fmtDateDMY(billing.dueDate) : '—'} />}
             <Row title={t('Deuda')} value={fmtPesos(billing.debt)} />
           </Section>
           <div className="billing-actions">
             <Button variant="primary" size="sm" icon="plus" onClick={() => { setError(null); setStep('pay') }}>{t('Registrar pago')}</Button>
             <Button variant="tinted" size="sm" onClick={() => { setError(null); setStep('assign') }}>{billing.planId == null ? t('Asignar plan') : t('Cambiar plan')}</Button>
+            {trial?.available && <Button variant="tinted" size="sm" onClick={startTrial}>{t('Iniciar prueba')}</Button>}
           </div>
+          {/* Prueba: una por persona (DNI); con plan vigente o prueba en curso no se ofrece. */}
+          {trial?.blocker === 'trial_used' && <div className="dim small billing-trial-note">{t('Ya usó su prueba')}</div>}
+          {trial?.blocker === 'trial_requires_dni' && <div className="dim small billing-trial-note">{t('Para darle una prueba, cargá su DNI en la ficha.')}</div>}
           <Section title={t('Historial de pagos')}>
             {data.payments.length ? data.payments.map(p => <PaymentRow key={p.id} payment={p} voidable={p.id === voidableId} onVoid={voidPayment} />)
               : <div className="empty" style={{ padding: '20px' }}>{t('Todavía no hay pagos registrados.')}</div>}
           </Section>
         </>}
+      </div>
     </div>
   </div>
 }

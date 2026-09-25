@@ -134,7 +134,7 @@ test('enable-preview: cuenta socios activos no staff por estado; solo owner', as
 test('volver a encender restaura el bloqueo con los mismos datos', async () => {
   assert.deepEqual((await call('owner', 'PUT', '/api/owner/billing/enabled', { enabled: true })).body, { enabled: true });
   const me = await call('blocked', 'GET', '/api/me');
-  assert.deepEqual(me.body.billing, { hasPlan: true, status: 'bloqueado', dueDate: addDays(today, -10), planName: 'Mensual', blocked: true });
+  assert.deepEqual(me.body.billing, { hasPlan: true, status: 'bloqueado', dueDate: addDays(today, -10), planName: 'Mensual', blocked: true, trialUntil: null, trialEnded: false });
   assert.equal((await call('blocked', 'GET', '/api/data')).status, 403);
   assert.equal((await call('staff', 'GET', '/api/admin/billing')).status, 200);
   assert.ok(auditEvents().includes('owner.billing.enabled'));

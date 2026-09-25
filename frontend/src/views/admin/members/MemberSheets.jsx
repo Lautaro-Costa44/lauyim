@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
 import { useUI } from '../../../store/useUI.js'
 import { api } from '../../../lib/api.js'
-import { addDaysISO, fmtDateDMY, fmtPesos, todayISO } from '../../../lib/format.js'
+import { fmtDateDMY, fmtPesos, todayISO } from '../../../lib/format.js'
 import { t } from '../../../lib/i18n.js'
 import { confirmSheet } from '../../../sheets.jsx'
 import Icon from '../../../components/Icon.jsx'
 import QrCanvas from '../../../components/QrCanvas.jsx'
-import { Button, Row, SearchField, Section, SelectRow, TextField } from '../../../components/ui.jsx'
+import { Button, NumberField, Row, SearchField, Section, Segmented, SelectRow, TextField, usePickerStep, useSheetBack } from '../../../components/ui.jsx'
+import { methodLabel, paidAtFor } from '../billing/common.jsx'
 import { DuplicateNotice, MEMBER_FIELDS, lookupDni, profileUrl } from './common.jsx'
 
 // Flujos de fichas de socio (admin). Cada uno es UN sheet a pantalla completa; los que tienen
@@ -24,23 +25,12 @@ function Header({ title, subtitle, onClose }) {
   </div>
 }
 
-// Back de un sheet con pasos: un solo registro, lo variable se lee por ref (ver MemberBillingSheet).
-function useSheetBack(setOnBack, goBack) {
-  const ref = useRef(goBack)
-  ref.current = goBack
-  useEffect(() => {
-    if (!setOnBack) return
-    setOnBack(() => ref.current())
-    return () => setOnBack(null)
-  }, [setOnBack])
-}
-
 // Otra persona ya tiene ese DNI (lookup o 409 dni_duplicado del servidor).
 const duplicateFrom = e => e?.data?.error === 'dni_duplicado' ? { userId: e.data.userId, name: e.data.name, hasApp: !!e.data.hasApp } : null
 
 const INPUTS = {
   full_name: { type: 'text', inputMode: 'text', maxLength: 80 },
-  dni: { type: 'text', inputMode: 'numeric', maxLength: 12 },
+  dni: { type: 'text', inputMode: 'numeric', pattern: '[0-9]*', maxLength: 8 },
   phone: { type: 'tel', inputMode: 'tel', maxLength: 30 },
   email: { type: 'email', inputMode: 'email', maxLength: 120 },
 }
@@ -60,7 +50,7 @@ function MemberFields({ fields, values, onChange, errors, onDniBlur, extra }) {
     {shown.map(f => <label key={f.key} className="member-field">
       <span className="member-field-l">{t(f.label)}{fields[f.key].required && ' *'}</span>
       <TextField {...INPUTS[f.key]} name={'app-member-' + f.key} value={values[f.prop] || ''}
-        onChange={e => onChange(f.prop, e.target.value)} onBlur={f.key === 'dni' ? onDniBlur : undefined}
+        onChange={e => onChange(f.prop, f.key === 'dni' ? e.target.value.replace(/\D/g, '').slice(0, 8) : e.target.value)} onBlur={f.key === 'dni' ? onDniBlur : undefined}
         aria-invalid={!!errors[f.key]} />
       {errors[f.key] && <span className="form-error" role="alert">{errors[f.key]}</span>}
     </label>)}
@@ -75,24 +65,108 @@ const PRIVACY_NOTE = 'Estos datos se usan solo para identificar al socio en el g
 
 /* ---------------------------------- alta ---------------------------------- */
 
-// Nuevo socio sin app. Con cuotas encendido, plan y vencimiento opcionales. Un DNI repetido
-// (al salir del campo o al guardar) ofrece abrir a esa persona en vez de crear otra.
-export function MemberCreateSheet({ billingEnabled, close, onCreated, onOpenExisting }) {
+const START_OPTIONS = [
+  ['payment', 'Registrar pago', 'Cobra el primer mes (o el plan que elijas) ahora.'],
+  ['trial', 'Iniciar prueba', null],
+  ['none', 'Solo ficha', 'Sin pago ni prueba: la cuota se carga después.'],
+]
+
+// "Cuota inicial" del alta: primer pago (con vista previa del vencimiento del servidor, dry_run)
+// o prueba gratis. La elección de plan es un paso más del mismo sheet (picker).
+function InitialFee({ fields, dni, plans, settings, today, start, setStart, pay, setPay, picker }) {
+  const [preview, setPreview] = useState(null)       // { dueDate } | { trialUntil } | { error }
+  const dniOn = !!fields.dni?.enabled
+  const canTrial = dniOn && !!String(dni || '').trim()
+  const trialWhy = !dniOn ? t('La prueba necesita el DNI (una por persona) y este gimnasio no lo pide. Se activa en Acceso → Datos del registro.')
+    : !canTrial ? t('Cargá el DNI en el paso anterior para poder darle una prueba (una por persona).') : null
+  const plan = plans.find(p => p.id === pay.planId) || null
+
+  useEffect(() => {
+    if (start === 'none' || (start === 'payment' && (!plan || !pay.date))) { setPreview(null); return }
+    let alive = true
+    const body = start === 'trial' ? { type: 'trial' }
+      : { type: 'payment', planId: pay.planId, method: pay.method, paidAt: paidAtFor(pay.date, today), ...(Number.isInteger(pay.amount) && pay.amount > 0 ? { amount: pay.amount } : {}) }
+    const timer = setTimeout(() => api('/api/admin/members', { method: 'POST', body: JSON.stringify({ dry_run: true, start: body }) })
+      .then(r => { if (alive) setPreview(r) })
+      .catch(e => { if (alive) setPreview({ error: e.message }) }), 250)
+    return () => { alive = false; clearTimeout(timer) }
+  }, [start, pay.planId, pay.date, pay.method])
+
+  const days = settings.trial_days
+  const trialLine = preview?.trialUntil
+    ? t(days === 1 ? 'Prueba de 1 día, vence el {1}' : 'Prueba de {0} días, vence el {1}', days, fmtDateDMY(preview.trialUntil).slice(0, 5))
+    : t(days === 1 ? 'Prueba de 1 día' : 'Prueba de {0} días', days)
+  return <>
+    <Section title={t('Cuota inicial')}>
+      {START_OPTIONS.map(([value, label, sub]) => {
+        const disabled = value === 'trial' ? !canTrial : value === 'payment' && !plans.length
+        const subtitle = value === 'trial' ? (trialWhy || trialLine) : value === 'payment' && !plans.length ? t('No hay planes activos. Creá uno desde Cuotas → Planes.') : t(sub)
+        return <Row key={value} title={t(label)} subtitle={subtitle} className={'start-opt' + (disabled ? ' lrow-disabled' : '')}
+          onClick={disabled ? undefined : () => setStart(value)} accessory={start === value ? 'check' : 'none'} />
+      })}
+    </Section>
+    {start === 'payment' && plan && <>
+      <Section title={t('Pago')}>
+        <SelectRow title={t('Plan')} value={pay.planId} sheetTitle={t('Plan')} picker={picker}
+          onChange={id => setPay(p => ({ ...p, planId: id, amount: plans.find(x => x.id === id)?.price ?? p.amount }))}
+          options={plans.map(p => ({ value: p.id, label: p.name, subtitle: `${fmtPesos(p.price)} · ${t('{0} días', p.durationDays)}` }))} />
+        <Row title={t('Monto ($)')}>
+          <NumberField className="row-num wide" value={pay.amount} onChange={v => setPay(p => ({ ...p, amount: v }))} decimal={false} nullable />
+        </Row>
+        <Row title={t('Fecha')}>
+          <input name="app-member-paid-date" type="date" className="timef" aria-label={t('Fecha')} value={pay.date} max={today}
+            onChange={e => setPay(p => ({ ...p, date: e.target.value }))} />
+        </Row>
+      </Section>
+      <section className="sect">
+        <h2 className="sect-t">{t('Método')}</h2>
+        <Segmented options={settings.payment_methods.map(m => ({ value: m, label: methodLabel(m) }))} value={pay.method} onChange={m => setPay(p => ({ ...p, method: m }))} />
+      </section>
+      <Section title={t('Nota')}>
+        <TextField type="text" inputMode="text" value={pay.note} onChange={e => setPay(p => ({ ...p, note: e.target.value }))} maxLength={200} placeholder={t('Opcional')} />
+      </Section>
+      <div className="nutri-live row between" aria-live="polite">
+        <span>{t('Vence el')}</span>
+        <span>{preview?.dueDate ? fmtDateDMY(preview.dueDate) : preview?.error ? '—' : t('Calculando…')}</span>
+      </div>
+    </>}
+    {preview?.error && <div className="form-error" role="alert">{preview.error}</div>}
+  </>
+}
+
+// Nuevo socio sin app, en pasos: datos → (con cuotas encendido) cuota inicial. Un DNI repetido
+// (al salir del campo o al guardar) ofrece abrir a esa persona en vez de crear otra. La ficha y
+// el pago o la prueba se guardan juntos (una transacción en el servidor).
+export function MemberCreateSheet({ billingEnabled, close, setOnBack, onCreated, onOpenExisting }) {
   const toast = useUI(s => s.toast)
+  const today = todayISO()
+  const [step, setStep] = useState('datos')
   const [fields, setFields] = useState(null)
   const [plans, setPlans] = useState(billingEnabled ? null : [])
+  const [settings, setSettings] = useState(billingEnabled ? null : {})
   const [values, setValues] = useState({})
-  const [planId, setPlanId] = useState(null)
-  const [dueDate, setDueDate] = useState('')
-  const [dateTouched, setDateTouched] = useState(false)
+  const [start, setStart] = useState('none')
+  const [pay, setPay] = useState({ planId: null, amount: null, method: null, date: today, note: '' })
   const [duplicate, setDuplicate] = useState(null)
   const [errors, setErrors] = useState({})
   const [saving, setSaving] = useState(false)
-  const today = todayISO()
+  const picker = usePickerStep()
+
+  useSheetBack(setOnBack, () => picker.isOpen ? picker.close() : step === 'cuota' ? setStep('datos') : close())
 
   useEffect(() => {
     api('/api/admin/members/settings').then(d => setFields(d.fields)).catch(e => setErrors({ general: e.message }))
-    if (billingEnabled) api('/api/admin/billing/plans').then(d => setPlans(d.plans.filter(p => p.active))).catch(() => setPlans([]))
+    if (!billingEnabled) return
+    Promise.all([api('/api/admin/billing/plans'), api('/api/admin/billing/settings')]).then(([p, s]) => {
+      const active = p.plans.filter(x => x.active)
+      setPlans(active)
+      setSettings(s.settings)
+      // Lo habitual es cobrar el primer pago: queda elegido si hay planes.
+      if (active.length) {
+        setStart('payment')
+        setPay(cur => ({ ...cur, planId: active[0].id, amount: active[0].price, method: s.settings.payment_methods[0] }))
+      }
+    }).catch(e => setErrors({ general: e.message }))
   }, [])
 
   const change = (prop, value) => {
@@ -100,12 +174,10 @@ export function MemberCreateSheet({ billingEnabled, close, onCreated, onOpenExis
     if (prop === 'dni') setDuplicate(null)
   }
   const checkDni = () => lookupDni(values.dni).then(found => setDuplicate(found))
-  const changePlan = id => {
-    setPlanId(id)
-    const plan = (plans || []).find(p => p.id === id)
-    if (plan && !dateTouched) setDueDate(addDaysISO(today, plan.durationDays))
-  }
   const needsName = fields && !fields.full_name?.enabled
+  // Sin DNI la prueba no se puede dar: si estaba elegida, vuelve a "solo ficha".
+  useEffect(() => { if (start === 'trial' && !String(values.dni || '').trim()) setStart('none') }, [values.dni])
+
   const save = () => {
     const body = {}
     for (const f of MEMBER_FIELDS) {
@@ -113,38 +185,49 @@ export function MemberCreateSheet({ billingEnabled, close, onCreated, onOpenExis
       if (fields[f.key]?.enabled && v) body[f.prop] = v
     }
     if (needsName) body.name = (values.name || '').trim()
-    if (planId != null) { body.planId = planId; body.dueDate = dueDate }
+    if (billingEnabled && start === 'payment') {
+      body.start = { type: 'payment', planId: pay.planId, method: pay.method, paidAt: paidAtFor(pay.date, today), note: pay.note.trim() || undefined, amount: pay.amount }
+    } else if (billingEnabled && start === 'trial') body.start = { type: 'trial' }
     setSaving(true); setErrors({})
     api('/api/admin/members', { method: 'POST', body: JSON.stringify(body) })
       .then(({ member }) => { toast(t('Socio creado')); close(); onCreated(member.userId) })
       .catch(e => {
         setSaving(false)
         const dup = duplicateFrom(e)
-        if (dup) setDuplicate(dup)
-        else setErrors(fieldError(e))
+        // Lo que falla en los datos se corrige en el primer paso.
+        if (dup) { setDuplicate(dup); setStep('datos') }
+        else if (e?.data?.field) { setErrors(fieldError(e)); setStep('datos') }
+        else setErrors({ general: e?.data?.message || e?.message || t('No se pudo guardar') })
       })
   }
   const openExisting = id => { close(); onOpenExisting(id) }
+  const loading = !fields || !plans || !settings
+  const payOk = start !== 'payment' || (pay.planId && Number.isInteger(pay.amount) && pay.amount > 0 && pay.date && pay.method)
 
   return <div className="compound-builder"><div className="compound-builder-content">
-    <Header title={t('Nuevo socio')} subtitle={t('Sin app: lo carga el gimnasio')} onClose={close} />
-    {!fields || !plans ? <div className="dim small">{t('Loading…')}</div> : <>
-      <MemberFields fields={fields} values={values} onChange={change} errors={errors} onDniBlur={checkDni}
-        extra={needsName ? { label: 'Nombre del socio', required: true } : null} />
-      {duplicate && <DuplicateNotice other={duplicate} onOpen={openExisting} />}
-      {billingEnabled && plans.length > 0 && <Section title={t('Cuota (opcional)')}>
-        <SelectRow title={t('Plan')} value={planId} onChange={changePlan} sheetTitle={t('Plan')}
-          options={[{ value: null, label: t('Sin plan') }, ...plans.map(p => ({ value: p.id, label: p.name, subtitle: `${fmtPesos(p.price)} · ${t('{0} días', p.durationDays)}` }))]} />
-        {planId != null && <Row title={t('Vence')}>
-          <input name="app-member-due-date" type="date" className="timef" aria-label={t('Vence')} value={dueDate}
-            onChange={e => { setDateTouched(true); setDueDate(e.target.value) }} />
-        </Row>}
-      </Section>}
-      {errors.general && <div className="form-error" role="alert">{errors.general}</div>}
-      <div style={{ height: 12 }} />
-      <Button variant="primary" disabled={saving || !!duplicate || (planId != null && !dueDate)} onClick={save}>{saving ? t('Guardando…') : t('Crear socio')}</Button>
-      <p className="dim small member-privacy">{t(PRIVACY_NOTE)}</p>
-    </>}
+    {picker.view}
+    <div hidden={picker.isOpen}>
+      <Header title={t('Nuevo socio')} subtitle={step === 'cuota' ? t('Paso 2 de 2 · Cuota inicial') : billingEnabled ? t('Paso 1 de 2 · Datos') : t('Sin app: lo carga el gimnasio')} onClose={close} />
+      {loading ? <div className="dim small">{t('Loading…')}</div> : <>
+        <div hidden={step !== 'datos'}>
+          <MemberFields fields={fields} values={values} onChange={change} errors={errors} onDniBlur={checkDni}
+            extra={needsName ? { label: 'Nombre del socio', required: true } : null} />
+          {duplicate && <DuplicateNotice other={duplicate} onOpen={openExisting} />}
+        </div>
+        {step === 'cuota' && <>
+          <Button size="sm" icon="chevronLeft" onClick={() => setStep('datos')}>{t('Volver')}</Button>
+          <div style={{ height: 10 }} />
+          <InitialFee fields={fields} dni={values.dni} plans={plans} settings={settings} today={today}
+            start={start} setStart={setStart} pay={pay} setPay={setPay} picker={picker.open} />
+        </>}
+        {errors.general && <div className="form-error" role="alert">{errors.general}</div>}
+        <div style={{ height: 12 }} />
+        {billingEnabled && step === 'datos'
+          ? <Button variant="primary" disabled={!!duplicate} onClick={() => { setErrors({}); setStep('cuota') }}>{t('Siguiente')}</Button>
+          : <Button variant="primary" disabled={saving || !!duplicate || !payOk} onClick={save}>{saving ? t('Guardando…') : t('Crear socio')}</Button>}
+        <p className="dim small member-privacy">{t(PRIVACY_NOTE)}</p>
+      </>}
+    </div>
   </div></div>
 }
 
@@ -198,8 +281,12 @@ export const expiryLabel = iso => {
   return t('Vence el {0} a las {1}', `${pad(d.getDate())}/${pad(d.getMonth() + 1)}`, `${pad(d.getHours())}:${pad(d.getMinutes())}`)
 }
 
+export const LINK_POLL_MS = 3000
+
 // Genera el código al abrirse (el servidor revoca el anterior) y lo muestra una sola vez.
-export function LinkCodeSheet({ user, close }) {
+// Mientras está abierto pregunta cada 3 s si el socio ya creó su acceso: en ese caso se cierra
+// solo y avisa (onLinked refresca el detalle y la lista). Cerrar el sheet corta el polling.
+export function LinkCodeSheet({ user, close, onLinked }) {
   const toast = useUI(s => s.toast)
   const [data, setData] = useState(null)     // { code, link, expiresAt }
   const [error, setError] = useState(null)
@@ -209,6 +296,21 @@ export function LinkCodeSheet({ user, close }) {
     asked.current = true
     api(userUrl(user.id, '/link-code'), { method: 'POST', body: '{}' }).then(setData).catch(e => setError(e.message))
   }, [])
+  useEffect(() => {
+    if (!data) return
+    let alive = true
+    const timer = setInterval(() => {
+      api('/api/admin/user?id=' + encodeURIComponent(user.id)).then(d => {
+        if (!alive || !d?.user?.hasApp) return
+        alive = false
+        clearInterval(timer)
+        toast(t('{0} ya tiene acceso a la app', d.user.name || user.name))
+        close()
+        onLinked?.()
+      }).catch(() => {})          // sin red: se reintenta en el próximo ciclo
+    }, LINK_POLL_MS)
+    return () => { alive = false; clearInterval(timer) }
+  }, [data])
   const copy = () => navigator.clipboard?.writeText(data.link)
     .then(() => toast(t('Link copiado'))).catch(() => toast(t('No se pudo copiar el link')))
   const share = () => navigator.share
@@ -251,7 +353,8 @@ const LOST_LABELS = {
   equipProfiles: 'perfiles de equipamiento', meals: 'comidas registradas', mealTemplates: 'plantillas de comida',
   subscriptions: 'suscripciones de notificaciones'
 }
-const planLine = b => b ? [b.planName || t('Plan'), b.dueDate && t('vence el {0}', fmtDateDMY(b.dueDate))].filter(Boolean).join(' · ') : null
+const planLine = b => !b ? null : b.trialUntil ? t('Prueba hasta {0}', fmtDateDMY(b.trialUntil).slice(0, 5))
+  : [b.planName || t('Plan'), b.dueDate && t('vence el {0}', fmtDateDMY(b.dueDate))].filter(Boolean).join(' · ')
 
 function AccountPicker({ ficha, users, onPick }) {
   const [q, setQ] = useState('')

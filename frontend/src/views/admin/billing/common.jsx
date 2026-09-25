@@ -8,14 +8,22 @@ import { Button } from '../../../components/ui.jsx'
 // UserDetail. Las reglas (estado, vencimiento, deuda) viven en el backend (api/billing.js):
 // acá solo se muestran.
 
-export const STATUS_ORDER = ['al_dia', 'por_vencer', 'vencido', 'bloqueado', 'sin_plan']
+export const STATUS_ORDER = ['al_dia', 'por_vencer', 'vencido', 'bloqueado', 'prueba', 'sin_plan']
 export const STATUS_LABELS = {
-  al_dia: 'Al día', por_vencer: 'Por vencer', vencido: 'Vencido', bloqueado: 'Bloqueado', sin_plan: 'Sin plan'
+  al_dia: 'Al día', por_vencer: 'Por vencer', vencido: 'Vencido', bloqueado: 'Bloqueado', prueba: 'En prueba', sin_plan: 'Sin plan'
 }
 export const METHOD_LABELS = { efectivo: 'Efectivo', transferencia: 'Transferencia', otro: 'Otro' }
 
 export const statusLabel = status => t(STATUS_LABELS[status] || status)
 export const methodLabel = method => t(METHOD_LABELS[method] || method || '—')
+
+// Un pago cargado para hoy va sin paidAt (el servidor usa "ahora"); para otro día, el mediodía
+// de Buenos Aires (15:00 UTC), que cae en esa misma fecha en cualquier tz de América.
+export const paidAtFor = (date, today) => {
+  if (!date || date === today) return undefined
+  const [y, m, d] = date.split('-').map(Number)
+  return Date.UTC(y, m - 1, d, 15)
+}
 
 export function StatusBadge({ status }) {
   return <span className={'tag nocap st-' + status}>{statusLabel(status)}</span>

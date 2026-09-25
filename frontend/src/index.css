@@ -1149,6 +1149,17 @@ input[type="search"]::-webkit-search-cancel-button{display:none;-webkit-appearan
 .tag.st-por_vencer{background:color-mix(in srgb,var(--warning) 16%,transparent);color:var(--warning)}
 .tag.st-vencido{background:color-mix(in srgb,var(--danger) 16%,transparent);color:var(--danger)}
 .tag.st-bloqueado{background:var(--danger);color:#fff}
+.tag.st-prueba{background:color-mix(in srgb,var(--purple) 16%,transparent);color:var(--purple)}
+.tile.st-tile-prueba .v{color:var(--purple)}
+/* 6 estados + deuda: la deuda ocupa su propia fila (2 columnas en el celular, 3 en escritorio) */
+.billing-tiles .billing-tile-debt{grid-column:1/-1}
+.billing-trial-note{margin:-4px 2px 12px}
+.picker-step{padding-top:2px}
+/* Paso de lista abierto: la barra de acciones del sheet se oculta con el resto (su display:flex
+   pisaría el atributo hidden). */
+.compound-builder-actions[hidden]{display:none}
+.lrow.lrow-disabled{opacity:.5}
+.lrow.lrow-disabled .lrow-s{opacity:1}
 /* summary tiles double as filters */
 .tile.tappable{text-align:left;width:100%}
 .tile.on{box-shadow:inset 0 0 0 1.5px var(--acc)}

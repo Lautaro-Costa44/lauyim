@@ -6,13 +6,15 @@ import {
   formatLinkCode, canonicalLinkCode, LINK_CODE_ALPHABET
 } from './members.js';
 
-test('DNI: solo dígitos, sin ceros adelante, 6 a 9 dígitos; guarda lo ingresado', () => {
+test('DNI: solo dígitos, sin ceros adelante, 6 a 8 dígitos; guarda lo ingresado', () => {
   assert.deepEqual(normalizeDni('20.123.456').value, { dni: '20.123.456', dniNorm: '20123456' });
   assert.equal(normalizeDni(' 020 123 456 ').value.dniNorm, '20123456');
   assert.equal(normalizeDni('0012345678').value.dniNorm, '12345678');
   assert.equal(normalizeDni(20123456).value.dniNorm, '20123456');
   assert.equal(normalizeDni('123456').value.dniNorm, '123456');
-  assert.equal(normalizeDni('123456789').value.dniNorm, '123456789');
+  assert.equal(normalizeDni('12345678').value.dniNorm, '12345678');
+  assert.equal(normalizeDni('012.345.678').value.dniNorm, '12345678');     // el cero adelante no cuenta
+  assert.match(normalizeDni('123456789').error, /entre 6 y 8/);          // 9 dígitos ya no
   assert.ok(normalizeDni('12345').error);
   assert.ok(normalizeDni('000012345').error);        // 5 dígitos una vez sacados los ceros
   assert.ok(normalizeDni('1234567890').error);

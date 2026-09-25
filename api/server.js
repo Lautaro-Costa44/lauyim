@@ -93,7 +93,7 @@ import {
   getMemberBilling,
   getAllMemberBilling,
   setMemberBilling,
-  recordPayment,
+  recordPayment, startTrial,
   getPaymentsByUserId,
   getPaymentById,
   getLatestActivePayment,
@@ -121,8 +121,9 @@ import {
 } from './members.js';
 import {
   getBillingSettings, validateBillingSettings, serializeBillingSetting, gymToday,
-  billingStatus, nextDueDate, debtFor, debtTotal, isIsoDate,
-  isBillingEnabled, getBillingNotifyHour, isValidNotifyHour, BILLING_ENABLED_SETTING, BILLING_NOTIFY_HOUR_SETTING
+  billingStatus, nextDueDate, debtTotal, isIsoDate,
+  isBillingEnabled, getBillingNotifyHour, isValidNotifyHour, BILLING_ENABLED_SETTING, BILLING_NOTIFY_HOUR_SETTING,
+  memberDebt, isTrialEnded, trialEndDate, hasActivePlan
 } from './billing.js';
 
 const PORT = +(process.env.PORT || 3000);
@@ -512,8 +513,45 @@ function billingView(billing, today, settings) {
   return {
     planId: billing.planId, planName: billing.planName, planPrice: billing.planPrice,
     planDurationDays: billing.planDurationDays, planActive: billing.planActive,
-    dueDate: billing.dueDate, status, debt: debtFor(status, billing.planPrice)
+    dueDate: billing.dueDate, trialUntil: billing.trialUntil ?? null, status, debt: memberDebt(billing, status)
   };
+}
+
+// ¿Se le puede dar la prueba gratis? Una por persona (DNI), sin plan vigente ni prueba en curso.
+// → null si se puede, o el código de error del 409.
+function trialBlocker(userId, billing, today, settings) {
+  const profile = getMemberProfile(userId);
+  if (!memberFieldsNow().dni.enabled || !profile?.dniNorm) return 'trial_requires_dni';
+  if (profile.trialUsedAt) return 'trial_used';
+  if (hasActivePlan(billing, today, settings) || billingStatus(billing, today, settings) === 'prueba') return 'has_plan';
+  return null;
+}
+const TRIAL_ERRORS = {
+  trial_requires_dni: 'La prueba necesita el DNI del socio (una por persona)',
+  trial_used: 'Este socio ya usó su prueba',
+  has_plan: 'El socio tiene un plan vigente'
+};
+
+// Pago a registrar (pago suelto o primer pago del alta): plan, monto, método, fecha y el
+// vencimiento que deja. → { value } o { status, error }.
+function checkPayment(body, current, settings) {
+  const planId = body.planId ?? current.planId;
+  if (planId == null) return { status: 400, error: 'El socio no tiene plan asignado' };
+  if (!Number.isInteger(planId) || planId < 1) return { status: 400, error: 'planId inválido' };
+  const plan = getPlanById(planId);
+  if (!plan) return { status: 404, error: 'El plan no existe' };
+  if (!plan.active && plan.id !== current.planId) return { status: 409, error: 'El plan está inactivo' };
+  const amount = body.amount ?? plan.price;
+  if (!Number.isInteger(amount) || amount < 1 || amount > MAX_PLAN_PRICE) return { status: 400, error: 'El monto debe ser un entero en pesos mayor que 0' };
+  if (!settings.payment_methods.includes(body.method)) return { status: 400, error: `method debe ser uno de: ${settings.payment_methods.join(', ')}` };
+  const now = Date.now();
+  const paidAt = body.paidAt ?? now;
+  if (!Number.isInteger(paidAt) || paidAt < 1 || paidAt > now + 86400000) return { status: 400, error: 'paidAt debe ser un instante en ms, no futuro' };
+  if (body.note != null && (typeof body.note !== 'string' || body.note.length > MAX_PAYMENT_NOTE)) return { status: 400, error: `note debe ser texto (máx. ${MAX_PAYMENT_NOTE})` };
+  // El período se calcula sobre el día del pago en la tz del gym (un pago cargado con fecha
+  // atrasada cuenta desde ese día). Sin vencimiento previo, arranca ese día.
+  const period = nextDueDate(current.dueDate, gymToday(paidAt, settings.gym_tz), plan.durationDays, settings.grace_days);
+  return { value: { plan, amount, method: body.method, paidAt, note: body.note ? body.note.trim() || null : null, period } };
 }
 
 // Bloqueo por cuota: distinto de users.disabled. El socio conserva la sesión; solo se le
@@ -2110,7 +2148,10 @@ const routes = {
     json(res, 200, {
       user: me,
       billingEnabled: true,
-      billing: { hasPlan: billing.planId != null, status, dueDate: billing.dueDate, planName: billing.planName, blocked: status === 'bloqueado' && !isAdmin(user) }
+      billing: {
+        hasPlan: billing.planId != null, status, dueDate: billing.dueDate, planName: billing.planName,
+        blocked: status === 'bloqueado' && !isAdmin(user), trialUntil: billing.trialUntil, trialEnded: isTrialEnded(billing, status)
+      }
     });
   },
 
@@ -2792,13 +2833,13 @@ const routes = {
     const today = billingToday(settings);
     const members = getAllMemberBilling().map(b => {
       const view = billingView(b, today, settings);
-      return { id: b.userId, name: b.name, disabled: b.disabled, admin: isAdmin({ id: b.userId, admin: b.admin }), hasApp: b.hasApp, planId: view.planId, planName: view.planName, dueDate: view.dueDate, status: view.status, debt: view.debt };
+      return { id: b.userId, name: b.name, disabled: b.disabled, admin: isAdmin({ id: b.userId, admin: b.admin }), hasApp: b.hasApp, planId: view.planId, planName: view.planName, dueDate: view.dueDate, trialUntil: view.trialUntil, status: view.status, debt: view.debt };
     });
     // El resumen cuenta socios activos y no admins: un desactivado no es deuda por cobrar ni un
     // cupo, y admins/owner no quedan bloqueados por cuota. Siguen en members con admin: true.
     const active = members.filter(m => !m.disabled && !m.admin);
-    const summary = { al_dia: 0, por_vencer: 0, vencido: 0, bloqueado: 0, sin_plan: 0 };
-    for (const m of active) summary[m.status]++;
+    const summary = { al_dia: 0, por_vencer: 0, vencido: 0, bloqueado: 0, sin_plan: 0, en_prueba: 0 };
+    for (const m of active) summary[m.status === 'prueba' ? 'en_prueba' : m.status]++;
     summary.deuda_total = debtTotal(active);
     json(res, 200, { today, settings, summary, members });
   },
@@ -2854,7 +2895,31 @@ const routes = {
     const userId = userIdFromPath(req);
     if (!getUserById(userId)) return json(res, 404, { error: 'El usuario no existe' });
     const settings = billingSettingsNow();
-    json(res, 200, { billing: billingView(getMemberBilling(userId), billingToday(settings), settings), payments: getPaymentsByUserId(userId) });
+    const today = billingToday(settings);
+    const billing = getMemberBilling(userId);
+    const blocker = trialBlocker(userId, billing, today, settings);
+    json(res, 200, {
+      billing: billingView(billing, today, settings),
+      payments: getPaymentsByUserId(userId),
+      // Para la ficha de cuota: si se puede dar la prueba y, si no, por qué.
+      trial: { days: settings.trial_days, until: trialEndDate(today, settings.trial_days), available: !blocker, blocker }
+    });
+  },
+
+  // Prueba gratis de trial_days días desde hoy (1 = solo hoy). Una por persona: exige el DNI.
+  'POST /api/admin/users/:userId/trial': async (req, res) => {
+    const admin = requireAdmin(req, res); if (!admin) return;
+    if (billingDisabled(res)) return;
+    const userId = userIdFromPath(req);
+    const target = requireActiveTargetUser(res, userId); if (!target) return;
+    const settings = billingSettingsNow();
+    const today = billingToday(settings);
+    const blocker = trialBlocker(userId, getMemberBilling(userId), today, settings);
+    if (blocker) return json(res, 409, { error: blocker, message: TRIAL_ERRORS[blocker] });
+    const until = trialEndDate(today, settings.trial_days);
+    if (!startTrial(userId, until)) return json(res, 409, { error: 'trial_used', message: TRIAL_ERRORS.trial_used });
+    audit(req, 'admin.billing.trial_start', { user: admin, target, summary: `Prueba de ${settings.trial_days} día${settings.trial_days === 1 ? '' : 's'} · hasta ${until}` });
+    json(res, 200, { billing: billingView(getMemberBilling(userId), billingToday(settings), settings) });
   },
 
   // Asignar, cambiar o quitar (planId null) el plan, con el vencimiento vigente.
@@ -2894,36 +2959,22 @@ const routes = {
     const settings = billingSettingsNow();
     const current = getMemberBilling(userId);
 
-    const planId = body.planId ?? current.planId;
-    if (planId == null) return json(res, 400, { error: 'El socio no tiene plan asignado' });
-    if (!Number.isInteger(planId) || planId < 1) return json(res, 400, { error: 'planId inválido' });
-    const plan = getPlanById(planId);
-    if (!plan) return json(res, 404, { error: 'El plan no existe' });
-    if (!plan.active && plan.id !== current.planId) return json(res, 409, { error: 'El plan está inactivo' });
-
-    const amount = body.amount ?? plan.price;
-    if (!Number.isInteger(amount) || amount < 1 || amount > MAX_PLAN_PRICE) return json(res, 400, { error: 'El monto debe ser un entero en pesos mayor que 0' });
-    if (!settings.payment_methods.includes(body.method)) return json(res, 400, { error: `method debe ser uno de: ${settings.payment_methods.join(', ')}` });
-    const now = Date.now();
-    const paidAt = body.paidAt ?? now;
-    if (!Number.isInteger(paidAt) || paidAt < 1 || paidAt > now + 86400000) return json(res, 400, { error: 'paidAt debe ser un instante en ms, no futuro' });
-    if (body.note != null && (typeof body.note !== 'string' || body.note.length > MAX_PAYMENT_NOTE)) return json(res, 400, { error: `note debe ser texto (máx. ${MAX_PAYMENT_NOTE})` });
-
-    // El período se calcula sobre el día del pago en la tz del gym (un pago cargado con fecha
-    // atrasada cuenta desde ese día); el desbloqueo se mide contra hoy.
+    const checked = checkPayment(body, current, settings);
+    if (checked.error) return json(res, checked.status, { error: checked.error });
+    const { plan, amount, method, paidAt, note, period } = checked.value;
+    // El desbloqueo se mide contra hoy.
     const statusBefore = billingStatus(current, billingToday(settings), settings);
-    const period = nextDueDate(current.dueDate, gymToday(paidAt, settings.gym_tz), plan.durationDays, settings.grace_days);
     // Vista previa para el formulario: la misma regla de vencimiento, sin guardar ni auditar.
     if (body.dry_run === true) {
-      const preview = { ...current, planId: plan.id, planName: plan.name, planPrice: plan.price, planDurationDays: plan.durationDays, planActive: plan.active, dueDate: period.dueDate };
+      const preview = { ...current, planId: plan.id, planName: plan.name, planPrice: plan.price, planDurationDays: plan.durationDays, planActive: plan.active, dueDate: period.dueDate, trialUntil: null };
       return json(res, 200, { dry_run: true, billing: billingView(preview, billingToday(settings), settings), period, amount });
     }
     const paymentId = recordPayment({
-      userId, userName: target.name, planId: plan.id, planName: plan.name, amount, method: body.method,
+      userId, userName: target.name, planId: plan.id, planName: plan.name, amount, method,
       paidAt, periodStart: period.periodStart, periodEnd: period.periodEnd, dueDate: period.dueDate,
-      note: body.note ? body.note.trim() || null : null, createdBy: admin.id
+      note, createdBy: admin.id
     });
-    audit(req, 'admin.billing.payment', { user: admin, target, summary: `$${amount} · ${body.method} · ${plan.name} · vence ${period.dueDate}` });
+    audit(req, 'admin.billing.payment', { user: admin, target, summary: `$${amount} · ${method} · ${plan.name} · vence ${period.dueDate}` });
     if (statusBefore === 'bloqueado') audit(req, 'admin.billing.unblocked', { user: admin, target, summary: `Vence ${period.dueDate}` });
     json(res, 200, {
       billing: billingView(getMemberBilling(userId), billingToday(settings), settings),
@@ -2952,14 +3003,18 @@ const routes = {
     if (current.dueDate !== payment.periodEnd || current.planId !== payment.planId) {
       return json(res, 409, { error: 'El vencimiento cambió después de este pago; no se puede anular' });
     }
-    if (payment.previousDueDate == null) return json(res, 409, { error: 'Este pago no guarda el vencimiento anterior; no se puede anular' });
+    // Se puede volver a un vencimiento anterior o a la prueba que el pago cerró.
+    const backTo = payment.previousDueDate ?? null;
+    const backToTrial = payment.previousTrialUntil ?? null;
+    if (backTo == null && backToTrial == null) return json(res, 409, { error: 'Este pago no guarda el vencimiento anterior; no se puede anular' });
 
     const reason = body.reason ? body.reason.trim() || null : null;
-    voidPayment({ paymentId, userId, voidedBy: admin.id, reason, planId: payment.previousPlanId, dueDate: payment.previousDueDate });
+    voidPayment({ paymentId, userId, voidedBy: admin.id, reason, planId: payment.previousPlanId, dueDate: backTo, trialUntil: backToTrial });
     const settings = billingSettingsNow();
     const billing = billingView(getMemberBilling(userId), billingToday(settings), settings);
-    audit(req, 'admin.billing.payment_void', { user: admin, target, summary: `$${payment.amount} · vuelve a vencer ${payment.previousDueDate}${reason ? ' · ' + reason : ''}` });
-    if (billing.status === 'bloqueado' && !isAdmin(target)) audit(req, 'admin.billing.blocked', { user: admin, target, summary: `Venció ${payment.previousDueDate}` });
+    const back = backToTrial ? `vuelve a la prueba (hasta ${backToTrial})` : `vuelve a vencer ${backTo}`;
+    audit(req, 'admin.billing.payment_void', { user: admin, target, summary: `$${payment.amount} · ${back}${reason ? ' · ' + reason : ''}` });
+    if (billing.status === 'bloqueado' && !isAdmin(target)) audit(req, 'admin.billing.blocked', { user: admin, target, summary: backToTrial ? `Prueba terminada el ${backToTrial}` : `Venció ${backTo}` });
     json(res, 200, { billing, payment: getPaymentById(paymentId) });
   },
 
@@ -3006,6 +3061,32 @@ const routes = {
     const body = await readBody(req);
     if (body.planId !== undefined && body.planId !== null && billingDisabled(res)) return;
     const fields = memberFieldsNow();
+
+    // Cuota inicial (start): primer pago o prueba, en la misma transacción que la ficha.
+    // planId/dueDate (asignar sin pago) siguen para importar; no se combinan con start.
+    const start = body.start ?? null;
+    if (start !== null) {
+      if (typeof start !== 'object' || !['payment', 'trial'].includes(start.type)) return json(res, 400, { error: "start.type debe ser 'payment' o 'trial'" });
+      if (billingDisabled(res)) return;
+      if (body.planId != null) return json(res, 400, { error: 'start no se combina con planId' });
+    }
+    const settings = billingSettingsNow();
+    const today = billingToday(settings);
+    let payment = null;
+    let trialUntil = null;
+    if (start?.type === 'payment') {
+      const pay = checkPayment(start, { planId: null, dueDate: null }, settings);
+      if (pay.error) return json(res, pay.status, { error: pay.error });
+      payment = pay.value;
+    } else if (start?.type === 'trial') {
+      trialUntil = trialEndDate(today, settings.trial_days);
+    }
+    // Vista previa para el formulario: el vencimiento (o fin de prueba) que quedaría. No valida
+    // los datos de la ficha (el formulario puede estar a medio completar) ni guarda nada.
+    if (body.dry_run === true) {
+      return json(res, 200, { dry_run: true, dueDate: payment?.period.dueDate ?? null, amount: payment?.amount ?? null, trialUntil, trialDays: settings.trial_days });
+    }
+
     const checked = validateMemberProfile(body, fields);
     if (checked.error) return json(res, 400, { error: checked.error, field: checked.field });
     const profile = checked.value;
@@ -3026,10 +3107,15 @@ const routes = {
       const other = findMemberByDni(profile.dniNorm);
       if (other) return dniDuplicate(res, other);
     }
+    if (trialUntil && (!fields.dni.enabled || !profile.dniNorm)) return json(res, 409, { error: 'trial_requires_dni', message: TRIAL_ERRORS.trial_requires_dni });
 
     const id = crypto.randomBytes(12).toString('base64url');
+    const paymentRow = payment && {
+      planId: payment.plan.id, planName: payment.plan.name, amount: payment.amount, method: payment.method, paidAt: payment.paidAt,
+      periodStart: payment.period.periodStart, periodEnd: payment.period.periodEnd, dueDate: payment.period.dueDate, note: payment.note, createdBy: admin.id
+    };
     try {
-      createMember({ id, name: name.value, profile, billing });
+      createMember({ id, name: name.value, profile, billing, start: paymentRow ? { payment: paymentRow } : trialUntil ? { trialUntil } : null });
     } catch (error) {
       // Otra alta con el mismo DNI entró entre el chequeo y la transacción.
       const other = isDniUniqueError(error) && findMemberByDni(profile.dniNorm);
@@ -3039,7 +3125,8 @@ const routes = {
     const user = getUserById(id);
     const summary = [profile.dniNorm ? `DNI ${maskDni(profile.dniNorm)}` : null, plan ? `Plan: ${plan.name} · vence ${billing.dueDate}` : null].filter(Boolean).join(' · ');
     audit(req, 'admin.member.create', { user: admin, target: user, summary });
-    const settings = billingSettingsNow();
+    if (payment) audit(req, 'admin.billing.payment', { user: admin, target: user, summary: `$${payment.amount} · ${payment.method} · ${payment.plan.name} · vence ${payment.period.dueDate}` });
+    if (trialUntil) audit(req, 'admin.billing.trial_start', { user: admin, target: user, summary: `Prueba de ${settings.trial_days} día${settings.trial_days === 1 ? '' : 's'} · hasta ${trialUntil}` });
     json(res, 200, { member: { ...profileView(user, getMemberProfile(id)), billing: billingView(getMemberBilling(id), billingToday(settings), settings) } });
   },
 
@@ -3342,6 +3429,8 @@ http.createServer(async (req, res) => {
       ? req.method + ' /api/admin/users/:userId/billing'
     : req.method === 'POST' && /^\/api\/admin\/users\/[^/]+\/payments$/.test(url.pathname)
       ? 'POST /api/admin/users/:userId/payments'
+    : req.method === 'POST' && /^\/api\/admin\/users\/[^/]+\/trial$/.test(url.pathname)
+      ? 'POST /api/admin/users/:userId/trial'
     : req.method === 'POST' && /^\/api\/admin\/users\/[^/]+\/payments\/\d+\/void$/.test(url.pathname)
       ? 'POST /api/admin/users/:userId/payments/:paymentId/void'
     : (req.method === 'GET' || req.method === 'PUT') && /^\/api\/admin\/users\/[^/]+\/profile$/.test(url.pathname)

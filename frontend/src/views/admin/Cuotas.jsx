@@ -16,7 +16,12 @@ import { NoAppBadge } from './members/common.jsx'
 // Tocar una tarjeta filtra por ese estado; "Deuda total" filtra a quienes deben.
 
 const DEBT = 'deuda'
-const TILE_LABELS = { al_dia: 'Al día', por_vencer: 'Por vencer', vencido: 'Vencidos', bloqueado: 'Bloqueados', sin_plan: 'Sin plan' }
+const TILE_LABELS = { al_dia: 'Al día', por_vencer: 'Por vencer', vencido: 'Vencidos', bloqueado: 'Bloqueados', prueba: 'En prueba', sin_plan: 'Sin plan' }
+// El resumen del servidor cuenta la prueba como en_prueba.
+const SUMMARY_KEY = { prueba: 'en_prueba' }
+const ddmm = iso => fmtDateDMY(iso).slice(0, 5)
+// Plan, o "Prueba hasta dd/mm" para quien está (o estuvo) en prueba.
+const planText = m => m.trialUntil ? t('Prueba hasta {0}', ddmm(m.trialUntil)) : m.planName
 
 function MemberName({ m }) {
   return <>
@@ -47,7 +52,7 @@ export default function Cuotas() {
   const openMember = m => openMemberBilling(openSheet, { userId: m.id, userName: m.name, today, onChanged: load })
   const payGlobal = () => openMemberBilling(openSheet, { startWith: 'pick', members: (data?.members || []).filter(m => showStaff || !m.admin), today, onChanged: load })
   const openPlans = () => openSheet((close, { setOnBack }) => <PlansSheet close={close} setOnBack={setOnBack} onChanged={load} />)
-  const openSettings = () => openSheet(close => <SettingsSheet close={close} onChanged={load} />)
+  const openSettings = () => openSheet((close, { setOnBack }) => <SettingsSheet close={close} setOnBack={setOnBack} onChanged={load} />)
   const pickStatus = value => setStatus(cur => cur === value ? '' : value)
 
   const needle = search.trim().toLocaleLowerCase()
@@ -58,7 +63,7 @@ export default function Cuotas() {
     && (!needle || m.name.toLocaleLowerCase().includes(needle)))
 
   const summary = data?.summary
-  const tile = (key, label, value) => <button key={key} type="button" className={'tile tappable' + (status === key ? ' on' : '')}
+  const tile = (key, label, value, extra = '') => <button key={key} type="button" className={'tile tappable' + extra + (status === key ? ' on' : '')}
     aria-pressed={status === key} onClick={() => pickStatus(key)}>
     <div className="l">{label}</div><div className="v">{summary ? value : '—'}</div>
   </button>
@@ -71,8 +76,8 @@ export default function Cuotas() {
     </div>
 
     <div className="tiles billing-tiles">
-      {STATUS_ORDER.map(key => tile(key, t(TILE_LABELS[key]), summary?.[key]))}
-      {tile(DEBT, t('Deuda total'), fmtPesos(summary?.deuda_total))}
+      {STATUS_ORDER.map(key => tile(key, t(TILE_LABELS[key]), summary?.[SUMMARY_KEY[key] || key] ?? 0, ' st-tile-' + key))}
+      {tile(DEBT, t('Deuda total'), fmtPesos(summary?.deuda_total), ' billing-tile-debt')}
     </div>
 
     <div className="billing-actions">
@@ -109,7 +114,7 @@ export default function Cuotas() {
           <tbody>
             {members.map(m => <tr key={m.id} onClick={() => openMember(m)}>
               <td><MemberName m={m} /></td>
-              <td>{m.planName || <span className="dim">{t('Sin plan')}</span>}</td>
+              <td>{planText(m) || <span className="dim">{t('Sin plan')}</span>}</td>
               <td className="num" style={{ textAlign: 'left' }}>{m.dueDate ? fmtDateDMY(m.dueDate) : '—'}</td>
               <td><StatusBadge status={m.status} /></td>
               <td className="num">{m.debt > 0 ? fmtPesos(m.debt) : '—'}</td>
@@ -122,7 +127,7 @@ export default function Cuotas() {
         {members.map(m => <div key={m.id} className="item" onClick={() => openMember(m)} style={m.disabled ? { opacity: .55 } : null}>
           <div className="grow">
             <div className="tt"><MemberName m={m} /></div>
-            <div className="ss">{[m.planName || t('Sin plan'), m.dueDate && t('Vence el {0}', fmtDateDMY(m.dueDate))].filter(Boolean).join(' · ')}</div>
+            <div className="ss">{m.trialUntil ? planText(m) : [m.planName || t('Sin plan'), m.dueDate && t('Vence el {0}', fmtDateDMY(m.dueDate))].filter(Boolean).join(' · ')}</div>
           </div>
           <div className="billing-side">
             <StatusBadge status={m.status} />

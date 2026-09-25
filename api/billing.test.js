@@ -4,7 +4,8 @@ import { DatabaseSync } from 'node:sqlite';
 import {
   BILLING_DEFAULTS, addDays, daysBetween, gymToday, gymClock, isIsoDate,
   billingStatus, nextDueDate, debtFor, debtTotal, shouldSendDuePush,
-  validateBillingSettings, getBillingSettings, serializeBillingSetting
+  validateBillingSettings, getBillingSettings, serializeBillingSetting,
+  memberDebt, isTrialEnded, trialEndDate, hasActivePlan
 } from './billing.js';
 
 const S = { ...BILLING_DEFAULTS, due_soon_days: 5, push_days_before: 3, grace_days: 5 };
@@ -105,4 +106,35 @@ test('getBillingSettings: defaults, valores guardados y valores corruptos', () =
   put.run('due_soon_days', 'basura');          // corrupto: vuelve al default, sin afectar al resto
   assert.deepEqual(getBillingSettings(db), { ...BILLING_DEFAULTS, grace_days: 7, payment_methods: ['transferencia'], gym_tz: 'Europe/Madrid' });
   db.close();
+});
+
+test('prueba: "prueba" hasta el último día inclusive, después bloqueado sin tolerancia', () => {
+  const trial = trialUntil => ({ planId: null, dueDate: null, trialUntil });
+  assert.equal(billingStatus(trial('2026-09-24'), '2026-09-24', S), 'prueba');
+  assert.equal(billingStatus(trial('2026-09-26'), '2026-09-24', S), 'prueba');
+  assert.equal(billingStatus(trial('2026-09-24'), '2026-09-25', S), 'bloqueado');     // grace_days = 5 no aplica
+  // Manda sobre un plan viejo que tuviera: el plan vencido no le da tolerancia.
+  assert.equal(billingStatus({ ...plan('2026-09-01'), trialUntil: '2026-09-24' }, '2026-09-24', S), 'prueba');
+  assert.equal(billingStatus({ ...plan('2026-09-01'), trialUntil: '2026-09-23' }, '2026-09-24', S), 'bloqueado');
+});
+
+test('prueba: sin deuda, fin de prueba y plan vigente', () => {
+  assert.equal(memberDebt({ trialUntil: '2026-09-20', planPrice: 20000 }, 'bloqueado'), 0);
+  assert.equal(memberDebt({ trialUntil: null, planPrice: 20000 }, 'bloqueado'), 20000);
+  assert.equal(isTrialEnded({ trialUntil: '2026-09-20' }, 'bloqueado'), true);
+  assert.equal(isTrialEnded({ trialUntil: null }, 'bloqueado'), false);
+  assert.equal(trialEndDate('2026-09-24', 1), '2026-09-24');                         // 1 día = solo hoy
+  assert.equal(trialEndDate('2026-09-30', 3), '2026-10-02');
+  assert.equal(hasActivePlan(plan('2026-10-10'), '2026-09-24', S), true);
+  assert.equal(hasActivePlan(plan('2026-09-22'), '2026-09-24', S), true);             // vencido, dentro de la tolerancia
+  assert.equal(hasActivePlan(plan('2026-09-01'), '2026-09-24', S), false);            // bloqueado
+  assert.equal(hasActivePlan({ planId: null }, '2026-09-24', S), false);
+});
+
+test('ajustes: trial_days entre 1 y 30, default 1', () => {
+  assert.equal(BILLING_DEFAULTS.trial_days, 1);
+  assert.deepEqual(validateBillingSettings({ trial_days: 7 }).value, { trial_days: 7 });
+  assert.ok(validateBillingSettings({ trial_days: 0 }).error);
+  assert.ok(validateBillingSettings({ trial_days: 31 }).error);
+  assert.ok(validateBillingSettings({ trial_days: 1.5 }).error);
 });

@@ -3,7 +3,7 @@ import { useStore } from '../store/useStore.js'
 import { t } from '../lib/i18n.js'
 import Icon from '../components/Icon.jsx'
 import LineChart from '../components/LineChart.jsx'
-import { Button, Row, Section, Segmented, SelectRow } from '../components/ui.jsx'
+import { Button, Row, Section, Segmented, SelectRow, usePickerStep, useSheetBack } from '../components/ui.jsx'
 import { bwSheet, goalSheet, confirmSheet } from '../sheets.jsx'
 import { fmtNum } from '../lib/format.js'
 import { calcularMetasNutricionales, calcularNutrientesPorCantidad, porcionAGramos } from '../lib/nutricion.js'
@@ -116,7 +116,7 @@ const NO_AUTOFILL = {
   'data-lpignore': 'true', 'data-1p-ignore': 'true', 'data-bwignore': 'true', 'data-form-type': 'other',
 }
 
-function MealForm({ alimento, franja, close, onBack, onSaved, onAddIngrediente, onAdded }) {
+function MealForm({ alimento, franja, close, onBack, onSaved, onAddIngrediente, onAdded, picker }) {
   const [mealFranja, setMealFranja] = useState(franja)
   const [modo, setModo] = useState('porciones')
   const [porcion, setPorcion] = useState(1)
@@ -165,10 +165,10 @@ function MealForm({ alimento, franja, close, onBack, onSaved, onAddIngrediente, 
       <button type="button" className="iconbtn" onClick={onBack} aria-label="Volver"><Icon name="xmark" /></button>
     </div>
     {alimento.marca && <div className="dim small" style={{ marginBottom: 14 }}>{alimento.marca}</div>}
-    {!onAddIngrediente && <SelectRow title="Franja" value={mealFranja} options={FRANJAS} onChange={setMealFranja} sheetTitle="Elegir franja" />}
+    {!onAddIngrediente && <SelectRow title="Franja" value={mealFranja} options={FRANJAS} onChange={setMealFranja} sheetTitle="Elegir franja" picker={picker} />}
     <div className="small dim" style={{ marginBottom: 8 }}>Cantidad</div>
     <Segmented value={modo} onChange={setMode} options={[{ value: 'porciones', label: 'Porciones' }, ...(alimento.gramosPorUnidad !== undefined ? [{ value: 'unidades', label: 'Unidades' }] : []), { value: 'manual', label: 'Manual' }]} />
-    {modo === 'porciones' ? <div className="meal-quick">{[0.5, 1, 1.5, 2].map(p => <button key={p} className={porcion === p ? 'on' : ''} onClick={() => setQuick(p)}>{p} porción{p === 1 ? '' : 'es'}</button>)}</div> : modo === 'unidades' ? <div className="meal-quick meal-units"><button type="button" onClick={() => setUnitCount(unidades - 1)} aria-label="Restar unidad">-</button><span>{unidades} {unidades === 1 ? unitLabel : pluralUnitLabel}</span><button type="button" onClick={() => setUnitCount(unidades + 1)} aria-label="Sumar unidad">+</button></div> : <label className="meal-grams">Gramos<input {...NO_AUTOFILL} name="app-meal-grams" className="field" type="number" min="0" value={gramos} onChange={e => { setModo('manual'); setGramos(Math.max(0, Number(e.target.value) || 0)) }} /></label>}
+    {modo === 'porciones' ? <div className="meal-quick">{[0.5, 1, 1.5, 2].map(p => <button key={p} className={porcion === p ? 'on' : ''} onClick={() => setQuick(p)}>{p} {p === 1 ? 'porción' : 'porciones'}</button>)}</div> : modo === 'unidades' ? <div className="meal-quick meal-units"><button type="button" onClick={() => setUnitCount(unidades - 1)} aria-label="Restar unidad">-</button><span>{unidades} {unidades === 1 ? unitLabel : pluralUnitLabel}</span><button type="button" onClick={() => setUnitCount(unidades + 1)} aria-label="Sumar unidad">+</button></div> : <label className="meal-grams">Gramos<input {...NO_AUTOFILL} name="app-meal-grams" className="field" type="number" min="0" value={gramos} onChange={e => { setModo('manual'); setGramos(Math.max(0, Number(e.target.value) || 0)) }} /></label>}
     <div className="nutri-live row between"><span>{gramos} g</span><span>{nutrientes.calorias} kcal · {nutrientes.proteina.toFixed(1)} g prot. · {nutrientes.carbohidratos.toFixed(1)} g carb. · {nutrientes.grasas.toFixed(1)} g grasas</span></div>
     <Button variant="primary" disabled={saving || !(gramos > 0)} onClick={save}>{saving ? 'Guardando…' : 'Confirmar'}</Button>
   </>
@@ -232,7 +232,9 @@ function ManualFoodForm({ franja, close, onBack, onSaved, onAddIngrediente }) {
   </form>
 }
 
-export function FoodPicker({ franja, close, onSaved, onAddIngrediente, onAdded }) {
+// setOnBack solo llega cuando FoodPicker es el sheet (agregar comida); embebido en otro flujo
+// (ingredientes) el back lo maneja ese flujo.
+export function FoodPicker({ franja, close, setOnBack, onSaved, onAddIngrediente, onAdded }) {
   const [tab, setTab] = useState('buscar')
   const [query, setQuery] = useState('')
   const [results, setResults] = useState([])
@@ -240,6 +242,10 @@ export function FoodPicker({ franja, close, onSaved, onAddIngrediente, onAdded }
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const requestRef = useRef(0)
+  // La franja se elige en un paso de este sheet. Back: la lista, después el formulario de la
+  // comida, después la carga manual; recién ahí cierra.
+  const picker = usePickerStep()
+  useSheetBack(setOnBack, () => picker.isOpen ? picker.close() : selected ? setSelected(null) : tab === 'manual' ? setTab('buscar') : close())
   useEffect(() => {
     if (tab !== 'buscar' || query.trim().length < 2) {
       requestRef.current += 1
@@ -313,7 +319,12 @@ export function FoodPicker({ franja, close, onSaved, onAddIngrediente, onAdded }
     onAdded?.()
   }, [onAddIngrediente, onAdded])
   const visibleResults = onAddIngrediente ? results.filter(a => a.tipo !== 'plantilla_comida') : results
-  if (selected) return <MealForm alimento={selected} franja={franja} close={close} onBack={() => setSelected(null)} onSaved={onSaved} onAddIngrediente={onAddIngrediente} onAdded={onAdded} />
+  if (selected) return <>
+    {picker.view}
+    <div hidden={picker.isOpen}>
+      <MealForm alimento={selected} franja={franja} close={close} onBack={() => setSelected(null)} onSaved={onSaved} onAddIngrediente={onAddIngrediente} onAdded={onAdded} picker={picker.open} />
+    </div>
+  </>
   if (tab === 'manual') return <ManualFoodForm franja={franja} close={close} onBack={() => setTab('buscar')} onSaved={onSaved} onAddIngrediente={onAddIngrediente ? addIngrediente : undefined} />
   return <>
     <h3>Agregar comida</h3>
@@ -324,7 +335,7 @@ export function FoodPicker({ franja, close, onSaved, onAddIngrediente, onAdded }
   </>
 }
 
-function ComidaCompuestaBuilder({ close, onSaved, plantillaId, initialNombre = '', initialIngredientes = [] }) {
+export function ComidaCompuestaBuilder({ close, onSaved, plantillaId, initialNombre = '', initialIngredientes = [] }) {
   const esEdicion = plantillaId != null
   const [nombreComida, setNombreComida] = useState(initialNombre)
   const [franjaSeleccionada, setFranjaSeleccionada] = useState(FRANJAS[0].value)
@@ -332,6 +343,10 @@ function ComidaCompuestaBuilder({ close, onSaved, plantillaId, initialNombre = '
   const [pickerOpen, setPickerOpen] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  // "Franja" se elige en un paso de este sheet (franjaPicker; pickerOpen es el de ingredientes).
+  const franjaPicker = usePickerStep()
+  const franjaPickerRef = useRef(franjaPicker)
+  franjaPickerRef.current = franjaPicker
   const historyEntryRef = useRef(false)
   const closingRef = useRef(false)
   const requestCloseRef = useRef(null)
@@ -371,7 +386,15 @@ function ComidaCompuestaBuilder({ close, onSaved, plantillaId, initialNombre = '
     historyEntryRef.current = true
     window.history.pushState({ ...(window.history.state || {}), comidaCompuestaBuilder: true }, '', window.location.href)
     const onPopState = event => {
-      if (event.state?.comidaCompuestaBuilder) requestCloseRef.current(true)
+      if (!event.state?.comidaCompuestaBuilder) return
+      // Con la lista de franjas abierta, atrás la cierra y el constructor sigue abierto: se
+      // repone la entrada propia del historial para que el próximo atrás vuelva a preguntar.
+      if (franjaPickerRef.current.isOpen) {
+        franjaPickerRef.current.close()
+        window.history.pushState({ ...(window.history.state || {}), comidaCompuestaBuilder: true }, '', window.location.href)
+        return
+      }
+      requestCloseRef.current(true)
     }
     window.addEventListener('popstate', onPopState)
     return () => {
@@ -426,13 +449,15 @@ function ComidaCompuestaBuilder({ close, onSaved, plantillaId, initialNombre = '
   }
   return <div className="compound-builder">
     <div className="compound-builder-content">
+      {franjaPicker.view}
+      <div hidden={franjaPicker.isOpen}>
       <div className="row between compound-builder-header">
         <h3 style={{ margin: 0 }}>{esEdicion ? 'Editar alimento compuesto' : 'Crear alimento compuesto'}</h3>
         <button type="button" className="iconbtn" onClick={() => requestClose()} aria-label="Cerrar"><Icon name="xmark" /></button>
       </div>
       <Section title="Nombre de la comida" className="compound-builder-section">
         <label><input {...NO_AUTOFILL} className="field" type="search" name="comida-compuesta-nombre" inputMode="search" value={nombreComida} onChange={event => setNombreComida(event.target.value)} /></label>
-        {!esEdicion && <SelectRow title="Franja" value={franjaSeleccionada} options={FRANJAS} onChange={setFranjaSeleccionada} sheetTitle="Elegir franja" />}
+        {!esEdicion && <SelectRow title="Franja" value={franjaSeleccionada} options={FRANJAS} onChange={setFranjaSeleccionada} sheetTitle="Elegir franja" picker={franjaPicker.open} />}
       </Section>
       <Section title="Ingredientes" className="compound-builder-section">
         {ingredientes.length ? ingredientes.map((ingrediente, index) => <div className="row between compound-ingredient" key={`${ingrediente.nombre_alimento}-${index}`}>
@@ -445,8 +470,9 @@ function ComidaCompuestaBuilder({ close, onSaved, plantillaId, initialNombre = '
         {!pickerOpen ? <Button variant="tinted" onClick={() => setPickerOpen(true)}>+ Agregar ingrediente</Button> : <FoodPicker franja={franjaSeleccionada} close={() => {}} onAddIngrediente={ingrediente => setIngredientes(prev => [...prev, ingrediente])} onAdded={() => setPickerOpen(false)} />}
       </Section>
       {error && <p className="small compound-builder-error" style={{ color: 'var(--acc-2)' }}>{error}</p>}
+      </div>
     </div>
-    <div className="compound-builder-actions">
+    <div className="compound-builder-actions" hidden={franjaPicker.isOpen}>
       <Button onClick={() => requestClose()}>Cancelar</Button>
       <Button variant="primary" disabled={saving || !nombreComida.trim() || !ingredientes.length} onClick={save}>{saving ? 'Guardando…' : esEdicion ? 'Guardar cambios' : 'Guardar'}</Button>
     </div>
@@ -719,7 +745,7 @@ export default function Nutricion() {
   // entrar a esta pantalla no debería mostrar valores viejos hasta el próximo arranque.
   useEffect(() => { loadComidas(true); useStore.getState().refreshNutritionGoals() }, [])
   const totals = useMemo(() => comidas.reduce((a, c) => ({ calorias: a.calorias + Number(c.calorias || 0), proteina: a.proteina + Number(c.proteina || 0), carbos: a.carbos + Number(c.carbohidratos || 0), grasas: a.grasas + Number(c.grasas || 0) }), { calorias: 0, proteina: 0, carbos: 0, grasas: 0 }), [comidas])
-  const addMeal = franja => useUI.getState().openSheet(close => <FoodPicker franja={franja} close={close} onSaved={loadComidas} />)
+  const addMeal = franja => useUI.getState().openSheet((close, { setOnBack }) => <FoodPicker franja={franja} close={close} setOnBack={setOnBack} onSaved={loadComidas} />)
   const addComidaCompuesta = () => useUI.getState().openSheet(close => <ComidaCompuestaBuilder close={close} onSaved={loadComidas} />, { locked: true, fullScreen: true })
   const openMisComidasCompuestas = () => useUI.getState().openSheet(close => <MisComidasCompuestas close={close} />, { fullScreen: true })
   const openHistorialNutricion = () => useUI.getState().openSheet(close => <HistorialNutricion close={close} S={S} />, { locked: true, fullScreen: true })

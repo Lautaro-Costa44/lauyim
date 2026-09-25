@@ -34,6 +34,7 @@ let lesiones
 let container
 let root
 let close
+let onBack           // el paso-atrás que el sheet registra (lo que dispara el gesto de atrás)
 
 // Router mínimo con el mismo contrato que el server real, para que cada clic recorra el
 // camino de datos de verdad en vez de un stub por pantalla.
@@ -113,7 +114,7 @@ beforeEach(async () => {
     // Modals va montado igual que en App.jsx: los sheets anidados que abre esta pantalla
     // (elegir Objetivo, confirmar un borrado) son parte del flujo real.
     root.render(React.createElement(React.Fragment, null,
-      React.createElement(AdminManageSheet, { userId: 'u1', userName: 'Ana', close, setOnBack: () => {} }),
+      React.createElement(AdminManageSheet, { userId: 'u1', userName: 'Ana', close, setOnBack: fn => { onBack = fn } }),
       React.createElement(Modals),
     ))
   })
@@ -145,17 +146,37 @@ describe('Administrar Nutrición/Rutina — metas', () => {
     expect(text()).toContain('Metas nutricionales')
   })
 
-  it('elige un objetivo desde su sheet y lo manda con las metas', async () => {
+  it('elige un objetivo como paso interno (sin otro sheet) y lo manda con las metas', async () => {
     await click(container.querySelector('[role="switch"]'))
     await clickText('.lrow', 'Objetivo')
-    expect(text()).toContain('Perder grasa')
+    expect(useUI.getState().sheets).toHaveLength(0)
+    expect(container.querySelector('.picker-step h3').textContent).toBe('Objetivo')
+    expect(container.querySelector('.picker-step').textContent).toContain('Perder grasa')
 
-    await clickText('#modal-root .lrow', 'Perder grasa')
+    await clickText('.picker-step .lrow', 'Perder grasa')
+    expect(container.querySelector('.picker-step')).toBeNull()
+    expect(byText('.lrow', 'Objetivo').textContent).toContain('Perder grasa')
     await clickText('button', 'Guardar metas')
 
     const saved = apiMock.mock.calls.find(([url, opt]) => opt?.method === 'PUT' && /\/nutrition\/goals$/.test(url))
     expect(JSON.parse(saved[1].body)).toMatchObject({ mode: 'manual', objetivo: 'perder_grasa' })
     expect(close).not.toHaveBeenCalled()
+  })
+
+  it('atrás cierra primero la lista de objetivos sin perder lo cargado; después cierra el sheet', async () => {
+    await click(container.querySelector('[role="switch"]'))
+    await type(byText('.lrow', 'Kcalorías a consumir').querySelector('input'), '2100')
+    await clickText('.lrow', 'Objetivo')
+    expect(container.querySelector('.picker-step')).toBeTruthy()
+
+    await act(async () => { onBack() })
+    expect(container.querySelector('.picker-step')).toBeNull()
+    expect(close).not.toHaveBeenCalled()
+    // El formulario quedó montado (oculto) mientras se elegía: el valor sigue ahí.
+    expect(byText('.lrow', 'Kcalorías a consumir').querySelector('input').value).toBe('2100')
+
+    await act(async () => { onBack() })
+    expect(close).toHaveBeenCalledTimes(1)
   })
 
   it('muestra un error inline y no guarda un macro mayor al límite', async () => {

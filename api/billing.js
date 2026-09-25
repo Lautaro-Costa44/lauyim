@@ -11,17 +11,20 @@
  * getBillingNotifyHour(db), que leen admin_settings.
  */
 
-export const BILLING_STATUSES = ['al_dia', 'por_vencer', 'vencido', 'bloqueado', 'sin_plan'];
+export const BILLING_STATUSES = ['al_dia', 'por_vencer', 'vencido', 'bloqueado', 'sin_plan', 'prueba'];
 export const PAYMENT_METHODS = ['efectivo', 'transferencia', 'otro'];
 
 export const BILLING_DEFAULTS = Object.freeze({
   due_soon_days: 5,
   push_days_before: 3,
   grace_days: 5,
+  trial_days: 1,
   payment_methods: PAYMENT_METHODS,
   gym_tz: 'America/Argentina/Buenos_Aires'
 });
-const INT_SETTINGS = ['due_soon_days', 'push_days_before', 'grace_days'];
+// Rango válido de cada ajuste entero. Una prueba dura al menos un día (el de hoy).
+const INT_RANGES = { due_soon_days: [0, 30], push_days_before: [0, 30], grace_days: [0, 30], trial_days: [1, 30] };
+const INT_SETTINGS = Object.keys(INT_RANGES);
 export const BILLING_SETTING_KEYS = [...INT_SETTINGS, 'payment_methods', 'gym_tz'];
 
 /* ---------- fechas YYYY-MM-DD ---------- */
@@ -83,7 +86,8 @@ export function validateBillingSettings(input) {
   for (const key of INT_SETTINGS) {
     if (input[key] === undefined) continue;
     const n = input[key];
-    if (!Number.isInteger(n) || n < 0 || n > 30) return { error: `${key} debe ser un entero entre 0 y 30` };
+    const [min, max] = INT_RANGES[key];
+    if (!Number.isInteger(n) || n < min || n > max) return { error: `${key} debe ser un entero entre ${min} y ${max}` };
     value[key] = n;
   }
   if (input.payment_methods !== undefined) {
@@ -150,7 +154,11 @@ export function getBillingNotifyHour(db) {
 
 /* ---------- estado, vencimiento y deuda ---------- */
 
-export function billingStatus({ planId, dueDate } = {}, today, settings = BILLING_DEFAULTS) {
+// Prueba (trialUntil): hasta ese día inclusive está 'prueba'; después, 'bloqueado' en el acto,
+// sin tolerancia. Un pago la cierra (trial_until = NULL), así que una prueba guardada siempre
+// es "sin pago posterior". Manda sobre el plan: quien la empieza no tiene plan vigente.
+export function billingStatus({ planId, dueDate, trialUntil } = {}, today, settings = BILLING_DEFAULTS) {
+  if (isIsoDate(trialUntil)) return daysBetween(today, trialUntil) >= 0 ? 'prueba' : 'bloqueado';
   if (planId == null) return 'sin_plan';
   // Un plan sin vencimiento no debería existir (la API lo exige). Si aparece, no se bloquea
   // a nadie por un dato faltante.
@@ -176,6 +184,19 @@ export function nextDueDate(currentDue, today, durationDays, graceDays) {
 // Siempre un período por socio: no se acumulan cuotas impagas.
 export const debtFor = (status, planPrice) =>
   (status === 'vencido' || status === 'bloqueado') ? Math.max(0, Math.trunc(Number(planPrice) || 0)) : 0;
+
+// Deuda del socio: una prueba (en curso o vencida) no deja deuda.
+export const memberDebt = (billing, status) => isIsoDate(billing?.trialUntil) ? 0 : debtFor(status, billing?.planPrice);
+
+// Bloqueado porque terminó la prueba (no por una cuota vencida).
+export const isTrialEnded = (billing, status) => status === 'bloqueado' && isIsoDate(billing?.trialUntil);
+
+// Último día de una prueba de `trialDays` que empieza hoy: 1 día = solo hoy.
+export const trialEndDate = (today, trialDays) => addDays(today, Math.max(1, trialDays) - 1);
+
+// Plan vigente = asignado y todavía no bloqueado. Sin eso se puede empezar una prueba.
+export const hasActivePlan = (billing, today, settings = BILLING_DEFAULTS) =>
+  billing?.planId != null && billingStatus({ ...billing, trialUntil: null }, today, settings) !== 'bloqueado';
 
 export const debtTotal = members => members.reduce((sum, m) => sum + (Number(m.debt) || 0), 0);
 

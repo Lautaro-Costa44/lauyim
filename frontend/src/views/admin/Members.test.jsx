@@ -25,7 +25,7 @@ const NEW = { id: 'new', name: 'Nuevo Socio', hasApp: false, workouts: 0, lastSy
 const PLANS = [{ id: 1, name: 'Mensual', price: 20000, durationDays: 30, active: true }, { id: 2, name: 'Viejo', price: 1, durationDays: 7, active: false }]
 const EXPIRES = '2026-09-26T21:30:00.000Z'
 
-let billingOn, fields, users, mergePlan
+let billingOn, fields, users, mergePlan, billingDetail, linked
 const basePlan = () => ({
   ficha: { id: 'f', name: 'Juan Ficha' }, target: { id: 'a', name: 'ana' }, payments: 2,
   billing: { ficha: { planId: 1, planName: 'Mensual', dueDate: '2026-10-10' }, cuenta: { planId: 1, planName: 'Mensual', dueDate: '2026-11-01' }, conflict: true, keep: null },
@@ -38,8 +38,12 @@ apiMock.mockImplementation((url, opts = {}) => {
   if (url === '/api/admin/users') return Promise.resolve({ users, invite_only: false, audit_enabled: true, billing_enabled: billingOn })
   if (url === '/api/admin/members/settings') return Promise.resolve({ fields })
   if (url === '/api/admin/billing/plans') return Promise.resolve({ plans: PLANS })
+  if (url === '/api/admin/billing/settings') return Promise.resolve({ settings: { payment_methods: ['efectivo', 'transferencia'], trial_days: 1, gym_tz: 'America/Argentina/Buenos_Aires', due_soon_days: 5, push_days_before: 3, grace_days: 5 } })
   if (url.startsWith('/api/admin/members/lookup')) {
     return url.endsWith('dni=30111222') ? Promise.resolve({ userId: 'a', name: 'ana', hasApp: true }) : fail(404, { error: 'No hay ningún socio con ese DNI' })
+  }
+  if (url === '/api/admin/members' && body.dry_run) {
+    return Promise.resolve({ dry_run: true, dueDate: body.start.type === 'payment' ? '2026-10-24' : null, amount: 20000, trialUntil: body.start.type === 'trial' ? '2026-09-24' : null, trialDays: 1 })
   }
   if (url === '/api/admin/members') {
     if (body.dni === '30999888') return fail(409, { error: 'dni_duplicado', userId: 'f', name: 'Juan Ficha', hasApp: false })
@@ -48,7 +52,7 @@ apiMock.mockImplementation((url, opts = {}) => {
   }
   if (url.startsWith('/api/admin/user?id=')) {
     const u = [...users, NEW].find(x => x.id === decodeURIComponent(url.split('=')[1]))
-    return Promise.resolve({ user: { ...u, created: '2026-01-01' }, workouts: [], bodyweight: [], routines: [], lastSync: null, unit: 'kg' })
+    return Promise.resolve({ user: { ...u, ...(linked && u.id === 'f' ? { hasApp: true } : {}), created: '2026-01-01' }, workouts: [], bodyweight: [], routines: [], lastSync: null, unit: 'kg' })
   }
   if (url.endsWith('/profile') && opts.method === 'PUT') {
     return body.dni === '30111222' ? fail(409, { error: 'dni_duplicado', userId: 'a', name: 'ana', hasApp: true }) : Promise.resolve({ profile: {} })
@@ -56,10 +60,11 @@ apiMock.mockImplementation((url, opts = {}) => {
   if (url.endsWith('/profile')) return Promise.resolve({ profile: { fullName: 'Juan Pérez', dni: '30.999.888', phone: null, email: null, hasApp: false }, fields })
   if (url.endsWith('/link-code')) return Promise.resolve(opts.method === 'DELETE' ? { ok: true, revoked: 1 } : { code: 'ABCD-EFGH', link: 'https://gym.test/?link=ABCD-EFGH', expiresAt: EXPIRES })
   if (url.endsWith('/merge')) return body.dry_run ? Promise.resolve({ dry_run: true, ...mergePlan }) : Promise.resolve({ ok: true, ...mergePlan })
-  if (url.startsWith('/api/admin/users/') && url.endsWith('/billing')) return Promise.resolve({ billing: { planId: null, status: 'sin_plan', debt: 0 }, payments: [] })
-  if (url === '/api/admin/billing') return Promise.resolve({ today: '2026-09-24', settings: {}, summary: { al_dia: 0, por_vencer: 0, vencido: 0, bloqueado: 0, sin_plan: 2, deuda_total: 0 }, members: [
+  if (url.startsWith('/api/admin/users/') && url.endsWith('/billing')) return Promise.resolve(billingDetail)
+  if (url.endsWith('/trial')) return Promise.resolve({ billing: { ...billingDetail.billing, status: 'prueba', trialUntil: '2026-09-24' } })
+  if (url === '/api/admin/billing') return Promise.resolve({ today: '2026-09-24', settings: {}, summary: { al_dia: 0, por_vencer: 0, vencido: 0, bloqueado: 0, sin_plan: 1, en_prueba: 1, deuda_total: 0 }, members: [
     { id: 'a', name: 'ana', disabled: false, admin: false, hasApp: true, planId: null, status: 'sin_plan', debt: 0 },
-    { id: 'f', name: 'Juan Ficha', disabled: false, admin: false, hasApp: false, planId: null, status: 'sin_plan', debt: 0 }] })
+    { id: 'f', name: 'Juan Ficha', disabled: false, admin: false, hasApp: false, planId: null, trialUntil: '2026-09-26', status: 'prueba', debt: 0 }] })
   if (url === '/api/admin/invites') return Promise.resolve({ invites: [] })
   if (url === '/api/presets') return Promise.resolve({ presets: [] })
   if (url === '/api/admin/attendance-heatmap') return Promise.resolve({ start: 'monday', totalUsers: 1, days: {} })
@@ -120,6 +125,8 @@ beforeEach(async () => {
   fields = { full_name: { enabled: true, required: true }, dni: { enabled: true, required: true }, phone: { enabled: true, required: false }, email: { enabled: false, required: false } }
   users = [ANA, FICHA, STAFF]
   mergePlan = basePlan()
+  linked = false
+  billingDetail = { billing: { planId: null, status: 'sin_plan', debt: 0, trialUntil: null }, payments: [], trial: { days: 1, until: '2026-09-24', available: true, blocker: null } }
   apiMock.mockClear()
   useUI.setState({ sheets: [] })
 })
@@ -134,56 +141,119 @@ describe('alta de ficha', () => {
     await click(button('Nuevo socio (sin app)'))
     expect(sheetTitle()).toBe('Nuevo socio')
   }
+  const fillData = async (name, dni) => {
+    await type(fieldInput('Nombre y apellido'), name)
+    if (dni) await type(fieldInput('DNI'), dni)
+  }
+  const option = label => [...topSheet().querySelectorAll('.start-opt')].find(r => r.textContent.startsWith(label))
+  const createBody = () => JSON.parse(calls((u, o) => u === '/api/admin/members' && !JSON.parse(o.body).dry_run)[0][1].body)
 
-  it('muestra solo los campos que se piden y marca los obligatorios', async () => {
+  it('muestra solo los campos que se piden, marca los obligatorios y sigue a "Cuota inicial"', async () => {
     await openCreate()
     const labels = [...document.querySelectorAll('.member-field-l')].map(l => l.textContent)
     expect(labels).toEqual(['Nombre y apellido *', 'DNI *', 'Celular'])
     expect(text()).toContain('Estos datos se usan solo para identificar al socio en el gimnasio y solo los ve el staff.')
-    expect(text()).toContain('Cuota (opcional)')
+    expect(button('Crear socio')).toBeUndefined()
+    await click(button('Siguiente'))
+    expect([...topSheet().querySelectorAll('.start-opt .lrow-t')].map(el => el.textContent)).toEqual(['Registrar pago', 'Iniciar prueba', 'Solo ficha'])
   })
 
-  it('con cuotas apagado no ofrece plan', async () => {
+  it('el DNI solo acepta dígitos, hasta 8', async () => {
+    await openCreate()
+    const dni = await type(fieldInput('DNI'), '30.111.222-99')
+    expect(dni.value).toBe('30111222')
+    expect(dni.maxLength).toBe(8)
+    expect(dni.getAttribute('inputmode')).toBe('numeric')
+  })
+
+  it('con cuotas apagado no hay cuota inicial: se crea directo', async () => {
     billingOn = false
     await openCreate()
-    expect(text()).not.toContain('Cuota (opcional)')
-    expect(calls(u => u === '/api/admin/billing/plans')).toHaveLength(0)
+    expect([...topSheet().querySelectorAll('button')].some(b => b.textContent.trim() === 'Siguiente')).toBe(false)   // "Siguiente" de la paginación no cuenta
+    expect(calls(u => u === '/api/admin/billing/plans' || u === '/api/admin/billing/settings')).toHaveLength(0)
+    await fillData('Solo Ficha', '40111223')
+    await click(button('Crear socio'))
+    expect(createBody().start).toBeUndefined()
   })
 
   it('al salir del DNI avisa del duplicado y "Abrir" abre a esa persona', async () => {
     await openCreate()
     await blur(await type(fieldInput('DNI'), '30111222'))
     expect(text()).toContain('Ya existe ana (con app)')
-    expect(button('Crear socio').disabled).toBe(true)
+    expect(button('Siguiente').disabled).toBe(true)
     await click(button('Abrir'))
     expect(sheetTitle()).toBe('ana')
     expect(calls(u => u === '/api/admin/members')).toHaveLength(0)
   })
 
-  it('un 409 dni_duplicado al guardar muestra quién es', async () => {
+  it('un 409 dni_duplicado al guardar vuelve a los datos y muestra quién es', async () => {
     await openCreate()
-    await type(fieldInput('Nombre y apellido'), 'Pedro Gómez')
-    await type(fieldInput('DNI'), '30999888')
+    await fillData('Pedro Gómez', '30999888')
+    await click(button('Siguiente'))
+    await click(option('Solo ficha'))
     await click(button('Crear socio'))
     expect(text()).toContain('Ya existe Juan Ficha (sin app)')
-    expect(button('Abrir')).toBeTruthy()
+    expect(fieldInput('DNI')).toBeTruthy()
   })
 
-  it('guarda con plan y vencimiento, refresca la lista y abre el detalle nuevo', async () => {
+  it('registrar pago: plan como paso interno, vencimiento del dry_run y alta con start payment', async () => {
     await openCreate()
-    await type(fieldInput('Nombre y apellido'), 'Nuevo Socio')
-    await type(fieldInput('DNI'), '40111222')
+    await fillData('Nuevo Socio', '40111222')
+    await click(button('Siguiente'))
+    expect(option('Registrar pago').querySelector('.lrow-k')).toBeTruthy()          // elegido por defecto
+    await act(async () => { await new Promise(r => setTimeout(r, 300)) })
+    await flush()
+    expect(topSheet().querySelector('.nutri-live').textContent).toContain('24/10/2026')
+    // Elegir plan no apila otro sheet: es un paso del mismo.
+    const sheets = useUI.getState().sheets.length
     await click([...topSheet().querySelectorAll('.lrow')].find(r => r.textContent.startsWith('Plan')))
-    await click([...document.querySelectorAll('#modal-root button, #modal-root .lrow')].filter(el => el.textContent.startsWith('Mensual')).at(-1))
+    expect(useUI.getState().sheets).toHaveLength(sheets)
+    expect(topSheet().querySelector('.picker-step h3').textContent).toBe('Plan')
+    await click([...topSheet().querySelectorAll('.picker-step .lrow')].find(r => r.textContent.startsWith('Mensual')))
+    expect(topSheet().querySelector('.picker-step')).toBeNull()
+    expect(option('Registrar pago')).toBeTruthy()                                     // de vuelta en "Cuota inicial"
     const before = calls(u => u === '/api/admin/users').length
     await click(button('Crear socio'))
-    const [, opts] = calls(u => u === '/api/admin/members')[0]
-    const sent = JSON.parse(opts.body)
-    expect(sent).toMatchObject({ fullName: 'Nuevo Socio', dni: '40111222', planId: 1 })
-    expect(sent.dueDate).toMatch(/^\d{4}-\d{2}-\d{2}$/)
-    expect(sent.phone).toBeUndefined()
+    const body = createBody()
+    expect(body).toMatchObject({ fullName: 'Nuevo Socio', dni: '40111222', start: { type: 'payment', planId: 1, amount: 20000, method: 'efectivo' } })
+    expect(body.planId).toBeUndefined()
     expect(calls(u => u === '/api/admin/users').length).toBeGreaterThan(before)
     expect(sheetTitle()).toBe('Nuevo Socio')
+  })
+
+  it('iniciar prueba: deshabilitada sin DNI; con DNI muestra el vencimiento y crea con start trial', async () => {
+    await openCreate()
+    await fillData('Sin Documento')
+    await click(button('Siguiente'))
+    expect(option('Iniciar prueba').classList.contains('lrow-disabled')).toBe(true)
+    expect(option('Iniciar prueba').textContent).toContain('Cargá el DNI en el paso anterior')
+    expect(option('Iniciar prueba').tagName).toBe('DIV')                              // sin onClick
+    await click(button('Volver'))
+    await type(fieldInput('DNI'), '40111224')
+    await click(button('Siguiente'))
+    await click(option('Iniciar prueba'))
+    await act(async () => { await new Promise(r => setTimeout(r, 300)) })
+    await flush()
+    expect(option('Iniciar prueba').textContent).toContain('Prueba de 1 día, vence el 24/09')
+    await click(button('Crear socio'))
+    expect(createBody().start).toEqual({ type: 'trial' })
+  })
+
+  it('prueba deshabilitada si el gimnasio no pide DNI', async () => {
+    fields = { ...fields, dni: { enabled: false, required: false } }
+    await openCreate()
+    await fillData('Sin Campo')
+    await click(button('Siguiente'))
+    expect(option('Iniciar prueba').textContent).toContain('este gimnasio no lo pide')
+  })
+
+  it('solo ficha: sin start', async () => {
+    await openCreate()
+    await fillData('Solo Ficha', '40111225')
+    await click(button('Siguiente'))
+    await click(option('Solo ficha'))
+    await click(button('Crear socio'))
+    expect(createBody().start).toBeUndefined()
   })
 })
 
@@ -213,6 +283,9 @@ describe('lista de usuarios', () => {
     expect(match.textContent).toContain('ana')
     expect(match.textContent).toContain('Coincide DNI')
     await type(searchInput(), 'ana')
+    await act(async () => { await new Promise(r => setTimeout(r, 350)) })
+    expect(calls(u => u.startsWith('/api/admin/members/lookup'))).toHaveLength(1)
+    await type(searchInput(), '301112229')                 // 9 dígitos: ya no es un DNI
     await act(async () => { await new Promise(r => setTimeout(r, 350)) })
     expect(calls(u => u.startsWith('/api/admin/members/lookup'))).toHaveLength(1)
   })
@@ -309,5 +382,109 @@ describe('unir ficha con cuenta', () => {
     await click(button('Vincular'))
     expect(sheetTitle()).toBe('Vincular con cuenta existente')
     expect(JSON.parse(calls(u => u.endsWith('/merge'))[0][1].body)).toEqual({ targetId: 'a', dry_run: true })
+  })
+})
+
+describe('prueba en Cuotas', () => {
+  const openBilling = async () => {
+    await mount('#/admin/cuotas')
+    await click([...document.querySelectorAll('.list .item')].find(el => el.textContent.includes('Juan Ficha')))
+    expect(sheetTitle()).toBe('Cuota')
+  }
+
+  it('tablero: tarjeta y chip "En prueba" y la fila con "Prueba hasta dd/mm"', async () => {
+    await mount('#/admin/cuotas')
+    const tile = [...document.querySelectorAll('.billing-tiles .tile')].find(el => el.textContent.startsWith('En prueba'))
+    expect(tile.querySelector('.v').textContent).toBe('1')
+    expect([...document.querySelectorAll('.chips .chip')].map(c => c.textContent)).toContain('En prueba')
+    const row = [...document.querySelectorAll('.list .item')].find(el => el.textContent.includes('Juan Ficha'))
+    expect(row.textContent).toContain('Prueba hasta 26/09')
+    expect(row.querySelector('.tag.st-prueba').textContent).toBe('En prueba')
+    await click(tile)
+    expect([...document.querySelectorAll('.list .item')]).toHaveLength(1)
+  })
+
+  it('ficha de cuota: "Iniciar prueba" pide confirmación y la inicia', async () => {
+    await openBilling()
+    await click(button('Iniciar prueba'))
+    expect(text()).toContain('Prueba de 1 día: puede usar la app solo hoy. Es una sola por persona.')
+    expect(calls(u => u.endsWith('/trial'))).toHaveLength(0)
+    await click(button('Iniciar prueba'))              // el del confirm
+    expect(calls((u, o) => u === '/api/admin/users/f/trial' && o.method === 'POST')).toHaveLength(1)
+  })
+
+  it('ficha de cuota: "Ya usó su prueba" en lugar del botón', async () => {
+    billingDetail = { ...billingDetail, trial: { days: 1, until: '2026-09-24', available: false, blocker: 'trial_used' } }
+    await openBilling()
+    expect(button('Iniciar prueba')).toBeUndefined()
+    expect(text()).toContain('Ya usó su prueba')
+  })
+
+  it('registrar pago: el plan se elige como paso interno y el back vuelve al formulario', async () => {
+    await openBilling()
+    await click(button('Registrar pago'))
+    const sheets = useUI.getState().sheets.length
+    await click([...topSheet().querySelectorAll('.lrow')].find(r => r.textContent.startsWith('Plan')))
+    expect(useUI.getState().sheets).toHaveLength(sheets)
+    expect(topSheet().querySelector('.picker-step')).toBeTruthy()
+    // Gesto de atrás: cierra la lista, no el sheet.
+    const back = useUI.getState().getSheetOnBack(useUI.getState().sheets.at(-1).id)
+    await act(async () => { back() })
+    await flush()
+    expect(topSheet().querySelector('.picker-step')).toBeNull()
+    expect(topSheet().textContent).toContain('Monto ($)')
+  })
+
+  it('configuración: la zona horaria se elige como paso interno', async () => {
+    await mount('#/admin/cuotas')
+    await click(button('Configuración'))
+    expect(text()).toContain('Días de prueba')
+    const sheets = useUI.getState().sheets.length
+    await click([...document.querySelectorAll('#modal-root .lrow')].find(r => r.textContent.startsWith('Zona horaria')))
+    expect(useUI.getState().sheets).toHaveLength(sheets)
+    await click([...document.querySelectorAll('#modal-root .picker-step .lrow')].find(r => r.textContent.startsWith('Cordoba')))
+    expect(document.querySelector('#modal-root .picker-step')).toBeNull()
+    expect([...document.querySelectorAll('#modal-root .lrow')].find(r => r.textContent.startsWith('Zona horaria')).textContent).toContain('Cordoba')
+  })
+})
+
+describe('código de vinculación: se cierra solo al vincular', () => {
+  afterEach(() => { vi.useRealTimers() })
+  const polls = () => calls(u => u === '/api/admin/user?id=f').length
+
+  it('consulta cada 3 s y, con hasApp, cierra, avisa y refresca detalle y lista', async () => {
+    await openFicha()
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
+    await click(button('Generar código de vinculación'))
+    expect(document.querySelector('.link-code-v')).toBeTruthy()
+    const start = polls()
+    await act(async () => { vi.advanceTimersByTime(3000) })
+    await flush()
+    expect(polls()).toBe(start + 1)
+    expect(document.querySelector('.link-code-v')).toBeTruthy()      // todavía sin app
+    const usersBefore = calls(u => u === '/api/admin/users').length
+    linked = true
+    await act(async () => { vi.advanceTimersByTime(3000) })
+    await flush()
+    expect(document.querySelector('.link-code-v')).toBeNull()
+    expect(useUI.getState().toastMsg).toBe('Juan Ficha ya tiene acceso a la app')
+    expect(calls(u => u === '/api/admin/users').length).toBeGreaterThan(usersBefore)
+    expect(document.querySelector('#modal-root .tiles')).toBeTruthy()   // el detalle ya no es "sin app"
+    const after = polls()
+    await act(async () => { vi.advanceTimersByTime(9000) })
+    await flush()
+    expect(polls()).toBe(after)                                       // polling cortado
+  })
+
+  it('cerrar el sheet corta el polling', async () => {
+    await openFicha()
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
+    await click(button('Generar código de vinculación'))
+    await click(topSheet().querySelector('.compound-builder-header .iconbtn'))
+    expect(document.querySelector('.link-code-v')).toBeNull()
+    const before = polls()
+    await act(async () => { vi.advanceTimersByTime(9000) })
+    await flush()
+    expect(polls()).toBe(before)
   })
 })

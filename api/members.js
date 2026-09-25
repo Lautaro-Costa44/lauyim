@@ -62,13 +62,13 @@ export function validateMemberFields(body, current = DEFAULT_MEMBER_FIELDS) {
 }
 
 // DNI: solo dígitos (se aceptan puntos, espacios y guiones como separadores), sin ceros a la
-// izquierda, 6 a 9 dígitos. → { dni (como se ingresó), dniNorm } o { error }.
+// izquierda, 6 a 8 dígitos. → { dni (como se ingresó), dniNorm } o { error }.
 export function normalizeDni(raw) {
   if (typeof raw !== 'string' && typeof raw !== 'number') return { error: 'DNI inválido' };
   const dni = String(raw).trim();
   if (!dni || dni.length > MAX_DNI_INPUT || !/^[\d.\s-]+$/.test(dni)) return { error: 'DNI inválido' };
   const dniNorm = dni.replace(/\D/g, '').replace(/^0+/, '');
-  if (dniNorm.length < 6 || dniNorm.length > 9) return { error: 'El DNI debe tener entre 6 y 9 dígitos' };
+  if (dniNorm.length < 6 || dniNorm.length > 8) return { error: 'El DNI debe tener entre 6 y 8 dígitos' };
   return { value: { dni, dniNorm } };
 }
 

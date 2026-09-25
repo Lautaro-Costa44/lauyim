@@ -53,6 +53,7 @@ const LABELS = {
   'admin.billing.settings': 'Changed membership settings',
   'admin.billing.blocked': 'Membership blocked',
   'admin.billing.unblocked': 'Membership unblocked',
+  'admin.billing.trial_start': 'Started a free trial',
   'admin.member.create': 'Created a member record',
   'admin.member.profile_update': 'Updated member details',
   'admin.member.link_code': 'Generated an app link code',

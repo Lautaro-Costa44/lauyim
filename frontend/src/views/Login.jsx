@@ -42,7 +42,7 @@ function RegisterSheet({ close }) {
   }
   return <>
     <h3>{t('Create your profile')}</h3>
-    <div className="muted small" style={{ marginBottom: 14 }}>{t('Pick a name, then confirm with {0}. The passkey is saved in your device — no password needed.', BIO)}</div>
+    <div className="muted small" style={{ marginBottom: 14 }}>{t('Pick a name, then confirm with {0}. The passkey is saved in your device — no password needed.', t(BIO))}</div>
     <input {...NO_AUTOFILL} name="app-profile-name" ref={ref} className="input" placeholder={t('Your name')} maxLength={40} value={name} onChange={e => setName(e.target.value)} />
     {inviteOnly && qrChecked && !qrToken && <>
       <div style={{ height: 10 }} />
@@ -165,7 +165,7 @@ function LinkSheet({ close, initialCode = '' }) {
   if (found) return <>
     <h3>{t('Tu acceso a la app')}</h3>
     <div className="muted" style={{ margin: '4px 0 16px', lineHeight: 1.5 }}>{t('Vas a crear tu acceso como {0}', found.fullName || found.name)}</div>
-    <div className="muted small" style={{ marginBottom: 16 }}>{t('Confirmá con {0}. La passkey queda guardada en tu dispositivo, sin contraseña.', BIO)}</div>
+    <div className="muted small" style={{ marginBottom: 16 }}>{t('Confirmá con {0}. La passkey queda guardada en tu dispositivo, sin contraseña.', t(BIO))}</div>
     {error && <div className="form-error" role="alert" style={{ marginBottom: 10 }}>{error}</div>}
     <Button variant="primary" disabled={busy} onClick={confirm}>{t('Confirmar')}</Button>
     <div style={{ height: 8 }} />
@@ -244,7 +244,7 @@ export default function Login() {
       </> :<div className="card small muted" style={{ textAlign: 'left' }}>
         {t("This browser doesn't support passkeys, and this instance requires an account. Try a browser or device with passkey support.")}
       </div>}
-      <div className="dim small" style={{ marginTop: 26, lineHeight: 1.5 }}>{t('Passkeys use {0} — no passwords.', BIO)}<br />{t('Each profile keeps its own plan, workouts & body weight.')}</div>
+      <div className="dim small" style={{ marginTop: 26, lineHeight: 1.5 }}>{t('Passkeys use {0} — no passwords.', t(BIO))}<br />{t('Each profile keeps its own plan, workouts & body weight.')}</div>
     </div>
   )
 }

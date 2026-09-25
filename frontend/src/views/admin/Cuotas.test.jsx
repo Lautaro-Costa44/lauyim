@@ -68,7 +68,7 @@ afterEach(async () => { await act(async () => { root.unmount() }); container.rem
 describe('Cuotas', () => {
   it('muestra las tarjetas del resumen con montos es-AR', () => {
     const tiles = all('.billing-tiles .tile').map(el => [el.querySelector('.l').textContent, el.querySelector('.v').textContent])
-    expect(tiles).toEqual([['Al día', '1'], ['Por vencer', '0'], ['Vencidos', '0'], ['Bloqueados', '1'], ['Sin plan', '0'], ['Deuda total', '$20.000']])
+    expect(tiles).toEqual([['Al día', '1'], ['Por vencer', '0'], ['Vencidos', '0'], ['Bloqueados', '1'], ['En prueba', '0'], ['Sin plan', '0'], ['Deuda total', '$20.000']])
   })
 
   it('tocar una tarjeta filtra la lista y tocarla de nuevo lo quita', async () => {

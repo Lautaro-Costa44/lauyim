@@ -258,6 +258,9 @@ export default {
   "This browser doesn't support passkeys — you can still use lauyim locally on this device.": 'Este navegador no admite passkeys — aun así puedes usar lauyim localmente en este dispositivo.',
   "This browser doesn't support passkeys, and this instance requires an account. Try a browser or device with passkey support.": 'Este navegador no admite passkeys y este servidor requiere una cuenta. Prueba con un navegador o dispositivo compatible con passkeys.',
   'Continue without account': 'Continuar sin cuenta',
+  // Método de desbloqueo (BIO en lib/api.js), que se inserta dentro de otras frases.
+  'fingerprint or face unlock': 'tu huella o desbloqueo facial',
+  'your fingerprint, face or PIN': 'tu huella, tu cara o tu PIN',
   'Passkeys use {0} — no passwords.': 'Las passkeys usan tu huella digital, cara o PIN — sin contraseñas.',
   'Each profile keeps its own plan, workouts & body weight.': 'Cada perfil guarda su propio plan, entrenamientos y peso corporal.',
   'Account': 'Cuenta',
@@ -686,6 +689,7 @@ export default {
   'Changed membership settings': 'Cambió la configuración de cuotas',
   'Membership blocked': 'Cuota bloqueada',
   'Membership unblocked': 'Cuota desbloqueada',
+  'Started a free trial': 'Inició una prueba gratis',
   'Created a member record': 'Creó una ficha de socio',
   'Updated member details': 'Editó los datos de un socio',
   'Generated an app link code': 'Generó un código de vinculación',

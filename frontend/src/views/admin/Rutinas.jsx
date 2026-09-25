@@ -9,15 +9,18 @@ import { exLine } from '../../lib/history.js'
 import { glyphOf } from '../../lib/glyphs.js'
 import { t, exerciseNameFor } from '../../lib/i18n.js'
 import Icon from '../../components/Icon.jsx'
-import { Button, TextField, SelectRow, Segmented } from '../../components/ui.jsx'
+import { Button, TextField, SelectRow, Segmented, usePickerStep, useSheetBack } from '../../components/ui.jsx'
 
-function PresetEditor({ existing, close, reload }) {
+// El día planeado se elige en un paso de este mismo sheet; el back cierra primero esa lista.
+function PresetEditor({ existing, close, setOnBack, reload }) {
   const [name, setName] = useState(existing?.name || '')
   const [groupName, setGroupName] = useState(existing ? (existing.group_name || existing.groupName || 'General') : '')
   const [plannedDay, setPlannedDay] = useState(existing?.planned_day ?? null)
   const [emoji, setEmoji] = useState(existing?.emoji || 'dumbbell')
   const [ex, setEx] = useState(() => (existing?.ex || []).map(item => ({ ...item })))
   const toast = useUI(s => s.toast)
+  const picker = usePickerStep()
+  useSheetBack(setOnBack, () => picker.isOpen ? picker.close() : close())
   const add = exercise => exConfigSheet(exercise, null, cfg => setEx(current => [...current, { id: exercise.id, ...cfg }]), null, { ex })
   const save = () => {
     if (!name.trim()) return toast(t('Give the routine a name'))
@@ -32,6 +35,8 @@ function PresetEditor({ existing, close, reload }) {
       })
   }
   return <>
+    {picker.view}
+    <div hidden={picker.isOpen}>
     <h3>{existing ? t('Edit preset') : t('New preset')}</h3>
     <TextField value={name} onChange={e => setName(e.target.value)} placeholder={t('Routine name')} maxLength={80} />
     <div style={{ height: 8 }} />
@@ -39,7 +44,7 @@ function PresetEditor({ existing, close, reload }) {
     <div style={{ height: 8 }} />
     <SelectRow icon="calendar" title={t('Día planeado para hacer esta rutina')} value={plannedDay}
       options={[{ value: null, label: t('Sin día asignado') }, ...[1, 2, 3, 4, 5, 6, 0].map(day => ({ value: day, label: t(DAYN[day]) }))]}
-      onChange={setPlannedDay} sheetTitle={t('Día planeado para hacer esta rutina')} />
+      onChange={setPlannedDay} sheetTitle={t('Día planeado para hacer esta rutina')} picker={picker.open} />
     <div className="row" style={{ gap: 8, alignItems: 'center', margin: '10px 0' }}>
       <button className="glyph-cell on" title={t('Pick an icon')}
         onClick={() => glyphPicker(emoji, setEmoji)} aria-label={t('Pick an icon')}>
@@ -56,6 +61,7 @@ function PresetEditor({ existing, close, reload }) {
     <Button icon="plus" onClick={() => exercisePicker(add)}>{t('Add exercise')}</Button>
     <div style={{ height: 8 }} />
     <Button variant="primary" onClick={save}>{t('Save preset')}</Button>
+    </div>
   </>
 }
 
@@ -84,7 +90,7 @@ function PresetsCard({ presets, openSheet, reload }) {
   }
   return <div className="card">
     <div className="row between"><h2 style={{ margin: 0 }}>{t('Preset routines')}</h2>
-      <Button variant="primary" size="sm" icon="plus" onClick={() => openSheet(close => <PresetEditor close={close} reload={reload} />)}>{t('New')}</Button></div>
+      <Button variant="primary" size="sm" icon="plus" onClick={() => openSheet((close, { setOnBack }) => <PresetEditor close={close} setOnBack={setOnBack} reload={reload} />)}>{t('New')}</Button></div>
     <div className="small muted" style={{ margin: '6px 0 10px' }}>{t('Templates available from the starter plan action.')}</div>
     {!!groups.length && <div style={{ overflowX: 'auto', margin: '0 -2px 10px', paddingBottom: 2 }}>
       <Segmented options={groupOptions} value={groupFilter} onChange={selectGroup} />
@@ -94,7 +100,7 @@ function PresetsCard({ presets, openSheet, reload }) {
       {items.map(preset => <div key={preset.id} className="row between" style={{ padding: '8px 2px', borderBottom: '1px solid var(--sep)' }}>
         <div><div className="small" style={{ fontWeight: 600 }}>{preset.name}</div><div className="dim" style={{ fontSize: '.72rem' }}>{preset.ex.length} {t('exercises')}</div></div>
         <div className="row" style={{ gap: 4 }}>
-          <button className="iconbtn" aria-label={t('Edit preset')} onClick={() => openSheet(close => <PresetEditor existing={preset} close={close} reload={reload} />)}><Icon name="pencil" /></button>
+          <button className="iconbtn" aria-label={t('Edit preset')} onClick={() => openSheet((close, { setOnBack }) => <PresetEditor existing={preset} close={close} setOnBack={setOnBack} reload={reload} />)}><Icon name="pencil" /></button>
           <button className="iconbtn" aria-label={t('Delete')} style={{ color: 'var(--red)' }} onClick={() => remove(preset)}><Icon name="trash" /></button>
         </div>
       </div>)}

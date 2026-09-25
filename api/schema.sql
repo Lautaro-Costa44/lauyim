@@ -465,10 +465,12 @@ CREATE TABLE IF NOT EXISTS plans (
 
 -- Plan y vencimiento vigentes de cada socio; se va con el socio.
 -- push_sent_for_due: vencimiento para el que ya salió el aviso push (uno por período).
+-- trial_until: último día de la prueba gratis (YYYY-MM-DD, tz del gym); el primer pago la borra.
 CREATE TABLE IF NOT EXISTS member_billing (
   user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
   plan_id INTEGER REFERENCES plans(id),
   due_date TEXT,
+  trial_until TEXT,
   push_sent_for_due TEXT,
   updated_at INTEGER
 );
@@ -493,6 +495,7 @@ CREATE TABLE IF NOT EXISTS payments (
   created_at INTEGER,
   previous_due_date TEXT,
   previous_plan_id INTEGER,
+  previous_trial_until TEXT,       -- prueba que el pago cerró; anularlo la devuelve
   voided_at INTEGER,
   voided_by TEXT,
   void_reason TEXT
@@ -512,6 +515,7 @@ CREATE TABLE IF NOT EXISTS member_profile (
   phone TEXT,
   phone_norm TEXT,
   email TEXT,
+  trial_used_at INTEGER,          -- cuándo usó la prueba gratis (ms); una sola por persona (DNI)
   created_at TEXT NOT NULL,
   updated_at TEXT
 );

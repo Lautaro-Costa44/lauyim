@@ -17,6 +17,8 @@ export default function MembershipBlocked() {
   const signOut = useStore(s => s.signOut)
   const toast = useUI(s => s.toast)
   const [busy, setBusy] = useState(false)
+  // Bloqueado porque terminó la prueba gratis, no por una cuota vencida.
+  const trialEnded = !!billing?.trialEnded
 
   const retry = async () => {
     setBusy(true)
@@ -46,11 +48,12 @@ export default function MembershipBlocked() {
       <div style={{ width: 64, height: 64, borderRadius: '50%', background: 'color-mix(in srgb, var(--danger) 16%, transparent)', color: 'var(--danger)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 20 }}>
         <Icon name="lock" size={32} />
       </div>
-      <h1 style={{ fontSize: 24, fontWeight: 700, marginBottom: 10 }}>{t('Cuota vencida')}</h1>
+      <h1 style={{ fontSize: 24, fontWeight: 700, marginBottom: 10 }}>{trialEnded ? t('Prueba terminada') : t('Cuota vencida')}</h1>
       <p className="muted" style={{ fontSize: 15, maxWidth: 400, lineHeight: 1.5, marginBottom: 8 }}>
-        {t('Tu cuota está vencida, renovala en recepción para poder seguir usando la app')}
+        {trialEnded ? t('Tu prueba terminó. Aboná en recepción para seguir usando la app')
+          : t('Tu cuota está vencida, renovala en recepción para poder seguir usando la app')}
       </p>
-      {billing?.dueDate && <p className="dim small" style={{ marginBottom: 24 }}>
+      {!trialEnded && billing?.dueDate && <p className="dim small" style={{ marginBottom: 24 }}>
         {[billing.planName, t('Venció el {0}', fmtDateDMY(billing.dueDate))].filter(Boolean).join(' · ')}
       </p>}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10, width: '100%', maxWidth: 320 }}>

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useUI } from '../../../store/useUI.js'
 import { api } from '../../../lib/api.js'
 import { t } from '../../../lib/i18n.js'
-import { Button, NumberField, Row, Section, SelectRow, Switch } from '../../../components/ui.jsx'
+import { Button, NumberField, Row, Section, SelectRow, Switch, usePickerStep, useSheetBack } from '../../../components/ui.jsx'
 import { METHOD_LABELS, methodLabel } from './common.jsx'
 
 // Configuración global de cuotas (admin_settings). El servidor valida lo mismo; acá se evita
@@ -20,13 +20,16 @@ const DAY_FIELDS = [
   ['push_days_before', 'Días de aviso push', 'Cuántos días antes del vencimiento sale el aviso al socio.'],
   ['grace_days', 'Días de tolerancia', 'Días después del vencimiento antes de bloquear la app.']
 ]
-const inRange = n => Number.isInteger(n) && n >= 0 && n <= 30
+const inRange = (n, min = 0) => Number.isInteger(n) && n >= min && n <= 30
 
-export function SettingsSheet({ close, onChanged }) {
+export function SettingsSheet({ close, setOnBack, onChanged }) {
   const toast = useUI(s => s.toast)
   const [form, setForm] = useState(null)
   const [error, setError] = useState(null)
   const [saving, setSaving] = useState(false)
+  // La zona horaria se elige en un paso de este mismo sheet; el back vuelve al formulario.
+  const picker = usePickerStep()
+  useSheetBack(setOnBack, () => picker.isOpen ? picker.close() : close())
   useEffect(() => { api('/api/admin/billing/settings').then(d => setForm(d.settings)).catch(e => setError(e.message)) }, [])
 
   if (!form) return <>
@@ -39,22 +42,29 @@ export function SettingsSheet({ close, onChanged }) {
   // Zonas de Argentina, más la guardada y la del navegador si no están en la lista.
   const browserTz = (() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone } catch { return null } })()
   const zones = [...new Set([...AR_TIMEZONES, form.gym_tz, browserTz].filter(Boolean))]
-  const valid = DAY_FIELDS.every(([key]) => inRange(form[key])) && form.payment_methods.length > 0
+  const valid = DAY_FIELDS.every(([key]) => inRange(form[key])) && inRange(form.trial_days, 1) && form.payment_methods.length > 0
 
   const save = () => {
     setSaving(true)
-    const { due_soon_days, push_days_before, grace_days, payment_methods, gym_tz } = form
-    api('/api/admin/billing/settings', { method: 'PUT', body: JSON.stringify({ due_soon_days, push_days_before, grace_days, payment_methods, gym_tz }) })
+    const { due_soon_days, push_days_before, grace_days, trial_days, payment_methods, gym_tz } = form
+    api('/api/admin/billing/settings', { method: 'PUT', body: JSON.stringify({ due_soon_days, push_days_before, grace_days, trial_days, payment_methods, gym_tz }) })
       .then(() => { toast(t('Configuración guardada')); onChanged?.(); close() })
       .catch(e => { setSaving(false); setError(e.message) })
   }
 
   return <>
+    {picker.view}
+    <div hidden={picker.isOpen}>
     <h3>{t('Configuración de cuotas')}</h3>
     <Section title={t('Plazos (0 a 30 días)')}>
       {DAY_FIELDS.map(([key, title, subtitle]) => <Row key={key} title={t(title)} subtitle={t(subtitle)}>
         <NumberField className="row-num" value={form[key]} onChange={v => set({ [key]: v })} decimal={false} nullable />
       </Row>)}
+    </Section>
+    <Section title={t('Prueba gratis')} footer={t('Una sola por persona (se identifica por DNI). 1 = solo el día en que se da.')}>
+      <Row title={t('Días de prueba')} subtitle={t('De 1 a 30 días.')}>
+        <NumberField className="row-num" value={form.trial_days} onChange={v => set({ trial_days: v })} decimal={false} nullable />
+      </Row>
     </Section>
     <Section title={t('Métodos de pago')} footer={t('Al menos uno tiene que quedar habilitado.')}>
       {Object.keys(METHOD_LABELS).map(m => <Row key={m} title={methodLabel(m)}>
@@ -64,13 +74,14 @@ export function SettingsSheet({ close, onChanged }) {
       </Row>)}
     </Section>
     <Section title={t('Zona horaria del gym')} footer={t('Define qué día es "hoy" para los vencimientos y a qué hora sale el aviso.')}>
-      <SelectRow title={t('Zona horaria')} value={form.gym_tz} onChange={v => set({ gym_tz: v })} sheetTitle={t('Zona horaria del gym')}
+      <SelectRow title={t('Zona horaria')} value={form.gym_tz} onChange={v => set({ gym_tz: v })} sheetTitle={t('Zona horaria del gym')} picker={picker.open}
         options={zones.map(z => ({ value: z, label: tzLabel(z), subtitle: z }))} />
     </Section>
-    {!valid && <div className="form-error" role="alert">{t('Revisá los plazos (enteros de 0 a 30) y dejá al menos un método de pago.')}</div>}
+    {!valid && <div className="form-error" role="alert">{t('Revisá los plazos (enteros de 0 a 30, la prueba de 1 a 30) y dejá al menos un método de pago.')}</div>}
     {error && <div className="form-error" role="alert">{error}</div>}
     <div style={{ height: 12 }} />
     <Button variant="primary" disabled={saving || !valid} onClick={save}>{saving ? t('Guardando…') : t('Save')}</Button>
     <div style={{ height: 8 }} />
+    </div>
   </>
 }

@@ -7,7 +7,7 @@ import { workoutVolume, setsDone } from '../../lib/history.js'
 import { confirmSheet, inputSheet } from '../../sheets.jsx'
 import { t } from '../../lib/i18n.js'
 import Icon from '../../components/Icon.jsx'
-import { Button, TextField, SelectRow, Segmented, Section, Row, Switch, NumberField } from '../../components/ui.jsx'
+import { Button, TextField, SelectRow, Segmented, Section, Row, Switch, NumberField, usePickerStep } from '../../components/ui.jsx'
 import { FoodPicker, GrupoComidaRow, totalesDeIngredientes, FRANJAS } from '../Nutricion.jsx'
 import RoutineEditor from '../RoutineEditor.jsx'
 import { LESIONES_OPTIONS, OBJETIVO_OPTIONS, CheckPill } from '../SurveyWizard.jsx'
@@ -298,7 +298,7 @@ const bigSectionTitle = txt => <span style={{ fontSize: 17, fontWeight: 600, col
 
 const NUTRITION_GOAL_LIMITS = { macros: 2000, calories: 20000 }
 
-function AdminNutritionCard({ userId, openSuggestion, editSuggestion }) {
+function AdminNutritionCard({ userId, openSuggestion, editSuggestion, picker }) {
   const toast = useUI(s => s.toast)
   const automaticoHabilitado = useStore(s => s.config?.nutricion_automatico) !== false
   const [data, setData] = useState(null)
@@ -373,7 +373,7 @@ function AdminNutritionCard({ userId, openSuggestion, editSuggestion }) {
         <Switch checked={!isManual} onChange={v => toggleMode(!v)} disabled={saving} />
       </Row>}
       {isManual && <>
-        <SelectRow title={t('Objetivo')} value={draft.objetivo}
+        <SelectRow title={t('Objetivo')} value={draft.objetivo} picker={picker}
           options={[{ value: null, label: t('Sin definir') }, ...OBJETIVO_OPTIONS]}
           onChange={v => setDraft({ objetivo: v })} />
         <div className="admin-goals-fields">
@@ -649,6 +649,10 @@ export function AdminManageSheet({ userId, userName, close, setOnBack }) {
   suggestionFlowRef.current = suggestionFlow
   // Paso-atrás publicado por el wizard mientras está montado (ver AdminSuggestionWizard).
   const wizardBack = useRef(null)
+  // "Objetivo" se elige en un paso de este sheet; el back cierra primero esa lista.
+  const picker = usePickerStep()
+  const pickerRef = useRef(picker)
+  pickerRef.current = picker
 
   // This is already a real sheet. Keep the suggestion wizard inside it; opening another
   // fullscreen sheet here was the remaining nested-sheet path to the PWA black screen.
@@ -656,6 +660,7 @@ export function AdminManageSheet({ userId, userName, close, setOnBack }) {
   // por ref. Volver a registrar en cada cambio de paso realimentaba el render de Modals.
   useEffect(() => {
     setOnBack(() => {
+      if (pickerRef.current.isOpen) return pickerRef.current.close()
       if (wizardBack.current) return wizardBack.current()
       if (suggestionFlowRef.current) return setSuggestionFlow(null)
       return close()
@@ -681,12 +686,15 @@ export function AdminManageSheet({ userId, userName, close, setOnBack }) {
         backRef={wizardBack}
         initialStep={suggestionFlow.initialStep}
       /> : <>
+        {picker.view}
+        <div hidden={picker.isOpen}>
         <div className="row between compound-builder-header">
           <div><h3 style={{ margin: 0 }}>{t('Administrar Nutrición/Rutina')}</h3><div className="t-sub" style={{ color: 'var(--label)', marginTop: 2 }}>{userName}</div></div>
           <button type="button" className="iconbtn" onClick={close} aria-label={t('Close')}><Icon name="xmark" /></button>
         </div>
         <Segmented options={[{ value: 'nutrition', label: t('Nutrición') }, { value: 'routine', label: t('Rutina') }]} value={tab} onChange={setTab} />
-        {tab === 'nutrition' ? <AdminNutritionCard userId={userId} openSuggestion={openSuggestion} editSuggestion={editSuggestion} /> : <AdminRoutineCard userId={userId} />}
+        {tab === 'nutrition' ? <AdminNutritionCard userId={userId} openSuggestion={openSuggestion} editSuggestion={editSuggestion} picker={picker.open} /> : <AdminRoutineCard userId={userId} />}
+        </div>
       </>}
     </div>
   </div>
@@ -699,9 +707,10 @@ export function UserDetail({ id, billingEnabled = true, users, openUser, onChang
   const [d, setD] = useState(null)
   const toast = useUI(s => s.toast)
   const openSheet = useUI(s => s.openSheet)
+  const [reloadKey, setReloadKey] = useState(0)
   const showUser = openUser || (otherId => openSheet(c => <UserDetail id={otherId} billingEnabled={billingEnabled} users={users} onChanged={onChanged} close={c} />))
   const currentUser = useStore(s => s.user)
-  useEffect(() => { api('/api/admin/user?id=' + encodeURIComponent(id)).then(setD).catch(e => toast(e.message)) }, [id])
+  useEffect(() => { api('/api/admin/user?id=' + encodeURIComponent(id)).then(setD).catch(e => toast(e.message)) }, [id, reloadKey])
   if (!d) return <div className="muted small">{t('Loading…')}</div>
   const u = d.user
   const setDisabled = disabled => {
@@ -743,7 +752,7 @@ export function UserDetail({ id, billingEnabled = true, users, openUser, onChang
     </div>}
     {!hasApp && <div className="member-noapp">
       <div className="small muted">{t('Este socio todavía no usa la app. Dale un código para que cree su acceso, o unilo a su cuenta si ya tiene una.')}</div>
-      <Button variant="primary" onClick={() => openMemberSheet(openSheet, 'LinkCodeSheet', { user: u })}>{t('Generar código de vinculación')}</Button>
+      <Button variant="primary" onClick={() => openMemberSheet(openSheet, 'LinkCodeSheet', { user: u, onLinked: () => { setReloadKey(k => k + 1); onChanged() } })}>{t('Generar código de vinculación')}</Button>
       <Button variant="tinted" onClick={() => merge({ fichaId: u.id, fichaName: u.name })}>{t('Vincular con cuenta existente')}</Button>
     </div>}
     <FichaCard user={{ ...u, hasApp }} users={users} openSheet={openSheet} openUser={showUser} onLink={merge} />

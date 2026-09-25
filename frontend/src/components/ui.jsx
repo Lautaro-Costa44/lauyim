@@ -16,6 +16,7 @@
 import { useId, useRef, useState, useEffect, useCallback, forwardRef } from 'react'
 import Icon from './Icon.jsx'
 import { NO_AUTOFILL } from '../lib/input-safety.js'
+import { t } from '../lib/i18n.js'
 
 /* ============================ text ============================ */
 
@@ -258,9 +259,12 @@ export function Row({ icon, iconTint, title, subtitle, value, accessory = 'none'
 // theme entirely — on dark mode it flashes a white sheet — and can't show more
 // than a bare label per option. This opens our own sheet with a checkmark on the
 // current value, which is also how iOS itself handles a long option list.
-export function SelectRow({ icon, iconTint, title, value, options, onChange, sheetTitle, stackedValue = false }) {
+// picker: el `open` de usePickerStep. Dentro de un sheet (sobre todo a pantalla completa), la
+// lista se muestra como un paso interno del mismo sheet en vez de apilar otro sheet encima.
+export function SelectRow({ icon, iconTint, title, value, options, onChange, sheetTitle, stackedValue = false, picker }) {
   const cur = options.find(o => o.value === value)
   const open = () => {
+    if (picker) return picker({ title: sheetTitle || title, options, value, onChange })
     const { openSheet } = require_ui()
     const h = openSheet(close => (
       <>
@@ -287,6 +291,47 @@ export function SelectRow({ icon, iconTint, title, value, options, onChange, she
 
 /** Multi-select row for additive exercise metadata. The sheet mirrors selection locally so
  * each tap updates its checkmark immediately while the caller persists the value. */
+// Lista de opciones como paso interno de un sheet: "Volver", título y las opciones; elegir una
+// vuelve al paso anterior.
+export function PickerStep({ title, options, value, onChange, onBack }) {
+  return <div className="picker-step">
+    <Button size="sm" icon="chevronLeft" onClick={onBack}>{t('Volver')}</Button>
+    <h3 style={{ margin: '12px 0 10px' }}>{title}</h3>
+    <div className="sect-b">
+      {options.map((o, i) => (
+        <button key={String(o.value ?? 'none-' + i)} type="button" className="lrow tap" aria-pressed={o.value === value}
+          onClick={() => { onBack(); onChange(o.value) }}>
+          <span className="lrow-m"><span className="lrow-t">{o.label}</span>
+            {o.subtitle && <span className="lrow-s">{o.subtitle}</span>}</span>
+          {o.value === value && <Icon name="check" className="lrow-k" />}
+        </button>
+      ))}
+    </div>
+  </div>
+}
+
+// Estado del paso "elegir de una lista" de un sheet. Uso: pasar `open` como `picker` a los
+// SelectRow, ocultar el contenido (hidden, así los formularios conservan lo cargado) mientras
+// isOpen, mostrar `view`, y que el back del sheet llame primero a `close`.
+export function usePickerStep() {
+  const [cfg, setCfg] = useState(null)
+  const close = useCallback(() => setCfg(null), [])
+  const open = useCallback(next => setCfg(next), [])
+  return { open, close, isOpen: !!cfg, view: cfg ? <PickerStep {...cfg} onBack={close} /> : null }
+}
+
+// Back (gesto o botón atrás del sistema) de un sheet con pasos: un solo registro por sheet, y
+// lo variable se lee por ref (registrar en cada render realimenta Modals; ver Modals.jsx).
+export function useSheetBack(setOnBack, goBack) {
+  const ref = useRef(goBack)
+  ref.current = goBack
+  useEffect(() => {
+    if (!setOnBack) return
+    setOnBack(() => ref.current())
+    return () => setOnBack(null)
+  }, [setOnBack])
+}
+
 export function MultiSelectRow({ icon, iconTint, title, values, options, onToggle, sheetTitle, noneLabel, doneLabel }) {
   const selected = options.filter(o => values.includes(o.value))
   const summary = selected.length ? selected.map(o => o.label).join(', ') : (noneLabel || '')

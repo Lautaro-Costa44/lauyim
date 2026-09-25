@@ -103,7 +103,7 @@ test('merge: dry run no modifica nada y cuenta lo que se perdería', () => {
   assert.equal(snapshot(), before);
   assert.equal(out.plan.payments, 1);
   assert.deepEqual(out.plan.lost, { routines: 1 });
-  assert.deepEqual(out.plan.billing, { ficha: { planId: plan.id, planName: 'Mensual', dueDate: '2026-10-01' }, cuenta: null, conflict: false, keep: 'ficha' });
+  assert.deepEqual(out.plan.billing, { ficha: { planId: plan.id, planName: 'Mensual', dueDate: '2026-10-01', trialUntil: null }, cuenta: null, conflict: false, keep: 'ficha' });
   assert.deepEqual(out.plan.profile, { ficha: true, cuenta: false, conflict: false, action: 'move' });
 });
 
@@ -188,4 +188,70 @@ test('deleteUser con transacción externa: no abre ni cierra la suya', () => {
   // Sin la opción, sigue siendo su propia transacción.
   assert.equal(dbMod.deleteUser('f-tx').id, 'f-tx');
   assert.equal(dbMod.getUserById('f-tx'), undefined);
+});
+
+test('alta con primer pago o prueba: todo en una transacción; si el pago falla no queda la ficha', () => {
+  const pay = { planId: plan.id, planName: plan.name, amount: 20000, method: 'efectivo', paidAt: Date.now(), periodStart: '2026-09-24', periodEnd: '2026-10-24', dueDate: '2026-10-24', createdBy: 'owner' };
+  dbMod.createMember({ id: 'f-pay', name: 'Con pago', profile: profile({ dni: '30000020', dniNorm: '30000020' }), start: { payment: pay } });
+  assert.equal(dbMod.getMemberBilling('f-pay').dueDate, '2026-10-24');
+  assert.equal(dbMod.getPaymentsByUserId('f-pay').length, 1);
+  assert.equal(dbMod.getPaymentsByUserId('f-pay')[0].userName, 'Con pago');
+
+  dbMod.createMember({ id: 'f-trial', name: 'Con prueba', profile: profile({ dni: '30000021', dniNorm: '30000021' }), start: { trialUntil: '2026-09-24' } });
+  assert.equal(dbMod.getMemberBilling('f-trial').trialUntil, '2026-09-24');
+  assert.ok(dbMod.getMemberProfile('f-trial').trialUsedAt > 0);
+
+  // amount 0 viola el CHECK de payments: rollback de usuario, perfil y plan.
+  const before = snapshot();
+  assert.throws(() => dbMod.createMember({ id: 'f-bad', name: 'Mal', profile: profile({ dni: '30000022', dniNorm: '30000022' }), start: { payment: { ...pay, amount: 0 } } }));
+  assert.equal(snapshot(), before);
+  assert.equal(dbMod.getUserById('f-bad'), undefined);
+});
+
+test('prueba: una sola por persona; el pago la cierra y calcula el vencimiento como siempre', () => {
+  dbMod.createMember({ id: 'f-t2', name: 'Prueba 2', profile: profile({ dni: '30000023', dniNorm: '30000023' }) });
+  assert.equal(dbMod.startTrial('f-t2', '2026-09-24'), true);
+  assert.equal(dbMod.startTrial('f-t2', '2026-09-30'), false);          // ya la usó
+  assert.equal(dbMod.getMemberBilling('f-t2').trialUntil, '2026-09-24');
+  payment('f-t2');
+  const b = dbMod.getMemberBilling('f-t2');
+  assert.equal(b.trialUntil, null);
+  assert.equal(b.dueDate, '2026-10-01');
+  assert.ok(dbMod.getMemberProfile('f-t2').trialUsedAt > 0);             // la marca queda
+});
+
+test('anular: devuelve la prueba guardada en el pago; un pago viejo sin el dato la deja en NULL', () => {
+  dbMod.createMember({ id: 'f-void', name: 'Void', profile: profile({ dni: '30000030', dniNorm: '30000030' }), start: { trialUntil: '2026-09-20' } });
+  const id = payment('f-void');
+  assert.equal(dbMod.getPaymentById(id).previousTrialUntil, '2026-09-20');
+  dbMod.voidPayment({ paymentId: id, userId: 'f-void', voidedBy: 'owner', planId: null, dueDate: null, trialUntil: '2026-09-20' });
+  assert.deepEqual([dbMod.getMemberBilling('f-void').planId, dbMod.getMemberBilling('f-void').trialUntil], [null, '2026-09-20']);
+
+  // Pago cargado antes de la columna (sin previous_trial_until): igual que antes, sin prueba.
+  const old = payment('f-void');
+  q().prepare('UPDATE payments SET previous_trial_until = NULL WHERE id = ?').run(old);
+  const p = dbMod.getPaymentById(old);
+  dbMod.voidPayment({ paymentId: old, userId: 'f-void', voidedBy: 'owner', planId: p.previousPlanId, dueDate: p.previousDueDate, trialUntil: p.previousTrialUntil });
+  assert.equal(dbMod.getMemberBilling('f-void').trialUntil, null);
+});
+
+test('merge: la prueba usada se conserva; la prueba en curso sigue la regla del plan', () => {
+  // Ficha con prueba, cuenta sin perfil: el perfil se mueve con la marca y la prueba pasa.
+  account('acc-tr', 'cred-tr');
+  dbMod.createMember({ id: 'f-tr', name: 'Tr', profile: profile({ dni: '30000024', dniNorm: '30000024' }), start: { trialUntil: '2026-09-26' } });
+  const dry = dbMod.mergeMember({ fichaId: 'f-tr', targetId: 'acc-tr', dryRun: true }).plan;
+  assert.deepEqual(dry.billing.ficha, { planId: null, planName: null, dueDate: null, trialUntil: '2026-09-26' });
+  assert.equal(dry.billing.keep, 'ficha');
+  assert.ok(dbMod.mergeMember({ fichaId: 'f-tr', targetId: 'acc-tr' }).result);
+  assert.equal(dbMod.getMemberBilling('acc-tr').trialUntil, '2026-09-26');
+  assert.ok(dbMod.getMemberProfile('acc-tr').trialUsedAt > 0);
+
+  // Cuenta con perfil y sin marca + ficha que ya usó la prueba (y pagó): la cuenta queda marcada.
+  account('acc-tr2', 'cred-tr2');
+  q().prepare("INSERT INTO member_profile (user_id, full_name, created_at) VALUES ('acc-tr2', 'Cuenta', ?)").run(new Date().toISOString());
+  dbMod.createMember({ id: 'f-tr2', name: 'Tr 2', profile: profile({ dni: '30000025', dniNorm: '30000025' }), start: { trialUntil: '2026-09-20' } });
+  payment('f-tr2');
+  assert.ok(dbMod.mergeMember({ fichaId: 'f-tr2', targetId: 'acc-tr2' }).result);
+  assert.ok(dbMod.getMemberProfile('acc-tr2').trialUsedAt > 0);
+  assert.equal(dbMod.getMemberBilling('acc-tr2').trialUntil, null);
 });
