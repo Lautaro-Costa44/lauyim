@@ -264,7 +264,8 @@ export function initDatabase() {
     ['default_intensifier', 'TEXT'],
     ['default_sets', 'INTEGER'],
     ['sync_versions', 'TEXT'],
-    ['nutrition_goals', 'TEXT']
+    ['nutrition_goals', 'TEXT'],
+    ['plan_iniciado', 'INTEGER DEFAULT 0']
   ];
 
   for (const [col, type] of columnsToAdd) {
@@ -293,8 +294,34 @@ export function initDatabase() {
   db.exec(`CREATE INDEX IF NOT EXISTS idx_custom_exercises_user_origin ON custom_exercises(user_id, origin_id)`);
   db.exec(`CREATE TABLE IF NOT EXISTS preset_custom_exercises (id TEXT PRIMARY KEY, payload TEXT NOT NULL, updated_at INTEGER NOT NULL)`);
   backfillPresetCustomExercises(db);
+  backfillPlanIniciado(db);
 
   return db;
+}
+
+// plan_iniciado: el socio ya empezó su plan (tuvo una rutina, eligió un programa o descartó el
+// cartel de bienvenida). Una vez prendido no se apaga, así el cartel no vuelve aunque borre todo.
+// Backfill: quien ya tiene o tuvo rutinas o entrenamientos, o ya eligió un camino en el cartel
+// (estado_inicial), queda prendido. Se adelanta _ts para que su dispositivo baje el estado nuevo.
+// Idempotente: solo toca filas todavía en 0.
+function backfillPlanIniciado(db) {
+  db.prepare(`
+    UPDATE user_state SET plan_iniciado = 1, _ts = MAX(COALESCE(_ts, 0), ?)
+    WHERE COALESCE(plan_iniciado, 0) = 0 AND (
+      EXISTS (SELECT 1 FROM routines r WHERE r.user_id = user_state.user_id)
+      OR EXISTS (SELECT 1 FROM workouts w WHERE w.user_id = user_state.user_id)
+      OR COALESCE(estado_inicial, 'pendiente') != 'pendiente'
+      OR EXISTS (
+        SELECT 1 FROM json_each(CASE WHEN json_valid(routine_groups) THEN routine_groups ELSE '[]' END) g
+        WHERE json_array_length(COALESCE(json_extract(g.value, '$.routines'), '[]')) > 0
+      )
+    )
+  `).run(Date.now());
+}
+
+// Prende plan_iniciado (nunca lo apaga).
+export function markPlanIniciado(userId) {
+  getDatabase().prepare('UPDATE user_state SET plan_iniciado = 1 WHERE user_id = ? AND COALESCE(plan_iniciado, 0) = 0').run(userId);
 }
 
 // Pruebas dadas antes de member_trials: solo quedó member_profile.trial_used_at. Se crea una
@@ -834,6 +861,7 @@ export function getUserState(userId) {
     onboardingCompletado: row.onboarding_completado === 1,
     onboardingStatsCompletado: row.onboarding_stats_completado === 1,
     onboardingNutritionCompletado: row.onboarding_nutrition_completado === 1,
+    planIniciado: row.plan_iniciado === 1,
     edad: row.edad,
     altura: row.altura,
     objetivo: row.objetivo,
@@ -881,6 +909,9 @@ export function saveUserState(userId, S, opts = {}) {
   // client's full-state sync payload. INSERT OR REPLACE below would otherwise wipe it back
   // to NULL on every regular sync, so capture and restore it around the replace.
   const existingNutritionGoals = db.prepare('SELECT nutrition_goals FROM user_state WHERE user_id = ?').get(userId)?.nutrition_goals ?? null;
+  // plan_iniciado tampoco está en el INSERT OR REPLACE: se conserva y solo se puede prender (un
+  // cliente viejo que no conoce el campo no lo apaga).
+  const existingPlanIniciado = db.prepare('SELECT plan_iniciado FROM user_state WHERE user_id = ?').get(userId)?.plan_iniciado === 1;
 
   // Guardar estado principal
   const stateStmt = db.prepare(`
@@ -936,6 +967,8 @@ export function saveUserState(userId, S, opts = {}) {
     S.progressionType || null,
     S.progressionConfig ? JSON.stringify(S.progressionConfig) : null
   );
+
+  if (existingPlanIniciado || S.planIniciado === true) markPlanIniciado(userId);
 
   // Guardar rutinas
   saveRoutines(userId, S.routines || [], opts);
@@ -1373,6 +1406,8 @@ export function saveRoutines(userId, routines, { preserveExtras = false } = {}) 
     INSERT INTO user_state (user_id, _ts) VALUES (?, ?)
     ON CONFLICT(user_id) DO NOTHING
   `).run(userId, Date.now());
+  // Tener una rutina (propia, de un programa o cargada por un admin) es haber empezado el plan.
+  if ((routines || []).length) markPlanIniciado(userId);
 
   // Eliminar rutinas viejas
   const deleteStmt = db.prepare('DELETE FROM routines WHERE user_id = ?');

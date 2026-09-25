@@ -154,6 +154,7 @@ CREATE TABLE IF NOT EXISTS user_state (
   progression_tips INTEGER DEFAULT 1,
   progression_type TEXT NULL,
   progression_config TEXT NULL,
+  plan_iniciado INTEGER DEFAULT 0,  -- 1 = ya empezó su plan; el cartel de bienvenida no vuelve
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
  

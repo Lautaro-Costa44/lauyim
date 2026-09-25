@@ -36,6 +36,10 @@ export const DEF = {
   onboardingCompletado: false,
   onboardingStatsCompletado: false,
   onboardingNutritionCompletado: false,
+  // planIniciado: the member already started a plan (had a routine, picked a program or dismissed
+  // the welcome card). Only ever goes true, here and on the server, so the welcome card never
+  // comes back after deleting every routine.
+  planIniciado: false,
   respuestasEncuesta: null,
   rutinaGenerada: null,
   fechaUltimaEncuesta: null,
@@ -94,7 +98,9 @@ export const isMembershipBlockedError = e => e?.data?.error === 'membership_bloc
 const ascendingBodyweight = entries => (Array.isArray(entries)
   ? [...entries].sort((a, b) => bodyweightTime(a) - bodyweightTime(b))
   : entries)
-const ONBOARDING_FLAGS = ['onboardingCompletado', 'onboardingStatsCompletado', 'onboardingNutritionCompletado']
+const ONBOARDING_FLAGS = ['onboardingCompletado', 'onboardingStatsCompletado', 'onboardingNutritionCompletado', 'planIniciado']
+// Having a routine is having started a plan: set here, on every write, whichever screen made it.
+const markPlanStarted = S => { if (!S.planIniciado && (S.routines || []).length) S.planIniciado = true }
 
 // Helper functions for routine groups management
 function syncGroupInStore() {
@@ -187,12 +193,14 @@ export const useStore = create((set, get) => {
       const S = clone(get().S)
       const before = clone(S)
       mut(S)
+      markPlanStarted(S)
       persist(S, false)
       if (push && get().user) enqueueSync(get().user.id, diffState(before, S), before._ts || null).then(() => scheduleSync())
     },
     replaceState(S, push = false) {
       const before = clone(get().S)
       const next = clone(S)
+      markPlanStarted(next)
       persist(next, false)
       if (push && get().user) enqueueSync(get().user.id, diffState(before, next), before._ts || null).then(() => scheduleSync())
     },

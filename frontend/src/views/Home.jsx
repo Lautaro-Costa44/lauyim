@@ -62,19 +62,20 @@ export default function Home() {
   // today's session shown right under the week strip
   const onToday = () => { if (S.active) nav('/workout'); else if (routine) startFlow(routine.id); else dayOverrideSheet(todayISO()) }
 
-  // Welcome card: se muestra si el usuario no tiene rutinas todavía.
-  // Migración implícita: si estadoInicial es 'pendiente' pero ya tiene routines (usuario anterior),
-  // tratarlo como si hubiera elegido un plan manual — no mostrar la card.
+  // Cartel de bienvenida: solo hasta que el socio empieza su plan. planIniciado (persistido en el
+  // servidor, se prende al tener una rutina, elegir un programa o descartar el cartel) no se
+  // apaga, así que borrar todas las rutinas no lo trae de vuelta: queda el estado vacío de Plan.
+  // Guardas para un estado local de antes del flag (hasta que baje el del servidor): ya eligió un
+  // camino (estadoInicial) o ya entrenó.
   const surveyEnabled = config?.survey_enabled !== false   // default true si config aún no cargó
-  const estadoEfectivo = S.routines.length > 0
-    ? (S.estadoInicial !== 'pendiente' ? S.estadoInicial : 'plan_manual')
-    : (S.estadoInicial || 'pendiente')
-  const mostrarBienvenida = !S.active && estadoEfectivo === 'pendiente'
+  const mostrarBienvenida = !S.active && !S.planIniciado && S.routines.length === 0
+    && (S.estadoInicial || 'pendiente') === 'pendiente' && !(S.workouts || []).length
 
   const irAlPlan = () => {
-    useStore.getState().update(st => { st.estadoInicial = 'plan_manual' })
+    useStore.getState().update(st => { st.estadoInicial = 'plan_manual'; st.planIniciado = true })
     nav('/plan')
   }
+  const descartarBienvenida = () => useStore.getState().update(st => { st.planIniciado = true })
 
   return <div className="narrow">
     <div className="hdr">
@@ -118,7 +119,9 @@ export default function Home() {
       <div className="card" data-tour="welcome">
         <div className="row" style={{ gap: 10, marginBottom: 6 }}>
           <span className="lrow-i"><Icon name="sparkles" /></span>
-          <div className="big" style={{ fontSize: 22 }}>{t('Welcome!')}</div>
+          <div className="big" style={{ fontSize: 22, flex: 1 }}>{t('Welcome!')}</div>
+          <button type="button" className="iconbtn" style={{ width: 30, height: 30, fontSize: 15 }} onClick={descartarBienvenida}
+            aria-label={t('Cerrar bienvenida')} title={t('Cerrar')}><Icon name="xmark" /></button>
         </div>
         <div className="muted small" style={{ marginBottom: 16, lineHeight: 1.5 }}>
           {t('Configurá tu rutina semanal para empezar.')}
