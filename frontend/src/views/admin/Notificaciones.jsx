@@ -146,5 +146,5 @@ function NotifyHourCard() {
 }
 
 export default function Notificaciones() {
-  return <div className="admin-single"><PushNotificationCard /><NotifyHourCard /></div>
+  return <div className="admin-cards"><PushNotificationCard /><NotifyHourCard /></div>
 }

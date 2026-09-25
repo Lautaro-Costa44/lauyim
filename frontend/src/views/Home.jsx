@@ -12,8 +12,8 @@ import { Button } from '../components/ui.jsx'
 import { glyphOf } from '../lib/glyphs.js'
 import { startTourA } from '../lib/onboarding.js'
 import { api } from '../lib/api.js'
-import { routinesFromPresets } from '../lib/starter.js'
-import { applyPlannedDays } from '../lib/routineGroups.js'
+import { routinesFromPresets, presetSourceFor } from '../lib/starter.js'
+import { applyPlannedDays, createRoutineGroup, syncActiveGroupInState } from '../lib/routineGroups.js'
 
 
 // Home = what to do now + a quick glance. Deep charts & history live in Stats.
@@ -35,7 +35,22 @@ export default function Home() {
         toast(`La rutina “${result.conflict.routine?.name || 'Routine'}” ya está planeada para el ${t(DAYN[result.conflict.day])}.`)
         return
       }
-      update(s => { s.routines = rs; s.week = result.week })
+      // The plan lands in a group named after the program, which records where it came from
+      // (the admin counts members per program). With groups already there, the active one gets it.
+      const source = presetSourceFor(d, name)
+      update(s => {
+        s.routines = rs
+        s.week = result.week
+        if (!(s.routineGroups || []).length) {
+          const group = createRoutineGroup(name, rs, result.week, { source })
+          s.routineGroups = [group]
+          s.activeGroupId = group.id
+        } else {
+          const active = s.routineGroups.find(g => g.id === s.activeGroupId)
+          if (active && source) active.source = source
+          syncActiveGroupInState(s)
+        }
+      })
     } catch (e) { toast(e.message || t('Could not load this group.')) }
   }
   const [weekOffset, setWeekOffset] = useState(0)

@@ -183,8 +183,8 @@ export default function Acceso() {
   const user = useStore(s => s.user)
   const { invites, loadInvites, qrAccess, setQrAccess, billingEnabled, setBillingEnabled, loadUsers } = useAdmin()
   const invitesCard = <InvitesCard invites={invites} reload={loadInvites} />
-  if (!user?.owner) return <div className="admin-single">{invitesCard}</div>
-  return <div className="admin-access">
+  if (!user?.owner) return <div className="admin-cards">{invitesCard}</div>
+  return <div className="admin-cards">
     {invitesCard}
     <QrAccessCard data={qrAccess} reload={setQrAccess} />
     <MemberFieldsCard />

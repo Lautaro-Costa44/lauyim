@@ -381,10 +381,10 @@ export const useStore = create((set, get) => {
         }
       })
     },
-    addGroup: (name, routines, week, setAsActive) => {
+    addGroup: (name, routines, week, setAsActive, opts) => {
       let newGroup = null
       get().update(S => {
-        newGroup = addGroupToState(S, name, routines || [], week || {}, setAsActive)
+        newGroup = addGroupToState(S, name, routines || [], week || {}, setAsActive, opts)
       })
       return newGroup
     },

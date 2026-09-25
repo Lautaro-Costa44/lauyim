@@ -9,6 +9,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 const apiMock = vi.hoisted(() => vi.fn())
 vi.mock('../lib/api.js', async importOriginal => ({ ...(await importOriginal()), api: apiMock }))
 vi.mock('html5-qrcode/third_party/zxing-js.umd.js', () => ({ BrowserMultiFormatReader: class {} }))
+// Teléfono: en escritorio Rutinas edita en el panel lateral, no en un sheet.
+window.matchMedia = query => ({ matches: false, media: query, addEventListener() {}, removeEventListener() {} })
 
 const { default: Rutinas } = await import('./admin/Rutinas.jsx')
 const { AdminContext } = await import('./admin/context.js')
@@ -60,7 +62,7 @@ afterEach(async () => {
 describe('Rutinas: día planeado del preset', () => {
   it('se elige como paso interno; atrás cierra la lista y después el sheet', async () => {
     await mount(<AdminContext.Provider value={{ presets: [], loadPresets: () => {} }}><Rutinas /></AdminContext.Provider>)
-    await click([...container.querySelectorAll('button')].find(b => b.textContent.trim() === 'Nueva'))
+    await click([...container.querySelectorAll('button')].find(b => b.textContent.trim() === 'Nuevo programa'))
     expect(sheets()).toHaveLength(1)
     await type(topSheet().querySelector('input'), 'Piernas')
 

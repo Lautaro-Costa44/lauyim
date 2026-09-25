@@ -27,6 +27,7 @@ export default function AdminLayout() {
   const [users, setUsers] = useState(null)
   const [invites, setInvites] = useState(null)
   const [presets, setPresets] = useState(null)
+  const [programs, setPrograms] = useState(null)
   const [inviteOnly, setInviteOnly] = useState(false)
   const [attendance, setAttendance] = useState(null)
   const [qrAccess, setQrAccess] = useState(null)
@@ -38,7 +39,7 @@ export default function AdminLayout() {
   // Logs and Cuotas tabs exist.
   const loadUsers = () => api('/api/admin/users').then(d => { setUsers(d.users); setInviteOnly(d.invite_only); setAuditEnabled(d.audit_enabled !== false); setBillingEnabled(d.billing_enabled !== false) }).catch(e => toast(e.message || t('Failed to load')))
   const loadInvites = () => api('/api/admin/invites').then(d => setInvites(d.invites)).catch(() => {})
-  const loadPresets = () => api('/api/presets').then(d => setPresets(d.presets)).catch(e => toast(e.message || t('Failed to load presets')))
+  const loadPresets = () => api('/api/presets').then(d => { setPresets(d.presets); setPrograms(d.programs || []) }).catch(e => toast(e.message || t('Failed to load presets')))
   const loadAttendance = () => api('/api/admin/attendance-heatmap').then(setAttendance).catch(e => toast(e.message || t('Failed to load attendance')))
   const loadQrAccess = () => { if (user?.owner) api('/api/owner/qr').then(setQrAccess).catch(e => toast(e.message || t('Failed to load QR access'))) }
   const refresh = () => { loadUsers(); loadInvites(); loadPresets(); loadAttendance(); loadQrAccess(); setTick(n => n + 1) }
@@ -80,7 +81,7 @@ export default function AdminLayout() {
     ['acceso', t('Acceso')],
     auditEnabled !== false && ['logs', t('Logs')],
   ].filter(Boolean)
-  const ctx = { users, inviteOnly, invites, presets, attendance, qrAccess, setQrAccess, tick, auditEnabled, billingEnabled, setBillingEnabled, loadUsers, loadInvites, loadPresets, loadAttendance, refresh }
+  const ctx = { users, inviteOnly, invites, presets, programs, attendance, qrAccess, setQrAccess, tick, auditEnabled, billingEnabled, setBillingEnabled, loadUsers, loadInvites, loadPresets, loadAttendance, refresh }
 
   return <div className="admin-shell">
     <nav className="admin-nav chips" ref={navRef} aria-label={t('Admin')}>

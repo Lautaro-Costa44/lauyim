@@ -78,7 +78,7 @@ import { pushSupported, enablePush, disablePush, sendTestPush } from '../lib/pus
 import { wakeLockSupported } from '../lib/wakelock.js'
 import { DEMO, REPO } from '../lib/demo.js'
 import { confirmSheet, importFromApp, equipmentProfileSheet } from '../sheets.jsx'
-import { routinesFromPresets } from '../lib/starter.js'
+import { routinesFromPresets, presetSourceFor } from '../lib/starter.js'
 import Icon from '../components/Icon.jsx'
 import { Section, Row, SelectRow, Switch, Segmented, Button, TextField } from '../components/ui.jsx'
 import { NO_AUTOFILL } from '../lib/input-safety.js'
@@ -117,7 +117,7 @@ export default function Settings() {
           toast(t('La rutina “{0}” ya está planeada para el {1}.', result.conflict.routine?.name || t('Routine'), t(DAYN[result.conflict.day])))
           return
         }
-        addGroup(name, routines, result.week, true)
+        addGroup(name, routines, result.week, true, { source: presetSourceFor(d, name) })
         loadedNames.add(name.toLowerCase())
         toast(t('Group loaded successfully.'))
         close()

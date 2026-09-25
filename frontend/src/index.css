@@ -1177,11 +1177,10 @@ input[type="search"]::-webkit-search-cancel-button{display:none;-webkit-appearan
   .admin-users{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.2fr);gap:20px;align-items:start}
   .admin-users .item.on{background:var(--acc-soft);box-shadow:inset 0 0 0 1.5px var(--acc-line)}
   .admin-user-panel{position:sticky;top:32px;max-height:calc(100vh - 64px);overflow-y:auto;overscroll-behavior:contain}
-  /* a section that is a single card doesn't stretch across 1200px */
-  .admin-single{max-width:720px}
-  /* Acceso (owner): the four cards two by two */
-  .admin-access{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;align-items:start}
-  .admin-access>.card{margin:0}
+  /* Notificaciones, Acceso: settings cards side by side (2 columns at 1366px, 3 once the
+     section is wide enough), instead of one 720px column with half the screen empty. */
+  .admin-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(380px,1fr));gap:14px;align-items:start}
+  .admin-cards>.card{margin:0}
   /* activity log as a wide table: event | detail | when; scrolls sideways inside the card */
   .audit-rows{overflow-x:auto;-webkit-overflow-scrolling:touch}
   .audit-rows>.row{min-width:760px}
@@ -1191,6 +1190,50 @@ input[type="search"]::-webkit-search-cancel-button{display:none;-webkit-appearan
   .admin-nav .chip:active{background:var(--surface-2)}
   .admin-nav .chip.on{background:var(--acc);color:var(--on-acc)}
   .admin-nav .admin-nav-back{display:block;margin-top:12px;color:var(--label-2)}
+}
+
+/* --------------------------------------------------- admin: rutinas --- */
+/* Descriptive text inside wide admin cards stops at a reading width instead of running the
+   whole card. */
+.admin-prose,.admin-cards .card .small.muted{max-width:70ch}
+.preset-toolbar .admin-prose{margin:6px 0 10px}
+.preset-filter{margin-top:10px}
+.preset-grid{display:grid;gap:12px;grid-template-columns:minmax(0,1fr);align-items:start}
+.preset-grid>.card{margin:0}
+.program-head{align-items:flex-start;gap:8px}
+.program-name{margin:0 0 2px;font-size:17px;font-weight:600;letter-spacing:-.012em;overflow-wrap:anywhere}
+.program-actions{gap:2px;flex:none}
+.program-actions .iconbtn,.preset-day .iconbtn{width:32px;height:32px;font-size:16px;background:transparent}
+.program-summary{display:grid;grid-template-columns:120px minmax(0,1fr);gap:12px;align-items:center;margin:12px 0 6px}
+.bodymap.mini{gap:2px}
+.bodymap.mini .bm-v{max-height:124px}
+.bodymap.mini .bm-ph{height:124px}
+.program-usage{display:flex;align-items:center;gap:5px;margin-top:8px}
+.program-days{margin-top:6px}
+.preset-day{display:flex;align-items:center;gap:8px;padding:7px 2px;border-top:var(--hair) solid var(--sep);border-radius:0;transition:background var(--fast)}
+.preset-day.on{background:var(--acc-soft);border-radius:10px}
+.preset-day.dragging,.preset-ex.dragging{background:var(--surface-2);border-radius:10px;box-shadow:0 6px 18px -8px rgba(0,0,0,.45);position:relative;z-index:1}
+.preset-day-main,.preset-ex-main{text-align:left;min-width:0;padding:2px 0}
+.preset-day-main .tt,.preset-ex-main .tt{font-size:15px;line-height:1.25}
+.preset-day-main .ss,.preset-ex-main .ss{color:var(--label-2);font-size:12.5px;margin-top:2px}
+.preset-day-badge{width:32px;height:32px;flex:none;border-radius:9px;background:var(--surface-2);color:var(--label-2);
+  display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600}
+.preset-day-badge.planned{background:var(--acc-soft);color:var(--acc)}
+.iconbtn.danger{color:var(--red)}
+.drag-handle{flex:none;display:flex;align-items:center;justify-content:center;width:22px;height:32px;color:var(--label-3);border-radius:6px;font-size:18px}
+.drag-handle:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
+.preset-editor-groups{margin-top:8px}
+.preset-editor-stats{margin:10px 0 2px}
+.preset-ex-list{margin:12px 0}
+.preset-ex{display:flex;align-items:center;gap:8px;padding:6px 2px;border-top:var(--hair) solid var(--sep)}
+.assign-list{max-height:min(50vh,420px);overflow-y:auto}
+/* desktop: program cards in a grid (3 columns at 1366px and 1920px; next to the panel, 1 at
+   1366px and 2 at 1920px);
+   editing a day opens it in a sticky side panel instead of a sheet */
+@media (min-width:1000px){
+  .preset-grid{grid-template-columns:repeat(auto-fill,minmax(320px,1fr))}
+  .admin-presets.editing{display:grid;grid-template-columns:minmax(0,1fr) 440px;gap:20px;align-items:start}
+  .preset-panel{margin:0}
 }
 
 /* ------------------------------------------------------ cuotas (billing) --- */

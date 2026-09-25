@@ -92,15 +92,17 @@ export function validateGroupName(name, existingGroups = [], currentId = null) {
 }
 
 /**
- * Crea un nuevo objeto de grupo de rutinas.
+ * Crea un nuevo objeto de grupo de rutinas. `source` ({ kind: 'preset', programId, at }) registra
+ * de qué programa de presets salió; el admin lo usa para contar cuántos socios lo tienen.
  */
-export function createRoutineGroup(name, routines = [], week = {}) {
+export function createRoutineGroup(name, routines = [], week = {}, { source } = {}) {
   return {
     id: uid(),
     name: (name || '').trim() || t('Nuevo Grupo'),
     routines: JSON.parse(JSON.stringify(routines || [])),
     week: JSON.parse(JSON.stringify(week || {})),
     createdAt: Date.now(),
+    ...(source ? { source } : {}),
   }
 }
 
@@ -155,7 +157,7 @@ export function switchActiveGroup(state, targetGroupId) {
 /**
  * Añade un nuevo grupo al estado y opcionalmente lo activa.
  */
-export function addGroupToState(state, name, routines = [], week = {}, setAsActive = true) {
+export function addGroupToState(state, name, routines = [], week = {}, setAsActive = true, opts = {}) {
   state.routineGroups = state.routineGroups || []
   if (state.routineGroups.length >= MAX_ROUTINE_GROUPS) {
     throw new Error(t('Límite de {0} grupos alcanzado.', MAX_ROUTINE_GROUPS))
@@ -166,7 +168,7 @@ export function addGroupToState(state, name, routines = [], week = {}, setAsActi
     syncActiveGroupInState(state)
   }
 
-  const newGroup = createRoutineGroup(name, routines, week)
+  const newGroup = createRoutineGroup(name, routines, week, opts)
   state.routineGroups.push(newGroup)
 
   if (setAsActive) {

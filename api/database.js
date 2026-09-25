@@ -175,6 +175,10 @@ export function initDatabase() {
   // en silencio, igual que en una base que ya migró.
   try { db.exec(`ALTER TABLE workout_sets ADD COLUMN meta TEXT;`); } catch {}
   try { db.exec(`ALTER TABLE workouts ADD COLUMN meta TEXT;`); } catch {}
+  // Presets: orden de días, campos del ejercicio sin columna propia y programas con id.
+  try { db.exec(`ALTER TABLE presets ADD COLUMN position INTEGER NOT NULL DEFAULT 0;`); } catch {}
+  try { db.exec(`ALTER TABLE preset_exercises ADD COLUMN extra TEXT;`); } catch {}
+  backfillPresetPrograms(db);
   // Cuotas v1: anular pagos. payments ya existe acá (lo crea schema.sql), así que estos ALTER
   // van después del schema; en una base nueva fallan en silencio porque el CREATE los trae.
   for (const col of ['previous_due_date TEXT', 'previous_plan_id INTEGER', 'previous_trial_until TEXT', 'voided_at INTEGER', 'voided_by TEXT', 'void_reason TEXT', 'source TEXT']) {
@@ -514,9 +518,89 @@ export function deleteInvite(code) {
 // Operaciones de presets
 // ============================================================
 
+// Campos del ejercicio de un preset que no tienen columna propia: viajan juntos en
+// preset_exercises.extra (JSON). cleanPreset (server.js) ya los validó.
+const PRESET_EXTRA_KEYS = ['intensifier', 'repsMin', 'repsMax', 'warmupSets', 'note', 'prog', 'inc', 'sg'];
+
+function presetExtraOf(ex) {
+  const extra = {};
+  for (const key of PRESET_EXTRA_KEYS) if (ex[key] !== undefined && ex[key] !== null) extra[key] = ex[key];
+  // bodyweight tiene columna, pero solo guarda true: un false explícito (el admin desmarcó
+  // "peso corporal" en un ejercicio que el dataset marca así) se guarda acá.
+  if (ex.bodyweight === false) extra.bodyweight = false;
+  return Object.keys(extra).length ? JSON.stringify(extra) : null;
+}
+
+// Día de la semana para ordenar: lunes primero, domingo al final, sin día después de todo.
+const PLANNED_DAY_ORDER = 'CASE WHEN planned_day IS NULL THEN 8 WHEN planned_day = 0 THEN 7 ELSE planned_day END';
+
+// Bases anteriores a preset_programs: un programa por group_name distinto (sin distinguir
+// mayúsculas, que es como ya lo trataba el chequeo de día ocupado), con el nombre de cada
+// preset alineado al del programa. Los días de un programa sin orden guardado (todos en 0)
+// quedan ordenados por día planeado y, si no tienen, por fecha de creación.
+function backfillPresetPrograms(db) {
+  const programs = db.prepare('SELECT id, name FROM preset_programs').all();
+  const byKey = new Map(programs.map(p => [p.name.trim().toLowerCase(), p]));
+  let position = programs.length;
+  const names = db.prepare(`SELECT trim(group_name) AS name FROM presets GROUP BY trim(group_name) ORDER BY lower(trim(group_name)), MIN(rowid)`).all();
+  const insert = db.prepare('INSERT INTO preset_programs (id, name, position, created_at) VALUES (?, ?, ?, ?)');
+  for (const { name } of names) {
+    const key = (name || 'General').toLowerCase();
+    if (byKey.has(key)) continue;
+    const program = { id: 'g' + crypto.randomBytes(8).toString('hex'), name: name || 'General' };
+    insert.run(program.id, program.name, position++, Date.now());
+    byKey.set(key, program);
+  }
+  const rename = db.prepare('UPDATE presets SET group_name = ? WHERE lower(trim(group_name)) = ? AND group_name != ?');
+  const setPos = db.prepare('UPDATE presets SET position = ? WHERE id = ?');
+  for (const [key, program] of byKey) {
+    rename.run(program.name, key, program.name);
+    const rows = db.prepare(`SELECT id, position FROM presets WHERE group_name = ? ORDER BY ${PLANNED_DAY_ORDER}, rowid`).all(program.name);
+    if (rows.length > 1 && rows.every(r => !r.position)) rows.forEach((r, i) => setPos.run(i, r.id));
+  }
+}
+
+// Programa de un nombre de grupo, creándolo si no existe. Devuelve { id, name } con el
+// nombre canónico (el guardado), así "ppl" y "PPL" terminan en el mismo programa.
+export function ensurePresetProgram(name) {
+  const db = getDatabase();
+  const clean = String(name || '').trim() || 'General';
+  const found = db.prepare('SELECT id, name FROM preset_programs WHERE name = ? COLLATE NOCASE').get(clean);
+  if (found) return found;
+  const position = db.prepare('SELECT COALESCE(MAX(position) + 1, 0) AS p FROM preset_programs').get().p;
+  const program = { id: 'g' + crypto.randomBytes(8).toString('hex'), name: clean };
+  db.prepare('INSERT INTO preset_programs (id, name, position, created_at) VALUES (?, ?, ?, ?)').run(program.id, program.name, position, Date.now());
+  return program;
+}
+
+// Un programa sin días deja de existir (la app del socio solo ve grupos con presets).
+export function prunePresetPrograms() {
+  getDatabase().prepare('DELETE FROM preset_programs WHERE NOT EXISTS (SELECT 1 FROM presets WHERE presets.group_name = preset_programs.name)').run();
+}
+
+export function getPresetPrograms() {
+  return getDatabase().prepare(`
+    SELECT pp.id, pp.name, pp.position, COUNT(p.id) AS count
+    FROM preset_programs pp LEFT JOIN presets p ON p.group_name = pp.name
+    GROUP BY pp.id ORDER BY pp.position, pp.name COLLATE NOCASE
+  `).all();
+}
+
+export function getPresetProgramById(id) {
+  return getDatabase().prepare('SELECT id, name, position FROM preset_programs WHERE id = ?').get(id) || null;
+}
+
+export function getPresetProgramByName(name) {
+  return getDatabase().prepare('SELECT id, name, position FROM preset_programs WHERE name = ? COLLATE NOCASE').get(String(name || '').trim()) || null;
+}
+
+// Orden: programa (su posición), después el día dentro del programa.
 export function getAllPresets() {
-  const stmt = getDatabase().prepare('SELECT * FROM presets');
-  return stmt.all();
+  return getDatabase().prepare(`
+    SELECT p.*, pp.id AS program_id FROM presets p
+    LEFT JOIN preset_programs pp ON pp.name = p.group_name
+    ORDER BY COALESCE(pp.position, 1e9), p.group_name COLLATE NOCASE, p.position, p.rowid
+  `).all();
 }
 
 export function getPresetById(id) {
@@ -525,42 +609,43 @@ export function getPresetById(id) {
 }
 
 export function getPresetWithExercises(id) {
-  const presetStmt = getDatabase().prepare('SELECT * FROM presets WHERE id = ?');
+  const presetStmt = getDatabase().prepare(`
+    SELECT p.*, pp.id AS program_id FROM presets p
+    LEFT JOIN preset_programs pp ON pp.name = p.group_name WHERE p.id = ?
+  `);
   const preset = presetStmt.get(id);
   if (!preset) return null;
 
   const exStmt = getDatabase().prepare('SELECT * FROM preset_exercises WHERE preset_id = ? ORDER BY id');
-  preset.ex = exStmt.all(id).map(row => ({
-    id: row.exercise_id,
-    sets: row.sets,
-    reps: row.reps,
-    weight: row.weight,
-    mode: row.mode,
-    min: row.min,
-    speed: row.speed,
-    sec: row.sec,
-    bodyweight: row.bodyweight ? true : undefined,
-    side: row.side ? true : undefined,
-    progressionType: row.progression_type || undefined,
-    progressionConfig: safeJsonParse(row.progression_config, null)
-  }));
+  preset.ex = exStmt.all(id).map(row => {
+    const extra = safeJsonParse(row.extra, {}) || {};
+    return {
+      id: row.exercise_id,
+      sets: row.sets,
+      reps: row.reps,
+      weight: row.weight,
+      mode: row.mode,
+      min: row.min,
+      speed: row.speed,
+      sec: row.sec,
+      bodyweight: row.bodyweight ? true : undefined,
+      side: row.side ? true : undefined,
+      progressionType: row.progression_type || undefined,
+      progressionConfig: safeJsonParse(row.progression_config, null),
+      ...extra
+    };
+  });
   return preset;
 }
 
-export function createPreset(preset) {
-  const stmt = getDatabase().prepare(`
-    INSERT INTO presets (id, name, emoji, group_name, planned_day)
-    VALUES (?, ?, ?, ?, ?)
+function insertPresetExercises(db, presetId, exercises) {
+  const exStmt = db.prepare(`
+    INSERT INTO preset_exercises (preset_id, exercise_id, sets, reps, weight, mode, min, speed, sec, bodyweight, side, progression_type, progression_config, extra)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
-  stmt.run(preset.id, preset.name, preset.emoji, preset.groupName || preset.group_name || 'General', Number.isInteger(preset.plannedDay) ? preset.plannedDay : null);
-
-  const exStmt = getDatabase().prepare(`
-    INSERT INTO preset_exercises (preset_id, exercise_id, sets, reps, weight, mode, min, speed, sec, bodyweight, side, progression_type, progression_config)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `);
-  for (const ex of preset.ex) {
+  for (const ex of exercises || []) {
     exStmt.run(
-      preset.id,
+      presetId,
       ex.id,
       ex.sets,
       ex.reps || null,
@@ -572,43 +657,142 @@ export function createPreset(preset) {
       ex.bodyweight ? 1 : 0,
       ex.side ? 1 : 0,
       ex.progressionType || null,
-      ex.progressionConfig ? JSON.stringify(ex.progressionConfig) : null
+      ex.progressionConfig ? JSON.stringify(ex.progressionConfig) : null,
+      presetExtraOf(ex)
     );
   }
+}
+
+// Todas las escrituras de presets van en una transacción: un error a mitad de camino no deja
+// un preset sin ejercicios ni un programa huérfano. SAVEPOINT y no BEGIN: el seed de
+// server.js ya abre su propia transacción alrededor de createPreset.
+function presetTx(fn) {
+  const db = getDatabase();
+  db.exec('SAVEPOINT preset_tx');
+  try {
+    const out = fn(db);
+    db.exec('RELEASE preset_tx');
+    return out;
+  } catch (error) {
+    db.exec('ROLLBACK TO preset_tx');
+    db.exec('RELEASE preset_tx');
+    throw error;
+  }
+}
+
+function nextPresetPosition(db, groupName) {
+  return db.prepare('SELECT COALESCE(MAX(position) + 1, 0) AS p FROM presets WHERE group_name = ?').get(groupName).p;
+}
+
+function insertPreset(db, preset) {
+  const program = ensurePresetProgram(preset.groupName || preset.group_name);
+  const position = Number.isInteger(preset.position) ? preset.position : nextPresetPosition(db, program.name);
+  db.prepare(`
+    INSERT INTO presets (id, name, emoji, group_name, planned_day, position)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `).run(preset.id, preset.name, preset.emoji, program.name, Number.isInteger(preset.plannedDay) ? preset.plannedDay : null, position);
+  insertPresetExercises(db, preset.id, preset.ex);
+  return { ...preset, groupName: program.name, programId: program.id, position };
+}
+
+export function createPreset(preset) {
+  return presetTx(db => insertPreset(db, preset));
 }
 
 export function updatePreset(id, preset) {
-  const stmt = getDatabase().prepare('UPDATE presets SET name = ?, emoji = ?, group_name = ?, planned_day = ? WHERE id = ?');
-  stmt.run(preset.name, preset.emoji, preset.groupName || preset.group_name || 'General', Number.isInteger(preset.plannedDay) ? preset.plannedDay : null, id);
-
-  // Eliminar ejercicios viejos y insertar nuevos
-  const deleteExStmt = getDatabase().prepare('DELETE FROM preset_exercises WHERE preset_id = ?');
-  deleteExStmt.run(id);
-
-  const exStmt = getDatabase().prepare(`
-    INSERT INTO preset_exercises (preset_id, exercise_id, sets, reps, weight, mode, min, speed, sec, bodyweight, side)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `);
-  for (const ex of preset.ex) {
-    exStmt.run(
-      id,
-      ex.id,
-      ex.sets,
-      ex.reps || null,
-      ex.weight || 0,
-      ex.mode || 'reps',
-      ex.min || null,
-      ex.speed || null,
-      ex.sec || null,
-      ex.bodyweight ? 1 : 0,
-      ex.side ? 1 : 0
-    );
-  }
+  return presetTx(db => {
+    const before = db.prepare('SELECT group_name, position FROM presets WHERE id = ?').get(id);
+    const program = ensurePresetProgram(preset.groupName || preset.group_name);
+    // Cambiar de programa lo manda al final del nuevo; si no, conserva su lugar.
+    const position = before && before.group_name === program.name ? before.position : nextPresetPosition(db, program.name);
+    db.prepare('UPDATE presets SET name = ?, emoji = ?, group_name = ?, planned_day = ?, position = ? WHERE id = ?')
+      .run(preset.name, preset.emoji, program.name, Number.isInteger(preset.plannedDay) ? preset.plannedDay : null, position, id);
+    db.prepare('DELETE FROM preset_exercises WHERE preset_id = ?').run(id);
+    insertPresetExercises(db, id, preset.ex);
+    prunePresetPrograms();
+    return { ...preset, groupName: program.name, programId: program.id, position };
+  });
 }
 
 export function deletePreset(id) {
-  const stmt = getDatabase().prepare('DELETE FROM presets WHERE id = ?');
-  stmt.run(id);
+  presetTx(db => {
+    db.prepare('DELETE FROM presets WHERE id = ?').run(id);
+    prunePresetPrograms();
+  });
+}
+
+const newPresetId = () => 'p' + crypto.randomBytes(8).toString('hex');
+
+// Copia de un día dentro de su mismo programa, justo después del original. Sin día planeado:
+// el original ya ocupa ese día en el programa.
+export function duplicatePreset(id, name) {
+  const source = getPresetWithExercises(id);
+  if (!source) return null;
+  return presetTx(db => {
+    db.prepare('UPDATE presets SET position = position + 1 WHERE group_name = ? AND position > ?').run(source.group_name, source.position);
+    const copy = insertPreset(db, {
+      id: newPresetId(), name, emoji: source.emoji, groupName: source.group_name, plannedDay: null,
+      position: source.position + 1, ex: source.ex
+    });
+    return getPresetWithExercises(copy.id);
+  });
+}
+
+// Copia de un programa entero con otro nombre: mismos días planeados (es otro grupo, no
+// chocan) y mismo orden. Queda al final de la lista de programas.
+export function duplicatePresetProgram(programId, name) {
+  const program = getPresetProgramById(programId);
+  if (!program) return null;
+  const days = getAllPresets().filter(p => p.group_name === program.name).map(p => getPresetWithExercises(p.id));
+  return presetTx(db => {
+    const copy = ensurePresetProgram(name);
+    for (const day of days) {
+      insertPreset(db, { id: newPresetId(), name: day.name, emoji: day.emoji, groupName: copy.name, plannedDay: day.planned_day, position: day.position, ex: day.ex });
+    }
+    return getPresetProgramById(copy.id);
+  });
+}
+
+// Renombra el programa y el group_name de todos sus días juntos.
+export function renamePresetProgram(programId, name) {
+  return presetTx(db => {
+    const program = getPresetProgramById(programId);
+    if (!program) return null;
+    db.prepare('UPDATE presets SET group_name = ? WHERE group_name = ?').run(name, program.name);
+    db.prepare('UPDATE preset_programs SET name = ? WHERE id = ?').run(name, programId);
+    return getPresetProgramById(programId);
+  });
+}
+
+// ids: todos los días del programa en el orden nuevo. Devuelve false si no coinciden
+// exactamente con los que tiene (un día agregado o borrado desde otra pestaña).
+export function reorderPresets(programId, ids) {
+  return presetTx(db => {
+    const program = getPresetProgramById(programId);
+    if (!program) return false;
+    const current = db.prepare('SELECT id FROM presets WHERE group_name = ?').all(program.name).map(r => r.id);
+    if (current.length !== ids.length || new Set(ids).size !== ids.length || !ids.every(id => current.includes(id))) return false;
+    const stmt = db.prepare('UPDATE presets SET position = ? WHERE id = ?');
+    ids.forEach((id, i) => stmt.run(i, id));
+    return true;
+  });
+}
+
+// Socios activos que tienen cargado cada programa (grupo de rutinas con source.programId), y
+// cuántos de ellos lo tienen como grupo activo. Cuenta desde que existe source: los planes
+// cargados antes no registraban de qué programa salían.
+export function getPresetProgramUsage() {
+  const rows = getDatabase().prepare(`
+    SELECT json_extract(g.value, '$.source.programId') AS programId,
+      COUNT(DISTINCT us.user_id) AS users,
+      COUNT(DISTINCT CASE WHEN json_extract(g.value, '$.id') = us.active_group_id THEN us.user_id END) AS active
+    FROM user_state us
+    JOIN users u ON u.id = us.user_id
+    JOIN json_each(CASE WHEN json_valid(us.routine_groups) THEN us.routine_groups ELSE '[]' END) g
+    WHERE COALESCE(u.disabled, 0) = 0 AND json_extract(g.value, '$.source.programId') IS NOT NULL
+    GROUP BY programId
+  `).all();
+  return Object.fromEntries(rows.map(r => [r.programId, { users: r.users, active: r.active }]));
 }
 
 // ============================================================
@@ -1385,7 +1569,12 @@ export function getAttendanceByDate(startDate, endDate) {
 }
 
 export function getPresetGroups() {
-  return getDatabase().prepare('SELECT group_name AS name, COUNT(*) AS count FROM presets GROUP BY group_name ORDER BY group_name').all();
+  // Forma que lee la app del socio ({ name, count }); id del programa agregado para el admin.
+  return getDatabase().prepare(`
+    SELECT p.group_name AS name, COUNT(*) AS count, pp.id AS id FROM presets p
+    LEFT JOIN preset_programs pp ON pp.name = p.group_name
+    GROUP BY p.group_name ORDER BY COALESCE(MIN(pp.position), 1e9), p.group_name COLLATE NOCASE
+  `).all();
 }
 
 // ============================================================

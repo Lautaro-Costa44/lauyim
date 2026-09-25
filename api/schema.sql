@@ -67,7 +67,18 @@ CREATE TABLE IF NOT EXISTS presets (
   name TEXT NOT NULL,
   emoji TEXT NOT NULL,
   group_name TEXT NOT NULL DEFAULT 'General',
-  planned_day INTEGER
+  planned_day INTEGER,
+  position INTEGER NOT NULL DEFAULT 0   -- orden del día dentro de su programa
+);
+
+-- Programas de presets (PPL, Torso/Pierna…). presets.group_name sigue siendo la clave que lee
+-- la app del socio; esta tabla le da al programa un id estable (para contar uso y renombrar)
+-- y un orden. Se mantiene en sync desde database.js (ensurePresetProgram / prune).
+CREATE TABLE IF NOT EXISTS preset_programs (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL UNIQUE COLLATE NOCASE,
+  position INTEGER NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL
 );
 
 -- Migración para bases existentes (CREATE TABLE IF NOT EXISTS no modifica tablas ya creadas):
@@ -90,6 +101,7 @@ CREATE TABLE IF NOT EXISTS preset_exercises (
   side INTEGER DEFAULT 0,
   progression_type TEXT NULL,
   progression_config TEXT NULL,
+  extra TEXT NULL,           -- JSON: intensifier, repsMin, repsMax, warmupSets, note, prog, inc, sg
   FOREIGN KEY (preset_id) REFERENCES presets(id) ON DELETE CASCADE
 );
  

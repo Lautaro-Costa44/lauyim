@@ -50,6 +50,14 @@ import {
   createPreset,
   updatePreset,
   deletePreset,
+  duplicatePreset,
+  duplicatePresetProgram,
+  renamePresetProgram,
+  reorderPresets,
+  getPresetPrograms,
+  getPresetProgramById,
+  getPresetProgramByName,
+  getPresetProgramUsage,
   getUserState,
   saveUserState,
   getWorkoutsByUserId,
@@ -273,6 +281,36 @@ function readState(uid) {
   return getUserState(uid);
 }
 
+// Lo que el editor de ejercicio (exConfigSheet) agrega además de series/reps/peso. Antes se
+// descartaba en silencio: el admin configuraba un drop-set y el preset se guardaba sin él.
+const INTENSIFIER_NUMBERS = { count: [1, 10], pct: [5, 100], dropRestSec: [0, 600], backoffReps: [1, 100], totalReps: [1, 200], restSec: [1, 600] };
+const clampInt = (v, lo, hi) => Math.max(lo, Math.min(hi, Math.round(+v)));
+function cleanPresetExtras(item, mode) {
+  const out = {};
+  if (!item || typeof item !== 'object') return out;
+  if (item.bodyweight === false) out.bodyweight = false;
+  const note = typeof item.note === 'string' ? item.note.trim().slice(0, 500) : '';
+  if (note) out.note = note;
+  if (+item.warmupSets > 0) out.warmupSets = clampInt(item.warmupSets, 0, 5);
+  if (typeof item.prog === 'string' && item.prog.trim()) out.prog = item.prog.trim().slice(0, 40);
+  if (+item.inc > 0) out.inc = Math.min(1000, +item.inc);
+  if (typeof item.sg === 'string' && item.sg.trim()) out.sg = item.sg.trim().slice(0, 40);
+  if (typeof item.progressionType === 'string' && item.progressionType.trim()) out.progressionType = item.progressionType.trim().slice(0, 40);
+  if (item.progressionConfig && typeof item.progressionConfig === 'object' && !Array.isArray(item.progressionConfig)
+    && JSON.stringify(item.progressionConfig).length <= 2000) out.progressionConfig = item.progressionConfig;
+  if (mode === 'reps') {
+    if (+item.repsMin > 0) out.repsMin = clampInt(item.repsMin, 1, 100);
+    if (+item.repsMax > 0) out.repsMax = clampInt(item.repsMax, 1, 100);
+    const it = item.intensifier;
+    if (it && typeof it === 'object' && ['dropset', 'topback', 'restpause'].includes(it.type)) {
+      const intensifier = { type: it.type };
+      for (const [key, [lo, hi]] of Object.entries(INTENSIFIER_NUMBERS)) if (Number.isFinite(+it[key]) && it[key] !== null && it[key] !== '') intensifier[key] = clampInt(it[key], lo, hi);
+      out.intensifier = intensifier;
+    }
+  }
+  return out;
+}
+
 function cleanPreset(body, existingId) {
   const name = String(body.name || '').trim().slice(0, 80);
   if (!name) return { error: 'name required' };
@@ -300,6 +338,7 @@ function cleanPreset(body, existingId) {
       out.weight = Math.max(0, Math.min(10000, +item?.weight || 0));
     }
     for (const key of ['bodyweight', 'side']) if (item?.[key]) out[key] = true;
+    Object.assign(out, cleanPresetExtras(item, mode));
     return out;
   });
   if (ex.some(item => !item.id || !item.sets || (item.mode === 'time' ? !item.sec : item.mode === 'cardio' ? !item.min : !item.reps))) return { error: 'invalid exercise' };
@@ -1236,7 +1275,13 @@ function parseRoutinesBody(body) {
       const groupRoutines = parseRoutineList(g.routines || []);
       if (!groupRoutines) return null;
       const groupWeek = (g.week && typeof g.week === 'object' && !Array.isArray(g.week)) ? g.week : {};
-      routineGroups.push({ id, name, routines: groupRoutines, week: groupWeek, createdAt: g.createdAt || Date.now() });
+      const group = { id, name, routines: groupRoutines, week: groupWeek, createdAt: g.createdAt || Date.now() };
+      // De qué programa de presets salió el grupo (cuenta el uso en Rutinas del admin).
+      const src = g.source;
+      if (src && typeof src === 'object' && src.kind === 'preset' && typeof src.programId === 'string' && src.programId) {
+        group.source = { kind: 'preset', programId: src.programId.slice(0, 40), at: Number.isFinite(+src.at) ? +src.at : Date.now() };
+      }
+      routineGroups.push(group);
     }
   }
   const activeGroupId = body.activeGroupId !== undefined ? (body.activeGroupId ? String(body.activeGroupId) : null) : null;
@@ -2685,7 +2730,7 @@ const routes = {
   'GET /api/presets': async (req, res) => {
     if (!readSession(req)) return json(res, 401, { error: 'No has iniciado sesión' });
     const presets = getAllPresets().map(p => getPresetWithExercises(p.id));
-    json(res, 200, { presets, groups: getPresetGroups() });
+    json(res, 200, { presets, groups: getPresetGroups(), programs: getPresetPrograms() });
   },
 
   'POST /api/admin/presets': async (req, res) => {
@@ -2695,9 +2740,8 @@ const routes = {
     const conflict = findPresetDayConflict(result.value);
     if (conflict) return presetConflictResponse(res, conflict, result.value.plannedDay);
     createPreset(result.value);
-    // saveDb(); // Eliminado: SQLite persiste automáticamente
     audit(req, 'admin.preset.create', { user: admin, msg: result.value.name });
-    json(res, 200, { preset: result.value });
+    json(res, 200, { preset: getPresetWithExercises(result.value.id) });
   },
 
   'PUT /api/admin/presets': async (req, res) => {
@@ -2710,9 +2754,8 @@ const routes = {
     const conflict = findPresetDayConflict(result.value, existing.id);
     if (conflict) return presetConflictResponse(res, conflict, result.value.plannedDay);
     updatePreset(existing.id, result.value);
-    // saveDb(); // Eliminado: SQLite persiste automáticamente
     audit(req, 'admin.preset.update', { user: admin, msg: result.value.name });
-    json(res, 200, { preset: result.value });
+    json(res, 200, { preset: getPresetWithExercises(existing.id) });
   },
 
   'POST /api/admin/presets/delete': async (req, res) => {
@@ -2721,9 +2764,67 @@ const routes = {
     const preset = getPresetById(body.id);
     if (!preset) return json(res, 404, { error: 'no such preset' });
     deletePreset(preset.id);
-    // saveDb(); // Eliminado: SQLite persiste automáticamente
     audit(req, 'admin.preset.delete', { user: admin, msg: preset.name });
     json(res, 200, { ok: true });
+  },
+
+  // Copia de un día en su mismo programa, sin día planeado (el original lo ocupa).
+  'POST /api/admin/presets/duplicate': async (req, res) => {
+    const admin = requireAdmin(req, res); if (!admin) return;
+    const body = await readBody(req);
+    const preset = getPresetById(body.id);
+    if (!preset) return json(res, 404, { error: 'no such preset' });
+    const name = (String(body.name || '').trim() || `${preset.name} (copia)`).slice(0, 80);
+    const copy = duplicatePreset(preset.id, name);
+    audit(req, 'admin.preset.duplicate', { user: admin, msg: `${preset.name} → ${copy.name}` });
+    json(res, 200, { preset: copy });
+  },
+
+  // Orden de los días de un programa: ids = todos sus días, en el orden nuevo.
+  'POST /api/admin/presets/reorder': async (req, res) => {
+    const admin = requireAdmin(req, res); if (!admin) return;
+    const body = await readBody(req);
+    if (!getPresetProgramById(body.programId)) return json(res, 404, { error: 'no such program' });
+    if (!Array.isArray(body.ids) || !body.ids.every(id => typeof id === 'string')) return json(res, 400, { error: 'invalid ids' });
+    if (!reorderPresets(body.programId, body.ids)) return json(res, 409, { error: 'PROGRAM_CHANGED', code: 'PROGRAM_CHANGED' });
+    json(res, 200, { ok: true });
+  },
+
+  'PUT /api/admin/programs': async (req, res) => {
+    const admin = requireAdmin(req, res); if (!admin) return;
+    const body = await readBody(req);
+    const program = getPresetProgramById(body.id);
+    if (!program) return json(res, 404, { error: 'no such program' });
+    const name = String(body.name || '').trim().slice(0, 80);
+    if (!name) return json(res, 400, { error: 'name required' });
+    const taken = getPresetProgramByName(name);
+    if (taken && taken.id !== program.id) return json(res, 409, { error: 'PROGRAM_NAME_TAKEN', code: 'PROGRAM_NAME_TAKEN' });
+    const renamed = renamePresetProgram(program.id, name);
+    audit(req, 'admin.program.rename', { user: admin, msg: `${program.name} → ${name}` });
+    json(res, 200, { program: renamed });
+  },
+
+  // Copia de un programa entero. Sin nombre, "<nombre> (copia)", "(copia 2)"… el primero libre.
+  'POST /api/admin/programs/duplicate': async (req, res) => {
+    const admin = requireAdmin(req, res); if (!admin) return;
+    const body = await readBody(req);
+    const program = getPresetProgramById(body.id);
+    if (!program) return json(res, 404, { error: 'no such program' });
+    let name = String(body.name || '').trim().slice(0, 80);
+    if (name && getPresetProgramByName(name)) return json(res, 409, { error: 'PROGRAM_NAME_TAKEN', code: 'PROGRAM_NAME_TAKEN' });
+    for (let n = 1; !name; n++) {
+      const candidate = `${program.name} (copia${n > 1 ? ' ' + n : ''})`.slice(0, 80);
+      if (!getPresetProgramByName(candidate)) name = candidate;
+    }
+    const copy = duplicatePresetProgram(program.id, name);
+    audit(req, 'admin.program.duplicate', { user: admin, msg: `${program.name} → ${copy.name}` });
+    json(res, 200, { program: copy });
+  },
+
+  // Socios activos con cada programa cargado ({ programId: { users, active } }).
+  'GET /api/admin/programs/usage': async (req, res) => {
+    const admin = requireAdmin(req, res); if (!admin) return;
+    json(res, 200, { usage: getPresetProgramUsage() });
   },
 
   'GET /api/admin/users': async (req, res) => {

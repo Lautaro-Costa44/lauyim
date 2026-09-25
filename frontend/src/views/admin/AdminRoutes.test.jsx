@@ -163,7 +163,7 @@ describe('admin routes', () => {
 
   it('the owner gets the four Acceso cards, in order', async () => {
     await mount('#/admin/acceso', OWNER)
-    const titles = [...document.querySelectorAll('.admin-access > .card h2')].map(h => h.textContent)
+    const titles = [...document.querySelectorAll('.admin-cards > .card h2')].map(h => h.textContent)
     expect(titles).toEqual(['Códigos de invitación', 'Acceso por QR', 'Datos del registro', 'Cobro de cuotas'])
     expect(text()).toContain('qr-token')
     expect(text()).toContain('El nombre de usuario siempre se pide.')
