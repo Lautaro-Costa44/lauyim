@@ -1,9 +1,8 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useStore } from '../store/useStore.js'
-import { useUI } from '../store/useUI.js'
 import { effectiveRoutine, effectiveRoutineId, streakWeeks, lastBW, setsDoneActive } from '../lib/history.js'
-import { fmtNum, fmtDate, todayISO, isoOf, weekKey, DAYS, DAYN } from '../lib/format.js'
+import { fmtNum, fmtDate, todayISO, isoOf, weekKey, DAYS } from '../lib/format.js'
 import { t, dateLocale } from '../lib/i18n.js'
 import { bwSheet, goalSheet, dayOverrideSheet, calendarSheet, startFlow, bwDeltaColor, confirmSheet } from '../sheets.jsx'
 import LineChart from '../components/LineChart.jsx'
@@ -12,8 +11,7 @@ import { Button } from '../components/ui.jsx'
 import { glyphOf } from '../lib/glyphs.js'
 import { startTourA } from '../lib/onboarding.js'
 import { api } from '../lib/api.js'
-import { routinesFromPresets, presetSourceFor, addPresetCustomExercises } from '../lib/starter.js'
-import { applyPlannedDays, createRoutineGroup, syncActiveGroupInState } from '../lib/routineGroups.js'
+import ProgramPicker, { programsOf } from '../components/ProgramPicker.jsx'
 
 
 // Home = what to do now + a quick glance. Deep charts & history live in Stats.
@@ -22,39 +20,9 @@ export default function Home() {
   const S = useStore(s => s.S)
   const user = useStore(s => s.user)
   const config = useStore(s => s.config)
-  const update = useStore(s => s.update)
-  const toast = useUI(s => s.toast)
-  const [presetGroups, setPresetGroups] = useState([])
-  useEffect(() => { if (S.routines.length === 0) api('/api/presets').then(d => setPresetGroups(d.groups || [])).catch(() => {}) }, [S.routines.length])
-  const chooseGroup = async name => {
-    try {
-      const d = await api('/api/presets')
-      const presets = (d.presets || []).filter(p => (p.group_name || p.groupName || 'General') === name)
-      const rs = routinesFromPresets(presets)
-      const result = applyPlannedDays(rs, {}, { groupRoutines: rs })
-      if (!result.ok) {
-        toast(`La rutina “${result.conflict.routine?.name || 'Routine'}” ya está planeada para el ${t(DAYN[result.conflict.day])}.`)
-        return
-      }
-      // The plan lands in a group named after the program, which records where it came from
-      // (the admin counts members per program). With groups already there, the active one gets it.
-      const source = presetSourceFor(d, name)
-      update(s => {
-        s.routines = rs
-        s.week = result.week
-        addPresetCustomExercises(s, presets, d.customExercises)
-        if (!(s.routineGroups || []).length) {
-          const group = createRoutineGroup(name, rs, result.week, { source })
-          s.routineGroups = [group]
-          s.activeGroupId = group.id
-        } else {
-          const active = s.routineGroups.find(g => g.id === s.activeGroupId)
-          if (active && source) active.source = source
-          syncActiveGroupInState(s)
-        }
-      })
-    } catch (e) { toast(e.message || t('Could not load this group.')) }
-  }
+  // Programas del gym para el cartel de bienvenida (se piden solo mientras no hay rutinas).
+  const [presetData, setPresetData] = useState(null)
+  useEffect(() => { if (S.routines.length === 0) api('/api/presets').then(setPresetData).catch(() => {}) }, [S.routines.length])
   const [weekOffset, setWeekOffset] = useState(0)
 
   useEffect(() => {
@@ -163,9 +131,10 @@ export default function Home() {
             <div style={{ height: 10 }} />
           </>
         )}
-        {presetGroups.length > 0 && <>
-          <div className="muted small" style={{ margin: '8px 0 6px' }}>{t('O elegí un grupo de rutinas')}</div>
-          <div className="list">{presetGroups.map(g => <button key={g.name} className="item" onClick={() => chooseGroup(g.name)}><span className="grow"><div className="tt">{g.name}</div><div className="ss">{g.count} {t('rutinas')}</div></span><Icon name="chevronRight" /></button>)}</div>
+        {programsOf(presetData).length > 0 && <>
+          <div className="muted small" style={{ margin: '8px 0 6px' }}>{surveyEnabled ? t('O elegí uno de los programas del gimnasio') : t('Elegí uno de los programas del gimnasio')}</div>
+          <ProgramPicker data={presetData} />
+          <div style={{ height: 8 }} />
         </>}
         <button
           style={{ background: 'none', border: 'none', color: 'var(--acc)', fontSize: '0.93rem', cursor: 'pointer', width: '100%', padding: '6px 0', textAlign: 'center' }}

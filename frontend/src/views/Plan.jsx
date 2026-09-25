@@ -111,7 +111,9 @@ export default function Plan() {
         <span className="lrow-i"><Icon name={glyphOf(r.emoji)} /></span>
         <div className="grow"><div className="tt">{r.name}</div><div className="ss">{exCount(r.ex.length)}</div></div>
         <Icon name="chevronRight" className="chev" /></div>)}</div> : <>
-        <div className="empty"><div className="ico"><Icon name="clipboard" /></div>{t('No routines yet.')}<br />{t('Create one or load the starter plan.')}</div>
+        <div className="empty"><div className="ico"><Icon name="clipboard" /></div>{t('No routines yet.')}<br />{t('Create one or load the starter plan.')}
+          <div style={{ marginTop: 14 }}><Button variant="tinted" icon="list" onClick={loadStarterPlan}>{t('Cargar un plan')}</Button></div>
+        </div>
       </>}
       <div style={{ marginTop: 12, paddingTop: 10, borderTop: 'var(--sep) solid' }}>
         <div className="row between" style={{ marginBottom: 6 }}>

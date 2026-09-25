@@ -39,24 +39,31 @@ export function estimateMinutes(ex, assumptions = DURATION_ASSUMPTIONS) {
 /** Planned series, all exercises. */
 export const totalSets = ex => (ex || []).reduce((sum, item) => sum + Math.max(0, Math.round(+item?.sets || 0)), 0)
 
-/** Effective series per muscle for a list of exercises (cardio excluded, like RoutineEditor). */
-export function muscleLoad(ex) {
+/**
+ * Effective series per muscle for a list of exercises (cardio excluded, like RoutineEditor).
+ * `defs`: { id: exercise } for exercises this device doesn't know yet — the gym's custom ones in
+ * a program the member hasn't loaded (GET /api/presets' customExercises).
+ */
+export function muscleLoad(ex, defs = {}) {
   return loadOf((ex || []).filter(item => item && item.id && !isCardioItem(item))
-    .map(item => ({ id: item.id, sets: Math.max(0, Math.round(+item.sets || 0)) })))
+    .map(item => ({ id: item.id, ex: defs[item.id], sets: Math.max(0, Math.round(+item.sets || 0)) })))
 }
 
+/** { id: exercise } from a list of exercise definitions. */
+export const defsById = list => Object.fromEntries((list || []).filter(d => d?.id).map(d => [String(d.id), d]))
+
 /** Stats for one preset routine. */
-export function presetStats(preset) {
+export function presetStats(preset, defs) {
   const ex = preset?.ex || []
-  const load = muscleLoad(ex)
+  const load = muscleLoad(ex, defs)
   return { exercises: ex.length, sets: totalSets(ex), minutes: estimateMinutes(ex), load, top: rankOf(load).worked }
 }
 
 /** Stats for a program: weekly series and load add up every day in it. */
-export function programStats(presets) {
+export function programStats(presets, defs) {
   const days = presets || []
   const ex = days.flatMap(p => p.ex || [])
-  const load = muscleLoad(ex)
+  const load = muscleLoad(ex, defs)
   const minutes = days.map(p => estimateMinutes(p.ex)).filter(Boolean)
   return {
     days: days.length,

@@ -1,7 +1,7 @@
 // The Push/Pull/Legs starter plan. Shared by the "Load starter plan" action in Settings
 // and by the demo build, which seeds a history on top of exactly these routines.
 import { uid } from './format.js'
-import { addGroupToState, applyPlannedDays, canAddGroup, syncActiveGroupInState, validateGroupName } from './routineGroups.js'
+import { addGroupToState, applyPlannedDays, canAddGroup, createRoutineGroup, syncActiveGroupInState, validateGroupName } from './routineGroups.js'
 
 const SPEC = [
   ['Push Day', 'barbell', 1, [['0025', 4, 8], ['0047', 3, 10], ['0426', 3, 10], ['0334', 3, 12], ['0241', 3, 12], ['0251', 3, 10]]],
@@ -37,6 +37,38 @@ export function addPresetCustomExercises(state, presets, defs) {
     added++
   }
   return added
+}
+
+/**
+ * The member picks one of the gym's programs as their plan (first login, or "Load starter plan"
+ * in Plan). Without routines, the program fills the active group (or a new one) and becomes the
+ * week; with routines already there, it is added as a new active group and nothing is replaced.
+ * Mutates `state`; returns { ok: true } or addProgramToState's { ok: false, error, … }.
+ */
+export function pickProgram(state, { name, presets, source, customDefs }) {
+  if ((state.routines || []).length) return addProgramToState(state, { name, presets, source, customDefs, activate: true })
+  const routines = routinesFromPresets(presets)
+  const result = applyPlannedDays(routines, {}, { groupRoutines: routines })
+  if (!result.ok) return { ok: false, error: 'day', conflict: result.conflict }
+  const groups = state.routineGroups || []
+  const active = groups.find(g => g.id === state.activeGroupId) || groups[0]
+  if (!active) {
+    const group = createRoutineGroup(name, routines, result.week, source ? { source } : {})
+    state.routineGroups = [group]
+    state.activeGroupId = group.id
+  } else {
+    // An empty group ("Mi Plan" by default) takes the program's name, unless another group has it.
+    state.activeGroupId = active.id
+    if (validateGroupName(name, groups, active.id).valid) active.name = String(name).trim()
+    if (source) active.source = source
+    else delete active.source
+  }
+  state.routines = routines
+  state.week = result.week
+  syncActiveGroupInState(state)
+  addPresetCustomExercises(state, presets, customDefs)
+  state.estadoInicial = 'plan_predeterminado'
+  return { ok: true }
 }
 
 // Group name of a preset as the member app reads it.

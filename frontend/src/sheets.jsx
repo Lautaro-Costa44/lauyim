@@ -8,7 +8,8 @@ import { lastEntryFor, bestWeightFor, buildSets, effectiveRoutineId, workoutVolu
 import { beep, vibrate } from './lib/sound.js'
 import { t, instrFor, exerciseNameFor, getLang, INSTR_LANGS } from './lib/i18n.js'
 import { nav } from './lib/nav.js'
-import { starterRoutines, routinesFromPresets, presetGroupOf, presetsOfGroup, addPresetCustomExercises } from './lib/starter.js'
+import { starterRoutines } from './lib/starter.js'
+import ProgramPicker, { programsOf } from './components/ProgramPicker.jsx'
 import { api } from './lib/api.js'
 import Media, { Thumb } from './components/Media.jsx'
 import Stepper from './components/Stepper.jsx'
@@ -69,21 +70,15 @@ export function inputSheet(opts) {
 }
 
 /* ============================ starter plan ============================ */
+// "Load starter plan": with programs set up by the gym, the member picks one (same selector as
+// the first-login card); without any (or offline), the built-in Push/Pull/Legs as before.
 export async function loadStarterPlan() {
-  let routines = null
-  let presets = [], customDefs = []
+  let data = null
   if (useStore.getState().user) {
-    try {
-      const result = await api('/api/presets')
-      // One program only (the first one the gym lists): every program plans its own week, so
-      // loading them all together always collided on some day once there were two.
-      const first = result.groups?.[0]?.name ?? presetGroupOf(result.presets?.[0])
-      presets = presetsOfGroup(result.presets, first)
-      customDefs = result.customExercises || []
-      routines = routinesFromPresets(presets)
-    } catch (e) { /* use the built-in fallback when the server is unavailable */ }
+    try { data = await api('/api/presets') } catch (e) { /* offline: built-in plan below */ }
   }
-  if (!routines?.length) routines = starterRoutines()
+  if (programsOf(data).length) return programPickerSheet(data)
+  const routines = starterRoutines()
   let result
   update(st => {
     const candidate = [...(st.routines || []), ...routines]
@@ -91,7 +86,6 @@ export async function loadStarterPlan() {
     if (!result.ok) return
     st.routines.push(...routines)
     st.week = result.week
-    addPresetCustomExercises(st, presets, customDefs)
     st.estadoInicial = 'plan_predeterminado'
   })
   if (result && !result.ok) {
@@ -99,6 +93,16 @@ export async function loadStarterPlan() {
     return
   }
   toast(t('Starter plan loaded'))
+}
+
+// The gym's programs in a sheet; picking one loads it and closes.
+export function programPickerSheet(data) {
+  ui().openSheet(close => <>
+    <h3 style={{ marginBottom: 4 }}>{t('Elegí un programa')}</h3>
+    <div className="muted small" style={{ marginBottom: 14, lineHeight: 1.45 }}>{t('Los programas que preparó tu gimnasio. Después podés editar cada rutina.')}</div>
+    <ProgramPicker data={data} onPicked={close} />
+    <div style={{ height: 8 }} />
+  </>)
 }
 
 /* ============================ weight picker (shared: body weight + goal) ============================ */

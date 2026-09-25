@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { addProgramToState, addPresetCustomExercises, presetSourceFor, presetsOfGroup } from './starter.js'
+import { addProgramToState, addPresetCustomExercises, pickProgram, presetSourceFor, presetsOfGroup } from './starter.js'
 
 const PRESETS = [
   { id: 'p1', name: 'Push', emoji: 'barbell', group_name: 'PPL', planned_day: 1, ex: [{ id: '0025', sets: 4, reps: 8 }] },
@@ -74,5 +74,27 @@ describe('ejercicios custom del gym en un programa', () => {
     expect(addProgramToState(state, { name: 'Gym', presets: WITH_CUSTOM, customDefs: [DEF] }).ok).toBe(true)
     expect(state.customEx.map(e => e.id)).toEqual(['cx-remo'])
     expect(state.routines[0].ex.map(e => e.id)).toEqual(['cx-remo', '0027'])
+  })
+})
+
+describe('pickProgram', () => {
+  const ppl = presetsOfGroup(PRESETS, 'PPL')
+  it('sin rutinas y con el grupo vacío por defecto: lo llena y le pone el nombre del programa', () => {
+    const state = { routines: [], week: { 4: 'viejo' }, routineGroups: [{ id: 'g1', name: 'Mi Plan', routines: [], week: {} }], activeGroupId: 'g1', customEx: [] }
+    expect(pickProgram(state, { name: 'PPL', presets: ppl, source: SOURCE }).ok).toBe(true)
+    expect(state.routineGroups).toHaveLength(1)
+    expect(state.routineGroups[0]).toMatchObject({ id: 'g1', name: 'PPL', source: SOURCE })
+    expect(state.routineGroups[0].routines.map(r => r.name)).toEqual(['Push', 'Pull'])
+    expect(state.week).toEqual({ 1: state.routines[0].id, 3: state.routines[1].id })
+    expect(state.estadoInicial).toBe('plan_predeterminado')
+  })
+
+  it('con rutinas: suma el programa como grupo nuevo activo y no pisa nada', () => {
+    const mine = { id: 'm', name: 'Mía', ex: [] }
+    const state = { routines: [mine], week: { 2: 'm' }, routineGroups: [{ id: 'g1', name: 'Mi Plan', routines: [mine], week: { 2: 'm' } }], activeGroupId: 'g1', customEx: [] }
+    expect(pickProgram(state, { name: 'PPL', presets: ppl, source: SOURCE }).ok).toBe(true)
+    expect(state.routineGroups.map(g => g.name)).toEqual(['Mi Plan', 'PPL'])
+    expect(state.routineGroups[0].routines.map(r => r.id)).toEqual(['m'])
+    expect(state.routines.map(r => r.name)).toEqual(['Push', 'Pull'])
   })
 })
