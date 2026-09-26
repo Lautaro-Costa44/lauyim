@@ -1597,3 +1597,16 @@ input[type="search"]::-webkit-search-cancel-button{display:none;-webkit-appearan
 .manual-food>.btn{display:flex;width:auto;margin:16px auto 0}
 .manual-food-grid{display:grid;grid-template-columns:1fr 1fr;gap:0 10px}
 .scanner-manual{margin-top:14px}.scanner-manual button{width:100%;margin-bottom:8px}
+
+/* Aviso de privacidad (página pública y paso interno de los sheets) */
+.privacy-page{padding:12px 0 calc(40px + var(--sab))}
+.privacy-title{font-size:28px;font-weight:700;letter-spacing:-.02em;margin:14px 0 4px}
+.privacy-doc{max-width:70ch;color:var(--label);line-height:1.55;font-size:15px}
+.privacy-doc h2{font-size:17px;font-weight:600;margin:20px 0 6px}
+.privacy-doc p{margin:6px 0}
+.privacy-doc ul{margin:6px 0;padding-left:20px}
+.privacy-doc li{margin:4px 0}
+.privacy-draft{background:color-mix(in srgb,var(--warning) 16%,transparent);color:var(--label);border-radius:var(--r);padding:10px 12px;font-size:14px;line-height:1.45}
+.privacy-legal{color:var(--label-2);font-size:13px}
+.privacy-link{background:none;border:0;padding:0;font:inherit;color:var(--acc);text-decoration:underline;text-underline-offset:2px;cursor:pointer}
+.privacy-footer{margin-top:14px;text-align:center}
