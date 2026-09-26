@@ -64,6 +64,10 @@ describe('/privacidad', () => {
     expect(body).toContain('Ley 25.326')
     expect(body).toContain('AGENCIA DE ACCESO A LA INFORMACIÓN PÚBLICA')
     expect(body).toContain('a los 90 días')
+    expect(body).toContain('peso corporal, edad, género, altura, lesiones y nutrición')
+    expect(body).toContain('consentimiento expreso')
+    expect(body).toContain('servidores fuera de Argentina')
+    expect(body).toContain('lauyim provee la app')
     expect(body).toContain('privacidad@norte.com.ar')
     // No es el login ni la app: sin TabBar.
     expect(body).not.toContain('Ingresar con passkey')
@@ -78,6 +82,12 @@ describe('/privacidad', () => {
     expect(body).toContain('acercate a la recepción del gimnasio')
     expect(body).not.toContain('Tus datos de socio')
     expect(body).not.toContain('Tu cuota')
+  })
+
+  it('encargado con nombre y CUIT si la instancia los configura', async () => {
+    privacy = { ...privacy, operator: { name: 'Juan Pérez', cuit: '20-12345678-9' } }
+    await mount('#/privacidad')
+    expect(text()).toContain('lauyim (Juan Pérez, CUIT 20-12345678-9) provee la app')
   })
 
   it('se ve también con la licencia vencida', async () => {
