@@ -18,6 +18,14 @@ const db = await import('./database.js');
 db.initDatabase();
 db.createUser({ id: 'owner', name: 'Dueña', created: Date.now() });
 db.createUser({ id: 'm1', name: 'Socio Uno', created: Date.now() });
+// Suscripciones guardadas antes de la allowlist: m2 solo tiene una bloqueada; m3, una bloqueada y
+// una válida.
+db.createUser({ id: 'm2', name: 'Socio Dos', created: Date.now() });
+db.createUser({ id: 'm3', name: 'Socio Tres', created: Date.now() });
+const oldKeys = { p256dh: 'x', auth: 'y' };
+db.createSubscription({ endpoint: 'https://push.otro-servicio.example/abc', userId: 'm2', keys: oldKeys });
+db.createSubscription({ endpoint: 'https://push.otro-servicio.example/def', userId: 'm3', keys: oldKeys });
+db.createSubscription({ endpoint: 'https://fcm.googleapis.com/fcm/send/m3', userId: 'm3', keys: oldKeys });
 db.closeDatabase();
 
 const PORT = 44000 + Math.floor(Math.random() * 2000);
@@ -81,4 +89,12 @@ test('subscribe rechaza hosts desconocidos, IPs privadas, http, otro puerto y cl
   for (const [ep, error] of cases) assert.deepEqual(await subscribe(ep), { status: 400, body: { error } }, ep);
   const longKey = await subscribe('https://fcm.googleapis.com/fcm/send/k', { p256dh: 'a'.repeat(129), auth: keys.auth });
   assert.deepEqual(longKey, { status: 400, body: { error: 'invalid subscription' } });
+});
+
+test('hasPush: una suscripción bloqueada por la allowlist no cuenta', async () => {
+  const res = await fetch(`http://127.0.0.1:${PORT}/api/admin/users`, { headers: { Cookie: cookie('owner') } });
+  const { users } = await res.json();
+  const hasPush = Object.fromEntries(users.map(u => [u.id, u.hasPush]));
+  assert.equal(hasPush.m2, false);
+  assert.equal(hasPush.m3, true);
 });

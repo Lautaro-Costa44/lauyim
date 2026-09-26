@@ -144,6 +144,7 @@ import {
   APPROVAL_REQUIRED_SETTING, APPROVAL_MODE_SETTING, readApprovalSettings, validateApprovalSettings,
   effectiveMode, allowedStarts, needsProfilePrompt, anyFieldEnabled
 } from './approval.js';
+import { membersCsv } from './member-export.js';
 import {
   getBillingSettings, validateBillingSettings, serializeBillingSetting, gymToday,
   billingStatus, nextDueDate, debtTotal, isIsoDate, daysBetween,
@@ -290,6 +291,10 @@ const SECRET = fs.readFileSync(secretFile, 'utf8').trim();
 // Funciones auxiliares para compatibilidad
 const isAdmin = user => !!user && (DEMO_ADMIN_ALL_USERS || user.admin === 1 || user.admin === true || ADMIN_UIDS.includes(user.id));
 const isOwner = user => !!user && (user.owner === 1 || user.owner === true);
+// Staff de verdad (admin en la base, ADMIN_UIDS u owner), sin DEMO_ADMIN_ALL_USERS: cuotas solo
+// exceptúa a estos. Así la demo (todos admins para ver el panel) igual muestra bloqueos y el
+// resumen de Cuotas con socios.
+const isRealStaff = user => !!user && (user.admin === 1 || user.admin === true || ADMIN_UIDS.includes(user.id) || isOwner(user));
 function readState(uid) {
   return getUserState(uid);
 }
@@ -658,7 +663,7 @@ function checkPayment(body, current, settings) {
 // rechazan las rutas de MEMBERSHIP_GATED. Admins y owner nunca quedan bloqueados, y nadie
 // queda bloqueado con cuotas apagado.
 function isMembershipBlocked(user) {
-  if (!user || isAdmin(user) || !billingEnabledNow()) return false;
+  if (!user || isRealStaff(user) || !billingEnabledNow()) return false;
   const settings = billingSettingsNow();
   return billingStatus(getMemberBilling(user.id), billingToday(settings), settings) === 'bloqueado';
 }
@@ -667,7 +672,7 @@ function isMembershipBlocked(user) {
 // 'pending' hasta que el staff la habilita. Mismo mecanismo que el bloqueo por cuota (conserva la
 // sesión, se le rechazan las rutas de MEMBERSHIP_GATED), otro motivo. Staff nunca.
 const approvalNow = () => readApprovalSettings(getAdminSetting);
-const isAccountPending = user => !!user && user.approval_status === 'pending' && !isAdmin(user);
+const isAccountPending = user => !!user && user.approval_status === 'pending' && !isRealStaff(user);
 
 // Entrenamiento, sync y nutrición del socio. Fuera a propósito: /api/me, logout, credenciales,
 // vinculación de dispositivos y push (el aviso de cuota tiene que poder llegarle), endpoints
@@ -2248,7 +2253,7 @@ const routes = {
     const today = billingToday(settings);
     const counts = { bloqueado: 0, vencido: 0, por_vencer: 0 };
     for (const b of getAllMemberBilling()) {
-      if (b.disabled || b.owner || isAdmin({ id: b.userId, admin: b.admin })) continue;
+      if (b.disabled || isRealStaff({ id: b.userId, admin: b.admin, owner: b.owner })) continue;
       const status = billingStatus(b, today, settings);
       if (status in counts) counts[status]++;
     }
@@ -2258,7 +2263,8 @@ const routes = {
   'GET /api/me': async (req, res) => {
     const user = readSession(req);
     if (!user) return json(res, 401, { error: 'No has iniciado sesión' });
-    const me = { id: user.id, name: user.name, admin: isAdmin(user), owner: !!user.owner };
+    // staff: admin de verdad (sin DEMO_ADMIN_ALL_USERS). El frontend lo usa para el bloqueo por cuota.
+    const me = { id: user.id, name: user.name, admin: isAdmin(user), owner: !!user.owner, staff: isRealStaff(user) };
     // Pendiente de aprobación / formulario de datos de una sola vez (socios que ya existían).
     const fields = memberFieldsNow();
     const account = {
@@ -2277,7 +2283,7 @@ const routes = {
       billingEnabled: true,
       billing: {
         hasPlan: billing.planId != null, status, dueDate: billing.dueDate, planName: billing.planName,
-        blocked: status === 'bloqueado' && !isAdmin(user), trialUntil: billing.trialUntil, trialEnded: isTrialEnded(billing, status)
+        blocked: status === 'bloqueado' && !isRealStaff(user), trialUntil: billing.trialUntil, trialEnded: isTrialEnded(billing, status)
       }
     });
   },
@@ -2977,7 +2983,8 @@ const routes = {
         workouts: workouts.length,
         lastWorkout: last ? last.d : null,
         lastSync: S._ts || null,
-        hasPush: getSubscriptionsByUserId(u.id).length > 0,
+        // Solo suscripciones a las que se puede enviar: una bloqueada por la allowlist no cuenta.
+        hasPush: getSubscriptionsByUserId(u.id).some(sub => !pushEndpointError(sub.endpoint)),
         live: livePresence(u.id),
         billing: (b => ({ status: billingStatus(b, today, settings), dueDate: b.dueDate ?? null }))(billingByUser.get(u.id) || {})
       };
@@ -3084,7 +3091,7 @@ const routes = {
     const today = billingToday(settings);
     const members = getAllMemberBilling().map(b => {
       const view = billingView(b, today, settings);
-      return { id: b.userId, name: b.name, disabled: b.disabled, admin: isAdmin({ id: b.userId, admin: b.admin }), hasApp: b.hasApp, planId: view.planId, planName: view.planName, dueDate: view.dueDate, trialUntil: view.trialUntil, status: view.status, debt: view.debt };
+      return { id: b.userId, name: b.name, disabled: b.disabled, admin: isRealStaff({ id: b.userId, admin: b.admin, owner: b.owner }), hasApp: b.hasApp, planId: view.planId, planName: view.planName, dueDate: view.dueDate, trialUntil: view.trialUntil, status: view.status, debt: view.debt };
     });
     // El resumen cuenta socios activos y no admins: un desactivado no es deuda por cobrar ni un
     // cupo, y admins/owner no quedan bloqueados por cuota. Siguen en members con admin: true.
@@ -3270,7 +3277,7 @@ const routes = {
     const billing = billingView(getMemberBilling(userId), billingToday(settings), settings);
     const back = backToTrial ? `vuelve a la prueba (hasta ${backToTrial})` : `vuelve a vencer ${backTo}`;
     audit(req, 'admin.billing.payment_void', { user: admin, target, summary: `$${payment.amount} · ${back}${reason ? ' · ' + reason : ''}` });
-    if (billing.status === 'bloqueado' && !isAdmin(target)) audit(req, 'admin.billing.blocked', { user: admin, target, summary: backToTrial ? `Prueba terminada el ${backToTrial}` : `Venció ${backTo}` });
+    if (billing.status === 'bloqueado' && !isRealStaff(target)) audit(req, 'admin.billing.blocked', { user: admin, target, summary: backToTrial ? `Prueba terminada el ${backToTrial}` : `Venció ${backTo}` });
     json(res, 200, { billing, payment: getPaymentById(paymentId) });
   },
 
@@ -3594,6 +3601,34 @@ const routes = {
         write.plans.length ? `${write.plans.length} planes nuevos` : null, `${members.filter(m => m.payment).length} pagos importados`].filter(Boolean).join(' · ')
     });
     json(res, 200, { ok: true, created: result.created, updated: result.updated, skipped, errors: summary.errores });
+  },
+
+  // Exportar socios a CSV (solo owner): datos de la ficha y, con cuotas, plan y vencimiento.
+  // Sin staff. En Logs solo el conteo, nunca datos de los socios.
+  'GET /api/owner/members/export': async (req, res) => {
+    const owner = requireOwner(req, res); if (!owner) return;
+    const billingEnabled = billingEnabledNow();
+    const settings = billingSettingsNow();
+    const today = billingToday(settings);
+    const profiles = new Map(getAllMemberProfiles().map(p => [p.userId, p]));
+    const billing = new Map(getAllMemberBilling().map(b => [b.userId, b]));
+    const appUserIds = getAppUserIds();
+    const members = getAllUsers().filter(u => !isRealStaff(u)).map(u => {
+      const b = billing.get(u.id);
+      return {
+        name: u.name, created: isoTimestamp(u.created_at), disabled: !!u.disabled, pending: isAccountPending(u), hasApp: appUserIds.has(u.id),
+        profile: profiles.get(u.id) || null,
+        billing: b ? { planName: b.planName, dueDate: b.dueDate, status: billingStatus(b, today, settings) } : { status: 'sin_plan' }
+      };
+    }).sort((a, b) => a.name.localeCompare(b.name, 'es'));
+    const { csv, count } = membersCsv(members, { billingEnabled });
+    audit(req, 'owner.member.export', { user: owner, summary: `${count} socio${count === 1 ? '' : 's'} exportado${count === 1 ? '' : 's'}` });
+    res.writeHead(200, {
+      'Content-Type': 'text/csv; charset=utf-8',
+      'Content-Disposition': `attachment; filename="socios-${today}.csv"`,
+      'Cache-Control': 'no-store'
+    });
+    res.end(csv);
   },
 
   // ¿Ya existe alguien con este DNI? Para ofrecer vincular en vez de duplicar.

@@ -1,6 +1,6 @@
 import { HashRouter, Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom'
 import { lazy, Suspense, useEffect, useLayoutEffect, useState } from 'react'
-import { useStore } from './store/useStore.js'
+import { useStore, billingExempt } from './store/useStore.js'
 import { useUI } from './store/useUI.js'
 import { bindUI } from './components/ui.jsx'
 import { ACCENTS } from './lib/format.js'
@@ -101,7 +101,7 @@ function Shell() {
   const authed = !!user || (allowGuest && isGuest)
   // Bloqueo por cuota: pantalla completa, sin TabBar ni RestTimer. Nunca para staff.
   // Cuenta pendiente de aprobación: misma pantalla, otro motivo.
-  const blocked = !licenseExpired && (membershipBlocked || accountPending) && !!user && !user.admin
+  const blocked = !licenseExpired && (membershipBlocked || accountPending) && !!user && !billingExempt(user)
   // Socios que ya existían sin datos: el formulario, una sola vez, antes de todo lo demás.
   const askProfile = !licenseExpired && !blocked && !!user && !user.admin && !!profilePrompt
   const isAdminPath = loc.pathname === '/admin' || loc.pathname.startsWith('/admin/')

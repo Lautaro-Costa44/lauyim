@@ -692,6 +692,7 @@ export default {
   'Started a free trial': 'Inició una prueba gratis',
   'Created a member record': 'Creó una ficha de socio',
   'Imported members': 'Importó socios',
+  'Exported members': 'Exportó los socios',
   'Updated member details': 'Editó los datos de un socio',
   'Generated an app link code': 'Generó un código de vinculación',
   'Revoked an app link code': 'Revocó un código de vinculación',

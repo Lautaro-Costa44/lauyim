@@ -65,5 +65,14 @@ export default defineConfig({
       '/gif': { target: media, changeOrigin: true }
     }
   },
-  build: { chunkSizeWarningLimit: 1500 }
+  build: {
+    chunkSizeWarningLimit: 1500,
+    rolldownOptions: {
+      output: {
+        // zxing (lo usan el escáner de Nutrición y QrCanvas del admin) en un chunk propio: si no,
+        // queda dentro del chunk de Nutrición y el admin lo baja entero para dibujar un QR.
+        advancedChunks: { groups: [{ name: 'zxing', test: /html5-qrcode[\\/]third_party[\\/]zxing/ }] }
+      }
+    }
+  }
 })

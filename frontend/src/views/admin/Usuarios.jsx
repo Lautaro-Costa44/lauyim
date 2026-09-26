@@ -9,7 +9,7 @@ import { t } from '../../lib/i18n.js'
 import Icon from '../../components/Icon.jsx'
 import { Button, Row, TextField } from '../../components/ui.jsx'
 import { rel, UserDetail } from './shared.jsx'
-import { IncompleteBadge, NoAppBadge, PendingBadge, looksLikeDni, lookupDni, openImportSheet, openMemberSheet } from './members/common.jsx'
+import { IncompleteBadge, NoAppBadge, PendingBadge, exportMembersCsv, looksLikeDni, lookupDni, openImportSheet, openMemberSheet } from './members/common.jsx'
 
 // Filtro por acceso a la app: las fichas (sin passkey) las carga el gimnasio. "Pendientes":
 // cuentas que esperan la aprobación del staff (solo aparece si hay alguna).
@@ -19,6 +19,7 @@ const matchesAppFilter = (u, f) => f === 'all' || (f === 'pending' ? isPending(u
 
 export default function Usuarios() {
   const openSheet = useUI(s => s.openSheet)
+  const toast = useUI(s => s.toast)
   const { users, loadUsers, billingEnabled } = useAdmin()
   const isOwner = !!useStore(s => s.user)?.owner
   const [userSearch, setUserSearch] = useState('')
@@ -47,6 +48,12 @@ export default function Usuarios() {
     onImported: loadUsers,
     onShowMembers: () => { setUserSearch(''); setAppFilter('noapp'); setUserPage(1) }
   })
+  const [exporting, setExporting] = useState(false)
+  const exportMembers = () => {
+    setExporting(true)
+    exportMembersCsv().then(() => toast(t('Socios exportados'))).catch(e => toast(e.message || t('No se pudo exportar')))
+      .finally(() => setExporting(false))
+  }
   const disabledCount = (users || []).filter(u => u.disabled).length
   const pendingCount = (users || []).filter(isPending).length
   const filters = pendingCount || appFilter === 'pending' ? [...APP_FILTERS, ['pending', t('Pendientes ({0})', pendingCount)]] : APP_FILTERS
@@ -70,6 +77,7 @@ export default function Usuarios() {
     <div className="member-actions">
       <Button variant="tinted" icon="plus" className="member-new" onClick={newMember}>{t('Nuevo socio (sin app)')}</Button>
       {isOwner && <Button variant="tinted" icon="upload" className="member-import" onClick={importMembers}>{t('Importar socios')}</Button>}
+      {isOwner && <Button variant="tinted" icon="download" className="member-export" disabled={exporting} onClick={exportMembers}>{exporting ? t('Exportando…') : t('Exportar socios')}</Button>}
     </div>
     <h4 className="sec">{t('Usuarios: {0} ({1} Desactivados)', users ? users.length : 0, disabledCount)}</h4>
     <div style={{ marginBottom: 10 }}>

@@ -96,6 +96,7 @@ const readJSON = key => { try { return JSON.parse(localStorage.getItem(key)) || 
 // Cuenta pendiente de aprobación (spec 12.3): mismo mecanismo que el bloqueo por cuota, otro
 // motivo. Flag persistido; solo lo apaga un /api/me que diga pending: false.
 const PENDING_KEY = 'gym_account_pending'
+export const billingExempt = user => !!(user?.staff ?? user?.admin)
 export const isMembershipBlockedError = e => e?.data?.error === 'membership_blocked' || e?.data?.error === 'account_pending'
 
 const ascendingBodyweight = entries => (Array.isArray(entries)
@@ -132,8 +133,10 @@ export const useStore = create((set, get) => {
   }
 
   // Nunca para staff: admins y owner no se bloquean por cuota (el servidor tampoco los bloquea).
+  // Con DEMO_ADMIN_ALL_USERS todos son admin, pero solo el staff de verdad (user.staff de
+  // /api/me) queda exento; sin ese dato (sesión vieja) vale admin, como antes.
   const setMembershipBlocked = blocked => {
-    const on = !!blocked && !get().user?.admin
+    const on = !!blocked && !billingExempt(get().user)
     try { on ? localStorage.setItem(BLOCK_KEY, '1') : localStorage.removeItem(BLOCK_KEY) } catch { /* storage off */ }
     set({ membershipBlocked: on })
   }
@@ -147,13 +150,13 @@ export const useStore = create((set, get) => {
     } catch { /* storage off */ }
     set({ billing, billingEnabled })
     // Con cuotas apagado nadie queda bloqueado: se apaga el flag (y su localStorage).
-    if (me?.user?.admin || !billingEnabled) setMembershipBlocked(false)
+    if (billingExempt(me?.user) || !billingEnabled) setMembershipBlocked(false)
     else if (billing?.blocked === true) setMembershipBlocked(true)
     else if (billing?.blocked === false) setMembershipBlocked(false)
   }
   if (typeof window !== 'undefined') window.addEventListener('gym:membership_blocked', () => setMembershipBlocked(true))
   const setAccountPending = pending => {
-    const on = !!pending && !get().user?.admin
+    const on = !!pending && !billingExempt(get().user)
     try { on ? localStorage.setItem(PENDING_KEY, '1') : localStorage.removeItem(PENDING_KEY) } catch { /* storage off */ }
     set({ accountPending: on })
   }
