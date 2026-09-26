@@ -18,6 +18,8 @@ const { processSyncBatch } = await import('../../../api/sync.js')
 const { applyStatePut } = await import('../../../api/data-put.js')
 
 const USER = 'u-extras'
+// The account both devices are signed in to (the server routes and the store use it).
+let currentUser = USER
 const clone = o => JSON.parse(JSON.stringify(o))
 // What server.js does per route, for a client that sends X-Lauyim-Client: routine-extras.
 const save = (uid, st) => server.saveUserState(uid, st, { preserveExtras: false })
@@ -25,9 +27,9 @@ const serverApi = async (url, opts = {}) => {
   const method = opts.method || 'GET'
   const body = opts.body ? JSON.parse(opts.body) : {}
   const db = server.getDatabase()
-  if (url === '/api/data/sync' && method === 'POST') return clone(processSyncBatch({ db, userId: USER, operations: body.operations, getUserState: server.getUserState, saveUserState: save }))
-  if (url === '/api/data' && method === 'GET') return clone({ state: server.getUserState(USER) })
-  if (url === '/api/data' && method === 'PUT') return clone(applyStatePut({ db, userId: USER, state: body.state, getUserState: server.getUserState, saveUserState: save }).body)
+  if (url === '/api/data/sync' && method === 'POST') return clone(processSyncBatch({ db, userId: currentUser, operations: body.operations, getUserState: server.getUserState, saveUserState: save }))
+  if (url === '/api/data' && method === 'GET') return clone({ state: server.getUserState(currentUser) })
+  if (url === '/api/data' && method === 'PUT') return clone(applyStatePut({ db, userId: currentUser, state: body.state, getUserState: server.getUserState, saveUserState: save }).body)
   throw new Error(`unexpected ${method} ${url}`)
 }
 vi.mock('../lib/api.js', async importOriginal => ({ ...(await importOriginal()), api: (...args) => serverApi(...args) }))
@@ -36,7 +38,7 @@ vi.mock('../lib/api.js', async importOriginal => ({ ...(await importOriginal()),
 const openDevice = async () => {
   vi.resetModules()
   const { useStore } = await import('./useStore.js')
-  useStore.setState({ user: { id: USER } })
+  useStore.setState({ user: { id: currentUser } })
   return useStore
 }
 // Each device has its own storage; the test swaps it in and out around every step.
@@ -164,5 +166,43 @@ describe('routine exercise extras sync between devices', () => {
     })
     expect(computer.routines[0].ex[0].intensifier).toBeUndefined()
     expect(computer.routines[0].ex[0].warmupSets).toBeUndefined()
+  })
+})
+
+describe('a new member without any server state yet', () => {
+  const NEW = 'u-new'
+  beforeAll(() => {
+    currentUser = NEW
+    // Signed up, never synced: users row, no user_state row.
+    server.getDatabase().prepare('INSERT INTO users (id, name) VALUES (?, ?)').run(NEW, 'Nuevo')
+  })
+  beforeEach(() => { for (const k of Object.keys(devices)) delete devices[k] })
+
+  it('builds a first routine by hand (no program): the sync applies and another device gets it', async () => {
+    expect(server.getUserState(NEW)).toBeNull()
+    const own = { id: 'r-own', name: 'Mi rutina', emoji: 'dumbbell', ex: [{ id: '0025', sets: 3, mode: 'reps', reps: 10, weight: 40 }] }
+    const pending = await onDevice('phone', async () => {
+      const store = await openDevice()
+      await store.getState().pullState()
+      store.getState().update(s => { s.routines.push(clone(own)); s.week = { 1: 'r-own' } })
+      await queued()
+      await store.getState().syncPending()
+      const { countSync } = await import('../lib/sync-queue.js')
+      return countSync(NEW)
+    })
+    expect(pending).toBe(0)
+    const stored = server.getUserState(NEW)
+    expect(Array.isArray(stored.routines)).toBe(true)
+    expect(stored.routines.map(r => r.name)).toEqual(['Mi rutina'])
+
+    const computer = await onDevice('computer', async () => {
+      const store = await openDevice()
+      await store.getState().syncPending()
+      await store.getState().pullState()
+      return store.getState().S
+    })
+    expect(computer.routines.map(r => r.id)).toEqual(['r-own'])
+    expect(computer.routines[0].ex[0]).toMatchObject({ id: '0025', reps: 10, weight: 40 })
+    expect(computer.week).toMatchObject({ 1: 'r-own' })
   })
 })

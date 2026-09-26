@@ -7,6 +7,11 @@ const validIngredients = value => Array.isArray(value) && value.length > 0 && va
 const validDate = value => /^\d{4}-\d{2}-\d{2}$/.test(String(value || ''));
 const nextServerTimestamp = state => Math.max(Date.now(), Number(state?._ts || 0) + 1);
 const RESERVED_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
+// Top-level fields of the member state that are arrays of entities (DEF in the client store).
+// A patch into one that does not exist yet — the first change of an account with no user_state
+// row, e.g. ['routines', <id>] for its first routine — has to find an array there, not an object:
+// saveUserState reads them as arrays.
+const ARRAY_ROOTS = new Set(['routines', 'workouts', 'bodyweight', 'customEx', 'equipProfiles', 'routineGroups']);
 
 function findEntityIndex(array, id) {
   return Array.isArray(array) ? array.findIndex(item => item && typeof item === 'object' && String(item.id) === String(id)) : -1;
@@ -32,7 +37,7 @@ function applyStateChange(state, change) {
       target = target[index];
       continue;
     }
-    if (target[key] == null || typeof target[key] !== 'object') target[key] = {};
+    if (target[key] == null || typeof target[key] !== 'object') target[key] = i === 0 && ARRAY_ROOTS.has(key) ? [] : {};
     target = target[key];
   }
 

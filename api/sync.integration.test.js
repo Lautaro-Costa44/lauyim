@@ -165,6 +165,20 @@ test('SQLite real: a field patch on one exercise of a routine reaches routine_ex
   assert.equal(getUserState('u1').routines[0].ex.length, 2);
 });
 
+test('SQLite real: the first patch of an account with no user_state row creates the arrays it needs', () => {
+  db.prepare('INSERT INTO users (id, name) VALUES (?, ?)').run('u-fresh', 'Nuevo');
+  assert.equal(getUserState('u-fresh'), null);
+  const r = run([{ id: 'fresh-1', createdAt: 1, changes: [
+    { path: ['routines', 'r-first'], op: 'add', value: { id: 'r-first', name: 'Primera', ex: [{ id: '0025', sets: 3, reps: 10 }] } },
+    { path: ['bodyweight', 'bw-1'], op: 'add', value: { id: 'bw-1', d: '2026-09-25', w: 80, t: 1790000000000 } }
+  ] }], 'u-fresh');
+  assert.deepEqual(r.conflicts, []);
+  assert.deepEqual(r.appliedIds, ['fresh-1']);
+  const state = getUserState('u-fresh');
+  assert.deepEqual(state.routines.map(x => x.name), ['Primera']);
+  assert.ok(Array.isArray(state.bodyweight));
+});
+
 after(() => {
   closeDatabase();
   fs.rmSync(dataDir, { recursive: true, force: true });
