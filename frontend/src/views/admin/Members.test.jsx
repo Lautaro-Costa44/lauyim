@@ -484,3 +484,22 @@ describe('código de vinculación: se cierra solo al vincular', () => {
     expect(polls()).toBe(before)
   })
 })
+
+describe('exportar socios', () => {
+  it('el owner descarga el CSV que arma el servidor', async () => {
+    const realFetch = globalThis.fetch
+    const created = []
+    URL.createObjectURL = vi.fn(blob => { created.push(blob); return 'blob:x' })
+    URL.revokeObjectURL = vi.fn()
+    globalThis.fetch = vi.fn(async () => new Response('﻿Usuario;DNI\r\n', { status: 200, headers: { 'Content-Disposition': 'attachment; filename="socios-2026-09-26.csv"' } }))
+    try {
+      await mount('#/admin/usuarios')
+      await click(button('Exportar socios'))
+      expect(globalThis.fetch).toHaveBeenCalledWith('/api/owner/members/export', { credentials: 'same-origin' })
+      expect(created).toHaveLength(1)
+      expect(useUI.getState().toastMsg).toBe('Socios exportados')
+    } finally {
+      globalThis.fetch = realFetch
+    }
+  })
+})

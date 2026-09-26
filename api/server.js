@@ -136,6 +136,7 @@ import {
   normalizeDni, maskDni, profileChangeSummary, formatLinkCode, canonicalLinkCode, missingRequiredFields
 } from './members.js';
 import { parseImportBody, analyzeImport } from './member-import.js';
+import { membersCsv } from './member-export.js';
 import {
   getBillingSettings, validateBillingSettings, serializeBillingSetting, gymToday,
   billingStatus, nextDueDate, debtTotal, isIsoDate, daysBetween,
@@ -3383,6 +3384,34 @@ const routes = {
         write.plans.length ? `${write.plans.length} planes nuevos` : null, `${members.filter(m => m.payment).length} pagos importados`].filter(Boolean).join(' · ')
     });
     json(res, 200, { ok: true, created: result.created, updated: result.updated, skipped, errors: summary.errores });
+  },
+
+  // Exportar socios a CSV (solo owner): datos de la ficha y, con cuotas, plan y vencimiento.
+  // Sin staff. En Logs solo el conteo, nunca datos de los socios.
+  'GET /api/owner/members/export': async (req, res) => {
+    const owner = requireOwner(req, res); if (!owner) return;
+    const billingEnabled = billingEnabledNow();
+    const settings = billingSettingsNow();
+    const today = billingToday(settings);
+    const profiles = new Map(getAllMemberProfiles().map(p => [p.userId, p]));
+    const billing = new Map(getAllMemberBilling().map(b => [b.userId, b]));
+    const appUserIds = getAppUserIds();
+    const members = getAllUsers().filter(u => !isRealStaff(u)).map(u => {
+      const b = billing.get(u.id);
+      return {
+        name: u.name, created: isoTimestamp(u.created_at), disabled: !!u.disabled, hasApp: appUserIds.has(u.id),
+        profile: profiles.get(u.id) || null,
+        billing: b ? { planName: b.planName, dueDate: b.dueDate, status: billingStatus(b, today, settings) } : { status: 'sin_plan' }
+      };
+    }).sort((a, b) => a.name.localeCompare(b.name, 'es'));
+    const { csv, count } = membersCsv(members, { billingEnabled });
+    audit(req, 'owner.member.export', { user: owner, summary: `${count} socio${count === 1 ? '' : 's'} exportado${count === 1 ? '' : 's'}` });
+    res.writeHead(200, {
+      'Content-Type': 'text/csv; charset=utf-8',
+      'Content-Disposition': `attachment; filename="socios-${today}.csv"`,
+      'Cache-Control': 'no-store'
+    });
+    res.end(csv);
   },
 
   // ¿Ya existe alguien con este DNI? Para ofrecer vincular en vez de duplicar.

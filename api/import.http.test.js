@@ -186,3 +186,21 @@ test('plantilla sin borrar la fila de ejemplo: la ignora y avisa en la vista pre
   assert.deepEqual(r.body.rows.map(x => x.rowNumber), [3]);
   assert.match(r.body.warnings.join(), /fila de ejemplo/);
 });
+
+test('exportar socios: solo el owner, CSV con BOM y ";", sin staff, audit solo con el conteo', async () => {
+  assert.equal((await call('adm', 'GET', '/api/owner/members/export')).status, 403);
+  const res = await fetch(BASE + '/api/owner/members/export', { headers: { Cookie: cookie('owner') } });
+  assert.equal(res.status, 200);
+  assert.match(res.headers.get('content-type'), /^text\/csv/);
+  assert.match(res.headers.get('content-disposition'), /attachment; filename="socios-\d{4}-\d{2}-\d{2}\.csv"/);
+  // res.text() se come el BOM: se miran los bytes.
+  const bytes = Buffer.from(await res.arrayBuffer());
+  assert.deepEqual([...bytes.subarray(0, 3)], [0xef, 0xbb, 0xbf]);
+  const text = bytes.subarray(3).toString('utf8');
+  assert.ok(text.startsWith('Usuario;Nombre y apellido;DNI;Celular;Mail;Usa la app;Estado;Alta'));
+  const lines = text.trim().split('\r\n');
+  assert.ok(!lines.some(l => l.startsWith('Dueña;') || l.startsWith('Admin;')));
+  const count = lines.length - 1;
+  const last = auditRows().filter(r => r.ev === 'owner.member.export').at(-1);
+  assert.equal(last.summary, `${count} socio${count === 1 ? '' : 's'} exportado${count === 1 ? '' : 's'}`);
+});

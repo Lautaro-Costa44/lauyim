@@ -50,6 +50,25 @@ export function DuplicateNotice({ other, onOpen, onLink }) {
   </div>
 }
 
+// Exportar socios (solo owner): el servidor arma el CSV (BOM, ';', fórmulas neutralizadas) y
+// deja el conteo en Logs; acá solo se descarga. El nombre del archivo lo pone el servidor.
+export async function exportMembersCsv() {
+  const res = await fetch('/api/owner/members/export', { credentials: 'same-origin' })
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}))
+    throw new Error(data.error || 'HTTP ' + res.status)
+  }
+  const name = /filename="([^"]+)"/.exec(res.headers.get('Content-Disposition') || '')?.[1] || 'socios.csv'
+  const url = URL.createObjectURL(await res.blob())
+  const a = document.createElement('a')
+  a.href = url
+  a.download = name
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
+}
+
 // Los flujos pesados viven en otro chunk; se abren como un sheet a pantalla completa con pasos
 // internos (atrás retrocede un paso), igual que la ficha de cuota.
 const openLazySheet = (load, openSheet, name, props) => load().then(mod => {
