@@ -53,3 +53,25 @@ Sin librerías nuevas.
 - El aviso es público por diseño (hay que poder leerlo antes de registrarse); expone solo el
   nombre del gym, el contacto y qué campos se piden, que el aviso tiene que decir de todos modos.
 - El check "Acepto" en el registro va en la entrega 3 (registro con datos).
+
+## Ronda 2 (decisiones de Lautaro, 26/09/2026)
+
+- **Datos de salud:** peso corporal, edad, género, altura, lesiones y nutrición se tratan como
+  datos sensibles (art. 7) y requieren consentimiento expreso. El aviso ya lo dice; el check y el
+  retiro del consentimiento van en la entrega 3.
+- **Transferencia internacional:** sección propia en el aviso (backups en Drive, Cloudflare,
+  servicios de push fuera del país).
+- **Encargado:** `OPERATOR_NAME` y `OPERATOR_CUIT` (opcionales, en el `.env` de cada instancia y en
+  `environment:` del compose). Con alguno cargado, el aviso dice "lauyim (Nombre, CUIT …)".
+
+### Para la consulta legal
+1. **Edad y género:** ¿son datos de salud (sensibles) o solo datos personales? Mientras tanto se
+   tratan como sensibles (lo prudente).
+2. **Consentimiento de salud:** ¿alcanza con el check en la app (registro / vinculación / Ajustes)
+   como consentimiento expreso? ¿Hay que guardar la versión del texto aceptado?
+3. **Transferencia internacional:** Drive (backups cifrados), Cloudflare (tránsito) y servicios de
+   push de Google/Apple/Mozilla/Microsoft. ¿Alcanza con informarla o hace falta algo más?
+4. **Figura de lauyim:** monotributista con CUIT como encargado del tratamiento. ¿Hace falta un
+   contrato de encargo con cada gym (art. 25)?
+5. Conservación de pagos por obligaciones contables e inscripción de la base en la AAIP (la hace
+   el gym como responsable).

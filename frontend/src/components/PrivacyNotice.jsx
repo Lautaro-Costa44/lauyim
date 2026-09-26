@@ -34,6 +34,9 @@ export function PrivacyNotice({ info }) {
   if (!info) return <div className="dim small">{t('Loading…')}</div>
   const gym = info.gymName || t('el gimnasio')
   const contact = info.contact
+  // Encargado: "lauyim", o con nombre y CUIT si la instancia los configura (OPERATOR_NAME / _CUIT).
+  const op = info.operator || {}
+  const operator = op.name || op.cuit ? `lauyim (${[op.name, op.cuit && 'CUIT ' + op.cuit].filter(Boolean).join(', ')})` : 'lauyim'
   const fields = (info.fields || []).map(k => t(FIELD_LABELS[k] || k))
   return <div className="privacy-doc">
     <div className="privacy-draft" role="note">
@@ -42,7 +45,7 @@ export function PrivacyNotice({ info }) {
 
     <Sect title={t('Quién es responsable de tus datos')}>
       <p>{t('El responsable de la base de datos es {0}, el gimnasio donde entrenás. Es quien decide qué datos se piden y para qué.', gym)}</p>
-      <p>{t('lauyim provee la app y la aloja por cuenta del gimnasio (encargado del tratamiento): usa los datos solo para que la app funcione y no los usa para fines propios.')}</p>
+      <p>{t('{0} provee la app y la aloja por cuenta del gimnasio (encargado del tratamiento): usa los datos solo para que la app funcione y no los usa para fines propios.', operator)}</p>
     </Sect>
 
     <Sect title={t('Qué datos se guardan')}>
@@ -50,11 +53,12 @@ export function PrivacyNotice({ info }) {
         <li>{t('Tu cuenta: el nombre de usuario que elegís y la clave pública de tu passkey. Tu huella, rostro o PIN nunca salen de tu dispositivo.')}</li>
         {fields.length > 0 && <li>{t('Tus datos de socio: {0}.', fields.join(', '))}</li>}
         {info.billingEnabled && <li>{t('Tu cuota: plan, vencimientos, pagos registrados en recepción y pruebas gratis.')}</li>}
-        <li>{t('Tu entrenamiento: rutinas, series, pesos, historial, peso corporal y, si los cargás, nutrición y lesiones.')}</li>
+        <li>{t('Tu entrenamiento: rutinas, programas, series, pesos levantados e historial.')}</li>
+        <li>{t('Tus datos de salud, si das tu consentimiento: peso corporal, edad, género, altura, lesiones y nutrición.')}</li>
         <li>{t('Notificaciones: si las activás, la dirección de envío que da tu navegador.')}</li>
         <li>{t('Registros técnicos de seguridad: ingresos y acciones del staff, con fecha y hora.')}</li>
       </ul>
-      <p>{t('Las lesiones y la nutrición son datos de salud (datos sensibles): cargarlos es voluntario y solo se usan para adaptar tu entrenamiento.')}</p>
+      <p>{t('Peso, edad, género, altura, lesiones y nutrición se tratan como datos sensibles (art. 7 de la Ley 25.326): solo se guardan con tu consentimiento expreso y solo se usan para adaptar tu entrenamiento. Podés retirarlo cuando quieras desde Ajustes → Datos de salud: la app sigue funcionando para entrenar, esas secciones se ocultan y podés borrar lo que ya cargaste.')}</p>
     </Sect>
 
     <Sect title={t('Para qué se usan')}>
@@ -73,8 +77,13 @@ export function PrivacyNotice({ info }) {
         <li>{t('El staff del gimnasio (dueño, recepción, entrenadores y nutricionistas), solo para atenderte.')}</li>
         <li>{t('lauyim, solo para soporte y mantenimiento técnico.')}</li>
         <li>{t('Las copias de seguridad se guardan cifradas en un servicio de almacenamiento en la nube, que no puede leerlas.')}</li>
+        <li>{t('Cloudflare, que conecta la app con el servidor, ve el tráfico cifrado en tránsito.')}</li>
         <li>{t('Si activás las notificaciones, el servicio de avisos de tu navegador (Google, Apple, Mozilla o Microsoft) recibe el texto de cada aviso para entregártelo.')}</li>
       </ul>
+    </Sect>
+
+    <Sect title={t('Transferencia internacional')}>
+      <p>{t('Algunos de estos servicios (el almacenamiento de las copias de seguridad, Cloudflare y los servicios de avisos de los navegadores) usan servidores fuera de Argentina. Las copias viajan y se guardan cifradas.')}</p>
     </Sect>
 
     <Sect title={t('Cuánto tiempo se guardan')}>

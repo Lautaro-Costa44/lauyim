@@ -3255,7 +3255,9 @@ const routes = {
       contact: getAdminSetting(PRIVACY_CONTACT_SETTING, ''),
       fields: Object.keys(fields).filter(k => fields[k].enabled),
       billingEnabled: billingEnabledNow(),
-      auditDays: AUDIT_ON ? AUDIT_DAYS : null
+      auditDays: AUDIT_ON ? AUDIT_DAYS : null,
+      // Encargado del tratamiento (lauyim): opcional, por instancia.
+      operator: { name: (process.env.OPERATOR_NAME || '').trim().slice(0, 80) || null, cuit: (process.env.OPERATOR_CUIT || '').trim().slice(0, 20) || null }
     });
   },
 

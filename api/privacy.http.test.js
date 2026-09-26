@@ -52,7 +52,7 @@ async function call(uid, method, url, body, base = BASE) {
 const auditEvents = () => fs.readFileSync(path.join(dataDir, 'audit.log'), 'utf8').trim().split('\n').map(l => JSON.parse(l).ev);
 
 before(async () => {
-  BASE = await startServer({ LICENSE_EXPIRES_AT: '' });
+  BASE = await startServer({ LICENSE_EXPIRES_AT: '', OPERATOR_NAME: 'Juan Pérez', OPERATOR_CUIT: '20-12345678-9' });
   EXPIRED = await startServer({ LICENSE_EXPIRES_AT: '2020-01-01' });
 });
 after(async () => {
@@ -74,6 +74,7 @@ test('GET /api/privacy es público, aun con la licencia vencida', async () => {
   assert.equal(r.body.gymName, '');
   assert.ok(Array.isArray(r.body.fields));
   assert.equal(typeof r.body.billingEnabled, 'boolean');
+  assert.deepEqual(r.body.operator, { name: null, cuit: null });
   // El resto de la API sí queda cortado por la licencia.
   assert.equal((await call('owner', 'GET', '/api/owner/privacy', undefined, EXPIRED)).body.error, 'license_expired');
 });
@@ -92,5 +93,6 @@ test('solo el owner lee y cambia el responsable y el contacto', async () => {
   const pub = await call(null, 'GET', '/api/privacy');
   assert.equal(pub.body.gymName, 'Gym Norte');
   assert.equal(pub.body.contact, 'Recepción, Av. Siempreviva 742');
+  assert.deepEqual(pub.body.operator, { name: 'Juan Pérez', cuit: '20-12345678-9' });
   assert.ok(auditEvents().includes('owner.privacy.settings'));
 });
