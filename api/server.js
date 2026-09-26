@@ -676,6 +676,8 @@ const healthAwareSave = (user, saveOpts) => (uid, st) =>
 // sesión, se le rechazan las rutas de MEMBERSHIP_GATED), otro motivo. Staff nunca.
 const approvalNow = () => readApprovalSettings(getAdminSetting);
 const isAccountPending = user => !!user && user.approval_status === 'pending' && !isAdmin(user);
+// Pendientes que esperan al staff (el aviso al apagar la aprobación). Los desactivados ya se rechazaron.
+const countPendingAccounts = () => getAllUsers().filter(u => !u.disabled && isAccountPending(u)).length;
 
 // Entrenamiento, sync y nutrición del socio. Fuera a propósito: /api/me, logout, credenciales,
 // vinculación de dispositivos y push (el aviso de cuota tiene que poder llegarle), endpoints
@@ -3349,7 +3351,7 @@ const routes = {
     if (!requireAdmin(req, res)) return;
     const approval = approvalNow();
     const billingEnabled = billingEnabledNow();
-    json(res, 200, { ...approval, effectiveMode: effectiveMode(approval.mode, billingEnabled), billingEnabled, dniEnabled: memberFieldsNow().dni.enabled });
+    json(res, 200, { ...approval, effectiveMode: effectiveMode(approval.mode, billingEnabled), billingEnabled, dniEnabled: memberFieldsNow().dni.enabled, pendingCount: countPendingAccounts() });
   },
 
   'PUT /api/owner/approval': async (req, res) => {
@@ -3364,7 +3366,7 @@ const routes = {
       audit(req, 'owner.approval.settings', { user: owner, summary: `${approval.required ? 'Aprobación del staff' : 'Sin aprobación'} · modo ${APPROVAL_MODE_LABELS[approval.mode]}` });
     }
     const billingEnabled = billingEnabledNow();
-    json(res, 200, { ...approval, effectiveMode: effectiveMode(approval.mode, billingEnabled), billingEnabled, dniEnabled: memberFieldsNow().dni.enabled });
+    json(res, 200, { ...approval, effectiveMode: effectiveMode(approval.mode, billingEnabled), billingEnabled, dniEnabled: memberFieldsNow().dni.enabled, pendingCount: countPendingAccounts() });
   },
 
   // Habilitar una cuenta pendiente: el staff completa los datos de la config y confirma según el

@@ -194,6 +194,7 @@ test('con aprobación: registro con solo el nombre; queda pendiente y sin entren
   assert.equal(list.body.users.find(u => u.id === pendingId).pending, true);
   assert.equal(list.body.users.find(u => u.id === 'old').pending, false);
   assert.equal((await call('adm', 'GET', '/api/admin/user?id=' + pendingId)).body.user.pending, true);
+  assert.equal((await call('adm', 'GET', '/api/admin/approval')).body.pendingCount, 1);
 });
 
 test('aprobar: modo primer pago exige el pago; DNI de una ficha → 409 para vincular', async () => {

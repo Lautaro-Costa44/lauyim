@@ -253,7 +253,14 @@ function ApprovalCard({ billingEnabled }) {
             ? t('Quien se registra elige solo un nombre de usuario y espera a que recepción complete sus datos y habilite la cuenta.')
             : t('Quien se registra completa los datos del registro y entra directo. Un DNI que ya está cargado frena el registro.')}</div>
         </div>
-        <Switch label={t('Requerir aprobación del staff')} checked={data.required} disabled={busy} onChange={v => put({ required: v })} />
+        <Switch label={t('Requerir aprobación del staff')} checked={data.required} disabled={busy} onChange={v => v || !data.pendingCount ? put({ required: v })
+          // Apagarla no habilita a nadie: las pendientes siguen esperando al staff.
+          : confirmSheet({
+            title: t('¿Apagar la aprobación?'),
+            message: t(data.pendingCount === 1 ? 'Hay 1 cuenta pendiente: habilitala o sigue esperando.' : 'Hay {0} cuentas pendientes: habilitalas o siguen esperando.', data.pendingCount),
+            confirmText: t('Apagar'),
+            onConfirm: () => put({ required: false })
+          })} />
       </div>
       {data.required && <>
         <div className="small muted" style={{ marginTop: 12 }}>{t('Para habilitar una cuenta:')}</div>

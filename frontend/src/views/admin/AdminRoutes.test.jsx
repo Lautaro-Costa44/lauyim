@@ -44,7 +44,7 @@ apiMock.mockImplementation((url, opts) => {
   if (url === '/api/owner/qr') return Promise.resolve({ token: 'qr-token' })
   if (url === '/api/admin/approval' || url === '/api/owner/approval') {
     if (opts?.method === 'PUT') approval = { ...approval, ...JSON.parse(opts.body) }
-    return Promise.resolve({ ...approval, effectiveMode: billingOn ? approval.mode : 'approve', billingEnabled: billingOn, dniEnabled })
+    return Promise.resolve({ ...approval, effectiveMode: billingOn ? approval.mode : 'approve', billingEnabled: billingOn, dniEnabled, pendingCount: approval.pendingCount ?? 0 })
   }
   if (url === '/api/owner/privacy') return Promise.resolve(opts?.method === 'PUT' ? JSON.parse(opts.body) : { gymName: '', contact: '' })
   if (url.startsWith('/api/admin/audit')) return Promise.resolve({ enabled: auditOn, events: [], total: 0, retention: {}, now: Date.now() })
@@ -209,6 +209,17 @@ describe('admin routes', () => {
     expect(radios.map(r => r.disabled)).toEqual([false, true, true])
     expect(radios[1].textContent).toContain('Necesita el cobro de cuotas activado.')
     expect(radios[0].getAttribute('aria-checked')).toBe('true')
+  })
+
+  it('account approval: turning it off with pending accounts warns first', async () => {
+    approval = { required: true, mode: 'approve', pendingCount: 2 }
+    await mount('#/admin/acceso', OWNER)
+    await clickSwitch('Requerir aprobación del staff')
+    expect(sheetText()).toContain('Hay 2 cuentas pendientes: habilitalas o siguen esperando.')
+    expect(apiMock.mock.calls.some(([u, o]) => u === '/api/owner/approval' && o?.method === 'PUT')).toBe(false)
+    await clickButton(document.querySelector('#modal-root'), 'Apagar')
+    const put = apiMock.mock.calls.find(([u, o]) => u === '/api/owner/approval' && o?.method === 'PUT')
+    expect(JSON.parse(put[1].body)).toEqual({ required: false })
   })
 
   it('invites moved out of Usuarios', async () => {
