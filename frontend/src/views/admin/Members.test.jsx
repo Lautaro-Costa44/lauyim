@@ -76,12 +76,8 @@ const { useUI } = await import('../../store/useUI.js')
 const { default: App } = await import('../../App.jsx')
 const { setLang } = await import('../../lib/i18n.js')
 
-const tick = () => act(async () => { await new Promise(r => setTimeout(r, 20)) })
-const flush = async () => {
-  for (let i = 0; i < 5; i++) await tick()
-  for (let i = 0; i < 150 && document.querySelector('.page-loading'); i++) await tick()
-  for (let i = 0; i < 5; i++) await tick()
-}
+const { flush, preloadAdminChunks } = await import('./test-utils.js')
+await preloadAdminChunks()
 const text = () => document.body.textContent
 const calls = (pred) => apiMock.mock.calls.filter(([u, o]) => pred(u, o || {}))
 // Topmost match: sheets stack in #modal-root after the page.
