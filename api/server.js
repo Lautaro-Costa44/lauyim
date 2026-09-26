@@ -129,13 +129,21 @@ import {
   mergeMember,
   getTrialsByUserId,
   getAllMemberProfiles,
-  importMembers
+  importMembers,
+  writeRegistrationProfile,
+  approveAccount,
+  completeProfilePrompt
 } from './database.js';
 import {
   MEMBER_FIELDS_SETTING, parseMemberFields, validateMemberFields, validateMemberProfile,
   normalizeDni, maskDni, profileChangeSummary, formatLinkCode, canonicalLinkCode, missingRequiredFields
 } from './members.js';
 import { parseImportBody, analyzeImport } from './member-import.js';
+import { PRIVACY_GYM_NAME_SETTING, PRIVACY_CONTACT_SETTING, validatePrivacySettings } from './privacy.js';
+import {
+  APPROVAL_REQUIRED_SETTING, APPROVAL_MODE_SETTING, readApprovalSettings, validateApprovalSettings,
+  effectiveMode, allowedStarts, needsProfilePrompt, anyFieldEnabled
+} from './approval.js';
 import {
   getBillingSettings, validateBillingSettings, serializeBillingSetting, gymToday,
   billingStatus, nextDueDate, debtTotal, isIsoDate, daysBetween,
@@ -655,6 +663,12 @@ function isMembershipBlocked(user) {
   return billingStatus(getMemberBilling(user.id), billingToday(settings), settings) === 'bloqueado';
 }
 
+// Aprobación de cuentas (spec 12.3): una cuenta registrada con la aprobación encendida queda
+// 'pending' hasta que el staff la habilita. Mismo mecanismo que el bloqueo por cuota (conserva la
+// sesión, se le rechazan las rutas de MEMBERSHIP_GATED), otro motivo. Staff nunca.
+const approvalNow = () => readApprovalSettings(getAdminSetting);
+const isAccountPending = user => !!user && user.approval_status === 'pending' && !isAdmin(user);
+
 // Entrenamiento, sync y nutrición del socio. Fuera a propósito: /api/me, logout, credenciales,
 // vinculación de dispositivos y push (el aviso de cuota tiene que poder llegarle), endpoints
 // públicos y todo /api/admin y /api/owner.
@@ -738,6 +752,8 @@ const profileView = (user, profile) => ({
 });
 
 // Otra persona ya tiene ese DNI: datos mínimos para que la UI ofrezca vincular.
+const APPROVAL_MODE_LABELS = { approve: 'aprobar', payment: 'primer pago', trial: 'prueba' };
+const DNI_EXISTS_MESSAGE = 'Ya hay un socio con este DNI. Pedí en recepción tu código de vinculación';
 const dniDuplicate = (res, other) => json(res, 409, { error: 'dni_duplicado', userId: other.userId, name: other.name, hasApp: other.hasApp });
 
 const MERGE_ERRORS = {
@@ -2185,6 +2201,9 @@ const routes = {
       invite_only: INVITE_ONLY,
       allow_guest: ALLOW_GUEST,
       nutricion_automatico: NUTRICION_AUTOMATICO,
+      // Qué pide el registro: con aprobación, solo el nombre de usuario (los datos los completa
+      // el staff); sin aprobación, los campos de la config.
+      registration: { approval: approvalNow().required, fields: memberFieldsNow() },
       instance_name: process.env.INSTANCE_NAME || req.headers['x-forwarded-host'] || req.headers['host'] || 'lauyim'
     });
   },
@@ -2240,13 +2259,21 @@ const routes = {
     const user = readSession(req);
     if (!user) return json(res, 401, { error: 'No has iniciado sesión' });
     const me = { id: user.id, name: user.name, admin: isAdmin(user), owner: !!user.owner };
+    // Pendiente de aprobación / formulario de datos de una sola vez (socios que ya existían).
+    const fields = memberFieldsNow();
+    const account = {
+      pending: isAccountPending(user),
+      profilePrompt: needsProfilePrompt(user, { admin: isAdmin(user), approvalRequired: approvalNow().required, fields, profile: getMemberProfile(user.id) })
+        ? { fields } : null
+    };
     // Con cuotas apagado el socio no ve estado de cuota: billing null y sin bloqueo.
-    if (!billingEnabledNow()) return json(res, 200, { user: me, billingEnabled: false, billing: null });
+    if (!billingEnabledNow()) return json(res, 200, { user: me, ...account, billingEnabled: false, billing: null });
     const settings = billingSettingsNow();
     const billing = getMemberBilling(user.id);
     const status = billingStatus(billing, billingToday(settings), settings);
     json(res, 200, {
       user: me,
+      ...account,
       billingEnabled: true,
       billing: {
         hasPlan: billing.planId != null, status, dueDate: billing.dueDate, planName: billing.planName,
@@ -2270,6 +2297,19 @@ const routes = {
         return json(res, 403, { error: 'a valid invite code is required' });
       }
     }
+    // Con aprobación: solo nombre + passkey, la cuenta queda pendiente. Sin aprobación y con
+    // campos pedidos: los datos (con los obligatorios) y la aceptación del aviso de privacidad.
+    // Un DNI que ya está en el gym frena el registro: nunca se vincula solo.
+    const approval = approvalNow().required;
+    let profile = null;
+    const fields = memberFieldsNow();
+    if (!approval && anyFieldEnabled(fields)) {
+      const checked = validateMemberProfile(body.profile || {}, fields);
+      if (checked.error) return json(res, 400, { error: checked.error, field: checked.field });
+      if (body.privacyAccepted !== true) return json(res, 400, { error: 'privacy_required', message: 'Tenés que aceptar el aviso de privacidad' });
+      if (checked.value.dniNorm && findMemberByDni(checked.value.dniNorm)) return json(res, 409, { error: 'dni_exists', message: DNI_EXISTS_MESSAGE });
+      profile = checked.value;
+    }
     const uid = crypto.randomBytes(12).toString('base64url');
     const options = await generateRegistrationOptions({
       rpName: RP_NAME, rpID: RP_ID,
@@ -2278,7 +2318,7 @@ const routes = {
       authenticatorSelection: { residentKey: 'required', userVerification: 'preferred' },
       excludeCredentials: []
     });
-    const cid = putChallenge({ challenge: options.challenge, name, uid, code, qr: qrValid ? qr : null });
+    const cid = putChallenge({ challenge: options.challenge, name, uid, code, qr: qrValid ? qr : null, pending: approval, profile });
     json(res, 200, { cid, options });
   },
 
@@ -2321,8 +2361,10 @@ const routes = {
         return json(res, 403, { error: 'invite code is no longer valid — ask for a new one' });
       }
     }
-    const user = { id: c.uid, name: c.name, created: new Date().toISOString() };
+    const user = { id: c.uid, name: c.name, created: new Date().toISOString(), pending: !!c.pending, privacyAcceptedAt: c.profile ? new Date().toISOString() : null };
     if (invite) { user.invitedBy = invite.code; }
+    // El DNI pudo cargarse entre options y verify (otra alta): se frena igual.
+    if (c.profile?.dniNorm && findMemberByDni(c.profile.dniNorm)) return json(res, 409, { error: 'dni_exists', message: DNI_EXISTS_MESSAGE });
 
     // Uso de transacción atómica para insertar usuario, credencial y actualizar invitación
     const db = getDatabase();
@@ -2338,15 +2380,18 @@ const routes = {
       if (invite) {
         updateInviteUsedBy(invite.code, user.id);
       }
+      if (c.profile) writeRegistrationProfile(user.id, c.profile);
       db.exec('COMMIT');
     } catch (error) {
       db.exec('ROLLBACK');
+      if (isDniUniqueError(error)) return json(res, 409, { error: 'dni_exists', message: DNI_EXISTS_MESSAGE });
       throw error;
     }
 
     // saveDb(); // Eliminado: SQLite persiste automáticamente
-    audit(req, 'auth.register.ok', { user, msg: invite ? invite.code : null });
-    json(res, 200, { user: { id: user.id, name: user.name, admin: isAdmin(user), owner: !!user.owner } }, { 'Set-Cookie': sessionCookie(user) });
+    const created = getUserById(user.id);
+    audit(req, 'auth.register.ok', { user: created, msg: [invite ? invite.code : null, isAccountPending(created) ? 'pendiente' : null].filter(Boolean).join(' · ') || null });
+    json(res, 200, { user: { id: created.id, name: created.name, admin: isAdmin(created), owner: !!created.owner }, pending: isAccountPending(created) }, { 'Set-Cookie': sessionCookie(created) });
   },
 
   /* ---------- vinculación ficha → passkey (código de un solo uso) ---------- */
@@ -2928,6 +2973,7 @@ const routes = {
         id: u.id, name: u.name, created: isoTimestamp(u.created_at),
         disabled: !!u.disabled, admin: isAdmin(u), owner: !!u.owner, invitedBy: u.invited_by || null,
         hasApp: appUserIds.has(u.id), hasProfile: profileUserIds.has(u.id), profileIncomplete: incomplete.has(u.id),
+        pending: isAccountPending(u),
         workouts: workouts.length,
         lastWorkout: last ? last.d : null,
         lastSync: S._ts || null,
@@ -2972,7 +3018,7 @@ const routes = {
     json(res, 200, {
       user: {
         id: u.id, name: u.name, created: isoTimestamp(u.created_at), disabled: !!u.disabled, admin: isAdmin(u), owner: !!u.owner, invitedBy: u.invited_by || null,
-        hasApp: countCredentials(u.id) > 0, hasProfile: !!getMemberProfile(u.id)
+        hasApp: countCredentials(u.id) > 0, hasProfile: !!getMemberProfile(u.id), pending: isAccountPending(u)
       },
       unit: S.unit || 'kg',
       lastSync: S._ts || null,
@@ -3242,6 +3288,177 @@ const routes = {
     setAdminSetting(BILLING_NOTIFY_HOUR_SETTING, body.billing_notify_hour);
     audit(req, 'admin.notifications.settings', { user: admin, summary: `Avisos de cuota desde las ${body.billing_notify_hour}` });
     json(res, 200, { billing_notify_hour: getBillingNotifyHour(getDatabase()), gym_tz: billingSettingsNow().gym_tz });
+  },
+
+  /* ---------- aviso de privacidad ---------- */
+  // Público (sin sesión): la página /#/privacidad arma el texto con esto. Solo datos que el
+  // aviso tiene que decir de todos modos: quién es el responsable y qué datos se piden.
+  'GET /api/privacy': async (req, res) => {
+    const fields = memberFieldsNow();
+    json(res, 200, {
+      gymName: getAdminSetting(PRIVACY_GYM_NAME_SETTING, ''),
+      contact: getAdminSetting(PRIVACY_CONTACT_SETTING, ''),
+      fields: Object.keys(fields).filter(k => fields[k].enabled),
+      billingEnabled: billingEnabledNow(),
+      auditDays: AUDIT_ON ? AUDIT_DAYS : null
+    });
+  },
+
+  'GET /api/owner/privacy': async (req, res) => {
+    if (!requireOwner(req, res)) return;
+    json(res, 200, { gymName: getAdminSetting(PRIVACY_GYM_NAME_SETTING, ''), contact: getAdminSetting(PRIVACY_CONTACT_SETTING, '') });
+  },
+
+  'PUT /api/owner/privacy': async (req, res) => {
+    const owner = requireOwner(req, res); if (!owner) return;
+    const checked = validatePrivacySettings(await readBody(req));
+    if (checked.error) return json(res, 400, { error: checked.error });
+    if (checked.value.gymName !== undefined) setAdminSetting(PRIVACY_GYM_NAME_SETTING, checked.value.gymName);
+    if (checked.value.contact !== undefined) setAdminSetting(PRIVACY_CONTACT_SETTING, checked.value.contact);
+    const out = { gymName: getAdminSetting(PRIVACY_GYM_NAME_SETTING, ''), contact: getAdminSetting(PRIVACY_CONTACT_SETTING, '') };
+    audit(req, 'owner.privacy.settings', { user: owner, summary: `Responsable: ${out.gymName || '—'}` });
+    json(res, 200, out);
+  },
+
+  /* ---------- aprobación de cuentas (spec 12.3) ---------- */
+  // Lo leen los admins (arman la confirmación con esto); lo cambia el owner.
+  'GET /api/admin/approval': async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    const approval = approvalNow();
+    const billingEnabled = billingEnabledNow();
+    json(res, 200, { ...approval, effectiveMode: effectiveMode(approval.mode, billingEnabled), billingEnabled, dniEnabled: memberFieldsNow().dni.enabled });
+  },
+
+  'PUT /api/owner/approval': async (req, res) => {
+    const owner = requireOwner(req, res); if (!owner) return;
+    const checked = validateApprovalSettings(await readBody(req), { billingEnabled: billingEnabledNow(), dniEnabled: memberFieldsNow().dni.enabled });
+    if (checked.error) return json(res, checked.status, { error: checked.error, message: checked.message });
+    const before = approvalNow();
+    if (checked.value.required !== undefined) setAdminSetting(APPROVAL_REQUIRED_SETTING, checked.value.required ? '1' : '0');
+    if (checked.value.mode !== undefined) setAdminSetting(APPROVAL_MODE_SETTING, checked.value.mode);
+    const approval = approvalNow();
+    if (approval.required !== before.required || approval.mode !== before.mode) {
+      audit(req, 'owner.approval.settings', { user: owner, summary: `${approval.required ? 'Aprobación del staff' : 'Sin aprobación'} · modo ${APPROVAL_MODE_LABELS[approval.mode]}` });
+    }
+    const billingEnabled = billingEnabledNow();
+    json(res, 200, { ...approval, effectiveMode: effectiveMode(approval.mode, billingEnabled), billingEnabled, dniEnabled: memberFieldsNow().dni.enabled });
+  },
+
+  // Habilitar una cuenta pendiente: el staff completa los datos de la config y confirma según el
+  // modo (aprobar / primer pago / prueba). Todo en una transacción. dry_run: vencimiento o fin de
+  // prueba que quedaría, sin validar los datos ni guardar.
+  'POST /api/admin/users/:userId/approve': async (req, res) => {
+    const admin = requireAdmin(req, res); if (!admin) return;
+    const userId = userIdFromPath(req);
+    const target = getUserById(userId);
+    if (!target) return json(res, 404, { error: 'El usuario no existe' });
+    if (target.disabled) return json(res, 409, { error: 'El socio está desactivado' });
+    if (!isAccountPending(target)) return json(res, 409, { error: 'not_pending', message: 'La cuenta ya no está pendiente' });
+    const body = await readBody(req);
+    const billingEnabled = billingEnabledNow();
+    const settings = billingSettingsNow();
+    const today = billingToday(settings);
+    const billing = getMemberBilling(userId);
+    const mode = effectiveMode(approvalNow().mode, billingEnabled);
+    // "Cubierta": ya tiene plan vigente o prueba en curso (p. ej. la unieron con su ficha).
+    const covered = billingEnabled && (hasActivePlan(billing, today, settings) || billingStatus(billing, today, settings) === 'prueba');
+    const allowed = allowedStarts(mode, { billingEnabled, covered });
+    const type = body.start?.type ?? 'none';
+    // dry_run con una opción que no aplica: igual devuelve cuáles sí (el formulario arma la lista).
+    if (!allowed.includes(type)) {
+      if (body.dry_run === true) return json(res, 200, { dry_run: true, mode, allowed, covered, dueDate: null, amount: null, trialUntil: null, trialDays: settings.trial_days });
+      return json(res, 409, { error: 'start_not_allowed', message: `Con este modo la confirmación es: ${allowed.join(' o ')}`, allowed });
+    }
+
+    let payment = null;
+    let trialUntil = null;
+    if (type === 'payment') {
+      const pay = checkPayment(body.start, billing, settings);
+      if (pay.error) return json(res, pay.status, { error: pay.error });
+      payment = pay.value;
+    } else if (type === 'trial') {
+      trialUntil = trialEndDate(today, settings.trial_days);
+    }
+    if (body.dry_run === true) return json(res, 200, { dry_run: true, mode, allowed, covered, dueDate: payment?.period.dueDate ?? null, amount: payment?.amount ?? null, trialUntil, trialDays: settings.trial_days });
+
+    const fields = memberFieldsNow();
+    const current = getMemberProfile(userId);
+    const checked = validateMemberProfile(body.profile || {}, fields, { current });
+    if (checked.error) return json(res, 400, { error: checked.error, field: checked.field });
+    const profile = checked.value;
+    if (profile.dniNorm) {
+      const other = findMemberByDni(profile.dniNorm, userId);
+      if (other) return dniDuplicate(res, other);
+    }
+    if (trialUntil) {
+      if (!fields.dni.enabled || !profile.dniNorm) return json(res, 409, { error: 'trial_requires_dni', message: TRIAL_ERRORS.trial_requires_dni });
+      if (current?.trialUsedAt) return json(res, 409, { error: 'trial_used', message: TRIAL_ERRORS.trial_used });
+    }
+    const paymentRow = payment && {
+      planId: payment.plan.id, planName: payment.plan.name, amount: payment.amount, method: payment.method, paidAt: payment.paidAt,
+      periodStart: payment.period.periodStart, periodEnd: payment.period.periodEnd, dueDate: payment.period.dueDate, note: payment.note, createdBy: admin.id
+    };
+    let approved;
+    try {
+      approved = approveAccount({ userId, userName: target.name, profile, payment: paymentRow, trialUntil, createdBy: admin.id });
+    } catch (error) {
+      const other = isDniUniqueError(error) && findMemberByDni(profile.dniNorm, userId);
+      if (other) return dniDuplicate(res, other);
+      if (/trial not started/.test(String(error?.message))) return json(res, 409, { error: 'trial_used', message: TRIAL_ERRORS.trial_used });
+      throw error;
+    }
+    if (!approved) return json(res, 409, { error: 'not_pending', message: 'La cuenta ya no está pendiente' });
+    const how = type === 'payment' ? 'con primer pago' : type === 'trial' ? 'con prueba' : 'sin pago';
+    audit(req, 'admin.member.approve', { user: admin, target, summary: [`Habilitada ${how}`, profile.dniNorm ? `DNI ${maskDni(profile.dniNorm)}` : null].filter(Boolean).join(' · ') });
+    if (payment) audit(req, 'admin.billing.payment', { user: admin, target, summary: `$${payment.amount} · ${payment.method} · ${payment.plan.name} · vence ${payment.period.dueDate}` });
+    if (trialUntil) audit(req, 'admin.billing.trial_start', { user: admin, target, summary: `Prueba de ${settings.trial_days} día${settings.trial_days === 1 ? '' : 's'} · hasta ${trialUntil}` });
+    json(res, 200, { ok: true, member: { ...profileView(getUserById(userId), getMemberProfile(userId)), billing: billingView(getMemberBilling(userId), billingToday(settings), settings) } });
+  },
+
+  // Rechazar = desactivar la cuenta pendiente, con el motivo en Logs.
+  'POST /api/admin/users/:userId/reject': async (req, res) => {
+    const admin = requireAdmin(req, res); if (!admin) return;
+    const userId = userIdFromPath(req);
+    const target = getUserById(userId);
+    if (!target) return json(res, 404, { error: 'El usuario no existe' });
+    if (!isAccountPending(target) || target.disabled) return json(res, 409, { error: 'not_pending', message: 'La cuenta ya no está pendiente' });
+    const body = await readBody(req);
+    const reason = typeof body.reason === 'string' ? body.reason.replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim() : '';
+    if (!reason || reason.length > 200) return json(res, 400, { error: 'El motivo es obligatorio (máx. 200 caracteres)' });
+    updateUser(userId, { disabled: true });
+    audit(req, 'admin.member.reject', { user: admin, target, summary: `Motivo: ${reason}` });
+    json(res, 200, { ok: true });
+  },
+
+  // Formulario de datos de una sola vez (socios que ya existían, aprobación apagada). Guardar
+  // pide aceptar el aviso; { skip: true } lo saltea. Las dos lo cierran para siempre: después, los
+  // datos (y el DNI) solo los edita el staff.
+  'POST /api/me/profile': async (req, res) => {
+    const user = readSession(req);
+    if (!user) return json(res, 401, { error: 'No has iniciado sesión' });
+    const fields = memberFieldsNow();
+    const current = getMemberProfile(user.id);
+    if (!needsProfilePrompt(user, { admin: isAdmin(user), approvalRequired: approvalNow().required, fields, profile: current })) {
+      return json(res, 409, { error: 'profile_locked', message: 'Tus datos los actualiza el gimnasio en recepción' });
+    }
+    const body = await readBody(req);
+    if (body.skip === true) {
+      completeProfilePrompt(user.id);
+      return json(res, 200, { ok: true, skipped: true });
+    }
+    const checked = validateMemberProfile(body.profile || {}, fields, { current });
+    if (checked.error) return json(res, 400, { error: checked.error, field: checked.field });
+    if (body.privacyAccepted !== true) return json(res, 400, { error: 'privacy_required', message: 'Tenés que aceptar el aviso de privacidad' });
+    const profile = checked.value;
+    if (profile.dniNorm && findMemberByDni(profile.dniNorm, user.id)) return json(res, 409, { error: 'dni_exists', message: DNI_EXISTS_MESSAGE });
+    try {
+      completeProfilePrompt(user.id, { profile, privacyAcceptedAt: new Date().toISOString() });
+    } catch (error) {
+      if (isDniUniqueError(error)) return json(res, 409, { error: 'dni_exists', message: DNI_EXISTS_MESSAGE });
+      throw error;
+    }
+    audit(req, 'auth.profile.self', { user, summary: profileChangeSummary(checked.changed, profile) });
+    json(res, 200, { ok: true });
   },
 
   /* ---------- fichas de socio ---------- */
@@ -3688,6 +3905,8 @@ http.createServer(async (req, res) => {
       ? req.method + ' /api/admin/users/:userId/link-code'
     : req.method === 'POST' && /^\/api\/admin\/users\/[^/]+\/merge$/.test(url.pathname)
       ? 'POST /api/admin/users/:userId/merge'
+    : req.method === 'POST' && /^\/api\/admin\/users\/[^/]+\/(approve|reject)$/.test(url.pathname)
+      ? 'POST /api/admin/users/:userId/' + url.pathname.split('/').pop()
     : req.method === 'PUT' && /^\/api\/admin\/nutrition\/templates\/[^/]+$/.test(url.pathname)
       ? 'PUT /api/admin/nutrition/templates/:id'
     : req.method === 'DELETE' && /^\/api\/admin\/nutrition\/templates\/[^/]+$/.test(url.pathname)
@@ -3701,13 +3920,16 @@ http.createServer(async (req, res) => {
   // Verificar expiración de licencia por fecha (si está configurada y vencida)
   // Excluimos /api/health para que monitores o chequeos básicos puedan seguir funcionando si es necesario, 
   // pero endpoints protegidos / login / /api/me devuelven license_expired.
-  if (LICENSE_EXPIRES_AT && Date.now() > LICENSE_EXPIRES_AT && url.pathname.startsWith('/api/') && url.pathname !== '/api/health' && url.pathname !== '/api/support') {
+  if (LICENSE_EXPIRES_AT && Date.now() > LICENSE_EXPIRES_AT && url.pathname.startsWith('/api/') && url.pathname !== '/api/health' && url.pathname !== '/api/support' && url.pathname !== '/api/privacy') {
     return json(res, 403, { error: 'license_expired' });
   }
 
-  // Bloqueo por cuota (Cuotas v1). Sin sesión sigue al handler, que responde 401 como siempre.
-  if (MEMBERSHIP_GATED.has(routeKey) && isMembershipBlocked(readSession(req))) {
-    return json(res, 403, { error: 'membership_blocked' });
+  // Cuenta pendiente de aprobación y bloqueo por cuota (Cuotas v1). Sin sesión sigue al
+  // handler, que responde 401 como siempre.
+  if (MEMBERSHIP_GATED.has(routeKey)) {
+    const sessionUser = readSession(req);
+    if (isAccountPending(sessionUser)) return json(res, 403, { error: 'account_pending' });
+    if (isMembershipBlocked(sessionUser)) return json(res, 403, { error: 'membership_blocked' });
   }
 
   const handler = routes[routeKey];

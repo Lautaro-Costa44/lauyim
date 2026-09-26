@@ -33,6 +33,8 @@ const Settings = lazy(() => import('./views/Settings.jsx'))
 const AdminLayout = lazy(() => import('./views/admin/AdminLayout.jsx'))
 const SurveyWizard = lazy(() => import('./views/SurveyWizard.jsx'))
 const ImportPlan = lazy(() => import('./views/ImportPlan.jsx'))
+const Privacy = lazy(() => import('./views/Privacy.jsx'))
+const ProfileOnce = lazy(() => import('./views/ProfileOnce.jsx'))
 
 bindUI(useUI)   // lets the shared controls open sheets without importing the store at module scope
 
@@ -60,6 +62,8 @@ function Shell() {
   const config = useStore(s => s.config)
   const licenseExpired = useStore(s => s.licenseExpired)
   const membershipBlocked = useStore(s => s.membershipBlocked)
+  const accountPending = useStore(s => s.accountPending)
+  const profilePrompt = useStore(s => s.profilePrompt)
   const isGuest = useStore(s => s.isGuest())
   const langV = useLang()   // re-renders the whole shell when the language (pack) changes
   useLayoutEffect(() => {
@@ -94,8 +98,13 @@ function Shell() {
   // Si no se permiten invitados, estar en modo invitado NO cuenta como estar autenticado
   const authed = !!user || (allowGuest && isGuest)
   // Bloqueo por cuota: pantalla completa, sin TabBar ni RestTimer. Nunca para staff.
-  const blocked = !licenseExpired && membershipBlocked && !!user && !user.admin
+  // Cuenta pendiente de aprobación: misma pantalla, otro motivo.
+  const blocked = !licenseExpired && (membershipBlocked || accountPending) && !!user && !user.admin
+  // Socios que ya existían sin datos: el formulario, una sola vez, antes de todo lo demás.
+  const askProfile = !licenseExpired && !blocked && !!user && !user.admin && !!profilePrompt
   const isAdminPath = loc.pathname === '/admin' || loc.pathname.startsWith('/admin/')
+  // El aviso de privacidad es público: se ve sin sesión, con la licencia vencida o bloqueado.
+  const isPrivacy = loc.pathname === '/privacidad'
   if (!ready) return (
     <div id="app">
       <div style={{ paddingTop: '44vh', display: 'flex', justifyContent: 'center' }}>
@@ -111,7 +120,9 @@ function Shell() {
           shares one key: switching sections must not re-mount the admin layout (and its poll). */}
       <div id="app" className={'vfade' + (isAdminPath ? ' admin-app' : '')} key={isAdminPath ? '/admin' : loc.pathname}>
         <ErrorBoundary>
-          {licenseExpired ? <LicenseExpired /> : !authed ? <Login /> : blocked ? <MembershipBlocked /> : (
+          {isPrivacy ? <Suspense fallback={<div className="page-loading" aria-busy="true" />}><Privacy /></Suspense>
+            : licenseExpired ? <LicenseExpired /> : !authed ? <Login /> : blocked ? <MembershipBlocked />
+            : askProfile ? <Suspense fallback={<div className="page-loading" aria-busy="true" />}><ProfileOnce /></Suspense> : (
             <Suspense fallback={<div className="page-loading" aria-busy="true" />}> 
             <Routes>
               <Route path="/home" element={<Home />} />
@@ -134,7 +145,7 @@ function Shell() {
           )}
         </ErrorBoundary>
       </div>
-      {!licenseExpired && !blocked && loc.pathname !== '/onboarding/encuesta' && <TabBar onStart={startFlow} />}
+      {!licenseExpired && !blocked && !askProfile && !isPrivacy && loc.pathname !== '/onboarding/encuesta' && <TabBar onStart={startFlow} />}
       {!licenseExpired && !blocked && <RestTimer />}
       {/* Boundary propio: Modals vive fuera de #app, así que un throw acá subía hasta la raíz y
           desmontaba la app entera — pantalla negra sin salida. NO va keyed en la ruta: Modals

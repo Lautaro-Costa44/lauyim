@@ -93,7 +93,10 @@ const BILLING_KEY = 'gym_billing'
 // clave, cuotas está encendido, como en el servidor.
 const BILLING_OFF_KEY = 'gym_billing_off'
 const readJSON = key => { try { return JSON.parse(localStorage.getItem(key)) || null } catch { return null } }
-export const isMembershipBlockedError = e => e?.data?.error === 'membership_blocked'
+// Cuenta pendiente de aprobación (spec 12.3): mismo mecanismo que el bloqueo por cuota, otro
+// motivo. Flag persistido; solo lo apaga un /api/me que diga pending: false.
+const PENDING_KEY = 'gym_account_pending'
+export const isMembershipBlockedError = e => e?.data?.error === 'membership_blocked' || e?.data?.error === 'account_pending'
 
 const ascendingBodyweight = entries => (Array.isArray(entries)
   ? [...entries].sort((a, b) => bodyweightTime(a) - bodyweightTime(b))
@@ -149,6 +152,24 @@ export const useStore = create((set, get) => {
     else if (billing?.blocked === false) setMembershipBlocked(false)
   }
   if (typeof window !== 'undefined') window.addEventListener('gym:membership_blocked', () => setMembershipBlocked(true))
+  const setAccountPending = pending => {
+    const on = !!pending && !get().user?.admin
+    try { on ? localStorage.setItem(PENDING_KEY, '1') : localStorage.removeItem(PENDING_KEY) } catch { /* storage off */ }
+    set({ accountPending: on })
+  }
+  if (typeof window !== 'undefined') window.addEventListener('gym:account_pending', () => setAccountPending(true))
+  // Se registró con datos de invitado mientras la cuenta esperaba la aprobación (Login.jsx): se
+  // suben la primera vez que /api/me dice que ya está habilitada.
+  const pushAfterApproval = async () => {
+    if (localStorage.getItem('gym_push_on_approval') !== '1') return
+    localStorage.removeItem('gym_push_on_approval')
+    await get().pushState()
+  }
+  // /api/me: pendiente y formulario de datos de una sola vez (profilePrompt: { fields } | null).
+  const applyMeAccount = me => {
+    if (me && 'pending' in me) setAccountPending(me.pending)
+    set({ profilePrompt: me?.profilePrompt || null })
+  }
 
   const scheduleSync = (delay = 2000) => {
     clearTimeout(syncTm)
@@ -185,6 +206,10 @@ export const useStore = create((set, get) => {
     user: (() => { try { return JSON.parse(localStorage.getItem('gym_user')) || null } catch { return null } })(),
     ready: false,
     membershipBlocked: (() => { try { return localStorage.getItem(BLOCK_KEY) === '1' } catch { return false } })(),
+    accountPending: (() => { try { return localStorage.getItem(PENDING_KEY) === '1' } catch { return false } })(),
+    profilePrompt: null,
+    // El socio completó o salteó el formulario de una sola vez: se cierra sin esperar a /api/me.
+    dismissProfilePrompt() { set({ profilePrompt: null }) },
     billing: readJSON(BILLING_KEY),        // { hasPlan, status, dueDate, planName, blocked } de /api/me
     billingEnabled: (() => { try { return localStorage.getItem(BILLING_OFF_KEY) !== '1' } catch { return true } })(),
 
@@ -224,8 +249,8 @@ export const useStore = create((set, get) => {
       // El bloqueo por cuota y el estado de cuota guardados son de quien estaba: otra cuenta (o
       // ninguna) en este dispositivo no los hereda hasta que su propio /api/me diga lo suyo.
       if (!u || u.id !== get().user?.id) {
-        try { localStorage.removeItem(BLOCK_KEY); localStorage.removeItem(BILLING_KEY); localStorage.removeItem(BILLING_OFF_KEY) } catch { /* storage off */ }
-        set({ membershipBlocked: false, billing: null, billingEnabled: true })
+        try { localStorage.removeItem(BLOCK_KEY); localStorage.removeItem(BILLING_KEY); localStorage.removeItem(BILLING_OFF_KEY); localStorage.removeItem(PENDING_KEY) } catch { /* storage off */ }
+        set({ membershipBlocked: false, billing: null, billingEnabled: true, accountPending: false, profilePrompt: null })
       }
       if (u) { localStorage.setItem('gym_user', JSON.stringify(u)); localStorage.removeItem('gym_guest') }
       else localStorage.removeItem('gym_user')
@@ -247,7 +272,7 @@ export const useStore = create((set, get) => {
     },
     async syncPending() {
       // Bloqueado por cuota: la cola queda intacta hasta que /api/me diga lo contrario.
-      if (!get().user || syncing || (navigator.onLine === false) || get().membershipBlocked) return
+      if (!get().user || syncing || (navigator.onLine === false) || get().membershipBlocked || get().accountPending) return
       syncing = true
       try {
         let rounds = 0
@@ -289,7 +314,9 @@ export const useStore = create((set, get) => {
       const me = await api('/api/me')
       get().setUser(me.user)
       applyMeBilling(me)
-      if (get().membershipBlocked) return false
+      applyMeAccount(me)
+      if (get().membershipBlocked || get().accountPending) return false
+      await pushAfterApproval()
       await get().syncPending()
       await get().pullState()
       return true
@@ -445,7 +472,9 @@ export const useStore = create((set, get) => {
         const me = await api('/api/me')
         get().setUser(me.user)
         applyMeBilling(me)
-        if (!get().membershipBlocked) {
+        applyMeAccount(me)
+        if (!get().membershipBlocked && !get().accountPending) {
+          await pushAfterApproval()
           // Apply any local operations that were recorded while the device was offline.
           await get().syncPending()
           // Pull after the queue is drained so a just-completed local change cannot be

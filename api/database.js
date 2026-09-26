@@ -198,6 +198,11 @@ export function initDatabase() {
   // Prueba gratis: último día de la prueba (se borra con el primer pago) y cuándo la usó la
   // persona (queda para siempre: una prueba por DNI).
   try { db.exec(`ALTER TABLE member_billing ADD COLUMN trial_until TEXT;`); } catch {}
+  // Aprobación de cuentas (spec 12.3): 'pending' hasta que el staff la habilita; cuándo aceptó el
+  // aviso de privacidad; cuándo se le pidió (una sola vez) el formulario de datos.
+  try { db.exec(`ALTER TABLE users ADD COLUMN approval_status TEXT;`); } catch {}
+  try { db.exec(`ALTER TABLE users ADD COLUMN privacy_accepted_at TEXT;`); } catch {}
+  try { db.exec(`ALTER TABLE users ADD COLUMN profile_prompted_at TEXT;`); } catch {}
   try { db.exec(`ALTER TABLE member_profile ADD COLUMN trial_used_at INTEGER;`); } catch {}
   backfillMemberTrials(db);
   db.exec(`CREATE TABLE IF NOT EXISTS sync_operations (
@@ -395,12 +400,14 @@ export function createUser(user) {
   const owner = user.member ? 0 : isFirstUser ? 1 : (user.owner ? 1 : 0);
   const admin = user.member ? 0 : owner ? 1 : (user.admin ? 1 : 0);
   if (owner) db.prepare('UPDATE users SET owner = 0 WHERE owner = 1').run();
+  // Pendiente de aprobación: nunca la primera cuenta (owner) ni una ficha.
+  const pending = user.pending && !owner && !user.member ? 'pending' : null;
   const stmt = getDatabase().prepare(`
-    INSERT INTO users (id, name, admin, owner, disabled, created_at, invited_by)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO users (id, name, admin, owner, disabled, created_at, invited_by, approval_status, privacy_accepted_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
   stmt.run(user.id, user.name, admin, owner, user.disabled ? 1 : 0,
-    isoTimestamp(user.created) || new Date().toISOString(), user.invitedBy || null);
+    isoTimestamp(user.created) || new Date().toISOString(), user.invitedBy || null, pending, user.privacyAcceptedAt || null);
 }
 
 export function updateUser(id, updates) {
@@ -2359,6 +2366,48 @@ export function createMember({ id, name, profile, billing = null, start = null }
     if (billing) setMemberBilling(id, billing);
     if (start?.payment) insertPayment(db, { ...start.payment, userId: id, userName: name });
     if (start?.trialUntil && !beginTrial(db, id, start.trialUntil, start.createdBy)) throw new Error('trial not started');
+    db.exec('COMMIT');
+  } catch (error) {
+    try { db.exec('ROLLBACK'); } catch {}
+    throw error;
+  }
+}
+
+// Perfil del registro (sin transacción propia: la abre register/verify).
+export function writeRegistrationProfile(userId, profile) {
+  writeMemberProfile(getDatabase(), userId, profile, new Date().toISOString());
+}
+
+// Habilita una cuenta pendiente: perfil completo, pago o prueba (opcionales) y fuera de
+// pendientes, todo junto. Si la cuenta ya no está pendiente (otro admin la aprobó) no toca nada.
+// → true si la aprobó.
+export function approveAccount({ userId, userName, profile, payment = null, trialUntil = null, createdBy = null }) {
+  const db = getDatabase();
+  db.exec('BEGIN IMMEDIATE');
+  try {
+    const done = db.prepare("UPDATE users SET approval_status = NULL WHERE id = ? AND approval_status = 'pending'").run(userId);
+    if (Number(done.changes) !== 1) { db.exec('ROLLBACK'); return false; }
+    writeMemberProfile(db, userId, profile, new Date().toISOString());
+    if (payment) insertPayment(db, { ...payment, userId, userName });
+    if (trialUntil && !beginTrial(db, userId, trialUntil, createdBy)) throw new Error('trial not started');
+    db.exec('COMMIT');
+    return true;
+  } catch (error) {
+    try { db.exec('ROLLBACK'); } catch {}
+    throw error;
+  }
+}
+
+// Formulario de datos de una sola vez (socios existentes): con perfil lo guarda (y la aceptación
+// del aviso); sin perfil solo marca que ya se le pidió.
+export function completeProfilePrompt(userId, { profile = null, privacyAcceptedAt = null } = {}) {
+  const db = getDatabase();
+  const nowIso = new Date().toISOString();
+  db.exec('BEGIN IMMEDIATE');
+  try {
+    if (profile) writeMemberProfile(db, userId, profile, nowIso);
+    db.prepare('UPDATE users SET profile_prompted_at = ?, privacy_accepted_at = COALESCE(?, privacy_accepted_at) WHERE id = ?')
+      .run(nowIso, privacyAcceptedAt, userId);
     db.exec('COMMIT');
   } catch (error) {
     try { db.exec('ROLLBACK'); } catch {}

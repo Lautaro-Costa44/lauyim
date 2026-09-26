@@ -12,7 +12,7 @@ import { FoodPicker, GrupoComidaRow, totalesDeIngredientes, FRANJAS } from '../N
 import RoutineEditor from '../RoutineEditor.jsx'
 import { LESIONES_OPTIONS, OBJETIVO_OPTIONS, CheckPill } from '../SurveyWizard.jsx'
 import { BillingSummaryCard } from './billing/common.jsx'
-import { FichaCard, NoAppBadge, openMemberSheet } from './members/common.jsx'
+import { FichaCard, NoAppBadge, PendingBadge, openMemberSheet } from './members/common.jsx'
 import { MAX_ROUTINE_GROUPS, canAddGroup, validateGroupName, syncActiveGroupInState, switchActiveGroup, addGroupToState, removeGroupFromState } from '../../lib/routineGroups.js'
 
 // Shared by more than one admin section: UserDetail opens from Resumen ("Training now") and
@@ -739,6 +739,7 @@ export function UserDetail({ id, billingEnabled = true, users, openUser, onChang
     <h3 className="capitalize">{u.name}</h3>
     <div className="row" style={{ gap: 6, flexWrap: 'wrap', margin: '8px 0 12px' }}>
       {!hasApp && <NoAppBadge style={{ marginLeft: 0 }} />}
+      {u.pending && <PendingBadge style={{ marginLeft: 0 }} />}
       {(u.owner || u.admin) && <span className="tag acc">{u.owner ? t('owner') : t('admin')}</span>}
       {u.disabled && <span className="tag" style={{ color: 'var(--red)' }}>{t('disabled')}</span>}
       {u.invitedBy && <span className="tag">{t('invite')} {u.invitedBy}</span>}
@@ -749,6 +750,16 @@ export function UserDetail({ id, billingEnabled = true, users, openUser, onChang
       <div className="tile"><div className="l">{t('Weigh-ins')}</div><div className="v" style={{ fontSize: '1.1rem' }}>{d.bodyweight.length}</div></div>
       <div className="tile"><div className="l">{t('Routines')}</div><div className="v" style={{ fontSize: '1.1rem' }}>{d.routines.length}</div></div>
       <div className="tile"><div className="l">{t('Last sync')}</div><div className="v" style={{ fontSize: '.95rem' }}>{rel(d.lastSync)}</div></div>
+    </div>}
+    {u.pending && !u.disabled && <div className="card member-pending-card">
+      <div className="row" style={{ gap: 8, alignItems: 'center' }}><PendingBadge style={{ marginLeft: 0 }} /><h2 style={{ margin: 0 }}>{t('Cuenta pendiente')}</h2></div>
+      <div className="small muted" style={{ margin: '6px 0 10px' }}>{t('Se registró con la aprobación del staff activada. Verificá quién es, completá sus datos y habilitala.')}</div>
+      <Button variant="primary" onClick={() => openMemberSheet(openSheet, 'ApproveSheet', {
+        user: u, billingEnabled: billingEnabled !== false,
+        onApproved: () => { setReloadKey(k => k + 1); onChanged() },
+        onOpenExisting: showUser, onLink: merge
+      })}>{t('Revisar y habilitar')}</Button>
+      <Button variant="ghost" style={{ color: 'var(--red)' }} onClick={() => openMemberSheet(openSheet, 'RejectSheet', { user: u, onRejected: () => { onChanged(); close() } })}>{t('Rechazar')}</Button>
     </div>}
     {!hasApp && <div className="member-noapp">
       <div className="small muted">{t('Este socio todavía no usa la app. Dale un código para que cree su acceso, o unilo a su cuenta si ya tiene una.')}</div>

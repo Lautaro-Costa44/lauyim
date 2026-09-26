@@ -21,6 +21,11 @@ export function NoAppBadge({ style }) {
   return <span className="tag nocap" style={{ marginLeft: 6, ...style }}>{t('Sin app')}</span>
 }
 
+// Cuenta registrada con la aprobación del staff encendida, todavía sin habilitar.
+export function PendingBadge({ style }) {
+  return <span className="tag nocap member-pending" style={{ marginLeft: 6, ...style }}>{t('Pendiente')}</span>
+}
+
 // Algún dato obligatorio (según la config de campos) vacío: típico de una ficha importada.
 export function IncompleteBadge({ style }) {
   return <span className="tag nocap member-incomplete" style={{ marginLeft: 6, ...style }}>{t('Datos incompletos')}</span>

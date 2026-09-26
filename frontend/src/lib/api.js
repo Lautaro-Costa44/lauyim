@@ -38,6 +38,10 @@ export async function api(path, opts) {
     if (data.error === 'membership_blocked') {
       window.dispatchEvent(new CustomEvent('gym:membership_blocked', { detail: data }))
     }
+    // Cuenta pendiente de aprobación: mismo mecanismo, otra pantalla.
+    if (data.error === 'account_pending') {
+      window.dispatchEvent(new CustomEvent('gym:account_pending', { detail: data }))
+    }
     throw e 
   }
   return data
@@ -76,11 +80,13 @@ function credToJSON(cred) {
   }
   return out
 }
-export async function passkeyRegister(name, code, qr) {
-  const { cid, options } = await api('/api/register/options', { method: 'POST', body: JSON.stringify({ name, code: code || '', qr: qr || '' }) })
+// extra: { profile, privacyAccepted } cuando el registro pide datos (sin aprobación del staff).
+export async function passkeyRegister(name, code, qr, extra = {}) {
+  const { cid, options } = await api('/api/register/options', { method: 'POST', body: JSON.stringify({ name, code: code || '', qr: qr || '', ...extra }) })
   const cred = await navigator.credentials.create({ publicKey: toCreationOptions(options) })
   const res = await api('/api/register/verify', { method: 'POST', body: JSON.stringify({ cid, credential: credToJSON(cred) }) })
-  return res.user
+  // pending: la cuenta quedó esperando la aprobación del staff.
+  return { ...res.user, pending: !!res.pending }
 }
 // Vinculación de una ficha con un código del gym, en dos pasos para poder mostrar a quién se
 // vincula antes de crear la passkey: linkOptions valida el código (devuelve el nombre) y

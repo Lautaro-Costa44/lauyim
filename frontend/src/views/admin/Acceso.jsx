@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useAdmin } from './context.js'
 import { useStore } from '../../store/useStore.js'
 import { useUI } from '../../store/useUI.js'
@@ -6,7 +7,7 @@ import { api } from '../../lib/api.js'
 import { confirmSheet } from '../../sheets.jsx'
 import { t } from '../../lib/i18n.js'
 import Icon from '../../components/Icon.jsx'
-import { Button, Switch } from '../../components/ui.jsx'
+import { Button, Switch, TextField } from '../../components/ui.jsx'
 import QrCanvas from '../../components/QrCanvas.jsx'
 
 // Moved as-is from Usuarios: every admin can create and revoke invite codes.
@@ -178,6 +179,101 @@ function BillingToggleCard({ enabled, onChanged }) {
   </div>
 }
 
+// Aviso de privacidad (owner): el gym es el responsable de los datos; su nombre y el contacto
+// para ejercer los derechos aparecen en la página pública /#/privacidad.
+function PrivacyCard() {
+  const toast = useUI(s => s.toast)
+  const navigate = useNavigate()
+  const [saved, setSaved] = useState(null)
+  const [values, setValues] = useState({ gymName: '', contact: '' })
+  const [busy, setBusy] = useState(false)
+  useEffect(() => {
+    api('/api/owner/privacy').then(d => { setSaved(d); setValues(d) }).catch(e => toast(e.message || t('Failed to load')))
+  }, [])
+  const dirty = saved && (values.gymName !== saved.gymName || values.contact !== saved.contact)
+  const save = () => {
+    setBusy(true)
+    api('/api/owner/privacy', { method: 'PUT', body: JSON.stringify(values) })
+      .then(d => { setSaved(d); setValues(d); toast(t('Aviso de privacidad guardado')) })
+      .catch(e => toast(e.message || t('Failed to save setting')))
+      .finally(() => setBusy(false))
+  }
+  return <div className="card">
+    <div className="row between"><h2 style={{ margin: 0 }}>{t('Aviso de privacidad')}</h2>
+      <Button size="sm" onClick={() => navigate('/privacidad')}>{t('Ver aviso')}</Button></div>
+    <div className="small muted" style={{ margin: '6px 0 10px' }}>{t('El gimnasio es el responsable de los datos de sus socios. Estos datos aparecen en el aviso, que se ve sin iniciar sesión.')}</div>
+    {saved ? <div className="member-form">
+      <label className="member-field">
+        <span className="member-field-l">{t('Nombre del gimnasio (responsable)')}</span>
+        <TextField type="text" inputMode="text" name="app-privacy-gym" maxLength={80} value={values.gymName}
+          placeholder={t('Ej. Gimnasio Norte de Juan Pérez')} onChange={e => setValues(v => ({ ...v, gymName: e.target.value }))} />
+      </label>
+      <label className="member-field">
+        <span className="member-field-l">{t('Contacto para privacidad')}</span>
+        <TextField type="text" inputMode="text" name="app-privacy-contact" maxLength={200} value={values.contact}
+          placeholder={t('Mail, WhatsApp o dirección de la recepción')} onChange={e => setValues(v => ({ ...v, contact: e.target.value }))} />
+      </label>
+      {(!saved.gymName || !saved.contact) && <div className="access-warn small" role="note">{t('Completalos antes de cargar datos reales de socios.')}</div>}
+      <Button variant="primary" size="sm" disabled={busy || !dirty} onClick={save}>{busy ? t('Guardando…') : t('Guardar')}</Button>
+    </div> : <div className="dim small">{t('Loading…')}</div>}
+  </div>
+}
+
+// Aprobación de cuentas (owner, spec 12.3). Encendida: quien se registra solo elige usuario y
+// passkey y espera en "pendiente" a que el staff complete sus datos y la habilite según el modo.
+// Aplica solo a las cuentas que se registren después de encenderla.
+const APPROVAL_MODES = [
+  ['approve', 'Aprobar', 'El staff habilita la cuenta. Con cuotas, puede registrar un pago o una prueba en el mismo paso.'],
+  ['payment', 'Registrar primer pago', 'La cuenta se habilita al cobrar el primer pago.'],
+  ['trial', 'Iniciar prueba', 'La cuenta se habilita con la prueba gratis (una por DNI).'],
+]
+function ApprovalCard({ billingEnabled }) {
+  const toast = useUI(s => s.toast)
+  const [data, setData] = useState(null)
+  const [busy, setBusy] = useState(false)
+  useEffect(() => {
+    api('/api/admin/approval').then(setData).catch(e => toast(e.message || t('Failed to load')))
+  }, [billingEnabled])
+  const put = patch => {
+    setBusy(true)
+    api('/api/owner/approval', { method: 'PUT', body: JSON.stringify(patch) })
+      .then(d => { setData(d); toast(t('Guardado')) })
+      .catch(e => toast(e?.data?.message || e.message || t('Failed to save setting')))
+      .finally(() => setBusy(false))
+  }
+  const why = mode => mode !== 'approve' && !data.billingEnabled ? t('Necesita el cobro de cuotas activado.')
+    : mode === 'trial' && !data.dniEnabled ? t('Necesita que se pida el DNI (Datos del registro).') : null
+  return <div className="card">
+    <h2 style={{ margin: 0 }}>{t('Aprobación de cuentas')}</h2>
+    {data ? <>
+      <div className="row between" style={{ gap: 12, marginTop: 10 }}>
+        <div className="grow">
+          <div style={{ fontWeight: 600 }}>{t('Requerir aprobación del staff')}</div>
+          <div className="small muted" style={{ marginTop: 2 }}>{data.required
+            ? t('Quien se registra elige solo un nombre de usuario y espera a que recepción complete sus datos y habilite la cuenta.')
+            : t('Quien se registra completa los datos del registro y entra directo. Un DNI que ya está cargado frena el registro.')}</div>
+        </div>
+        <Switch label={t('Requerir aprobación del staff')} checked={data.required} disabled={busy} onChange={v => put({ required: v })} />
+      </div>
+      {data.required && <>
+        <div className="small muted" style={{ marginTop: 12 }}>{t('Para habilitar una cuenta:')}</div>
+        <div className="sect-b approval-modes" role="radiogroup" aria-label={t('Modo de confirmación')}>
+          {APPROVAL_MODES.map(([value, label, sub]) => {
+            const reason = why(value)
+            return <button key={value} type="button" role="radio" className="lrow tap" aria-checked={data.mode === value} disabled={busy || !!reason}
+              onClick={() => data.mode !== value && put({ mode: value })}>
+              <span className="lrow-m"><span className="lrow-t">{t(label)}</span><span className="lrow-s">{reason || t(sub)}</span></span>
+              {data.mode === value && <Icon name="check" className="lrow-k" />}
+            </button>
+          })}
+        </div>
+        {data.mode !== data.effectiveMode && <div className="access-warn small" role="note">{t('Con el cobro de cuotas apagado, las cuentas se habilitan con "Aprobar".')}</div>}
+        <div className="dim small" style={{ marginTop: 8 }}>{t('Solo para cuentas que se registren desde ahora. Quien ya tenía cuenta, o entra con un código del gym, no pasa por la aprobación.')}</div>
+      </>}
+    </> : <div className="dim small">{t('Loading…')}</div>}
+  </div>
+}
+
 // Invitaciones para todos los admins; QR, datos del registro y cuotas solo para el owner.
 export default function Acceso() {
   const user = useStore(s => s.user)
@@ -188,6 +284,8 @@ export default function Acceso() {
     {invitesCard}
     <QrAccessCard data={qrAccess} reload={setQrAccess} />
     <MemberFieldsCard />
+    <ApprovalCard billingEnabled={billingEnabled} />
+    <PrivacyCard />
     <BillingToggleCard enabled={billingEnabled} onChanged={v => { setBillingEnabled(v); loadUsers() }} />
   </div>
 }

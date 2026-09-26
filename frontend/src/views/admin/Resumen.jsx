@@ -61,6 +61,8 @@ export default function Resumen() {
   const liveUsers = (users || []).filter(u => u.live)
   const activeCount = (users || []).filter(u => u.lastSync && Date.now() - u.lastSync < 7 * 86400000).length
   const disabledCount = (users || []).filter(u => u.disabled).length
+  // Cuentas que esperan la aprobación del staff (spec 12.3): contador con acceso a la lista.
+  const pendingCount = (allUsers || []).filter(u => u.pending && !u.disabled).length
 
   return <>
     <div className="hdr">
@@ -70,6 +72,11 @@ export default function Resumen() {
       <button className="iconbtn" onClick={refresh} aria-label={t('Refresh')}>↻</button>
     </div>
 
+    {pendingCount > 0 && <button type="button" className="card admin-pending-banner" onClick={() => nav('/admin/usuarios?filtro=pendientes')}>
+      <span className="admin-pending-n">{pendingCount}</span>
+      <span className="grow">{t(pendingCount === 1 ? 'cuenta pendiente de aprobación' : 'cuentas pendientes de aprobación')}</span>
+      <span className="admin-pending-go">{t('Revisar')}</span><Icon name="chevronRight" className="chev" />
+    </button>}
     <div className="tiles" style={{ marginBottom: 12 }}>
       <div className="tile"><div className="l">{t('Users')}</div><div className="v">{users ? users.length : '—'}</div></div>
       <div className="tile"><div className="l">{t('Training now')}</div><div className="v" style={{ color: liveUsers.length ? 'var(--acc)' : undefined }}>{users ? liveUsers.length : '—'}</div></div>

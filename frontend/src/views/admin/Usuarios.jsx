@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useLocation } from 'react-router-dom'
 import { useAdmin } from './context.js'
 import { useDesktop } from './useDesktop.js'
 import { useUI } from '../../store/useUI.js'
@@ -8,11 +9,13 @@ import { t } from '../../lib/i18n.js'
 import Icon from '../../components/Icon.jsx'
 import { Button, Row, TextField } from '../../components/ui.jsx'
 import { rel, UserDetail } from './shared.jsx'
-import { IncompleteBadge, NoAppBadge, looksLikeDni, lookupDni, openImportSheet, openMemberSheet } from './members/common.jsx'
+import { IncompleteBadge, NoAppBadge, PendingBadge, looksLikeDni, lookupDni, openImportSheet, openMemberSheet } from './members/common.jsx'
 
-// Filtro por acceso a la app: las fichas (sin passkey) las carga el gimnasio.
+// Filtro por acceso a la app: las fichas (sin passkey) las carga el gimnasio. "Pendientes":
+// cuentas que esperan la aprobación del staff (solo aparece si hay alguna).
 const APP_FILTERS = [['all', 'Todos'], ['app', 'Con app'], ['noapp', 'Sin app']]
-const matchesAppFilter = (u, f) => f === 'all' || (f === 'app' ? u.hasApp !== false : u.hasApp === false)
+const isPending = u => !!u.pending && !u.disabled
+const matchesAppFilter = (u, f) => f === 'all' || (f === 'pending' ? isPending(u) : f === 'app' ? u.hasApp !== false : u.hasApp === false)
 
 export default function Usuarios() {
   const openSheet = useUI(s => s.openSheet)
@@ -22,7 +25,9 @@ export default function Usuarios() {
   const [userPage, setUserPage] = useState(1)
   const desktop = useDesktop()
   const [selectedId, setSelectedId] = useState(null)   // desktop only: whose UserDetail sits in the side panel
-  const [appFilter, setAppFilter] = useState('all')
+  // /admin/usuarios?filtro=pendientes (desde Resumen) abre la lista ya filtrada.
+  const loc = useLocation()
+  const [appFilter, setAppFilter] = useState(() => new URLSearchParams(loc.search).get('filtro') === 'pendientes' ? 'pending' : 'all')
   const [dniMatch, setDniMatch] = useState(null)       // { userId, name, hasApp } when the search is a DNI
 
   // Desktop shows UserDetail in the side panel; phones keep the sheet. Inside the panel, the
@@ -43,6 +48,8 @@ export default function Usuarios() {
     onShowMembers: () => { setUserSearch(''); setAppFilter('noapp'); setUserPage(1) }
   })
   const disabledCount = (users || []).filter(u => u.disabled).length
+  const pendingCount = (users || []).filter(isPending).length
+  const filters = pendingCount || appFilter === 'pending' ? [...APP_FILTERS, ['pending', t('Pendientes ({0})', pendingCount)]] : APP_FILTERS
   const filteredUsers = (users || []).filter(u => matchesAppFilter(u, appFilter) && u.name.toLocaleLowerCase().includes(userSearch.trim().toLocaleLowerCase()))
   const userPageCount = Math.max(1, Math.ceil(filteredUsers.length / 6))
   const visibleUsers = filteredUsers.slice((userPage - 1) * 6, userPage * 6)
@@ -70,7 +77,7 @@ export default function Usuarios() {
         placeholder={t('Buscar por nombre o DNI')} aria-label={t('Buscar por nombre o DNI')} />
     </div>
     <div className="chips member-filter" role="group" aria-label={t('Acceso a la app')}>
-      {APP_FILTERS.map(([value, label]) => <button key={value} type="button" className={'chip nocap' + (appFilter === value ? ' on' : '')}
+      {filters.map(([value, label]) => <button key={value} type="button" className={'chip nocap' + (appFilter === value ? ' on' : '')}
         aria-pressed={appFilter === value} onClick={() => { setAppFilter(value); setUserPage(1) }}>{t(label)}</button>)}
     </div>
     {dniMatch && <div className="sect-b member-dni-match">
@@ -80,7 +87,7 @@ export default function Usuarios() {
     </div>}
     <div className="list">
       {visibleUsers.map(u => <div key={u.id} className={'item' + (desktop && selectedId === u.id ? ' on' : '')} onClick={() => openUser(u.id)} style={u.disabled ? { opacity: .55 } : null}>
-        <div className="grow"><div className="tt">{u.live && <Icon name="dot" style={{ fontSize: 9, color: 'var(--green)', display: 'inline-block', marginRight: 5 }} />}{u.name} {(u.owner || u.admin) && <span className="tag acc" style={{ marginLeft: 4 }}>{u.owner ? t('owner') : t('admin')}</span>}{u.disabled && <span className="tag" style={{ marginLeft: 4, color: 'var(--red)' }}>{t('off')}</span>}{u.hasApp === false && <NoAppBadge style={{ marginLeft: 4 }} />}{u.profileIncomplete && <IncompleteBadge style={{ marginLeft: 4 }} />}</div>
+        <div className="grow"><div className="tt">{u.live && <Icon name="dot" style={{ fontSize: 9, color: 'var(--green)', display: 'inline-block', marginRight: 5 }} />}{u.name} {(u.owner || u.admin) && <span className="tag acc" style={{ marginLeft: 4 }}>{u.owner ? t('owner') : t('admin')}</span>}{u.disabled && <span className="tag" style={{ marginLeft: 4, color: 'var(--red)' }}>{t('off')}</span>}{u.hasApp === false && <NoAppBadge style={{ marginLeft: 4 }} />}{isPending(u) && <PendingBadge style={{ marginLeft: 4 }} />}{u.profileIncomplete && <IncompleteBadge style={{ marginLeft: 4 }} />}</div>
           <div className="ss">{u.hasApp === false ? t('Ficha cargada por el gimnasio') : u.live ? t('training now') + ' · ' + u.live.name : u.workouts + ' ' + t('workouts') + (u.lastWorkout ? ' · ' + t('last') + ' ' + fmtDate(u.lastWorkout) : '') + ' · ' + t('synced') + ' ' + rel(u.lastSync)}</div></div>
         {u.hasPush && <Icon name="bell" title="push enabled" style={{ fontSize: 15, color: 'var(--label-3)' }} />}<Icon name="chevronRight" className="chev" />
       </div>)}
