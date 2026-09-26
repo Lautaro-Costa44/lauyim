@@ -43,7 +43,8 @@ beforeEach(async () => {
   globalThis.IS_REACT_ACT_ENVIRONMENT = true
   serverState = null
   apiMock.mockReset()
-  apiMock.mockImplementation(url => url === '/api/presets' ? Promise.resolve(PRESETS)
+  apiMock.mockImplementation((url, opts) => url === '/api/presets' ? Promise.resolve(PRESETS)
+    : url === '/api/presets/apply' ? Promise.resolve({ presets: PRESETS.presets.filter(p => p.program_id === JSON.parse(opts.body).id), customExercises: [] })
     : url === '/api/data' ? Promise.resolve({ state: serverState }) : Promise.resolve({}))
   useUI.setState({ sheets: [] })
   useStore.setState({ user: null, config: { survey_enabled: true }, S: { ...JSON.parse(JSON.stringify(DEF)), onboardingCompletado: true } })

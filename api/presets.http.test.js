@@ -39,7 +39,8 @@ async function call(uid, method, url, body) {
   });
   return { status: res.status, body: await res.json().catch(() => ({})) };
 }
-const presets = async () => (await call('staff', 'GET', '/api/presets')).body;
+const presets = async () => (await call('staff', 'GET', '/api/admin/presets')).body;
+const memberPresets = async (uid = 'ana') => (await call(uid, 'GET', '/api/presets')).body;
 
 before(async () => {
   server = spawn(process.execPath, [fileURLToPath(new URL('./server.js', import.meta.url))], {
@@ -184,4 +185,76 @@ test('uso: socios activos con el programa cargado (source.programId), y cuántos
   // el GET de rutinas del socio devuelve source tal cual
   const routines = await call('staff', 'GET', '/api/admin/users/ana/routines');
   assert.deepEqual(routines.body.routineGroups[0].source, { kind: 'preset', programId: general.id, at: 1 });
+});
+
+test('visibilidad: el seed se ve; un programa nuevo nace oculto y el socio no lo ve ni lo puede cargar', async () => {
+  const general = (await presets()).programs.find(p => p.name === 'General');
+  assert.equal(general.visibleToMembers, true);
+  await call('staff', 'POST', '/api/admin/presets', { name: 'Día A', groupName: 'Oculto Nuevo', plannedDay: 2, ex: [{ id: '0025', sets: 3, reps: 8 }] });
+  const nuevo = (await presets()).programs.find(p => p.name === 'Oculto Nuevo');
+  assert.equal(nuevo.visibleToMembers, false);
+
+  const socio = await memberPresets();
+  assert.equal(socio.programs.some(p => p.id === nuevo.id), false);
+  assert.equal(socio.groups.some(g => g.name === 'Oculto Nuevo'), false);
+  assert.equal(socio.presets.some(p => p.group_name === 'Oculto Nuevo'), false);
+  assert.equal(socio.programs.some(p => p.id === general.id), true);
+
+  assert.equal((await call('ana', 'POST', '/api/presets/apply', { id: nuevo.id })).status, 403);
+  // También desde la app del socio de un admin: el panel es el que ve todo.
+  assert.equal((await call('staff', 'POST', '/api/presets/apply', { id: nuevo.id })).status, 403);
+  assert.equal((await call('ana', 'POST', '/api/presets/apply', { id: 'nope' })).status, 404);
+  const ok = await call('ana', 'POST', '/api/presets/apply', { id: general.id });
+  assert.equal(ok.status, 200);
+  assert.deepEqual(ok.body.presets.map(p => p.id), ['starter-push', 'starter-pull', 'starter-legs']);
+});
+
+test('visibilidad: mostrarlo lo hace aparecer, ocultarlo no toca la rutina de quien ya lo cargó; audit y permisos', async () => {
+  const nuevo = (await presets()).programs.find(p => p.name === 'Oculto Nuevo');
+  assert.equal((await call('ana', 'POST', '/api/admin/programs/visibility', { id: nuevo.id, visible: true })).status, 403);
+  assert.equal((await call('staff', 'POST', '/api/admin/programs/visibility', { id: nuevo.id, visible: 'si' })).status, 400);
+  assert.equal((await call('staff', 'POST', '/api/admin/programs/visibility', { id: 'nope', visible: true })).status, 404);
+  const shown = await call('staff', 'POST', '/api/admin/programs/visibility', { id: nuevo.id, visible: true });
+  assert.equal(shown.status, 200);
+  assert.equal(shown.body.program.visibleToMembers, true);
+  assert.equal((await memberPresets()).programs.some(p => p.id === nuevo.id), true);
+  const applied = await call('beto', 'POST', '/api/presets/apply', { id: nuevo.id });
+  assert.equal(applied.status, 200);
+
+  // beto lo carga (como lo hace la app: rutinas + grupo con source), después se oculta.
+  const routines = applied.body.presets.map(p => ({ id: 'rb-' + p.id, name: p.name, ex: p.ex }));
+  const put = await call('beto', 'PUT', '/api/data', { state: { routines, routineGroups: [{ id: 'gb', name: 'Oculto Nuevo', routines, week: {}, source: { kind: 'preset', programId: nuevo.id, at: 1 } }], activeGroupId: 'gb' } });
+  assert.equal(put.status, 200);
+  assert.equal((await call('staff', 'POST', '/api/admin/programs/visibility', { id: nuevo.id, visible: false })).status, 200);
+  assert.equal((await memberPresets('beto')).programs.some(p => p.id === nuevo.id), false);
+  const state = (await call('beto', 'GET', '/api/data')).body.state;
+  assert.deepEqual(state.routines.map(r => r.name), ['Día A']);
+  assert.equal(state.routineGroups[0].source.programId, nuevo.id);
+
+  const logs = fs.readFileSync(path.join(dataDir, 'audit.log'), 'utf8').split('\n').filter(Boolean).map(line => JSON.parse(line))
+    .filter(r => r.ev === 'admin.program.visibility');
+  assert.deepEqual(logs.map(l => [l.uid, l.msg]), [['staff', 'Oculto Nuevo: visible para socios'], ['staff', 'Oculto Nuevo: oculto para socios']]);
+});
+
+test('visibilidad: duplicar crea la copia oculta; el admin asigna un programa oculto igual', async () => {
+  const general = (await presets()).programs.find(p => p.name === 'General');
+  const dup = await call('staff', 'POST', '/api/admin/programs/duplicate', { id: general.id, name: 'General Oculto' });
+  assert.equal(dup.body.program.visibleToMembers, false);
+  assert.equal((await memberPresets()).programs.some(p => p.id === dup.body.program.id), false);
+  // "Asignar a socio": el panel lee el programa oculto y lo PUTea al socio.
+  const days = (await presets()).presets.filter(p => p.program_id === dup.body.program.id);
+  assert.equal(days.length, 3);
+  const routines = days.map(p => ({ id: 'ra-' + p.id, name: p.name, ex: p.ex }));
+  const assigned = await call('staff', 'PUT', '/api/admin/users/ana/routines', { routines, week: {}, dayPlan: {}, routineGroups: [{ id: 'ga', name: 'General Oculto', routines, week: {}, source: { kind: 'preset', programId: dup.body.program.id, at: 2 } }], activeGroupId: 'ga' });
+  assert.equal(assigned.status, 200);
+  assert.deepEqual((await call('staff', 'GET', '/api/admin/users/ana/routines')).body.routines.map(r => r.name), ['Push Day', 'Pull Day', 'Leg Day']);
+});
+
+test('visibilidad: sin ningún programa visible, el socio recibe un catálogo vacío', async () => {
+  const all = (await presets()).programs;
+  for (const p of all) await call('staff', 'POST', '/api/admin/programs/visibility', { id: p.id, visible: false });
+  const socio = await memberPresets();
+  assert.deepEqual([socio.programs, socio.groups, socio.presets, socio.customExercises], [[], [], [], []]);
+  assert.equal((await presets()).programs.length, all.length);
+  for (const p of all) await call('staff', 'POST', '/api/admin/programs/visibility', { id: p.id, visible: p.visibleToMembers });
 });

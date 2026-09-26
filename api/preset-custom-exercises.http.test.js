@@ -79,6 +79,9 @@ test('reparación al arrancar: la socia con "Unknown exercise" recibe su copia c
 test('el preset entrega la definición de sus ejercicios custom (solo esos, no los del catálogo)', async () => {
   const created = await call('staff', 'POST', '/api/admin/presets', { name: 'Espalda', groupName: 'Gym', plannedDay: 4, ex: [{ id: 'cx-remo', sets: 4, reps: 10 }, { id: '0027', sets: 3, reps: 8 }] });
   assert.equal(created.status, 200);
+  // Un programa nuevo nace oculto para los socios: el admin lo muestra.
+  const program = (await call('staff', 'GET', '/api/admin/presets')).body.programs.find(p => p.name === 'Gym');
+  assert.equal((await call('staff', 'POST', '/api/admin/programs/visibility', { id: program.id, visible: true })).status, 200);
   const d = (await call('ana', 'GET', '/api/presets')).body;
   const remo = d.customExercises.find(e => e.id === 'cx-remo');
   assert.equal(remo.n, REMO.n);

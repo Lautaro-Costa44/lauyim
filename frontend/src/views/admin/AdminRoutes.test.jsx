@@ -38,7 +38,7 @@ apiMock.mockImplementation((url, opts) => {
   if (url === '/api/owner/billing/enabled') { billingOn = JSON.parse(opts.body).enabled; return Promise.resolve({ enabled: billingOn }) }
   if (url.startsWith('/api/admin/users/') && url.endsWith('/billing')) return Promise.resolve({ billing: { planId: null, status: 'sin_plan', debt: 0 }, payments: [] })
   if (url === '/api/admin/invites') return Promise.resolve({ invites: [] })
-  if (url === '/api/presets') return Promise.resolve({ presets: [] })
+  if (url === '/api/admin/presets') return Promise.resolve({ presets: [] })
   if (url === '/api/admin/attendance-heatmap') return Promise.resolve({ start: 'monday', totalUsers: 1, days: {} })
   if (url === '/api/owner/qr') return Promise.resolve({ token: 'qr-token' })
   if (url.startsWith('/api/admin/audit')) return Promise.resolve({ enabled: auditOn, events: [], total: 0, retention: {}, now: Date.now() })

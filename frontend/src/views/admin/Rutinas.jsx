@@ -31,6 +31,7 @@ export default function Rutinas() {
   const desktop = useDesktop()
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState(null)       // program name, or null = todos
+  const [visibility, setVisibility] = useState(null) // 'visible' | 'hidden' | null = todos
   const [editing, setEditing] = useState(null)     // desktop: { preset } | { group } en el panel
   const [usage, setUsage] = useState({})
 
@@ -57,6 +58,10 @@ export default function Rutinas() {
     .then(d => { toast(t('Día duplicado: {0}', d.preset.name)); reload() }).catch(e => toast(e.message))
   const duplicateProgram = program => api('/api/admin/programs/duplicate', { method: 'POST', body: JSON.stringify({ id: program.id }) })
     .then(d => { toast(t('Programa duplicado: {0}', d.program.name)); reload() }).catch(e => toast(e.message))
+  // Mostrar u ocultar el programa en la app del socio. Quien ya lo cargó conserva su rutina.
+  const toggleVisible = (program, visible) => api('/api/admin/programs/visibility', { method: 'POST', body: JSON.stringify({ id: program.id, visible }) })
+    .then(() => { toast(visible ? t('{0} ahora es visible para los socios', program.name) : t('{0} quedó oculto para los socios', program.name)); reload() })
+    .catch(e => toast(e.message))
   const renameProgram = program => inputSheet({
     title: t('Renombrar programa'), placeholder: t('Nombre del programa'), defaultValue: program.name, confirmText: t('Guardar'),
     onConfirm: name => api('/api/admin/programs', { method: 'PUT', body: JSON.stringify({ id: program.id, name }) })
@@ -73,6 +78,7 @@ export default function Rutinas() {
   const q = normalizeStr(search.trim())
   const cards = list
     .filter(program => !filter || program.name === filter)
+    .filter(program => !visibility || (program.visibleToMembers === false ? 'hidden' : 'visible') === visibility)
     .map(program => {
       const days = daysOf(program, presets)
       if (!q || matches(program.name, q)) return { program, days, filtered: false }
@@ -90,21 +96,25 @@ export default function Rutinas() {
         </div>
         <p className="small muted admin-prose">{t('Programas que los socios cargan desde la app (plan inicial y "Cargar planes prearmados") o que les asignás desde acá. Cada socio recibe una copia: editar un programa no cambia lo que ya tienen.')}</p>
         <TextField value={search} onChange={e => setSearch(e.target.value)} placeholder={t('Buscar programa, día o ejercicio')} aria-label={t('Buscar programa, día o ejercicio')} />
-        {list.length > 1 && <div className="chips preset-filter" role="group" aria-label={t('Programas')}>
-          <button type="button" className={'chip nocap' + (!filter ? ' on' : '')} aria-pressed={!filter} onClick={() => setFilter(null)}>{t('Todas')}</button>
-          {list.map(p => <button key={p.id || p.name} type="button" className={'chip nocap' + (filter === p.name ? ' on' : '')}
-            aria-pressed={filter === p.name} onClick={() => setFilter(filter === p.name ? null : p.name)}>{p.name}</button>)}
+        {(list.length > 1 || list.some(p => p.id)) && <div className="chips preset-filter" role="group" aria-label={t('Programas')}>
+          {list.length > 1 && <>
+            <button type="button" className={'chip nocap' + (!filter ? ' on' : '')} aria-pressed={!filter} onClick={() => setFilter(null)}>{t('Todas')}</button>
+            {list.map(p => <button key={p.id || p.name} type="button" className={'chip nocap' + (filter === p.name ? ' on' : '')}
+              aria-pressed={filter === p.name} onClick={() => setFilter(filter === p.name ? null : p.name)}>{p.name}</button>)}
+          </>}
+          {list.some(p => p.id) && ['visible', 'hidden'].map(v => <button key={v} type="button" className={'chip nocap preset-vis-chip' + (visibility === v ? ' on' : '')}
+            aria-pressed={visibility === v} onClick={() => setVisibility(visibility === v ? null : v)}>{v === 'visible' ? t('Visibles') : t('Ocultos')}</button>)}
         </div>}
       </div>
 
       {presets === null ? <div className="dim small">{t('Loading…')}</div>
         : !list.length ? <div className="card dim small">{t('No presets yet.')}</div>
-          : !cards.length ? <div className="card dim small">{t('Ningún programa coincide con la búsqueda.')}</div>
+          : !cards.length ? <div className="card dim small">{q || filter ? t('Ningún programa coincide con la búsqueda.') : visibility === 'hidden' ? t('No hay programas ocultos.') : t('No hay programas visibles para los socios.')}</div>
             : <div className="preset-grid">
               {cards.map(({ program, days }) => <ProgramCard key={program.id || program.name} program={program} days={days}
                 usage={program.id ? usage[program.id] : null} body={body} editingId={panel ? editing.preset?.id : null}
                 onEdit={day => openEditor({ preset: day })} onAddDay={p => openEditor({ group: p.name })}
-                onDuplicateDay={duplicateDay} onDeleteDay={removeDay} onRename={renameProgram}
+                onDuplicateDay={duplicateDay} onDeleteDay={removeDay} onRename={renameProgram} onToggleVisible={toggleVisible}
                 onDuplicate={duplicateProgram} onAssign={assign} onReorder={ids => reorder(program, ids)} />)}
             </div>}
     </div>

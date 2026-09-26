@@ -74,11 +74,15 @@ CREATE TABLE IF NOT EXISTS presets (
 -- Programas de presets (PPL, Torso/Pierna…). presets.group_name sigue siendo la clave que lee
 -- la app del socio; esta tabla le da al programa un id estable (para contar uso y renombrar)
 -- y un orden. Se mantiene en sync desde database.js (ensurePresetProgram / prune).
+-- visible_to_members: si la app del socio lo ofrece (primer ingreso, "Cargar planes
+-- prearmados", "Load starter plan"). El DEFAULT 1 es para los programas que ya existían;
+-- ensurePresetProgram crea los nuevos (y los duplicados) ocultos.
 CREATE TABLE IF NOT EXISTS preset_programs (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL UNIQUE COLLATE NOCASE,
   position INTEGER NOT NULL DEFAULT 0,
-  created_at INTEGER NOT NULL
+  created_at INTEGER NOT NULL,
+  visible_to_members INTEGER NOT NULL DEFAULT 1
 );
 
 -- Migración para bases existentes (CREATE TABLE IF NOT EXISTS no modifica tablas ya creadas):

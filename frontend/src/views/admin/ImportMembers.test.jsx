@@ -42,7 +42,7 @@ apiMock.mockImplementation((url, opts = {}) => {
   if (url === '/api/admin/billing/settings') return Promise.resolve({ settings: { payment_methods: ['efectivo', 'transferencia'], trial_days: 1, gym_tz: 'America/Argentina/Buenos_Aires', due_soon_days: 5, push_days_before: 3, grace_days: 5 } })
   if (url === '/api/owner/members/import') return Promise.resolve(body.dry_run ? preview : { ok: true, created: 17, updated: 1, skipped: 0, errors: 7 })
   if (url === '/api/admin/invites') return Promise.resolve({ invites: [] })
-  if (url === '/api/presets') return Promise.resolve({ presets: [] })
+  if (url === '/api/admin/presets') return Promise.resolve({ presets: [] })
   if (url === '/api/admin/attendance-heatmap') return Promise.resolve({ start: 'monday', totalUsers: 1, days: {} })
   return Promise.resolve({})
 })

@@ -180,6 +180,8 @@ export function initDatabase() {
   try { db.exec(`ALTER TABLE presets ADD COLUMN position INTEGER NOT NULL DEFAULT 0;`); } catch {}
   try { db.exec(`ALTER TABLE preset_exercises ADD COLUMN extra TEXT;`); } catch {}
   try { db.exec(`ALTER TABLE routine_exercises ADD COLUMN extra TEXT;`); } catch {}
+  // Programas que ya existían: visibles para los socios, como hasta ahora.
+  try { db.exec(`ALTER TABLE preset_programs ADD COLUMN visible_to_members INTEGER NOT NULL DEFAULT 1;`); } catch {}
   backfillPresetPrograms(db);
   // Cuotas v1: anular pagos. payments ya existe acá (lo crea schema.sql), así que estos ALTER
   // van después del schema; en una base nueva fallan en silencio porque el CREATE los trae.
@@ -596,7 +598,8 @@ function backfillPresetPrograms(db) {
 }
 
 // Programa de un nombre de grupo, creándolo si no existe. Devuelve { id, name } con el
-// nombre canónico (el guardado), así "ppl" y "PPL" terminan en el mismo programa.
+// nombre canónico (el guardado), así "ppl" y "PPL" terminan en el mismo programa. Uno nuevo
+// nace oculto para los socios: el admin lo arma y lo muestra cuando está listo.
 export function ensurePresetProgram(name) {
   const db = getDatabase();
   const clean = String(name || '').trim() || 'General';
@@ -604,7 +607,7 @@ export function ensurePresetProgram(name) {
   if (found) return found;
   const position = db.prepare('SELECT COALESCE(MAX(position) + 1, 0) AS p FROM preset_programs').get().p;
   const program = { id: 'g' + crypto.randomBytes(8).toString('hex'), name: clean };
-  db.prepare('INSERT INTO preset_programs (id, name, position, created_at) VALUES (?, ?, ?, ?)').run(program.id, program.name, position, Date.now());
+  db.prepare('INSERT INTO preset_programs (id, name, position, created_at, visible_to_members) VALUES (?, ?, ?, ?, 0)').run(program.id, program.name, position, Date.now());
   return program;
 }
 
@@ -613,16 +616,24 @@ export function prunePresetPrograms() {
   getDatabase().prepare('DELETE FROM preset_programs WHERE NOT EXISTS (SELECT 1 FROM presets WHERE presets.group_name = preset_programs.name)').run();
 }
 
+const programRow = row => row ? { id: row.id, name: row.name, position: row.position, ...(row.count !== undefined ? { count: row.count } : {}), visibleToMembers: row.visible_to_members === 1 } : null;
+
 export function getPresetPrograms() {
   return getDatabase().prepare(`
-    SELECT pp.id, pp.name, pp.position, COUNT(p.id) AS count
+    SELECT pp.id, pp.name, pp.position, pp.visible_to_members, COUNT(p.id) AS count
     FROM preset_programs pp LEFT JOIN presets p ON p.group_name = pp.name
     GROUP BY pp.id ORDER BY pp.position, pp.name COLLATE NOCASE
-  `).all();
+  `).all().map(programRow);
 }
 
 export function getPresetProgramById(id) {
-  return getDatabase().prepare('SELECT id, name, position FROM preset_programs WHERE id = ?').get(id) || null;
+  return programRow(getDatabase().prepare('SELECT id, name, position, visible_to_members FROM preset_programs WHERE id = ?').get(id));
+}
+
+// Mostrar u ocultar un programa en la app del socio. Lo que un socio ya cargó no cambia.
+export function setPresetProgramVisibility(id, visible) {
+  getDatabase().prepare('UPDATE preset_programs SET visible_to_members = ? WHERE id = ?').run(visible ? 1 : 0, id);
+  return getPresetProgramById(id);
 }
 
 export function getPresetProgramByName(name) {

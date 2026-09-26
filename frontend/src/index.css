@@ -1209,6 +1209,13 @@ input[type="search"]::-webkit-search-cancel-button{display:none;-webkit-appearan
 .bodymap.mini .bm-v{max-height:124px}
 .bodymap.mini .bm-ph{height:124px}
 .program-usage{display:flex;align-items:center;gap:5px;margin-top:8px}
+/* Oculto para socios: badge de advertencia en el encabezado y el borde de la card del mismo color,
+   para que no se confunda con uno que ya ven. */
+.program-card.hidden-for-members{box-shadow:inset 0 0 0 1.5px color-mix(in srgb,var(--orange) 55%,transparent)}
+.program-hidden-badge{display:inline-flex;align-items:center;gap:5px;margin:4px 0 2px;text-transform:none;font-weight:600;
+  background:color-mix(in srgb,var(--orange) 18%,transparent);color:var(--orange)}
+.program-hidden-badge svg{width:13px;height:13px}
+.program-visibility{align-items:center;gap:10px;padding:8px 2px 4px}
 .program-days{margin-top:6px}
 .preset-day{display:flex;align-items:center;gap:8px;padding:7px 2px;border-top:var(--hair) solid var(--sep);border-radius:0;transition:background var(--fast)}
 .preset-day.on{background:var(--acc-soft);border-radius:10px}

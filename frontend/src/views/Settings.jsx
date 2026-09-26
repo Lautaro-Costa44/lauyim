@@ -79,6 +79,7 @@ import { wakeLockSupported } from '../lib/wakelock.js'
 import { DEMO, REPO } from '../lib/demo.js'
 import { confirmSheet, importFromApp, equipmentProfileSheet } from '../sheets.jsx'
 import { routinesFromPresets, presetSourceFor, addPresetCustomExercises } from '../lib/starter.js'
+import { programsOf, fetchProgramToApply, programUnavailableMessage } from '../components/ProgramPicker.jsx'
 import Icon from '../components/Icon.jsx'
 import { Section, Row, SelectRow, Switch, Segmented, Button, TextField } from '../components/ui.jsx'
 import { NO_AUTOFILL } from '../lib/input-safety.js'
@@ -110,8 +111,14 @@ export default function Settings() {
           toast(t('This group is already loaded.'))
           return
         }
+        // Pedido de nuevo justo antes de cargar: el admin pudo ocultarlo mientras la lista estaba abierta.
         const d = await api('/api/presets')
-        const presets = (d.presets || []).filter(p => (p.group_name || p.groupName || 'General') === name)
+        const program = programsOf(d).find(p => p.name.trim().toLowerCase() === name.toLowerCase())
+        let fresh = null
+        try { fresh = program && await fetchProgramToApply(d, program) }
+        catch (e) { toast(programUnavailableMessage(e)); return }
+        const presets = fresh?.presets || []
+        if (!presets.length) { toast(t('Este programa ya no está disponible.')); return }
         const routines = routinesFromPresets(presets)
         const result = applyPlannedDays(routines, {}, { groupRoutines: routines })
         if (!result.ok) {
@@ -120,7 +127,7 @@ export default function Settings() {
         }
         addGroup(name, routines, result.week, true, { source: presetSourceFor(d, name) })
         // Ejercicios custom del gym que usa el programa: el socio los recibe (y el servidor, su copia).
-        useStore.getState().update(st => { addPresetCustomExercises(st, presets, d.customExercises) })
+        useStore.getState().update(st => { addPresetCustomExercises(st, presets, fresh.customExercises) })
         loadedNames.add(name.toLowerCase())
         toast(t('Group loaded successfully.'))
         close()
@@ -551,7 +558,8 @@ export default function Settings() {
           })}
         />
       )}
-      <Row icon="folder" iconTint="var(--acc)" title={t('Load pre-built plans')} subtitle={t('Add a plan without replacing your current groups.')} accessory="chevron" onClick={openPresetPlans} />
+      {/* Sin programas visibles para socios, como un gym sin programas: la opción no aparece. */}
+      {presetGroups.length > 0 && <Row icon="folder" iconTint="var(--acc)" title={t('Load pre-built plans')} subtitle={t('Add a plan without replacing your current groups.')} accessory="chevron" onClick={openPresetPlans} />}
       <Row icon="shuffle" iconTint="var(--teal)" title={t('Import from another app')}
         subtitle={t('FitNotes, Strong, Hevy — or body weight from Apple Health')}
         accessory="chevron" onClick={() => importRef.current.click()} />

@@ -1,8 +1,10 @@
 // @vitest-environment happy-dom
-// Primer ingreso: el cartel de bienvenida de Home ofrece los programas del gym (con días y
-// músculos principales) además de la encuesta y armar la rutina a mano; sin
-// programas queda como antes. "Cargar un plan" en Plan abre el mismo selector; sin programas
-// carga el plan incluido.
+// Primer ingreso: el cartel de bienvenida de Home ofrece los programas del gym visibles para
+// socios (con días y músculos principales) además de la encuesta y armar la rutina a mano; sin
+// programas (o ninguno visible) queda como antes. "Cargar un plan" en Plan abre el mismo
+// selector; sin programas carga el plan incluido. "Cargar planes pre-creados" en Configuración
+// solo aparece si hay programas. Cargar un programa pasa por POST /api/presets/apply, que
+// rechaza (403) uno que el admin ocultó después de abierta la lista.
 import React, { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { MemoryRouter } from 'react-router-dom'
@@ -13,6 +15,7 @@ vi.mock('../lib/api.js', async importOriginal => ({ ...(await importOriginal()),
 
 const { default: Home } = await import('./Home.jsx')
 const { default: Plan } = await import('./Plan.jsx')
+const { default: Settings } = await import('./Settings.jsx')
 const { default: Modals } = await import('../components/Modals.jsx')
 const { useStore, DEF } = await import('../store/useStore.js')
 const { useUI } = await import('../store/useUI.js')
@@ -30,6 +33,19 @@ const PRESETS = {
   customExercises: [{ id: 'cx-prensa', n: 'Prensa del gym', bp: 'upper legs', tg: 'quads', mg: 'quads', sm: ['glutes'], custom: true }],
 }
 let presetsAnswer
+// Programas que el admin ocultó después de que el socio abrió la lista.
+let hiddenNow
+// Lo que responde el servidor: /api/presets (ya filtrado) y /api/presets/apply por programa.
+const serverAnswer = (url, opts) => {
+  if (url === '/api/presets') return Promise.resolve(presetsAnswer)
+  if (url === '/api/presets/apply') {
+    const { id } = JSON.parse(opts.body)
+    if (hiddenNow.has(id)) return Promise.reject(Object.assign(new Error('program_hidden'), { status: 403, data: { error: 'program_hidden' } }))
+    const presets = PRESETS.presets.filter(p => p.program_id === id)
+    return Promise.resolve({ program: PRESETS.programs.find(p => p.id === id), presets, customExercises: PRESETS.customExercises })
+  }
+  return Promise.resolve({})
+}
 const MEMBER = { id: 'm1', name: 'Socio', admin: false }
 let container, root
 const text = () => container.textContent
@@ -54,8 +70,9 @@ beforeEach(async () => {
   await setLang('es')
   globalThis.IS_REACT_ACT_ENVIRONMENT = true
   presetsAnswer = PRESETS
+  hiddenNow = new Set()
   apiMock.mockReset()
-  apiMock.mockImplementation(url => url === '/api/presets' ? Promise.resolve(presetsAnswer) : Promise.resolve({}))
+  apiMock.mockImplementation(serverAnswer)
   useUI.setState({ sheets: [] })
 })
 afterEach(async () => { await act(async () => { root.unmount() }); container.remove() })
@@ -83,6 +100,17 @@ describe('primer ingreso', () => {
     expect(S.customEx.map(e => e.id)).toEqual(['cx-prensa'])
     expect(S.estadoInicial).toBe('plan_predeterminado')
     expect(container.querySelector('[data-tour="welcome"]')).toBeNull()
+    expect(apiMock).toHaveBeenCalledWith('/api/presets/apply', { method: 'POST', body: JSON.stringify({ id: 'gppl' }) })
+  })
+
+  it('un programa que el admin ocultó con la lista abierta no se carga (403): aviso y nada cambia', async () => {
+    await render(<Home />)
+    hiddenNow.add('gppl')
+    await clickText('.program-choice', 'Push Pull Legs')
+    expect(useStore.getState().S.routines).toEqual([])
+    expect(useStore.getState().S.routineGroups).toEqual([])
+    expect(useUI.getState().toastMsg).toBe('Este programa ya no está disponible.')
+    expect(container.querySelector('[data-tour="welcome"]')).toBeTruthy()
   })
 
   it('sin programas en el gym: el cartel de siempre (encuesta y manual), sin selector', async () => {
@@ -110,5 +138,59 @@ describe('Plan · Cargar un plan', () => {
     await clickText('button', 'Cargar un plan')
     expect(useUI.getState().sheets).toHaveLength(0)
     expect(useStore.getState().S.routines.map(r => r.name)).toEqual(['Push Day', 'Pull Day', 'Leg Day'])
+  })
+})
+
+// Lo que manda el servidor cuando el admin dejó visible solo Full Body.
+const onlyFullBody = () => ({
+  programs: PRESETS.programs.filter(p => p.id === 'gfb'),
+  groups: [{ id: 'gfb', name: 'Full Body', count: 1 }],
+  presets: PRESETS.presets.filter(p => p.program_id === 'gfb'),
+  customExercises: [],
+})
+
+describe('programas ocultos para socios', () => {
+  it('el primer ingreso y "Cargar un plan" muestran solo los visibles', async () => {
+    presetsAnswer = onlyFullBody()
+    await render(<Home />)
+    expect([...container.querySelectorAll('.program-choice .tt')].map(el => el.textContent)).toEqual(['Full Body'])
+    await act(async () => { root.unmount() }); container.remove()
+    await render(<Plan />, {}, MEMBER)
+    await clickText('button', 'Cargar un plan')
+    expect([...document.querySelectorAll('#modal-root .program-choice .tt')].map(el => el.textContent)).toEqual(['Full Body'])
+  })
+
+  it('Configuración: "Cargar planes pre-creados" aparece con programas visibles y carga por /api/presets/apply', async () => {
+    presetsAnswer = { ...PRESETS, groups: [{ id: 'gppl', name: 'Push Pull Legs', count: 2 }, { id: 'gfb', name: 'Full Body', count: 1 }] }
+    await render(<Settings />, {}, MEMBER)
+    await clickText('.lrow, button, [role="button"]', 'Cargar planes pre-creados')
+    const load = [...document.querySelectorAll('#modal-root .item')].find(el => el.textContent.includes('Full Body')).querySelector('button')
+    await act(async () => { load.click() })
+    await flush()
+    expect(apiMock).toHaveBeenCalledWith('/api/presets/apply', { method: 'POST', body: JSON.stringify({ id: 'gfb' }) })
+    expect(useStore.getState().S.routineGroups.map(g => [g.name, g.source?.programId])).toContainEqual(['Full Body', 'gfb'])
+  })
+
+  it('Configuración: uno ocultado con la lista abierta no se carga', async () => {
+    presetsAnswer = { ...PRESETS, groups: [{ id: 'gfb', name: 'Full Body', count: 1 }] }
+    await render(<Settings />, {}, MEMBER)
+    await clickText('.lrow, button, [role="button"]', 'Cargar planes pre-creados')
+    hiddenNow.add('gfb')
+    const load = [...document.querySelectorAll('#modal-root .item')].find(el => el.textContent.includes('Full Body')).querySelector('button')
+    await act(async () => { load.click() })
+    await flush()
+    expect(useStore.getState().S.routineGroups.some(g => g.name === 'Full Body')).toBe(false)
+    expect(useUI.getState().toastMsg).toBe('Este programa ya no está disponible.')
+  })
+
+  it('sin ningún programa visible: ni selector en el primer ingreso ni "Cargar planes pre-creados"', async () => {
+    presetsAnswer = { presets: [], groups: [], programs: [], customExercises: [] }
+    await render(<Home />)
+    expect(container.querySelector('.program-choice')).toBeNull()
+    expect(text()).toContain('Recomendarme una rutina')
+    expect(text()).toContain('Crear rutina manualmente')
+    await act(async () => { root.unmount() }); container.remove()
+    await render(<Settings />, {}, MEMBER)
+    expect(text()).not.toContain('Cargar planes pre-creados')
   })
 })

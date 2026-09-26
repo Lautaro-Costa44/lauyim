@@ -17,7 +17,7 @@ const PRESETS = [
   { id: 'p2', name: 'Leg Day', emoji: 'legs', group_name: 'PPL', planned_day: 5, position: 1, program_id: 'gppl', ex: [{ id: '0043', sets: 3, reps: 10, weight: 0 }] },
   { id: 't1', name: 'Torso', emoji: 'barbell', group_name: 'Torso / Pierna', planned_day: null, position: 0, program_id: 'gtp', ex: [] },
 ]
-const PROGRAMS = [{ id: 'gppl', name: 'PPL', position: 0, count: 2 }, { id: 'gtp', name: 'Torso / Pierna', position: 1, count: 1 }]
+const PROGRAMS = [{ id: 'gppl', name: 'PPL', position: 0, count: 2, visibleToMembers: true }, { id: 'gtp', name: 'Torso / Pierna', position: 1, count: 1, visibleToMembers: false }]
 let memberState
 apiMock.mockImplementation((url, opts) => {
   if (url === '/api/admin/programs/usage') return Promise.resolve({ usage: { gppl: { users: 3, active: 2 } } })
@@ -117,6 +117,44 @@ describe('Rutinas', () => {
   })
 })
 
+describe('Rutinas · visible para socios', () => {
+  const visSwitch = card => card.querySelector('.program-visibility [role="switch"]')
+  const chip = label => [...container.querySelectorAll('.preset-filter .chip')].find(c => c.textContent === label)
+
+  it('each card has the switch; a hidden program shows the badge, a visible one does not', async () => {
+    await mount()
+    const [ppl, tp] = cards()
+    expect(visSwitch(ppl).getAttribute('aria-checked')).toBe('true')
+    expect(visSwitch(ppl).getAttribute('aria-label')).toBe('Visible para socios: PPL')
+    expect(ppl.querySelector('.program-hidden-badge')).toBeNull()
+    expect(visSwitch(tp).getAttribute('aria-checked')).toBe('false')
+    expect(tp.querySelector('.program-hidden-badge').textContent).toBe('Oculto para socios')
+    expect(tp.classList.contains('hidden-for-members')).toBe(true)
+    // "Asignar a socio" sigue en el oculto.
+    expect(tp.querySelector('[aria-label="Asignar Torso / Pierna a un socio"]')).toBeTruthy()
+  })
+
+  it('the switch calls the server with the new value and reloads', async () => {
+    await mount()
+    await act(async () => { visSwitch(cards()[1]).click(); await new Promise(r => setTimeout(r, 10)) })
+    expect(apiMock).toHaveBeenCalledWith('/api/admin/programs/visibility', { method: 'POST', body: JSON.stringify({ id: 'gtp', visible: true }) })
+    await act(async () => { visSwitch(cards()[0]).click(); await new Promise(r => setTimeout(r, 10)) })
+    expect(apiMock).toHaveBeenCalledWith('/api/admin/programs/visibility', { method: 'POST', body: JSON.stringify({ id: 'gppl', visible: false }) })
+    expect(loadPresets).toHaveBeenCalledTimes(2)
+  })
+
+  it('"Visibles" / "Ocultos" chips narrow the cards, next to the program chips', async () => {
+    await mount()
+    expect([...container.querySelectorAll('.preset-filter .chip')].map(c => c.textContent)).toEqual(['Todas', 'PPL', 'Torso / Pierna', 'Visibles', 'Ocultos'])
+    await act(async () => chip('Ocultos').click())
+    expect(cards().map(c => c.querySelector('.program-name').textContent)).toEqual(['Torso / Pierna'])
+    await act(async () => chip('Visibles').click())
+    expect(cards().map(c => c.querySelector('.program-name').textContent)).toEqual(['PPL'])
+    await act(async () => chip('Visibles').click())
+    expect(cards()).toHaveLength(2)
+  })
+})
+
 describe('assignProgram', () => {
   it('adds the program as a new group with its source and PUTs the whole routine state', async () => {
     memberState = { routines: [{ id: 'r1', name: 'Mine', ex: [] }], week: { 2: 'r1' }, dayPlan: {}, routineGroups: [{ id: 'g1', name: 'Mi Plan', routines: [{ id: 'r1', name: 'Mine', ex: [] }], week: { 2: 'r1' } }], activeGroupId: 'g1' }
@@ -130,6 +168,14 @@ describe('assignProgram', () => {
     expect(body.routineGroups[1].routines.map(r => r.name)).toEqual(['Push Day', 'Leg Day'])
     expect(body.activeGroupId).toBe('g1')
     expect(body.routines.map(r => r.id)).toEqual(['r1'])
+  })
+
+  it('assigns a program hidden from members just the same', async () => {
+    memberState = { routines: [], week: {}, dayPlan: {}, routineGroups: [], activeGroupId: null }
+    const result = await assignProgram('ana', PROGRAMS[1], [{ ...PRESETS[2], ex: [{ id: '0025', sets: 3, reps: 8 }] }])
+    expect(result.ok).toBe(true)
+    const body = JSON.parse(apiMock.mock.calls.find(([, o]) => o?.method === 'PUT')[1].body)
+    expect(body.routineGroups.at(-1)).toMatchObject({ name: 'Torso / Pierna', source: { kind: 'preset', programId: 'gtp' } })
   })
 
   it('does not write when the member already has a group with that name', async () => {

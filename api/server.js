@@ -56,6 +56,7 @@ import {
   reorderPresets,
   getPresetPrograms,
   getPresetProgramById,
+  setPresetProgramVisibility,
   getPresetProgramByName,
   getPresetProgramUsage,
   getPresetCustomExercises,
@@ -323,6 +324,22 @@ const routineSaveOpts = req => ({
   preserveExtras: !String(req.headers['x-lauyim-client'] || '').split(',').map(v => v.trim()).includes(ROUTINE_EXTRAS_CLIENT)
 });
 
+// Presets, grupos y programas para GET /api/presets (includeHidden: false, lo que ve el socio) o
+// GET /api/admin/presets (todo). customExercises: definición de los ejercicios custom (del admin)
+// que usan esos presets, para que el socio los vea y los cuente el modelo de fatiga antes de
+// que llegue su copia.
+function presetCatalog({ includeHidden }) {
+  const allPrograms = getPresetPrograms();
+  const hidden = new Set(includeHidden ? [] : allPrograms.filter(p => !p.visibleToMembers).map(p => p.id));
+  const presets = getAllPresets().filter(p => !hidden.has(p.program_id)).map(p => getPresetWithExercises(p.id));
+  return {
+    presets,
+    groups: getPresetGroups().filter(g => !hidden.has(g.id)),
+    programs: allPrograms.filter(p => !hidden.has(p.id)),
+    customExercises: getPresetCustomExercises(presets)
+  };
+}
+
 function cleanPreset(body, existingId) {
   const name = String(body.name || '').trim().slice(0, 80);
   if (!name) return { error: 'name required' };
@@ -391,6 +408,9 @@ if (getAllPresets().length === 0) {
     for (const p of DEFAULT_PRESETS) {
       createPreset(p);
     }
+    // El programa de ejemplo de un gym nuevo se ve, como siempre: los que crea el admin nacen ocultos.
+    const seeded = getAllPresets().find(p => p.id === DEFAULT_PRESETS[0].id);
+    if (seeded?.program_id) setPresetProgramVisibility(seeded.program_id, true);
     db.exec('COMMIT');
   } catch (error) {
     db.exec('ROLLBACK');
@@ -638,7 +658,7 @@ function isMembershipBlocked(user) {
 // vinculación de dispositivos y push (el aviso de cuota tiene que poder llegarle), endpoints
 // públicos y todo /api/admin y /api/owner.
 const MEMBERSHIP_GATED = new Set([
-  'GET /api/data', 'PUT /api/data', 'POST /api/data/sync', 'POST /api/activity', 'GET /api/presets',
+  'GET /api/data', 'PUT /api/data', 'POST /api/data/sync', 'POST /api/activity', 'GET /api/presets', 'POST /api/presets/apply',
   'GET /api/alimentos/buscar',
   'POST /api/comidas', 'POST /api/comidas/grupo', 'GET /api/comidas', 'GET /api/comidas/historial',
   'DELETE /api/comidas/:id', 'DELETE /api/comidas/grupo/:grupo_id',
@@ -2743,12 +2763,31 @@ const routes = {
   },
 
   /* ---------- admin dashboard ---------- */
+  // Los programas que la app del socio ofrece: solo los visibles, para todos (el panel de
+  // Rutinas lee GET /api/admin/presets). Sin ninguno visible, la app se comporta como un gym
+  // sin programas.
   'GET /api/presets': async (req, res) => {
     if (!readSession(req)) return json(res, 401, { error: 'No has iniciado sesión' });
-    const presets = getAllPresets().map(p => getPresetWithExercises(p.id));
-    // customExercises: definición de los ejercicios custom (del admin) que usan los presets, para
-    // que el socio los vea y los cuente el modelo de fatiga antes de que llegue su copia.
-    json(res, 200, { presets, groups: getPresetGroups(), programs: getPresetPrograms(), customExercises: getPresetCustomExercises(presets) });
+    json(res, 200, presetCatalog({ includeHidden: false }));
+  },
+
+  // Todos los programas, visibles y ocultos, con visibleToMembers: Rutinas y "Asignar a socio".
+  'GET /api/admin/presets': async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    json(res, 200, presetCatalog({ includeHidden: true }));
+  },
+
+  // El socio carga un programa (primer ingreso, "Cargar planes prearmados", "Load starter
+  // plan"): la app pide acá sus días justo antes de armar el plan, así un programa que el admin
+  // ocultó después de que se abrió la lista no se carga. 403 si está oculto.
+  'POST /api/presets/apply': async (req, res) => {
+    if (!readSession(req)) return json(res, 401, { error: 'No has iniciado sesión' });
+    const body = await readBody(req);
+    const program = getPresetProgramById(body.id);
+    if (!program) return json(res, 404, { error: 'no such program' });
+    if (!program.visibleToMembers) return json(res, 403, { error: 'program_hidden' });
+    const presets = getAllPresets().filter(p => p.program_id === program.id).map(p => getPresetWithExercises(p.id));
+    json(res, 200, { program, presets, customExercises: getPresetCustomExercises(presets) });
   },
 
   'POST /api/admin/presets': async (req, res) => {
@@ -2820,6 +2859,18 @@ const routes = {
     const renamed = renamePresetProgram(program.id, name);
     audit(req, 'admin.program.rename', { user: admin, msg: `${program.name} → ${name}` });
     json(res, 200, { program: renamed });
+  },
+
+  // Mostrar u ocultar un programa en la app del socio. Quien ya lo cargó conserva su rutina.
+  'POST /api/admin/programs/visibility': async (req, res) => {
+    const admin = requireAdmin(req, res); if (!admin) return;
+    const body = await readBody(req);
+    const program = getPresetProgramById(body.id);
+    if (!program) return json(res, 404, { error: 'no such program' });
+    if (typeof body.visible !== 'boolean') return json(res, 400, { error: 'visible must be a boolean' });
+    const updated = setPresetProgramVisibility(program.id, body.visible);
+    audit(req, 'admin.program.visibility', { user: admin, msg: `${program.name}: ${body.visible ? 'visible' : 'oculto'} para socios` });
+    json(res, 200, { program: updated });
   },
 
   // Copia de un programa entero. Sin nombre, "<nombre> (copia)", "(copia 2)"… el primero libre.

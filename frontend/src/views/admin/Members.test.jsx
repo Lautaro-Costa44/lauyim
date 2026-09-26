@@ -66,7 +66,7 @@ apiMock.mockImplementation((url, opts = {}) => {
     { id: 'a', name: 'ana', disabled: false, admin: false, hasApp: true, planId: null, status: 'sin_plan', debt: 0 },
     { id: 'f', name: 'Juan Ficha', disabled: false, admin: false, hasApp: false, planId: null, trialUntil: '2026-09-26', status: 'prueba', debt: 0 }] })
   if (url === '/api/admin/invites') return Promise.resolve({ invites: [] })
-  if (url === '/api/presets') return Promise.resolve({ presets: [] })
+  if (url === '/api/admin/presets') return Promise.resolve({ presets: [] })
   if (url === '/api/admin/attendance-heatmap') return Promise.resolve({ start: 'monday', totalUsers: 1, days: {} })
   return Promise.resolve({})
 })

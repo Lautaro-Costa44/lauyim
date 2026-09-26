@@ -5,6 +5,7 @@ import { MUSCLE_NAME } from '../../../lib/muscles.js'
 import { presetStats, programStats, COVERAGE_LEVELS } from '../../../lib/presetStats.js'
 import { t } from '../../../lib/i18n.js'
 import Icon from '../../../components/Icon.jsx'
+import { Switch } from '../../../components/ui.jsx'
 import BodyMap from '../../../components/BodyMap.jsx'
 import { useDragReorder } from '../../../components/useDragReorder.js'
 
@@ -17,8 +18,9 @@ function usageLabel(usage) {
 
 // Un programa (PPL, Torso/Pierna…) con sus días adentro: qué trabaja en la semana (mapa chico
 // con series efectivas por músculo en escala fija, así dos programas se comparan de un
-// vistazo), cuántos socios lo tienen cargado y sus días, que se reordenan arrastrando.
-export default function ProgramCard({ program, days, usage, body, editingId, onEdit, onAddDay, onDuplicateDay, onDeleteDay, onRename, onDuplicate, onAssign, onReorder }) {
+// vistazo), cuántos socios lo tienen cargado, si la app del socio lo ofrece y sus días, que se
+// reordenan arrastrando.
+export default function ProgramCard({ program, days, usage, body, editingId, onEdit, onAddDay, onDuplicateDay, onDeleteDay, onRename, onDuplicate, onAssign, onReorder, onToggleVisible }) {
   const stats = programStats(days)
   const ids = days.map(d => d.id)
   const idsKey = ids.join('|')
@@ -31,11 +33,14 @@ export default function ProgramCard({ program, days, usage, body, editingId, onE
     Promise.resolve(onReorder(next)).catch(() => setPending(null))
   })
   const canManage = !!program.id
+  // Un server anterior a la columna no manda el campo: ahí todos se ven.
+  const hidden = canManage && program.visibleToMembers === false
 
-  return <div className="card program-card">
+  return <div className={'card program-card' + (hidden ? ' hidden-for-members' : '')}>
     <div className="row between program-head">
       <div className="grow" style={{ minWidth: 0 }}>
         <h3 className="program-name">{program.name}</h3>
+        {hidden && <span className="tag program-hidden-badge"><Icon name="lock" />{t('Oculto para socios')}</span>}
         <div className="small muted">
           {t('{0} días', stats.days)} · {t('{0} series/semana', stats.sets)}
         </div>
@@ -61,6 +66,11 @@ export default function ProgramCard({ program, days, usage, body, editingId, onE
         </div>}
       </div>
     </div>
+
+    {canManage && <div className="row between program-visibility">
+      <span className="small">{t('Visible para socios')}</span>
+      <Switch checked={!hidden} label={t('Visible para socios: {0}', program.name)} onChange={visible => onToggleVisible(program, visible)} />
+    </div>}
 
     <div className="program-days">
       {drag.order.map(id => {
