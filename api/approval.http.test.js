@@ -201,6 +201,8 @@ test('aprobar: modo primer pago exige el pago; DNI de una ficha → 409 para vin
   const r1 = await call('adm', 'POST', url, { profile: { ...PROFILE, dni: '41000111' } });
   assert.equal(r1.body.error, 'start_not_allowed');
   assert.deepEqual(r1.body.allowed, ['payment']);
+  const opts = await call('adm', 'POST', url, { dry_run: true });
+  assert.deepEqual([opts.status, opts.body.mode, opts.body.allowed, opts.body.covered], [200, 'payment', ['payment'], false]);
   const dup = await call('adm', 'POST', url, { profile: { ...PROFILE, dni: '30.111.222' }, start: { type: 'payment', planId: plan.id, method: 'efectivo' } });
   assert.equal(dup.status, 409);
   assert.deepEqual([dup.body.error, dup.body.userId, dup.body.hasApp], ['dni_duplicado', 'ficha', false]);

@@ -3364,7 +3364,11 @@ const routes = {
     const covered = billingEnabled && (hasActivePlan(billing, today, settings) || billingStatus(billing, today, settings) === 'prueba');
     const allowed = allowedStarts(mode, { billingEnabled, covered });
     const type = body.start?.type ?? 'none';
-    if (!allowed.includes(type)) return json(res, 409, { error: 'start_not_allowed', message: `Con este modo la confirmación es: ${allowed.join(' o ')}`, allowed });
+    // dry_run con una opción que no aplica: igual devuelve cuáles sí (el formulario arma la lista).
+    if (!allowed.includes(type)) {
+      if (body.dry_run === true) return json(res, 200, { dry_run: true, mode, allowed, covered, dueDate: null, amount: null, trialUntil: null, trialDays: settings.trial_days });
+      return json(res, 409, { error: 'start_not_allowed', message: `Con este modo la confirmación es: ${allowed.join(' o ')}`, allowed });
+    }
 
     let payment = null;
     let trialUntil = null;
