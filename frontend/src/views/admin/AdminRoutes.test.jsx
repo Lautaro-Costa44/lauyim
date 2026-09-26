@@ -27,6 +27,7 @@ let auditOn
 let billingOn
 let dniEnabled
 let anaCreated = '2026-01-01'
+let approval = { required: false, mode: 'approve' }
 const ANA = { id: 'a', name: 'ana', lastSync: Date.now(), workouts: 1, hasApp: true }
 // A member record without a passkey: listed in Usuarios, never counted in Resumen.
 const FICHA = { id: 'f', name: 'ficha', lastSync: null, workouts: 0, hasApp: false, disabled: true }
@@ -41,6 +42,10 @@ apiMock.mockImplementation((url, opts) => {
   if (url === '/api/admin/presets') return Promise.resolve({ presets: [] })
   if (url === '/api/admin/attendance-heatmap') return Promise.resolve({ start: 'monday', totalUsers: 1, days: {} })
   if (url === '/api/owner/qr') return Promise.resolve({ token: 'qr-token' })
+  if (url === '/api/admin/approval' || url === '/api/owner/approval') {
+    if (opts?.method === 'PUT') approval = { ...approval, ...JSON.parse(opts.body) }
+    return Promise.resolve({ ...approval, effectiveMode: billingOn ? approval.mode : 'approve', billingEnabled: billingOn, dniEnabled })
+  }
   if (url === '/api/owner/privacy') return Promise.resolve(opts?.method === 'PUT' ? JSON.parse(opts.body) : { gymName: '', contact: '' })
   if (url.startsWith('/api/admin/audit')) return Promise.resolve({ enabled: auditOn, events: [], total: 0, retention: {}, now: Date.now() })
   if (url === '/api/admin/billing') return Promise.resolve({ today: '2026-09-24', settings: {}, summary: { al_dia: 0, por_vencer: 0, vencido: 0, bloqueado: 0, sin_plan: 1, deuda_total: 0 }, members: [{ id: 'a', name: 'ana', disabled: false, admin: false, planId: null, planName: null, dueDate: null, status: 'sin_plan', debt: 0 }] })
@@ -105,6 +110,7 @@ beforeEach(async () => {
   billingOn = true
   dniEnabled = true
   anaCreated = '2026-01-01'
+  approval = { required: false, mode: 'approve' }
   desktop = false
   apiMock.mockClear()
   useUI.setState({ sheets: [] })
@@ -162,10 +168,10 @@ describe('admin routes', () => {
     expect(called('/api/admin/members/settings')).toBe(false)
   })
 
-  it('the owner gets the five Acceso cards, in order', async () => {
+  it('the owner gets the six Acceso cards, in order', async () => {
     await mount('#/admin/acceso', OWNER)
     const titles = [...document.querySelectorAll('.admin-cards > .card h2')].map(h => h.textContent)
-    expect(titles).toEqual(['Códigos de invitación', 'Acceso por QR', 'Datos del registro', 'Aviso de privacidad', 'Cobro de cuotas'])
+    expect(titles).toEqual(['Códigos de invitación', 'Acceso por QR', 'Datos del registro', 'Aprobación de cuentas', 'Aviso de privacidad', 'Cobro de cuotas'])
     expect(text()).toContain('qr-token')
     expect(text()).toContain('El nombre de usuario siempre se pide.')
     expect(text()).not.toContain('Sin DNI no se pueden detectar socios duplicados')
@@ -189,6 +195,20 @@ describe('admin routes', () => {
     const put = apiMock.mock.calls.find(([u, o]) => u === '/api/owner/privacy' && o?.method === 'PUT')
     expect(JSON.parse(put[1].body)).toEqual({ gymName: 'Gimnasio Norte', contact: 'hola@norte.com' })
     expect(text()).not.toContain('Completalos antes de cargar datos reales de socios.')
+  })
+
+  it('account approval: the switch reveals the modes; payment and trial need billing', async () => {
+    billingOn = false
+    await mount('#/admin/acceso', OWNER)
+    expect(text()).not.toContain('Para habilitar una cuenta:')
+    await clickSwitch('Requerir aprobación del staff')
+    const put = apiMock.mock.calls.find(([u, o]) => u === '/api/owner/approval' && o?.method === 'PUT')
+    expect(JSON.parse(put[1].body)).toEqual({ required: true })
+    const radios = [...document.querySelectorAll('.approval-modes [role="radio"]')]
+    expect(radios.map(r => r.querySelector('.lrow-t').textContent)).toEqual(['Aprobar', 'Registrar primer pago', 'Iniciar prueba'])
+    expect(radios.map(r => r.disabled)).toEqual([false, true, true])
+    expect(radios[1].textContent).toContain('Necesita el cobro de cuotas activado.')
+    expect(radios[0].getAttribute('aria-checked')).toBe('true')
   })
 
   it('invites moved out of Usuarios', async () => {

@@ -74,7 +74,10 @@ const START_OPTIONS = [
 
 // "Cuota inicial" del alta: primer pago (con vista previa del vencimiento del servidor, dry_run)
 // o prueba gratis. La elección de plan es un paso más del mismo sheet (picker).
-function InitialFee({ fields, dni, plans, settings, today, start, setStart, pay, setPay, picker }) {
+// options: qué opciones se muestran (la aprobación de cuentas las restringe según el modo);
+// labels: textos propios por opción; preview(body): vista previa del servidor (default: alta).
+const newMemberPreview = start => api('/api/admin/members', { method: 'POST', body: JSON.stringify({ dry_run: true, start }) })
+function InitialFee({ fields, dni, plans, settings, today, start, setStart, pay, setPay, picker, options = null, labels = {}, preview: fetchPreview = newMemberPreview }) {
   const [preview, setPreview] = useState(null)       // { dueDate } | { trialUntil } | { error }
   const dniOn = !!fields.dni?.enabled
   const canTrial = dniOn && !!String(dni || '').trim()
@@ -87,7 +90,7 @@ function InitialFee({ fields, dni, plans, settings, today, start, setStart, pay,
     let alive = true
     const body = start === 'trial' ? { type: 'trial' }
       : { type: 'payment', planId: pay.planId, method: pay.method, paidAt: paidAtFor(pay.date, today), ...(Number.isInteger(pay.amount) && pay.amount > 0 ? { amount: pay.amount } : {}) }
-    const timer = setTimeout(() => api('/api/admin/members', { method: 'POST', body: JSON.stringify({ dry_run: true, start: body }) })
+    const timer = setTimeout(() => fetchPreview(body)
       .then(r => { if (alive) setPreview(r) })
       .catch(e => { if (alive) setPreview({ error: e.message }) }), 250)
     return () => { alive = false; clearTimeout(timer) }
@@ -99,7 +102,8 @@ function InitialFee({ fields, dni, plans, settings, today, start, setStart, pay,
     : t(days === 1 ? 'Prueba de 1 día' : 'Prueba de {0} días', days)
   return <>
     <Section title={t('Cuota inicial')}>
-      {START_OPTIONS.map(([value, label, sub]) => {
+      {START_OPTIONS.filter(([value]) => !options || options.includes(value)).map(([value, defLabel, defSub]) => {
+        const [label, sub] = labels[value] || [defLabel, defSub]
         const disabled = value === 'trial' ? !canTrial : value === 'payment' && !plans.length
         const subtitle = value === 'trial' ? (trialWhy || trialLine) : value === 'payment' && !plans.length ? t('No hay planes activos. Creá uno desde Cuotas → Planes.') : t(sub)
         return <Row key={value} title={t(label)} subtitle={subtitle} className={'start-opt' + (disabled ? ' lrow-disabled' : '')}
@@ -450,3 +454,135 @@ export function MergeSheet({ ficha, users, targetId: presetTarget, close, setOnB
   </div></div>
 }
 
+
+/* ----------------------- aprobación de cuentas (12.3) ---------------------- */
+
+const APPROVE_LABELS = {
+  none: ['Solo habilitar', 'Sin pago ni prueba: la cuota se carga después.'],
+}
+const COVERED_NONE = ['Solo habilitar', 'Ya tiene un plan vigente o una prueba en curso.']
+
+// Habilitar una cuenta pendiente: el staff completa los datos que pide el gym (un DNI de una
+// ficha ofrece vincularla: el merge de siempre) y confirma según el modo que eligió el owner.
+// Con cuotas, la confirmación es un segundo paso; todo se guarda junto en el servidor.
+export function ApproveSheet({ user, billingEnabled, close, setOnBack, onApproved, onOpenExisting, onLink }) {
+  const toast = useUI(s => s.toast)
+  const today = todayISO()
+  const approveUrl = userUrl(user.id, '/approve')
+  const [step, setStep] = useState('datos')
+  const [fields, setFields] = useState(null)
+  const [values, setValues] = useState(null)
+  const [plans, setPlans] = useState(billingEnabled ? null : [])
+  const [settings, setSettings] = useState(billingEnabled ? null : {})
+  const [opts, setOpts] = useState(null)          // { mode, allowed, covered } del dry_run
+  const [start, setStart] = useState('none')
+  const [pay, setPay] = useState({ planId: null, amount: null, method: null, date: today, note: '' })
+  const [duplicate, setDuplicate] = useState(null)
+  const [errors, setErrors] = useState({})
+  const [saving, setSaving] = useState(false)
+  const picker = usePickerStep()
+  const privacy = usePrivacyStep()
+  useSheetBack(setOnBack, () => privacy.isOpen ? privacy.close() : picker.isOpen ? picker.close() : step === 'cuota' ? setStep('datos') : close())
+
+  useEffect(() => {
+    Promise.all([api(profileUrl(user.id)), api(approveUrl, { method: 'POST', body: JSON.stringify({ dry_run: true }) })]).then(([p, o]) => {
+      setFields(p.fields)
+      setValues(Object.fromEntries(MEMBER_FIELDS.map(f => [f.prop, p.profile?.[f.prop] ?? ''])))
+      setOpts(o)
+      setStart(o.allowed[0])
+    }).catch(e => setErrors({ general: e.message }))
+    if (!billingEnabled) return
+    Promise.all([api('/api/admin/billing/plans'), api('/api/admin/billing/settings')]).then(([p, s]) => {
+      const active = p.plans.filter(x => x.active)
+      setPlans(active)
+      setSettings(s.settings)
+      if (active.length) setPay(cur => ({ ...cur, planId: active[0].id, amount: active[0].price, method: s.settings.payment_methods[0] }))
+    }).catch(e => setErrors({ general: e.message }))
+  }, [])
+
+  const change = (prop, value) => { setValues(v => ({ ...v, [prop]: value })); if (prop === 'dni') setDuplicate(null) }
+  // Su propio DNI (ya cargado, p. ej. después de unirla con su ficha) no es un duplicado.
+  const checkDni = () => lookupDni(values.dni).then(found => setDuplicate(found && found.userId !== user.id ? found : null))
+  const withBilling = billingEnabled && opts && !(opts.allowed.length === 1 && opts.allowed[0] === 'none')
+
+  const save = () => {
+    const profile = {}
+    for (const f of MEMBER_FIELDS) if (fields[f.key]?.enabled) profile[f.prop] = (values[f.prop] || '').trim()
+    const body = { profile, start: { type: start } }
+    if (start === 'payment') body.start = { type: 'payment', planId: pay.planId, method: pay.method, paidAt: paidAtFor(pay.date, today), note: pay.note.trim() || undefined, amount: pay.amount }
+    setSaving(true); setErrors({})
+    api(approveUrl, { method: 'POST', body: JSON.stringify(body) })
+      .then(() => { toast(t('Cuenta habilitada')); close(); onApproved() })
+      .catch(e => {
+        setSaving(false)
+        const dup = duplicateFrom(e)
+        if (dup) { setDuplicate(dup); setStep('datos') }
+        else if (e?.data?.field) { setErrors(fieldError(e)); setStep('datos') }
+        else setErrors({ general: e?.data?.message || e?.message || t('No se pudo guardar') })
+      })
+  }
+  // Vincular: la ficha (sin app) se une a esta cuenta. La cuenta sigue pendiente: después se
+  // confirma acá mismo.
+  const pair = duplicate && !duplicate.hasApp ? { fichaId: duplicate.userId, fichaName: duplicate.name, targetId: user.id } : null
+  const loading = !fields || !values || !opts || !plans || !settings
+  const payOk = start !== 'payment' || (pay.planId && Number.isInteger(pay.amount) && pay.amount > 0 && pay.date && pay.method)
+  const labels = { ...APPROVE_LABELS, ...(opts?.covered ? { none: COVERED_NONE } : {}) }
+
+  return <div className="compound-builder"><div className="compound-builder-content">
+    {picker.view}
+    {privacy.view}
+    <div hidden={picker.isOpen || privacy.isOpen}>
+      <Header title={t('Habilitar cuenta')} subtitle={step === 'cuota' ? t('Paso 2 de 2 · Confirmación') : withBilling ? t('Paso 1 de 2 · Datos de {0}', user.name) : user.name} onClose={close} />
+      {loading ? (errors.general ? null : <div className="dim small">{t('Loading…')}</div>) : <>
+        <div hidden={step !== 'datos'}>
+          <p className="small muted" style={{ margin: '0 0 12px' }}>{t('Verificá la identidad del socio y completá sus datos.')}</p>
+          <MemberFields fields={fields} values={values} onChange={change} errors={errors} onDniBlur={checkDni} />
+          {duplicate && <DuplicateNotice other={duplicate}
+            onOpen={onOpenExisting ? id => { close(); onOpenExisting(id) } : null}
+            onLink={pair && onLink ? () => { close(); onLink(pair) } : null} />}
+          {duplicate?.hasApp && <div className="small muted" style={{ marginTop: 6 }}>{t('Ese DNI es de otra cuenta con app. Revisá con el socio cuál usa antes de habilitar esta.')}</div>}
+        </div>
+        {step === 'cuota' && <>
+          <Button size="sm" icon="chevronLeft" onClick={() => setStep('datos')}>{t('Volver')}</Button>
+          <div style={{ height: 10 }} />
+          <InitialFee fields={fields} dni={values.dni} plans={plans} settings={settings} today={today}
+            start={start} setStart={setStart} pay={pay} setPay={setPay} picker={picker.open}
+            options={opts.allowed} labels={labels}
+            preview={startBody => api(approveUrl, { method: 'POST', body: JSON.stringify({ dry_run: true, start: startBody }) })} />
+        </>}
+        <div style={{ height: 12 }} />
+        {withBilling && step === 'datos'
+          ? <Button variant="primary" disabled={!!duplicate} onClick={() => { setErrors({}); setStep('cuota') }}>{t('Siguiente')}</Button>
+          : <Button variant="primary" disabled={saving || !!duplicate || !payOk || !opts.allowed.includes(start)} onClick={save}>{saving ? t('Guardando…') : t('Habilitar cuenta')}</Button>}
+        <p className="dim small member-privacy">{t(PRIVACY_NOTE)} <PrivacyLink onClick={privacy.open} /></p>
+      </>}
+      {errors.general && <div className="form-error" role="alert">{errors.general}</div>}
+    </div>
+  </div></div>
+}
+
+// Rechazar una cuenta pendiente: queda desactivada y el motivo va a Logs.
+export function RejectSheet({ user, close, onRejected }) {
+  const toast = useUI(s => s.toast)
+  const [reason, setReason] = useState('')
+  const [error, setError] = useState(null)
+  const [busy, setBusy] = useState(false)
+  const reject = () => {
+    setBusy(true); setError(null)
+    api(userUrl(user.id, '/reject'), { method: 'POST', body: JSON.stringify({ reason: reason.trim() }) })
+      .then(() => { toast(t('Cuenta rechazada')); close(); onRejected() })
+      .catch(e => { setBusy(false); setError(e?.data?.message || e.message) })
+  }
+  return <div className="compound-builder"><div className="compound-builder-content">
+    <Header title={t('Rechazar cuenta')} subtitle={user.name} onClose={close} />
+    <p className="small muted" style={{ margin: '0 0 12px' }}>{t('La cuenta queda desactivada: no puede entrar a la app. El motivo queda en Logs.')}</p>
+    <label className="member-field">
+      <span className="member-field-l">{t('Motivo')} *</span>
+      <TextField type="text" inputMode="text" name="app-reject-reason" maxLength={200} value={reason}
+        placeholder={t('Ej. No es socio del gimnasio')} onChange={e => setReason(e.target.value)} />
+    </label>
+    {error && <div className="form-error" role="alert">{error}</div>}
+    <div style={{ height: 12 }} />
+    <Button variant="danger" disabled={busy || !reason.trim()} onClick={reject}>{busy ? t('Guardando…') : t('Rechazar')}</Button>
+  </div></div>
+}

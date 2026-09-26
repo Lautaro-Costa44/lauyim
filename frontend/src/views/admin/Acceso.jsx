@@ -219,6 +219,61 @@ function PrivacyCard() {
   </div>
 }
 
+// Aprobación de cuentas (owner, spec 12.3). Encendida: quien se registra solo elige usuario y
+// passkey y espera en "pendiente" a que el staff complete sus datos y la habilite según el modo.
+// Aplica solo a las cuentas que se registren después de encenderla.
+const APPROVAL_MODES = [
+  ['approve', 'Aprobar', 'El staff habilita la cuenta. Con cuotas, puede registrar un pago o una prueba en el mismo paso.'],
+  ['payment', 'Registrar primer pago', 'La cuenta se habilita al cobrar el primer pago.'],
+  ['trial', 'Iniciar prueba', 'La cuenta se habilita con la prueba gratis (una por DNI).'],
+]
+function ApprovalCard({ billingEnabled }) {
+  const toast = useUI(s => s.toast)
+  const [data, setData] = useState(null)
+  const [busy, setBusy] = useState(false)
+  useEffect(() => {
+    api('/api/admin/approval').then(setData).catch(e => toast(e.message || t('Failed to load')))
+  }, [billingEnabled])
+  const put = patch => {
+    setBusy(true)
+    api('/api/owner/approval', { method: 'PUT', body: JSON.stringify(patch) })
+      .then(d => { setData(d); toast(t('Guardado')) })
+      .catch(e => toast(e?.data?.message || e.message || t('Failed to save setting')))
+      .finally(() => setBusy(false))
+  }
+  const why = mode => mode !== 'approve' && !data.billingEnabled ? t('Necesita el cobro de cuotas activado.')
+    : mode === 'trial' && !data.dniEnabled ? t('Necesita que se pida el DNI (Datos del registro).') : null
+  return <div className="card">
+    <h2 style={{ margin: 0 }}>{t('Aprobación de cuentas')}</h2>
+    {data ? <>
+      <div className="row between" style={{ gap: 12, marginTop: 10 }}>
+        <div className="grow">
+          <div style={{ fontWeight: 600 }}>{t('Requerir aprobación del staff')}</div>
+          <div className="small muted" style={{ marginTop: 2 }}>{data.required
+            ? t('Quien se registra elige solo un nombre de usuario y espera a que recepción complete sus datos y habilite la cuenta.')
+            : t('Quien se registra completa los datos del registro y entra directo. Un DNI que ya está cargado frena el registro.')}</div>
+        </div>
+        <Switch label={t('Requerir aprobación del staff')} checked={data.required} disabled={busy} onChange={v => put({ required: v })} />
+      </div>
+      {data.required && <>
+        <div className="small muted" style={{ marginTop: 12 }}>{t('Para habilitar una cuenta:')}</div>
+        <div className="sect-b approval-modes" role="radiogroup" aria-label={t('Modo de confirmación')}>
+          {APPROVAL_MODES.map(([value, label, sub]) => {
+            const reason = why(value)
+            return <button key={value} type="button" role="radio" className="lrow tap" aria-checked={data.mode === value} disabled={busy || !!reason}
+              onClick={() => data.mode !== value && put({ mode: value })}>
+              <span className="lrow-m"><span className="lrow-t">{t(label)}</span><span className="lrow-s">{reason || t(sub)}</span></span>
+              {data.mode === value && <Icon name="check" className="lrow-k" />}
+            </button>
+          })}
+        </div>
+        {data.mode !== data.effectiveMode && <div className="access-warn small" role="note">{t('Con el cobro de cuotas apagado, las cuentas se habilitan con "Aprobar".')}</div>}
+        <div className="dim small" style={{ marginTop: 8 }}>{t('Solo para cuentas que se registren desde ahora. Quien ya tenía cuenta, o entra con un código del gym, no pasa por la aprobación.')}</div>
+      </>}
+    </> : <div className="dim small">{t('Loading…')}</div>}
+  </div>
+}
+
 // Invitaciones para todos los admins; QR, datos del registro y cuotas solo para el owner.
 export default function Acceso() {
   const user = useStore(s => s.user)
@@ -229,6 +284,7 @@ export default function Acceso() {
     {invitesCard}
     <QrAccessCard data={qrAccess} reload={setQrAccess} />
     <MemberFieldsCard />
+    <ApprovalCard billingEnabled={billingEnabled} />
     <PrivacyCard />
     <BillingToggleCard enabled={billingEnabled} onChanged={v => { setBillingEnabled(v); loadUsers() }} />
   </div>
