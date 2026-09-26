@@ -18,6 +18,11 @@ un remote que no sea `crypt` (salvo `BACKUP_ALLOW_UNENCRYPTED=1`).
 
 ---
 
+> **Orden obligatorio: primero el paso 1 (remote `gdrive-crypt:`), después el paso 2 (copiar el
+> script nuevo).** El script se niega a subir a un remote que no sea `crypt`: si se copia antes,
+> el cron de las 02:00 falla (código 2) todas las noches hasta que el crypt esté configurado.
+> Es a propósito: mejor un backup que falla y avisa que uno que sube DNIs sin cifrar.
+
 ## 1. Configurar el remote cifrado (una sola vez, en el servidor)
 
 Se asume que ya existe el remote de Drive `gdrive-backup:` (el que usaba el backup viejo). Si no,
@@ -73,6 +78,8 @@ rclone purge gdrive-crypt:lauyim/prueba
 ---
 
 ## 2. Backup automático
+
+Recién con el paso 1 terminado y probado (1.3):
 
 1. Copiar `scripts/backup.sh` del repo al servidor (`~/hub/scripts/backup.sh`) y `chmod 700`.
 2. Validar la configuración sin subir nada:
