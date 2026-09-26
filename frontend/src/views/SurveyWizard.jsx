@@ -1,6 +1,6 @@
 import { useNavigate } from 'react-router-dom'
 import { useState, useMemo, useEffect } from 'react'
-import { useStore } from '../store/useStore.js'
+import { healthOff, useStore } from '../store/useStore.js'
 import { useUI } from '../store/useUI.js'
 import { CATALOGUE, EXIDX } from '../lib/exercises.js'
 import { generarRutina, rutinaGeneradaToRoutines, defaultSplitRecomendado, derivarSplit } from '../lib/generarRutina.js'
@@ -176,6 +176,7 @@ export default function SurveyWizard() {
   const nav = useNavigate()
   const S = useStore(s => s.S)
   const { update } = useStore()
+  const noHealth = useStore(healthOff)
   const toast = useUI(s => s.toast)
 
   const [resp, setResp] = useState(() => ({
@@ -257,9 +258,14 @@ export default function SurveyWizard() {
   const finalizar = async () => {
     setGenerando(true)
     try {
+      // Sin consentimiento de datos de salud, la encuesta no guarda biometría ni lesiones.
+      const base = noHealth
+        ? Object.fromEntries(Object.entries(resp).filter(([k]) => !['edad', 'pesoKg', 'altura', 'sexoBiologico'].includes(k)))
+        : resp
       const respuestas = {
-        ...resp,
-        tieneLesion: resp.lesiones.length > 0,
+        ...base,
+        lesiones: noHealth ? [] : resp.lesiones,
+        tieneLesion: !noHealth && resp.lesiones.length > 0,
         diasPorSemana: resp.diasSeleccionados.length,
         defaultIntensifier: resp.defaultIntensifier || S.defaultIntensifier || { type: 'none' },
       }
@@ -381,20 +387,22 @@ export default function SurveyWizard() {
         st.routines = routines
         st.week = week
         st.estadoInicial = 'encuesta_completada'
-        st.edad = Number.isFinite(+respuestas.edad) ? +respuestas.edad : null
-        st.altura = Number.isFinite(+respuestas.altura) ? +respuestas.altura : null
+        if (!noHealth) {
+          st.edad = Number.isFinite(+respuestas.edad) ? +respuestas.edad : null
+          st.altura = Number.isFinite(+respuestas.altura) ? +respuestas.altura : null
+          st.pesoKg = Number.isFinite(+respuestas.pesoKg) ? +respuestas.pesoKg : null
+          st.genero = respuestas.sexoBiologico === 'femenino' ? 'femenino' : 'masculino'
+          st.body = st.genero === 'femenino' ? 'female' : 'male'
+        }
         st.objetivo = respuestas.objetivo || st.objetivo || 'fitness_general'
-        st.pesoKg = Number.isFinite(+respuestas.pesoKg) ? +respuestas.pesoKg : null
         st.nivel = respuestas.nivel || st.nivel || null
-        st.genero = respuestas.sexoBiologico === 'femenino' ? 'femenino' : 'masculino'
-        st.body = st.genero === 'femenino' ? 'female' : 'male'
         st.progressionType = respuestas.tipoProgresion || 'linear'
         st.defaultIntensifier = respuestas.defaultIntensifier || { type: 'none' }
         st.respuestasEncuesta = respuestas
         st.rutinaGenerada = rutinaGenerada
         st.fechaUltimaEncuesta = todayISO()
 
-        if (respuestas.pesoKg && (!st.bodyweight || st.bodyweight.length === 0)) {
+        if (!noHealth && respuestas.pesoKg && (!st.bodyweight || st.bodyweight.length === 0)) {
           st.bodyweight = [{ d: todayISO(), w: +respuestas.pesoKg, t: Date.now() }]
         }
 
@@ -447,6 +455,8 @@ export default function SurveyWizard() {
             <h2 className="survey-step-title">Paso 1: Perfil & Biometría</h2>
             <p className="survey-step-sub muted">Datos básicos para calibrar metabolismo, volumen y descanso.</p>
 
+            {/* Sexo, edad, peso y altura: datos de salud. Sin consentimiento no se piden. */}
+            {!noHealth && <>
             <h2 className="survey-step-title" style={{ fontSize: 16 }}>Sexo (biológico)</h2>
             <OptionGrid
               opciones={OPT.sexoBiologico}
@@ -514,6 +524,7 @@ export default function SurveyWizard() {
               </div>
             </div>
 
+            </>}
             <h2 className="survey-step-title">Objetivo principal</h2>
             <OptionGrid opciones={OPT.objetivo} valor={resp.objetivo} onSelect={v => set('objetivo', v)} />
 
@@ -630,6 +641,12 @@ export default function SurveyWizard() {
         )
 
       case 5:
+        if (noHealth) return (
+          <>
+            <h2 className="survey-step-title">Paso 5: Lesiones & Salud</h2>
+            <p className="survey-step-sub muted">Las lesiones son datos de salud y no diste tu consentimiento, así que no se tienen en cuenta. Lo podés cambiar en Ajustes → Datos de salud.</p>
+          </>
+        )
         return (
           <>
             <h2 className="survey-step-title">Paso 5: Lesiones & Salud</h2>
@@ -722,6 +739,7 @@ export default function SurveyWizard() {
   }
 
   const puedeAvanzar = () => {
+    if (paso === 1 && noHealth) return !!resp.objetivo && !!resp.nivel
     if (paso === 1) return !!resp.sexoBiologico && !!resp.objetivo && !!resp.nivel && resp.edad >= 14 && resp.edad <= 90 && resp.pesoKg >= 30 && resp.pesoKg <= 250 && resp.altura >= 100 && resp.altura <= 250
     if (paso === 2) return resp.diasSeleccionados.length >= 1 && !!resp.tiempoPorSesion
     if (paso === 3) return !!resp.equipamiento && !!resp.preferenciaEjercicio && !!resp.enfoque

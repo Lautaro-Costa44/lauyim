@@ -19,6 +19,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('../store/useStore.js', () => ({
   useStore: selector => (typeof selector === 'function' ? selector({ S: mocks.S, update: mocks.update }) : { S: mocks.S, update: mocks.update }),
+  healthOff: state => state.healthConsent === 'declined',
 }))
 
 vi.mock('../store/useUI.js', () => ({

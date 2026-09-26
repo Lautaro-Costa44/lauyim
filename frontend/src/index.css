@@ -1624,3 +1624,13 @@ input[type="search"]::-webkit-search-cancel-button{display:none;-webkit-appearan
 .admin-pending-go{color:var(--acc);font-weight:600}
 .approval-modes{margin-top:10px}
 .approval-modes .lrow[disabled]{opacity:.5;cursor:default}
+/* Datos de salud (consentimiento) */
+.health-consent{padding:40px 0 calc(40px + var(--sab));text-align:center}
+.health-consent .notif-step-icon{margin:0 auto 18px}
+.health-consent p{max-width:440px;margin:8px auto;line-height:1.5}
+.health-sheet{display:flex;flex-direction:column;gap:8px}
+.health-state{align-self:flex-start;padding:4px 10px;border-radius:999px;font-size:13px;font-weight:600}
+.health-state.on{background:var(--acc-soft);color:var(--acc)}
+.health-state.off{background:color-mix(in srgb,var(--warning) 18%,transparent);color:var(--warning)}
+.health-confirm{display:flex;flex-direction:column;gap:8px;padding:12px;border-radius:var(--r);background:color-mix(in srgb,var(--danger) 10%,transparent);font-size:14px;line-height:1.45}
+.no-health-note{margin:4px 2px 8px;line-height:1.4}

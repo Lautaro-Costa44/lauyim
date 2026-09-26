@@ -1,5 +1,5 @@
 import { useLocation, useNavigate } from 'react-router-dom'
-import { useStore } from '../store/useStore.js'
+import { useStore, healthOff } from '../store/useStore.js'
 import { effectiveRoutine } from '../lib/history.js'
 import { todayISO } from '../lib/format.js'
 import { t } from '../lib/i18n.js'
@@ -11,6 +11,7 @@ export default function TabBar({ onStart }) {
   const S = useStore(s => s.S)
   const user = useStore(s => s.user)
   const isGuest = useStore(s => s.isGuest())
+  const noHealth = useStore(healthOff)   // sin consentimiento de datos de salud: sin Nutrición
   if (!user && !isGuest) return null
   if (loc.pathname === '/onboarding/encuesta') return null;
   const cur = loc.pathname.split('/')[1] || 'home'
@@ -38,7 +39,7 @@ export default function TabBar({ onStart }) {
         <span>{S.active ? t('Resume') : t('Start')}</span>
       </button>
       <Tab k="stats" icon="chart" to="/stats" label={t('Stats')} />
-      <Tab k="nutricion" icon="apple" to="/nutricion" label={t('Nutrición')} />
+      {!noHealth && <Tab k="nutricion" icon="apple" to="/nutricion" label={t('Nutrición')} />}
     </nav>
   )
 }

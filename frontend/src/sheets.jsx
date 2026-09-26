@@ -1335,7 +1335,8 @@ export function WorkoutRow({ w, onClick }) {
 /* ============================ workout lifecycle ============================ */
 export function startFlow(routineId) {
   const st = S()
-  const pedirPeso = st.configuracion?.pedirPesoAlEntrenar !== false
+  // Sin consentimiento de datos de salud no se pide el peso corporal.
+  const pedirPeso = st.configuracion?.pedirPesoAlEntrenar !== false && useStore.getState().healthConsent !== 'declined'
   if (!pedirPeso) {
     beginWorkout(routineId, null)
     return

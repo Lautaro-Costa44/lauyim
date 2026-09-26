@@ -131,3 +131,13 @@ function PrivacyStepView({ onBack }) {
 export function PrivacyLink({ onClick, children }) {
   return <button type="button" className="linkbtn privacy-link" onClick={onClick}>{children || t('Aviso de privacidad')}</button>
 }
+
+// Consentimiento expreso (Ley 25.326, art. 7): el aviso de privacidad y los datos de salud en un
+// solo check, nombrados uno por uno. Registro y vinculación con código del gym.
+export const HEALTH_DATA_LABEL = 'peso, edad, género, lesiones y nutrición'
+export function ConsentCheck({ checked, onChange, onPrivacy }) {
+  return <label className="privacy-accept">
+    <input type="checkbox" checked={!!checked} onChange={e => onChange(e.target.checked)} />
+    <span>{t('Acepto el')} <PrivacyLink onClick={onPrivacy}>{t('aviso de privacidad')}</PrivacyLink> {t('y el tratamiento de mis datos de salud ({0}) para adaptar mi entrenamiento.', t(HEALTH_DATA_LABEL))}</span>
+  </label>
+}

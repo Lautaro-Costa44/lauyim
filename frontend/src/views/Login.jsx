@@ -7,7 +7,7 @@ import { t } from '../lib/i18n.js'
 import { DEMO, REPO } from '../lib/demo.js'
 import { useState, useRef, useEffect } from 'react'
 import { Button, useSheetBack } from '../components/ui.jsx'
-import { PrivacyLink, usePrivacyStep } from '../components/PrivacyNotice.jsx'
+import { ConsentCheck, usePrivacyStep } from '../components/PrivacyNotice.jsx'
 import { ProfileFields, askedFields, missingRequired, profileBody } from '../components/ProfileFields.jsx'
 import { NO_AUTOFILL } from '../lib/input-safety.js'
 
@@ -49,8 +49,9 @@ export function RegisterSheet({ close, setOnBack }) {
     if (inviteOnly && !qrToken && !code.trim()) { useUI.getState().toast(t('An invite code is required')); return }
     setBusy(true); setErrors({})
     try {
-      const { pending, ...u } = await passkeyRegister(n, code.trim(), qrToken, needsData ? { profile: profileBody(fields, values), privacyAccepted: accepted } : {})
-      setUser(u); close()
+      const { pending, ...u } = await passkeyRegister(n, code.trim(), qrToken,
+        { healthConsent: accepted, ...(needsData ? { profile: profileBody(fields, values), privacyAccepted: accepted } : {}) })
+      setUser(u); useStore.getState().setHealthConsent('granted'); close()
       // Con la aprobación del staff: pantalla de pendiente; los datos locales quedan en el
       // dispositivo y se sincronizan cuando la habiliten.
       if (pending) {
@@ -69,7 +70,8 @@ export function RegisterSheet({ close, setOnBack }) {
       else useUI.getState().toast(e?.data?.message || e.message || t('Registration failed'))
     }
   }
-  const incomplete = needsData && (!accepted || missingRequired(fields, values).length > 0)
+  // El check (aviso + datos de salud) va siempre, con o sin aprobación del staff.
+  const incomplete = !accepted || (needsData && missingRequired(fields, values).length > 0)
   return <>
     {privacy.view}
     <div hidden={privacy.isOpen}>
@@ -87,12 +89,13 @@ export function RegisterSheet({ close, setOnBack }) {
     </>}
     {needsData && <>
       <div style={{ height: 14 }} />
-      <ProfileFields fields={fields} values={values} errors={errors} accepted={accepted} onAccept={setAccepted} onPrivacy={privacy.open}
+      <ProfileFields fields={fields} values={values} errors={errors} accept={false} onPrivacy={privacy.open}
         onChange={(prop, value) => { setValues(v => ({ ...v, [prop]: value })); setErrors(er => ({ ...er, [prop === 'fullName' ? 'full_name' : prop]: null })) }} />
     </>}
+    <div style={{ height: 14 }} />
+    <ConsentCheck checked={accepted} onChange={setAccepted} onPrivacy={privacy.open} />
     <div style={{ height: 12 }} />
     <Button variant="primary" disabled={busy || incomplete} onClick={go}>{t('Create passkey')}</Button>
-    {!needsData && <div className="dim small privacy-footer"><PrivacyLink onClick={privacy.open} /></div>}
     </div>
   </>
 }
@@ -178,8 +181,11 @@ const passkeyCancelled = e => e?.name === 'NotAllowedError' || e?.name === 'Abor
 // Ficha cargada por el gym → passkey del socio. Paso 1: el código (a mano o desde ?link=).
 // Paso 2: a quién se vincula, y recién ahí la passkey. Cancelar la passkey vuelve al paso 2
 // sin error. Al terminar sigue el boot normal: /api/me (cuota) y los datos del socio.
-function LinkSheet({ close, initialCode = '' }) {
+function LinkSheet({ close, setOnBack, initialCode = '' }) {
   const [code, setCode] = useState(() => formatLinkCodeInput(initialCode))
+  const [accepted, setAccepted] = useState(false)
+  const privacy = usePrivacyStep()
+  useSheetBack(setOnBack, () => privacy.isOpen ? privacy.close() : close())
   const [found, setFound] = useState(null)         // respuesta de /api/link/options
   const [error, setError] = useState(null)
   const [busy, setBusy] = useState(false)
@@ -192,9 +198,10 @@ function LinkSheet({ close, initialCode = '' }) {
   const confirm = async () => {
     setBusy(true); setError(null)
     try {
-      const u = await linkPasskey(found)
+      const u = await linkPasskey(found, { healthConsent: accepted })
       const store = useStore.getState()
       store.setUser(u)
+      store.setHealthConsent('granted')
       close()
       useUI.getState().toast(t('Welcome, {0}', u.name))
       // Igual que al abrir la app: estado de cuota (y el cartel si está bloqueado) y sus datos.
@@ -205,13 +212,18 @@ function LinkSheet({ close, initialCode = '' }) {
     }
   }
   if (found) return <>
+    {privacy.view}
+    <div hidden={privacy.isOpen}>
     <h3>{t('Tu acceso a la app')}</h3>
     <div className="muted" style={{ margin: '4px 0 16px', lineHeight: 1.5 }}>{t('Vas a crear tu acceso como {0}', found.fullName || found.name)}</div>
     <div className="muted small" style={{ marginBottom: 16 }}>{t('Confirmá con {0}. La passkey queda guardada en tu dispositivo, sin contraseña.', t(BIO))}</div>
+    <ConsentCheck checked={accepted} onChange={setAccepted} onPrivacy={privacy.open} />
+    <div style={{ height: 12 }} />
     {error && <div className="form-error" role="alert" style={{ marginBottom: 10 }}>{error}</div>}
-    <Button variant="primary" disabled={busy} onClick={confirm}>{t('Confirmar')}</Button>
+    <Button variant="primary" disabled={busy || !accepted} onClick={confirm}>{t('Confirmar')}</Button>
     <div style={{ height: 8 }} />
     <Button variant="ghost" className="dim" onClick={close}>{t('Cancelar')}</Button>
+    </div>
   </>
   return <>
     <h3>{t('Tengo un código del gym')}</h3>
@@ -228,7 +240,7 @@ function LinkSheet({ close, initialCode = '' }) {
     <Button variant="ghost" className="dim" onClick={close}>{t('Cancelar')}</Button>
   </>
 }
-const openLinkSheet = code => useUI.getState().openSheet(close => <LinkSheet close={close} initialCode={code} />)
+const openLinkSheet = code => useUI.getState().openSheet((close, { setOnBack } = {}) => <LinkSheet close={close} setOnBack={setOnBack} initialCode={code} />)
 
 export default function Login() {
   const { setUser, pullState, setGuest } = useStore()

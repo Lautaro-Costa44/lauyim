@@ -1,6 +1,6 @@
 import { HashRouter, Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom'
 import { lazy, Suspense, useEffect, useLayoutEffect } from 'react'
-import { useStore } from './store/useStore.js'
+import { useStore, healthOff } from './store/useStore.js'
 import { useUI } from './store/useUI.js'
 import { bindUI } from './components/ui.jsx'
 import { ACCENTS } from './lib/format.js'
@@ -35,6 +35,7 @@ const SurveyWizard = lazy(() => import('./views/SurveyWizard.jsx'))
 const ImportPlan = lazy(() => import('./views/ImportPlan.jsx'))
 const Privacy = lazy(() => import('./views/Privacy.jsx'))
 const ProfileOnce = lazy(() => import('./views/ProfileOnce.jsx'))
+const HealthConsentOnce = lazy(() => import('./views/HealthConsent.jsx'))
 
 bindUI(useUI)   // lets the shared controls open sheets without importing the store at module scope
 
@@ -64,6 +65,8 @@ function Shell() {
   const membershipBlocked = useStore(s => s.membershipBlocked)
   const accountPending = useStore(s => s.accountPending)
   const profilePrompt = useStore(s => s.profilePrompt)
+  const healthAsk = useStore(s => s.healthAsk)
+  const noHealth = useStore(healthOff)
   const isGuest = useStore(s => s.isGuest())
   const langV = useLang()   // re-renders the whole shell when the language (pack) changes
   useLayoutEffect(() => {
@@ -102,6 +105,8 @@ function Shell() {
   const blocked = !licenseExpired && (membershipBlocked || accountPending) && !!user && !user.admin
   // Socios que ya existían sin datos: el formulario, una sola vez, antes de todo lo demás.
   const askProfile = !licenseExpired && !blocked && !!user && !user.admin && !!profilePrompt
+  // Cuentas de antes: el consentimiento de datos de salud, una vez (también staff: también entrena).
+  const askHealth = !licenseExpired && !blocked && !askProfile && !!user && healthAsk
   const isAdminPath = loc.pathname === '/admin' || loc.pathname.startsWith('/admin/')
   // El aviso de privacidad es público: se ve sin sesión, con la licencia vencida o bloqueado.
   const isPrivacy = loc.pathname === '/privacidad'
@@ -122,7 +127,8 @@ function Shell() {
         <ErrorBoundary>
           {isPrivacy ? <Suspense fallback={<div className="page-loading" aria-busy="true" />}><Privacy /></Suspense>
             : licenseExpired ? <LicenseExpired /> : !authed ? <Login /> : blocked ? <MembershipBlocked />
-            : askProfile ? <Suspense fallback={<div className="page-loading" aria-busy="true" />}><ProfileOnce /></Suspense> : (
+            : askProfile ? <Suspense fallback={<div className="page-loading" aria-busy="true" />}><ProfileOnce /></Suspense>
+            : askHealth ? <Suspense fallback={<div className="page-loading" aria-busy="true" />}><HealthConsentOnce /></Suspense> : (
             <Suspense fallback={<div className="page-loading" aria-busy="true" />}> 
             <Routes>
               <Route path="/home" element={<Home />} />
@@ -131,7 +137,8 @@ function Shell() {
               <Route path="/plan/r/:id" element={<RoutineEdit />} />
               <Route path="/workout" element={<Workout />} />
               <Route path="/stats" element={<Stats />} />
-              <Route path="/nutricion" element={<Nutricion />} />
+              {/* Sin consentimiento de datos de salud, Nutrición no existe. */}
+              <Route path="/nutricion" element={noHealth ? <Navigate to="/home" replace /> : <Nutricion />} />
               <Route path="/history" element={<History />} />
               <Route path="/library" element={<Navigate to="/plan/ejercicios" replace />} />
               <Route path="/settings" element={<Settings />} />
@@ -145,7 +152,7 @@ function Shell() {
           )}
         </ErrorBoundary>
       </div>
-      {!licenseExpired && !blocked && !askProfile && !isPrivacy && loc.pathname !== '/onboarding/encuesta' && <TabBar onStart={startFlow} />}
+      {!licenseExpired && !blocked && !askProfile && !askHealth && !isPrivacy && loc.pathname !== '/onboarding/encuesta' && <TabBar onStart={startFlow} />}
       {!licenseExpired && !blocked && <RestTimer />}
       {/* Boundary propio: Modals vive fuera de #app, así que un throw acá subía hasta la raíz y
           desmontaba la app entera — pantalla negra sin salida. NO va keyed en la ruta: Modals

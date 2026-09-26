@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useStore } from '../store/useStore.js'
+import { useStore, healthOff } from '../store/useStore.js'
 import { effectiveRoutine, effectiveRoutineId, streakWeeks, lastBW, setsDoneActive } from '../lib/history.js'
 import { fmtNum, fmtDate, todayISO, isoOf, weekKey, DAYS } from '../lib/format.js'
 import { t, dateLocale } from '../lib/i18n.js'
@@ -20,6 +20,7 @@ export default function Home() {
   const S = useStore(s => s.S)
   const user = useStore(s => s.user)
   const config = useStore(s => s.config)
+  const noHealth = useStore(healthOff)   // sin consentimiento de datos de salud: sin peso corporal
   // Programas del gym para el cartel de bienvenida (se piden solo mientras no hay rutinas).
   const [presetData, setPresetData] = useState(null)
   useEffect(() => { if (S.routines.length === 0) api('/api/presets').then(setPresetData).catch(() => {}) }, [S.routines.length])
@@ -149,7 +150,7 @@ export default function Home() {
     )}
 
 
-    <div className="card" data-tour="bw-card">
+    {!noHealth && <div className="card" data-tour="bw-card">
       <div className="row between" style={{ marginBottom: 6 }}>
         <h2 style={{ margin: 0 }}>{t('Body weight')}</h2>
         <div className="row" style={{ gap: 8 }}>
@@ -177,7 +178,7 @@ export default function Home() {
         )}
         <div className="chart" style={{ marginTop: 8 }}><LineChart points={bwPoints} h={130} unit={S.unit} goal={S.targetW} /></div>
       </> : <div className="muted small">{t("No entries yet — log your weight to start the curve. It's also asked before every workout.")}</div>}
-    </div>
+    </div>}
 
     <div className="card tappable" style={{ cursor: 'pointer' }} onClick={() => calendarSheet()}>
       <div className="row between">

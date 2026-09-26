@@ -118,7 +118,7 @@ describe('links', () => {
       Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, 'juan')
       input.dispatchEvent(new Event('input', { bubbles: true }))
     })
-    await click(button('Aviso de privacidad'))
+    await click(button('aviso de privacidad'))
     expect(text()).toContain('El responsable de la base de datos es Gimnasio Norte')
     await click(button('Volver'))
     // El input se renombra (anti-autofill): se busca por placeholder.
