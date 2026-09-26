@@ -1610,3 +1610,17 @@ input[type="search"]::-webkit-search-cancel-button{display:none;-webkit-appearan
 .privacy-legal{color:var(--label-2);font-size:13px}
 .privacy-link{background:none;border:0;padding:0;font:inherit;color:var(--acc);text-decoration:underline;text-underline-offset:2px;cursor:pointer}
 .privacy-footer{margin-top:14px;text-align:center}
+.profile-fields{display:flex;flex-direction:column;gap:12px;text-align:left}
+.profile-fields .input{width:100%}
+.privacy-accept{display:flex;align-items:flex-start;gap:10px;font-size:14px;line-height:1.4;color:var(--label);cursor:pointer;margin-top:4px}
+.privacy-accept input{width:20px;height:20px;margin:0;flex:none;accent-color:var(--acc)}
+.profile-once{padding:24px 0 calc(40px + var(--sab))}
+/* Aprobación de cuentas (spec 12.3) */
+.tag.member-pending{background:color-mix(in srgb,var(--warning) 18%,transparent);color:var(--warning)}
+.member-pending-card{display:flex;flex-direction:column;gap:8px;border:1px solid color-mix(in srgb,var(--warning) 40%,transparent)}
+.member-pending-card h2{font-size:17px}
+.admin-pending-banner{display:flex;align-items:center;gap:12px;width:100%;text-align:left;margin-bottom:12px;font:inherit;color:var(--label);cursor:pointer;border:1px solid color-mix(in srgb,var(--warning) 40%,transparent)}
+.admin-pending-n{min-width:32px;height:32px;border-radius:16px;padding:0 8px;display:inline-flex;align-items:center;justify-content:center;background:color-mix(in srgb,var(--warning) 20%,transparent);color:var(--warning);font-weight:700}
+.admin-pending-go{color:var(--acc);font-weight:600}
+.approval-modes{margin-top:10px}
+.approval-modes .lrow[disabled]{opacity:.5;cursor:default}

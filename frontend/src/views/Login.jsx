@@ -8,16 +8,27 @@ import { DEMO, REPO } from '../lib/demo.js'
 import { useState, useRef, useEffect } from 'react'
 import { Button, useSheetBack } from '../components/ui.jsx'
 import { PrivacyLink, usePrivacyStep } from '../components/PrivacyNotice.jsx'
+import { ProfileFields, askedFields, missingRequired, profileBody } from '../components/ProfileFields.jsx'
 import { NO_AUTOFILL } from '../lib/input-safety.js'
 
-function RegisterSheet({ close, setOnBack }) {
+// Registro (login y Settings). Con la aprobación del staff encendida pide solo el nombre de
+// usuario y la cuenta queda pendiente; si no, pide también los datos que configuró el gym y
+// aceptar el aviso de privacidad (spec 12.3 / 12.6).
+export function RegisterSheet({ close, setOnBack }) {
   const { setUser, pushState, pullState, loadConfig } = useStore()
   const config = useStore(s => s.config)
   const [name, setName] = useState('')
   const [code, setCode] = useState('')
   const [qrToken, setQrToken] = useState(null)
   const [qrChecked, setQrChecked] = useState(false)
+  const [values, setValues] = useState({})
+  const [accepted, setAccepted] = useState(false)
+  const [errors, setErrors] = useState({})
+  const [busy, setBusy] = useState(false)
   const inviteOnly = !!config?.invite_only
+  const registration = config?.registration
+  const fields = registration?.fields || {}
+  const needsData = !!registration && !registration.approval && askedFields(fields).length > 0
   const ref = useRef(null)
   const privacy = usePrivacyStep()
   useSheetBack(setOnBack, () => privacy.isOpen ? privacy.close() : close())
@@ -36,28 +47,47 @@ function RegisterSheet({ close, setOnBack }) {
     const n = name.trim()
     if (!n) { useUI.getState().toast(t('Enter a name')); return }
     if (inviteOnly && !qrToken && !code.trim()) { useUI.getState().toast(t('An invite code is required')); return }
+    setBusy(true); setErrors({})
     try {
-      const u = await passkeyRegister(n, code.trim(), qrToken)
+      const { pending, ...u } = await passkeyRegister(n, code.trim(), qrToken, needsData ? { profile: profileBody(fields, values), privacyAccepted: accepted } : {})
       setUser(u); close()
+      // Con la aprobación del staff: pantalla de pendiente; los datos locales quedan en el
+      // dispositivo y se sincronizan cuando la habiliten.
+      if (pending) { window.dispatchEvent(new CustomEvent('gym:account_pending')); return }
       if (hasData(useStore.getState().S)) { await pushState(); useUI.getState().toast(t('Profile created — data from this device moved into it')) }
       else { await pullState(); useUI.getState().toast(t('Welcome, {0}', u.name)) }
-    } catch (e) { if (e.name !== 'NotAllowedError' && e.name !== 'AbortError') useUI.getState().toast(e.message || t('Registration failed')) }
+    } catch (e) {
+      setBusy(false)
+      if (e.name === 'NotAllowedError' || e.name === 'AbortError') return
+      if (e?.data?.error === 'dni_exists') setErrors({ dni: e.data.message })
+      else if (e?.data?.field) setErrors({ [e.data.field]: e.message })
+      else useUI.getState().toast(e?.data?.message || e.message || t('Registration failed'))
+    }
   }
+  const incomplete = needsData && (!accepted || missingRequired(fields, values).length > 0)
   return <>
     {privacy.view}
     <div hidden={privacy.isOpen}>
     <h3>{t('Create your profile')}</h3>
-    <div className="muted small" style={{ marginBottom: 14 }}>{t('Pick a name, then confirm with {0}. The passkey is saved in your device — no password needed.', t(BIO))}</div>
-    <input {...NO_AUTOFILL} name="app-profile-name" ref={ref} className="input" placeholder={t('Your name')} maxLength={40} value={name} onChange={e => setName(e.target.value)} />
+    <div className="muted small" style={{ marginBottom: 14 }}>{registration?.approval
+      ? t('Elegí un nombre de usuario y confirmá con {0}. Después, acercate a recepción para que habiliten tu cuenta.', t(BIO))
+      : t('Pick a name, then confirm with {0}. The passkey is saved in your device — no password needed.', t(BIO))}</div>
+    <input {...NO_AUTOFILL} name="app-profile-name" ref={ref} className="input" placeholder={t('Your name')} aria-label={t('Nombre de usuario')} maxLength={40} value={name} onChange={e => setName(e.target.value)} />
+    {needsData && <div className="dim small" style={{ margin: '6px 2px 0', textAlign: 'left' }}>{t('Tu nombre de usuario en la app (no tiene que ser tu nombre real).')}</div>}
     {inviteOnly && qrChecked && !qrToken && <>
       <div style={{ height: 10 }} />
       <input {...NO_AUTOFILL} name="app-invite-code" className="input" placeholder={t('Invite code')} maxLength={40} value={code}
         onChange={e => setCode(e.target.value.toUpperCase())} style={{ letterSpacing: '.14em', fontWeight: 600, textAlign: 'center' }} />
       <div className="dim small" style={{ marginTop: 6 }}>{t('This app is invite-only — enter the code you were given.')}</div>
     </>}
+    {needsData && <>
+      <div style={{ height: 14 }} />
+      <ProfileFields fields={fields} values={values} errors={errors} accepted={accepted} onAccept={setAccepted} onPrivacy={privacy.open}
+        onChange={(prop, value) => { setValues(v => ({ ...v, [prop]: value })); setErrors(er => ({ ...er, [prop === 'fullName' ? 'full_name' : prop]: null })) }} />
+    </>}
     <div style={{ height: 12 }} />
-    <Button variant="primary" onClick={go}>{t('Create passkey')}</Button>
-    <div className="dim small privacy-footer"><PrivacyLink onClick={privacy.open} /></div>
+    <Button variant="primary" disabled={busy || incomplete} onClick={go}>{t('Create passkey')}</Button>
+    {!needsData && <div className="dim small privacy-footer"><PrivacyLink onClick={privacy.open} /></div>}
     </div>
   </>
 }
@@ -210,7 +240,12 @@ export default function Login() {
     openLinkSheet(code)
   }, [])
   const signIn = async () => {
-    try { const u = await passkeyLogin(); setUser(u); await pullState(); useUI.getState().toast(t('Welcome back, {0}', u.name)) }
+    try {
+      const u = await passkeyLogin(); setUser(u)
+      useUI.getState().toast(t('Welcome back, {0}', u.name))
+      // Como al abrir la app: cuota, cuenta pendiente y formulario de datos, y después sus datos.
+      await useStore.getState().retryMembership().catch(() => pullState())
+    }
     catch (e) { if (e.name !== 'NotAllowedError' && e.name !== 'AbortError') useUI.getState().toast(e.message || t('SIGN_IN_FAILED_LOGIN')) }
   }
   const head = <>

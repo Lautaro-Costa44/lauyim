@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { RegisterSheet } from './Login.jsx'
 import { startTourA, startTourB, startTourNutrition } from '../lib/onboarding.js'
 import { useStore, DEF, hasData } from '../store/useStore.js'
 import { useUI } from '../store/useUI.js'
@@ -7,7 +8,7 @@ import { ACCENTS, todayISO, localTZ, DAYN, fmtDateDMY } from '../lib/format.js'
 import { effortOf } from '../lib/history.js'
 import { POLICIES, POLICY_NAME, POLICY_DESC } from '../lib/progression.js'
 import Stepper from '../components/Stepper.jsx'
-import { api, webauthnOK, passkeyLogin, passkeyRegister, passkeyAddCredential, IS_ANDROID } from '../lib/api.js'
+import { api, webauthnOK, passkeyLogin, passkeyAddCredential, IS_ANDROID } from '../lib/api.js'
 import { supportSheet } from '../sheets.jsx'
 import { applyPlannedDays } from '../lib/routineGroups.js'
 
@@ -209,7 +210,8 @@ export default function Settings() {
     try { const u = await passkeyLogin(); setUser(u); await pullState(); toast(t('Welcome back, {0}', u.name)) }
     catch (e) { if (e.name !== 'NotAllowedError' && e.name !== 'AbortError') toast(e.message || t('SIGN_IN_FAILED_SETTINGS')) }
   }
-  const registerHere = () => useUI.getState().openSheet(close => <RegisterInline close={close} setUser={setUser} pushState={pushState} pullState={pullState} toast={toast} />)
+  // El mismo registro que la pantalla de inicio (datos del gym, aprobación y aviso incluidos).
+  const registerHere = () => useUI.getState().openSheet((close, { setOnBack } = {}) => <RegisterSheet close={close} setOnBack={setOnBack} />)
   // Ends the profile's sessions on every device — this one included, so on success it lands in
   // the same place as the plain sign-out above (home, local data cleared). On failure nothing
   // local is touched: still signed in here, and say so rather than leaving a half-signed-out app.
@@ -752,40 +754,3 @@ function EquipmentCard({ S, update }) {
   </Section>
 }
 
-// The same registration as the sign-in screen's, reached from Settings instead. It asks for
-// the invite code on the same terms: an invite-only instance rejects a registration without
-// one, so a form that cannot collect it is a form that cannot succeed.
-function RegisterInline({ close, setUser, pushState, pullState, toast }) {
-  const nameRef = useRef(null)
-  const [code, setCode] = useState('')
-  const [inviteOnly, setInviteOnly] = useState(false)
-  const [qrToken, setQrToken] = useState(null)
-  useEffect(() => {
-    api('/api/config').then(c => setInviteOnly(!!c.invite_only)).catch(() => {})
-    const token = new URLSearchParams(window.location.search).get('qr') || ''
-    if (!token) return
-    api('/api/access/qr', { method: 'POST', body: JSON.stringify({ token }) }).then(({ valid }) => { if (valid) setQrToken(token) }).catch(() => {})
-  }, [])
-  const go = async () => {
-    const n = (nameRef.current.value || '').trim()
-    if (!n) { toast(t('Enter a name')); return }
-    if (inviteOnly && !qrToken && !code.trim()) { toast(t('An invite code is required')); return }
-    try {
-      const u = await passkeyRegister(n, code.trim(), qrToken); setUser(u); close()
-      if (hasData(useStore.getState().S)) { await pushState(); toast(t('Profile created — data moved into it')) }
-      else { await pullState(); toast(t('Welcome, {0}', u.name)) }
-    } catch (e) { if (e.name !== 'NotAllowedError' && e.name !== 'AbortError') toast(e.message || t('Registration failed')) }
-  }
-  return <>
-    <h3>{t('Create your profile')}</h3>
-    <div className="muted small" style={{ marginBottom: 14 }}>{t('Pick a name, then confirm with your device.')}</div>
-    <TextField ref={nameRef} placeholder={t('Your name')} maxLength={40} />
-    {inviteOnly && !qrToken && <>
-      <div style={{ height: 10 }} />
-      <input {...NO_AUTOFILL} name="app-settings-invite-code" className="input" placeholder={t('Invite code')} maxLength={40} value={code}
-        onChange={e => setCode(e.target.value.toUpperCase())} style={{ letterSpacing: '.14em', fontWeight: 600, textAlign: 'center' }} />
-      <div className="dim small" style={{ marginTop: 6 }}>{t('This app is invite-only — enter the code you were given.')}</div>
-    </>}
-    <div style={{ height: 12 }} /><Button variant="primary" onClick={go}>{t('Create passkey')}</Button>
-  </>
-}
