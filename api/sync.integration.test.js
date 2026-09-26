@@ -142,6 +142,29 @@ test('SQLite real: last confirmed template update wins deterministically', () =>
   assert.equal(db.prepare('SELECT nombre FROM plantillas_comida WHERE id = ?').get(id).nombre, 'Device A');
 });
 
+test('SQLite real: a field patch on one exercise of a routine reaches routine_exercises.extra', () => {
+  saveUserState('u1', { routines: [{ id: 'r-nested', name: 'Push', ex: [{ id: '0025', sets: 3, reps: 8 }, { id: '0047', sets: 3, reps: 10 }] }] });
+  const at = ['routines', 'r-nested', 'ex', '0025'];
+  const applied = run([{ id: 'nested-1', createdAt: 1, changes: [
+    { path: [...at, 'intensifier'], op: 'add', value: { type: 'dropset', count: 2, pct: 80 } },
+    { path: [...at, 'warmupSets'], op: 'add', value: 2 }
+  ] }]);
+  assert.deepEqual(applied.appliedIds, ['nested-1']);
+  const [first, second] = getUserState('u1').routines[0].ex;
+  assert.deepEqual(first.intensifier, { type: 'dropset', count: 2, pct: 80 });
+  assert.equal(first.warmupSets, 2);
+  assert.equal(second.intensifier, undefined);
+  assert.equal(JSON.parse(db.prepare("SELECT extra FROM routine_exercises WHERE routine_id = 'r-nested' AND position = 0").get().extra).warmupSets, 2);
+
+  run([{ id: 'nested-2', createdAt: 2, changes: [{ path: [...at, 'intensifier'], op: 'remove' }] }]);
+  assert.equal(getUserState('u1').routines[0].ex[0].intensifier, undefined);
+  assert.equal(getUserState('u1').routines[0].ex[0].warmupSets, 2);
+  // A patch for an exercise another device already removed changes nothing.
+  const gone = run([{ id: 'nested-3', createdAt: 3, changes: [{ path: ['routines', 'r-nested', 'ex', '9999', 'warmupSets'], op: 'add', value: 1 }] }]);
+  assert.deepEqual(gone.appliedIds, ['nested-3']);
+  assert.equal(getUserState('u1').routines[0].ex.length, 2);
+});
+
 after(() => {
   closeDatabase();
   fs.rmSync(dataDir, { recursive: true, force: true });

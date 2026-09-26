@@ -154,6 +154,9 @@ export function applySyncMappings(results = []) {
 }
 
 const ENTITY_ID = item => item && typeof item === 'object' && !Array.isArray(item) && item.id != null ? String(item.id) : null
+// Addressable by id only when every id is unique: a routine can hold the same exercise twice, and
+// a patch by that id would land on the first copy. Such an array is replaced whole instead.
+const isEntityArray = array => array.every(ENTITY_ID) && new Set(array.map(ENTITY_ID)).size === array.length
 
 function diffObject(before, after, path, changes) {
   const keys = new Set([...Object.keys(before || {}), ...Object.keys(after || {})])
@@ -164,7 +167,7 @@ function diffObject(before, after, path, changes) {
     if (JSON.stringify(oldValue) === JSON.stringify(newValue)) continue
     if (newValue === undefined) changes.push({ path: [...path, key], op: 'remove' })
     else if (oldValue === undefined) changes.push({ path: [...path, key], op: 'add', value: newValue })
-    else if (Array.isArray(oldValue) && Array.isArray(newValue) && oldValue.every(ENTITY_ID) && newValue.every(ENTITY_ID)) {
+    else if (Array.isArray(oldValue) && Array.isArray(newValue) && isEntityArray(oldValue) && isEntityArray(newValue)) {
       diffEntityArray(oldValue, newValue, [...path, key], changes)
     } else if (oldValue && newValue && typeof oldValue === 'object' && typeof newValue === 'object' && !Array.isArray(oldValue) && !Array.isArray(newValue)) {
       diffObject(oldValue, newValue, [...path, key], changes)

@@ -12,51 +12,41 @@ function findEntityIndex(array, id) {
   return Array.isArray(array) ? array.findIndex(item => item && typeof item === 'object' && String(item.id) === String(id)) : -1;
 }
 
+// The client (lib/sync-queue.js diffState) addresses an item of an array of entities by its id at
+// any depth, not only at the root: editing one exercise of a routine is
+// ['routines', <routine id>, 'ex', <exercise id>, 'intensifier']. Every array on the way is
+// therefore resolved by id. Walking into it as an object instead set the field on a stray
+// property of the array, which JSON dropped — the change was acknowledged and lost.
 function applyStateChange(state, change) {
   const path = Array.isArray(change?.path) ? change.path.map(String) : [];
   if (!path.length || path.some(key => RESERVED_KEYS.has(key))) throw new Error('invalid state path');
-  const [root, entityId, ...fields] = path;
-
-  if (path.length === 1) {
-    if (change.op === 'remove') delete state[root];
-    else if ((change.op === 'replace' || change.op === 'add') && Object.prototype.hasOwnProperty.call(change, 'value')) state[root] = change.value;
-    else throw new Error('invalid state operation');
-    return;
-  }
-
-  if (Array.isArray(state[root])) {
-    const array = state[root];
-    const index = findEntityIndex(array, entityId);
-    if (fields.length === 0) {
-      if (change.op === 'remove') { if (index >= 0) array.splice(index, 1); }
-      else if (change.op === 'add') { if (index < 0) array.push(change.value); else array[index] = change.value; }
-      else if (change.op === 'replace' && index >= 0) array[index] = change.value;
-      else throw new Error('invalid array entity operation');
-      return;
-    }
-    if (index < 0) return;
-    let target = array[index];
-    for (let i = 0; i < fields.length - 1; i++) {
-      const key = fields[i];
-      if (target[key] == null || typeof target[key] !== 'object') target[key] = {};
-      target = target[key];
-    }
-    const key = fields[fields.length - 1];
-    if (change.op === 'remove') delete target[key];
-    else if ((change.op === 'replace' || change.op === 'add') && Object.prototype.hasOwnProperty.call(change, 'value')) target[key] = change.value;
-    else throw new Error('invalid nested state operation');
-    return;
-  }
+  const hasValue = Object.prototype.hasOwnProperty.call(change, 'value');
 
   let target = state;
   for (let i = 0; i < path.length - 1; i++) {
     const key = path[i];
+    if (Array.isArray(target)) {
+      const index = findEntityIndex(target, key);
+      // A field patch for an entity that is gone (removed on another device) has nothing to apply to.
+      if (index < 0) return;
+      target = target[index];
+      continue;
+    }
     if (target[key] == null || typeof target[key] !== 'object') target[key] = {};
     target = target[key];
   }
+
   const key = path[path.length - 1];
+  if (Array.isArray(target)) {
+    const index = findEntityIndex(target, key);
+    if (change.op === 'remove') { if (index >= 0) target.splice(index, 1); }
+    else if (change.op === 'add' && hasValue) { if (index < 0) target.push(change.value); else target[index] = change.value; }
+    else if (change.op === 'replace' && hasValue && index >= 0) target[index] = change.value;
+    else throw new Error('invalid array entity operation');
+    return;
+  }
   if (change.op === 'remove') delete target[key];
-  else if ((change.op === 'replace' || change.op === 'add') && Object.prototype.hasOwnProperty.call(change, 'value')) target[key] = change.value;
+  else if ((change.op === 'replace' || change.op === 'add') && hasValue) target[key] = change.value;
   else throw new Error('invalid nested state operation');
 }
 
