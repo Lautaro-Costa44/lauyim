@@ -5,6 +5,7 @@ import { fmtPesos } from '../../../lib/format.js'
 import { t } from '../../../lib/i18n.js'
 import Icon from '../../../components/Icon.jsx'
 import { Button, NumberField, Row, Section, Segmented, SelectRow, TextField, usePickerStep, useSheetBack } from '../../../components/ui.jsx'
+import { PrivacyLink, usePrivacyStep } from '../../../components/PrivacyNotice.jsx'
 import { methodLabel } from '../billing/common.jsx'
 import { useDesktop } from '../useDesktop.js'
 import {
@@ -43,7 +44,7 @@ const columnName = (header, i) => header || t('Columna {0}', String.fromCharCode
 
 /* ---------------------------------- pasos --------------------------------- */
 
-function FileStep({ file, error, reading, onPick }) {
+function FileStep({ file, error, reading, onPick, onPrivacy }) {
   const input = useRef(null)
   return <>
     <Section footer={t('La primera fila tiene que ser el encabezado (Nombre y apellido, DNI, Celular…). Máximo 2000 socios por archivo.')}>
@@ -56,6 +57,7 @@ function FileStep({ file, error, reading, onPick }) {
     {error && <div className="form-error" role="alert">{error}</div>}
     <Button variant="tinted" size="sm" icon="download" onClick={() => downloadText('plantilla-socios.csv', templateCsv())}>{t('Descargar plantilla')}</Button>
     <p className="dim small import-note">{t('La plantilla abre bien en Excel. Completala y guardala como .xlsx o .csv.')}</p>
+    <p className="dim small import-note">{t('Son datos personales de tus socios: el aviso de privacidad les explica qué se guarda y cómo pedir que se corrijan o borren.')} <PrivacyLink onClick={onPrivacy} /></p>
   </>
 }
 
@@ -234,6 +236,7 @@ function ResultStep({ result }) {
 export function ImportMembersSheet({ billingEnabled, close, setOnBack, onImported, onShowMembers }) {
   const toast = useUI(s => s.toast)
   const picker = usePickerStep()
+  const privacy = usePrivacyStep()
   const desktop = useDesktop()
   const [step, setStep] = useState('archivo')
   const [fields, setFields] = useState(null)
@@ -282,6 +285,7 @@ export function ImportMembersSheet({ billingEnabled, close, setOnBack, onImporte
 
   const go = to => { setError(null); setStep(to) }
   const back = () => {
+    if (privacy.isOpen) return privacy.close()
     if (picker.isOpen) return picker.close()
     if (step === 'resultado' || index <= 0) return close()
     go(steps[index - 1])
@@ -342,11 +346,12 @@ export function ImportMembersSheet({ billingEnabled, close, setOnBack, onImporte
 
   return <div className="compound-builder"><div className="compound-builder-content import-members">
     {picker.view}
-    <div hidden={picker.isOpen}>
+    {privacy.view}
+    <div hidden={picker.isOpen || privacy.isOpen}>
       <Header title={t('Importar socios')} subtitle={subtitle} onClose={close} />
       {loading && !error ? <div className="dim small">{t('Loading…')}</div> : <>
         {index > 0 && step !== 'resultado' && <><Button size="sm" icon="chevronLeft" onClick={back}>{t('Volver')}</Button><div style={{ height: 10 }} /></>}
-        {step === 'archivo' && <FileStep file={file} error={error} reading={reading} onPick={pickFile} />}
+        {step === 'archivo' && <FileStep file={file} error={error} reading={reading} onPick={pickFile} onPrivacy={privacy.open} />}
         {step === 'columnas' && <ColumnsStep file={file} mapping={mapping} setMapping={setMapping} picker={picker.open} problems={problems} desktop={desktop} />}
         {step === 'planes' && <PlansStep plans={planValues} activePlans={activePlans} choices={choices} picker={picker.open} desktop={desktop}
           setChoice={(key, c) => setChoices(cur => ({ ...cur, [key]: c.action === 'create' && cur[key]?.action !== 'create' ? { name: planValues.find(p => p.key === key).value.slice(0, 60), price: null, durationDays: 30, ...c } : c }))} />}

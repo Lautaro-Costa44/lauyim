@@ -9,6 +9,7 @@ import QrCanvas from '../../../components/QrCanvas.jsx'
 import { Button, NumberField, Row, SearchField, Section, Segmented, SelectRow, TextField, usePickerStep, useSheetBack } from '../../../components/ui.jsx'
 import { methodLabel, paidAtFor } from '../billing/common.jsx'
 import { DuplicateNotice, MEMBER_FIELDS, lookupDni, profileUrl } from './common.jsx'
+import { PrivacyLink, usePrivacyStep } from '../../../components/PrivacyNotice.jsx'
 
 // Flujos de fichas de socio (admin). Cada uno es UN sheet a pantalla completa; los que tienen
 // pasos (unir ficha con cuenta) retroceden un paso con el gesto de atrás, como MemberBillingSheet.
@@ -151,8 +152,9 @@ export function MemberCreateSheet({ billingEnabled, close, setOnBack, onCreated,
   const [errors, setErrors] = useState({})
   const [saving, setSaving] = useState(false)
   const picker = usePickerStep()
+  const privacy = usePrivacyStep()
 
-  useSheetBack(setOnBack, () => picker.isOpen ? picker.close() : step === 'cuota' ? setStep('datos') : close())
+  useSheetBack(setOnBack, () => privacy.isOpen ? privacy.close() : picker.isOpen ? picker.close() : step === 'cuota' ? setStep('datos') : close())
 
   useEffect(() => {
     api('/api/admin/members/settings').then(d => setFields(d.fields)).catch(e => setErrors({ general: e.message }))
@@ -206,7 +208,8 @@ export function MemberCreateSheet({ billingEnabled, close, setOnBack, onCreated,
 
   return <div className="compound-builder"><div className="compound-builder-content">
     {picker.view}
-    <div hidden={picker.isOpen}>
+    {privacy.view}
+    <div hidden={picker.isOpen || privacy.isOpen}>
       <Header title={t('Nuevo socio')} subtitle={step === 'cuota' ? t('Paso 2 de 2 · Cuota inicial') : billingEnabled ? t('Paso 1 de 2 · Datos') : t('Sin app: lo carga el gimnasio')} onClose={close} />
       {loading ? <div className="dim small">{t('Loading…')}</div> : <>
         <div hidden={step !== 'datos'}>
@@ -225,7 +228,7 @@ export function MemberCreateSheet({ billingEnabled, close, setOnBack, onCreated,
         {billingEnabled && step === 'datos'
           ? <Button variant="primary" disabled={!!duplicate} onClick={() => { setErrors({}); setStep('cuota') }}>{t('Siguiente')}</Button>
           : <Button variant="primary" disabled={saving || !!duplicate || !payOk} onClick={save}>{saving ? t('Guardando…') : t('Crear socio')}</Button>}
-        <p className="dim small member-privacy">{t(PRIVACY_NOTE)}</p>
+        <p className="dim small member-privacy">{t(PRIVACY_NOTE)} <PrivacyLink onClick={privacy.open} /></p>
       </>}
     </div>
   </div></div>

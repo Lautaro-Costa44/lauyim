@@ -41,6 +41,7 @@ apiMock.mockImplementation((url, opts) => {
   if (url === '/api/admin/presets') return Promise.resolve({ presets: [] })
   if (url === '/api/admin/attendance-heatmap') return Promise.resolve({ start: 'monday', totalUsers: 1, days: {} })
   if (url === '/api/owner/qr') return Promise.resolve({ token: 'qr-token' })
+  if (url === '/api/owner/privacy') return Promise.resolve(opts?.method === 'PUT' ? JSON.parse(opts.body) : { gymName: '', contact: '' })
   if (url.startsWith('/api/admin/audit')) return Promise.resolve({ enabled: auditOn, events: [], total: 0, retention: {}, now: Date.now() })
   if (url === '/api/admin/billing') return Promise.resolve({ today: '2026-09-24', settings: {}, summary: { al_dia: 0, por_vencer: 0, vencido: 0, bloqueado: 0, sin_plan: 1, deuda_total: 0 }, members: [{ id: 'a', name: 'ana', disabled: false, admin: false, planId: null, planName: null, dueDate: null, status: 'sin_plan', debt: 0 }] })
   if (url === '/api/admin/billing/plans') return Promise.resolve({ plans: [] })
@@ -161,13 +162,33 @@ describe('admin routes', () => {
     expect(called('/api/admin/members/settings')).toBe(false)
   })
 
-  it('the owner gets the four Acceso cards, in order', async () => {
+  it('the owner gets the five Acceso cards, in order', async () => {
     await mount('#/admin/acceso', OWNER)
     const titles = [...document.querySelectorAll('.admin-cards > .card h2')].map(h => h.textContent)
-    expect(titles).toEqual(['Códigos de invitación', 'Acceso por QR', 'Datos del registro', 'Cobro de cuotas'])
+    expect(titles).toEqual(['Códigos de invitación', 'Acceso por QR', 'Datos del registro', 'Aviso de privacidad', 'Cobro de cuotas'])
     expect(text()).toContain('qr-token')
     expect(text()).toContain('El nombre de usuario siempre se pide.')
     expect(text()).not.toContain('Sin DNI no se pueden detectar socios duplicados')
+  })
+
+  it('privacy notice: the owner saves the gym name and the contact', async () => {
+    await mount('#/admin/acceso', OWNER)
+    expect(text()).toContain('Completalos antes de cargar datos reales de socios.')
+    const set = async (name, value) => {
+      const input = document.querySelector(`input[placeholder="${name}"]`)
+      await act(async () => {
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, value)
+        input.dispatchEvent(new Event('input', { bubbles: true }))
+      })
+    }
+    await set('Ej. Gimnasio Norte de Juan Pérez', 'Gimnasio Norte')
+    await set('Mail, WhatsApp o dirección de la recepción', 'hola@norte.com')
+    const card = [...document.querySelectorAll('.admin-cards > .card')].find(c => c.querySelector('h2').textContent === 'Aviso de privacidad')
+    await act(async () => { [...card.querySelectorAll('button')].find(b => b.textContent === 'Guardar').click() })
+    await flush()
+    const put = apiMock.mock.calls.find(([u, o]) => u === '/api/owner/privacy' && o?.method === 'PUT')
+    expect(JSON.parse(put[1].body)).toEqual({ gymName: 'Gimnasio Norte', contact: 'hola@norte.com' })
+    expect(text()).not.toContain('Completalos antes de cargar datos reales de socios.')
   })
 
   it('invites moved out of Usuarios', async () => {

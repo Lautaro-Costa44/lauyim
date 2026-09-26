@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useAdmin } from './context.js'
 import { useStore } from '../../store/useStore.js'
 import { useUI } from '../../store/useUI.js'
@@ -6,7 +7,7 @@ import { api } from '../../lib/api.js'
 import { confirmSheet } from '../../sheets.jsx'
 import { t } from '../../lib/i18n.js'
 import Icon from '../../components/Icon.jsx'
-import { Button, Switch } from '../../components/ui.jsx'
+import { Button, Switch, TextField } from '../../components/ui.jsx'
 import QrCanvas from '../../components/QrCanvas.jsx'
 
 // Moved as-is from Usuarios: every admin can create and revoke invite codes.
@@ -178,6 +179,46 @@ function BillingToggleCard({ enabled, onChanged }) {
   </div>
 }
 
+// Aviso de privacidad (owner): el gym es el responsable de los datos; su nombre y el contacto
+// para ejercer los derechos aparecen en la página pública /#/privacidad.
+function PrivacyCard() {
+  const toast = useUI(s => s.toast)
+  const navigate = useNavigate()
+  const [saved, setSaved] = useState(null)
+  const [values, setValues] = useState({ gymName: '', contact: '' })
+  const [busy, setBusy] = useState(false)
+  useEffect(() => {
+    api('/api/owner/privacy').then(d => { setSaved(d); setValues(d) }).catch(e => toast(e.message || t('Failed to load')))
+  }, [])
+  const dirty = saved && (values.gymName !== saved.gymName || values.contact !== saved.contact)
+  const save = () => {
+    setBusy(true)
+    api('/api/owner/privacy', { method: 'PUT', body: JSON.stringify(values) })
+      .then(d => { setSaved(d); setValues(d); toast(t('Aviso de privacidad guardado')) })
+      .catch(e => toast(e.message || t('Failed to save setting')))
+      .finally(() => setBusy(false))
+  }
+  return <div className="card">
+    <div className="row between"><h2 style={{ margin: 0 }}>{t('Aviso de privacidad')}</h2>
+      <Button size="sm" onClick={() => navigate('/privacidad')}>{t('Ver aviso')}</Button></div>
+    <div className="small muted" style={{ margin: '6px 0 10px' }}>{t('El gimnasio es el responsable de los datos de sus socios. Estos datos aparecen en el aviso, que se ve sin iniciar sesión.')}</div>
+    {saved ? <div className="member-form">
+      <label className="member-field">
+        <span className="member-field-l">{t('Nombre del gimnasio (responsable)')}</span>
+        <TextField type="text" inputMode="text" name="app-privacy-gym" maxLength={80} value={values.gymName}
+          placeholder={t('Ej. Gimnasio Norte de Juan Pérez')} onChange={e => setValues(v => ({ ...v, gymName: e.target.value }))} />
+      </label>
+      <label className="member-field">
+        <span className="member-field-l">{t('Contacto para privacidad')}</span>
+        <TextField type="text" inputMode="text" name="app-privacy-contact" maxLength={200} value={values.contact}
+          placeholder={t('Mail, WhatsApp o dirección de la recepción')} onChange={e => setValues(v => ({ ...v, contact: e.target.value }))} />
+      </label>
+      {(!saved.gymName || !saved.contact) && <div className="access-warn small" role="note">{t('Completalos antes de cargar datos reales de socios.')}</div>}
+      <Button variant="primary" size="sm" disabled={busy || !dirty} onClick={save}>{busy ? t('Guardando…') : t('Guardar')}</Button>
+    </div> : <div className="dim small">{t('Loading…')}</div>}
+  </div>
+}
+
 // Invitaciones para todos los admins; QR, datos del registro y cuotas solo para el owner.
 export default function Acceso() {
   const user = useStore(s => s.user)
@@ -188,6 +229,7 @@ export default function Acceso() {
     {invitesCard}
     <QrAccessCard data={qrAccess} reload={setQrAccess} />
     <MemberFieldsCard />
+    <PrivacyCard />
     <BillingToggleCard enabled={billingEnabled} onChanged={v => { setBillingEnabled(v); loadUsers() }} />
   </div>
 }

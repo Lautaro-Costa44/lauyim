@@ -254,6 +254,7 @@ export default function Settings() {
             if (e.name !== 'NotAllowedError' && e.name !== 'AbortError') toast(e.message || t('Error al agregar passkey'))
           }
         }} />
+        <Row icon="lock" iconTint="var(--grey)" title={t('Aviso de privacidad')} subtitle={t('Qué datos guarda el gimnasio y cómo pedir que los corrijan o borren')} accessory="chevron" onClick={() => nav('/privacidad')} />
         <Row icon="signOut" iconTint="var(--red)" title={t('Sign out')} danger onClick={() => confirmSheet({ title: t('Sign out?'), message: t('Your data is synced to your profile first, then cleared from this device.'), confirmText: t('Sign out'), danger: true, onConfirm: () => { signOut(); nav('/home') } })} />
         <Row icon="shield" iconTint="var(--red)" title={t('Sign out everywhere')} subtitle={t('Ends this profile’s sessions on all your devices.')} danger onClick={signOutEverywhere} />
       </> : webauthnOK() ? <>
