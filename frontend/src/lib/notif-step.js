@@ -25,3 +25,24 @@ export function notifStepDone(uid) {
 export function markNotifStepDone(uid) {
   try { localStorage.setItem(key(uid), '1') } catch { /* storage off: igual se cierra en memoria */ }
 }
+
+// iOS: en Safari solo se pueden dar instrucciones para instalar. La primera vez que abre la app
+// instalada (recién ahí el push funciona) se ofrece "Activar" una vez más, aunque ya haya pasado
+// el primer ingreso. La marca queda al cerrar las instrucciones y se borra al ofrecerlo.
+const iosKey = uid => 'gym_notif_ios:' + uid
+export function markIosReoffer(uid) {
+  try { localStorage.setItem(iosKey(uid), '1') } catch { /* storage off */ }
+}
+export function clearIosReoffer(uid) {
+  try { localStorage.removeItem(iosKey(uid)) } catch { /* storage off */ }
+}
+const iosReofferPending = uid => { try { return localStorage.getItem(iosKey(uid)) === '1' } catch { return false } }
+
+// Qué mostrar ahora: el paso del primer ingreso, o la segunda oferta en iOS ya instalada.
+// → { kind, reoffer } o null.
+export function notifStepFor(uid, { firstEntry, kind = notifStepKind() } = {}) {
+  if (!uid) return null
+  if (firstEntry && !notifStepDone(uid) && kind) return { kind, reoffer: false }
+  if (iosReofferPending(uid) && kind === 'enable') return { kind, reoffer: true }
+  return null
+}

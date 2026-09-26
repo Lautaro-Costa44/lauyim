@@ -1,5 +1,6 @@
+// @vitest-environment happy-dom
 import { describe, expect, it } from 'vitest'
-import { isIOS, isStandalone, notifStepKind } from './notif-step.js'
+import { clearIosReoffer, isIOS, isStandalone, markIosReoffer, markNotifStepDone, notifStepFor, notifStepKind } from './notif-step.js'
 
 describe('notif-step', () => {
   it('detecta iOS, también el iPad que se presenta como Mac', () => {
@@ -23,5 +24,18 @@ describe('notif-step', () => {
     expect(notifStepKind({ ...base, permission: 'granted' })).toBe(null)
     expect(notifStepKind({ ...base, permission: 'denied' })).toBe(null)
     expect(notifStepKind({ ...base, supported: false })).toBe(null)
+  })
+})
+
+describe('notifStepFor', () => {
+  it('primer ingreso una vez; en iOS, segunda oferta ya instalada', () => {
+    localStorage.clear()
+    expect(notifStepFor('u', { firstEntry: true, kind: 'ios-install' })).toEqual({ kind: 'ios-install', reoffer: false })
+    markNotifStepDone('u'); markIosReoffer('u')
+    expect(notifStepFor('u', { firstEntry: true, kind: 'ios-install' })).toBe(null)   // sigue en Safari
+    expect(notifStepFor('u', { firstEntry: false, kind: 'enable' })).toEqual({ kind: 'enable', reoffer: true })
+    clearIosReoffer('u')
+    expect(notifStepFor('u', { firstEntry: false, kind: 'enable' })).toBe(null)
+    expect(notifStepFor(null, { firstEntry: true, kind: 'enable' })).toBe(null)
   })
 })

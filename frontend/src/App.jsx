@@ -19,7 +19,7 @@ import { disableKeyboardAutofill } from './lib/input-safety.js'
 import Login from './views/Login.jsx'
 import LicenseExpired from './views/LicenseExpired.jsx'
 import MembershipBlocked from './views/MembershipBlocked.jsx'
-import { markNotifStepDone, notifStepDone, notifStepKind } from './lib/notif-step.js'
+import { clearIosReoffer, markIosReoffer, markNotifStepDone, notifStepFor } from './lib/notif-step.js'
 // Keep every authenticated screen out of the initial payload. The service worker
 // caches each chunk after first use, so repeat visits remain instant without
 // forcing a large first download on mobile connections.
@@ -100,8 +100,16 @@ function Shell() {
   const isAdminPath = loc.pathname === '/admin' || loc.pathname.startsWith('/admin/')
   // Primer ingreso (antes del tour y la encuesta): ofrecer notificaciones una vez por dispositivo.
   const [notifShown, setNotifShown] = useState(0)
-  const notifKind = user && !S.onboardingCompletado && !notifStepDone(user.id) ? notifStepKind() : null
-  const askNotif = !licenseExpired && !blocked && !!notifKind
+  const notif = user ? notifStepFor(user.id, { firstEntry: !S.onboardingCompletado }) : null
+  const askNotif = !licenseExpired && !blocked && !!notif
+  const notifDone = () => {
+    if (notif.reoffer) clearIosReoffer(user.id)
+    else {
+      markNotifStepDone(user.id)
+      if (notif.kind === 'ios-install') markIosReoffer(user.id)
+    }
+    setNotifShown(n => n + 1)
+  }
   void notifShown   // re-render al cerrar el paso (la marca vive en localStorage)
   if (!ready) return (
     <div id="app">
@@ -120,7 +128,7 @@ function Shell() {
         <ErrorBoundary>
           {licenseExpired ? <LicenseExpired /> : !authed ? <Login /> : blocked ? <MembershipBlocked />
             : askNotif ? <Suspense fallback={<div className="page-loading" aria-busy="true" />}>
-              <NotificationsStep kind={notifKind} onDone={() => { markNotifStepDone(user.id); setNotifShown(n => n + 1) }} /></Suspense> : (
+              <NotificationsStep kind={notif.kind} onDone={notifDone} /></Suspense> : (
             <Suspense fallback={<div className="page-loading" aria-busy="true" />}> 
             <Routes>
               <Route path="/home" element={<Home />} />

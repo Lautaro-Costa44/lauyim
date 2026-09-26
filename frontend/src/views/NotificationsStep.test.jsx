@@ -10,7 +10,11 @@ const enablePush = vi.hoisted(() => vi.fn())
 const kind = vi.hoisted(() => ({ value: 'enable' }))
 vi.mock('../lib/api.js', async importOriginal => ({ ...(await importOriginal()), api: apiMock }))
 vi.mock('../lib/push.js', async importOriginal => ({ ...(await importOriginal()), enablePush }))
-vi.mock('../lib/notif-step.js', async importOriginal => ({ ...(await importOriginal()), notifStepKind: () => kind.value }))
+vi.mock('../lib/notif-step.js', async importOriginal => {
+  const real = await importOriginal()
+  // Lo que ofrece "este dispositivo" lo decide el test (kind.value).
+  return { ...real, notifStepFor: (uid, opts) => real.notifStepFor(uid, { ...opts, kind: kind.value }) }
+})
 vi.mock('../lib/onboarding.js', () => ({ startTourA: vi.fn(), esperarElemento: vi.fn() }))
 
 const { useStore, DEF } = await import('../store/useStore.js')
@@ -93,6 +97,21 @@ describe('paso de notificaciones', () => {
     expect(text()).toContain('Agregar a inicio')
     await click(button('Entendido'))
     expect(text()).not.toContain('Instalá la app')
+  })
+
+  it('iOS: después de las instrucciones, al abrir la app instalada se ofrece una vez más', async () => {
+    kind.value = 'ios-install'
+    await mount()
+    await click(button('Entendido'))
+    await act(async () => { root.unmount() }); container.remove()
+    // Ya instalada (permiso sin decidir) y con el onboarding terminado.
+    kind.value = 'enable'
+    await mount({ onboardingCompletado: true })
+    expect(text()).toContain('¿Activamos las notificaciones?')
+    await click(button('Ahora no'))
+    await act(async () => { root.unmount() }); container.remove()
+    await mount({ onboardingCompletado: true })
+    expect(text()).not.toContain('¿Activamos las notificaciones?')
   })
 
   it('no aparece si ya terminó el onboarding, sin nada que ofrecer, ni sin sesión', async () => {

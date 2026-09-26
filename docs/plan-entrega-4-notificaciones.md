@@ -43,3 +43,10 @@ Sin librerías nuevas.
 - Orden con la entrega 3 (rama aparte, desde `main`): pendiente → formulario de datos →
   notificaciones → tour/encuesta. Al mergear las dos ramas, en `App.jsx` va primero `askProfile`
   y después `askNotif` (conflicto chico y previsto).
+
+## Ronda 2 (decisiones de Lautaro, 26/09/2026)
+
+- **Admins:** siguen incluidos (también les sirven los avisos).
+- **iOS:** al cerrar las instrucciones de instalación queda una marca (`gym_notif_ios:<uid>`). La
+  primera vez que abre la app instalada, con el permiso sin decidir, se ofrece "Activar / Ahora no"
+  una vez más, aunque ya haya terminado el onboarding (`notifStepFor`).
