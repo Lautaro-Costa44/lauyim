@@ -55,7 +55,9 @@ Sin librerías nuevas. No se toca `.env`, `docker-compose.yml` ni el servidor.
 
 ## Decisiones propias / PREGUNTAS
 
-- **PREGUNTA:** el script falla si el remote no es `crypt`. Es lo conservador (backups con DNIs
+- **RESUELTO (Lautaro):** sí, falla si el remote no es `crypt`. Orden: primero configurar
+  `gdrive-crypt:`, después copiar el script (anotado al principio del runbook).
+- (Pregunta original) el script falla si el remote no es `crypt`. Es lo conservador (backups con DNIs
   sin cifrar en Drive), pero el cron actual del servidor apunta a `gdrive-backup:` (sin cifrar):
   al copiar este script al servidor sin configurar el crypt, el backup nocturno **va a fallar**
   hasta que se configure. Salida de emergencia: `BACKUP_ALLOW_UNENCRYPTED=1`.
