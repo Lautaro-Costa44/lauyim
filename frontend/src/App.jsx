@@ -1,5 +1,5 @@
 import { HashRouter, Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom'
-import { lazy, Suspense, useEffect, useLayoutEffect } from 'react'
+import { lazy, Suspense, useEffect, useLayoutEffect, useState } from 'react'
 import { useStore } from './store/useStore.js'
 import { useUI } from './store/useUI.js'
 import { bindUI } from './components/ui.jsx'
@@ -19,6 +19,7 @@ import { disableKeyboardAutofill } from './lib/input-safety.js'
 import Login from './views/Login.jsx'
 import LicenseExpired from './views/LicenseExpired.jsx'
 import MembershipBlocked from './views/MembershipBlocked.jsx'
+import { markNotifStepDone, notifStepDone, notifStepKind } from './lib/notif-step.js'
 // Keep every authenticated screen out of the initial payload. The service worker
 // caches each chunk after first use, so repeat visits remain instant without
 // forcing a large first download on mobile connections.
@@ -33,6 +34,7 @@ const Settings = lazy(() => import('./views/Settings.jsx'))
 const AdminLayout = lazy(() => import('./views/admin/AdminLayout.jsx'))
 const SurveyWizard = lazy(() => import('./views/SurveyWizard.jsx'))
 const ImportPlan = lazy(() => import('./views/ImportPlan.jsx'))
+const NotificationsStep = lazy(() => import('./views/NotificationsStep.jsx'))
 
 bindUI(useUI)   // lets the shared controls open sheets without importing the store at module scope
 
@@ -96,6 +98,11 @@ function Shell() {
   // Bloqueo por cuota: pantalla completa, sin TabBar ni RestTimer. Nunca para staff.
   const blocked = !licenseExpired && membershipBlocked && !!user && !user.admin
   const isAdminPath = loc.pathname === '/admin' || loc.pathname.startsWith('/admin/')
+  // Primer ingreso (antes del tour y la encuesta): ofrecer notificaciones una vez por dispositivo.
+  const [notifShown, setNotifShown] = useState(0)
+  const notifKind = user && !S.onboardingCompletado && !notifStepDone(user.id) ? notifStepKind() : null
+  const askNotif = !licenseExpired && !blocked && !!notifKind
+  void notifShown   // re-render al cerrar el paso (la marca vive en localStorage)
   if (!ready) return (
     <div id="app">
       <div style={{ paddingTop: '44vh', display: 'flex', justifyContent: 'center' }}>
@@ -111,7 +118,9 @@ function Shell() {
           shares one key: switching sections must not re-mount the admin layout (and its poll). */}
       <div id="app" className={'vfade' + (isAdminPath ? ' admin-app' : '')} key={isAdminPath ? '/admin' : loc.pathname}>
         <ErrorBoundary>
-          {licenseExpired ? <LicenseExpired /> : !authed ? <Login /> : blocked ? <MembershipBlocked /> : (
+          {licenseExpired ? <LicenseExpired /> : !authed ? <Login /> : blocked ? <MembershipBlocked />
+            : askNotif ? <Suspense fallback={<div className="page-loading" aria-busy="true" />}>
+              <NotificationsStep kind={notifKind} onDone={() => { markNotifStepDone(user.id); setNotifShown(n => n + 1) }} /></Suspense> : (
             <Suspense fallback={<div className="page-loading" aria-busy="true" />}> 
             <Routes>
               <Route path="/home" element={<Home />} />
@@ -134,7 +143,7 @@ function Shell() {
           )}
         </ErrorBoundary>
       </div>
-      {!licenseExpired && !blocked && loc.pathname !== '/onboarding/encuesta' && <TabBar onStart={startFlow} />}
+      {!licenseExpired && !blocked && !askNotif && loc.pathname !== '/onboarding/encuesta' && <TabBar onStart={startFlow} />}
       {!licenseExpired && !blocked && <RestTimer />}
       {/* Boundary propio: Modals vive fuera de #app, así que un throw acá subía hasta la raíz y
           desmontaba la app entera — pantalla negra sin salida. NO va keyed en la ruta: Modals
