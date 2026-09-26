@@ -800,6 +800,20 @@ export function duplicatePresetProgram(programId, name) {
   });
 }
 
+// Borra un programa entero: sus días (con sus ejercicios, por el ON DELETE CASCADE) y el programa.
+// Lo que los socios ya cargaron no cambia: tienen su copia. Las definiciones de ejercicios custom
+// (preset_custom_exercises) quedan, para seguir reparando a quien use esos ejercicios.
+// Devuelve cuántos días borró, o null si el programa no existe.
+export function deletePresetProgram(programId) {
+  return presetTx(db => {
+    const program = getPresetProgramById(programId);
+    if (!program) return null;
+    const { changes } = db.prepare('DELETE FROM presets WHERE group_name = ?').run(program.name);
+    db.prepare('DELETE FROM preset_programs WHERE id = ?').run(programId);
+    return Number(changes);
+  });
+}
+
 // Renombra el programa y el group_name de todos sus días juntos.
 export function renamePresetProgram(programId, name) {
   return presetTx(db => {

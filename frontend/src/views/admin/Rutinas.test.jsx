@@ -29,6 +29,7 @@ const { AdminContext } = await import('./context.js')
 const { default: Rutinas } = await import('./Rutinas.jsx')
 const { assignProgram } = await import('./rutinas/AssignSheet.jsx')
 const { setLang } = await import('../../lib/i18n.js')
+const { useUI } = await import('../../store/useUI.js')
 
 const loadPresets = vi.fn(() => Promise.resolve())
 let root, container
@@ -106,6 +107,27 @@ describe('Rutinas', () => {
     await act(async () => container.querySelector('[aria-label="Duplicar PPL"]').click())
     expect(apiMock).toHaveBeenCalledWith('/api/admin/programs/duplicate', { method: 'POST', body: JSON.stringify({ id: 'gppl' }) })
     expect(loadPresets).toHaveBeenCalledTimes(2)
+  })
+
+  it('delete program: confirm sheet says how many days and that members keep theirs, then calls the server', async () => {
+    await mount()
+    await act(async () => container.querySelector('[aria-label="Eliminar programa PPL"]').click())
+    expect(apiMock.mock.calls.some(([url]) => url === '/api/admin/programs/delete')).toBe(false)
+    const sheets = useUI.getState().sheets
+    expect(sheets.length).toBeGreaterThan(0)
+    const rootEl = document.createElement('div')
+    document.body.appendChild(rootEl)
+    const sheetRoot = createRoot(rootEl)
+    const sheet = sheets.at(-1)
+    await act(async () => { sheetRoot.render(sheet.render(() => {}, { setOnBack: () => {} })) })
+    expect(rootEl.textContent).toContain('Se eliminan sus 2 días')
+    expect(rootEl.textContent).toContain('Los 3 socios que ya lo cargaron conservan sus rutinas.')
+    const confirm = [...rootEl.querySelectorAll('button')].find(b => b.textContent === 'Eliminar programa')
+    await act(async () => { confirm.click(); await new Promise(r => setTimeout(r, 10)) })
+    expect(apiMock).toHaveBeenCalledWith('/api/admin/programs/delete', { method: 'POST', body: JSON.stringify({ id: 'gppl' }) })
+    expect(loadPresets).toHaveBeenCalled()
+    await act(async () => sheetRoot.unmount())
+    rootEl.remove()
   })
 
   it('reordering with the keyboard sends every day of the program in the new order', async () => {

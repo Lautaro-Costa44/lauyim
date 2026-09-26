@@ -187,6 +187,26 @@ test('uso: socios activos con el programa cargado (source.programId), y cuántos
   assert.deepEqual(routines.body.routineGroups[0].source, { kind: 'preset', programId: general.id, at: 1 });
 });
 
+test('borrar un programa: se van sus días y el programa; las rutinas de los socios no cambian', async () => {
+  const created = await call('staff', 'POST', '/api/admin/presets', { name: 'A borrar', groupName: 'Temporal', plannedDay: 1, ex: [{ id: '0025', sets: 3, reps: 8 }] });
+  await call('staff', 'POST', '/api/admin/presets', { name: 'A borrar 2', groupName: 'Temporal', plannedDay: 2, ex: [] });
+  const program = (await presets()).programs.find(p => p.name === 'Temporal');
+  const socio = await call('staff', 'PUT', '/api/admin/users/beto/routines', { routines: [{ id: 'rb-temp', name: 'A borrar', ex: [{ id: '0025', sets: 3, reps: 8 }] }], week: {}, dayPlan: {} });
+  assert.equal(socio.status, 200);
+
+  assert.equal((await call('ana', 'POST', '/api/admin/programs/delete', { id: program.id })).status, 403);
+  const r = await call('staff', 'POST', '/api/admin/programs/delete', { id: program.id });
+  assert.equal(r.status, 200);
+  assert.equal(r.body.days, 2);
+  const after = await presets();
+  assert.equal(after.programs.some(p => p.id === program.id), false);
+  assert.equal(after.presets.some(p => p.group_name === 'Temporal' || p.id === created.body.preset.id), false);
+  assert.equal(after.groups.some(g => g.name === 'Temporal'), false);
+  assert.equal((await call('staff', 'POST', '/api/admin/programs/delete', { id: program.id })).status, 404);
+  const routines = await call('staff', 'GET', '/api/admin/users/beto/routines');
+  assert.deepEqual(routines.body.routines.map(r => r.name), ['A borrar']);
+});
+
 test('visibilidad: el seed se ve; un programa nuevo nace oculto y el socio no lo ve ni lo puede cargar', async () => {
   const general = (await presets()).programs.find(p => p.name === 'General');
   assert.equal(general.visibleToMembers, true);

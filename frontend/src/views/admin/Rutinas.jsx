@@ -58,6 +58,26 @@ export default function Rutinas() {
     .then(d => { toast(t('Día duplicado: {0}', d.preset.name)); reload() }).catch(e => toast(e.message))
   const duplicateProgram = program => api('/api/admin/programs/duplicate', { method: 'POST', body: JSON.stringify({ id: program.id }) })
     .then(d => { toast(t('Programa duplicado: {0}', d.program.name)); reload() }).catch(e => toast(e.message))
+  // Borra el programa con todos sus días. Lo que los socios ya cargaron es una copia: no cambia.
+  const deleteProgram = program => {
+    const days = daysOf(program, presets).length
+    const users = usage[program.id]?.users || 0
+    confirmSheet({
+      title: t('¿Eliminar {0}?', program.name),
+      message: t('Se eliminan sus {0} días del catálogo de programas.', days) + ' '
+        + (users ? t('Los {0} socios que ya lo cargaron conservan sus rutinas.', users) : t('Las rutinas que los socios ya cargaron no cambian.')),
+      confirmText: t('Eliminar programa'), danger: true,
+      onConfirm: () => api('/api/admin/programs/delete', { method: 'POST', body: JSON.stringify({ id: program.id }) })
+        .then(() => {
+          toast(t('Programa eliminado'))
+          if (filter === program.name) setFilter(null)
+          if (editing?.preset && daysOf(program, presets).some(d => d.id === editing.preset.id)) setEditing(null)
+          reload()
+          loadUsage()
+        })
+        .catch(e => toast(e.message))
+    })
+  }
   // Mostrar u ocultar el programa en la app del socio. Quien ya lo cargó conserva su rutina.
   const toggleVisible = (program, visible) => api('/api/admin/programs/visibility', { method: 'POST', body: JSON.stringify({ id: program.id, visible }) })
     .then(() => { toast(visible ? t('{0} ahora es visible para los socios', program.name) : t('{0} quedó oculto para los socios', program.name)); reload() })
@@ -114,7 +134,7 @@ export default function Rutinas() {
               {cards.map(({ program, days }) => <ProgramCard key={program.id || program.name} program={program} days={days}
                 usage={program.id ? usage[program.id] : null} body={body} editingId={panel ? editing.preset?.id : null}
                 onEdit={day => openEditor({ preset: day })} onAddDay={p => openEditor({ group: p.name })}
-                onDuplicateDay={duplicateDay} onDeleteDay={removeDay} onRename={renameProgram} onToggleVisible={toggleVisible}
+                onDuplicateDay={duplicateDay} onDeleteDay={removeDay} onRename={renameProgram} onDelete={deleteProgram} onToggleVisible={toggleVisible}
                 onDuplicate={duplicateProgram} onAssign={assign} onReorder={ids => reorder(program, ids)} />)}
             </div>}
     </div>

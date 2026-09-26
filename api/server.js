@@ -53,6 +53,7 @@ import {
   duplicatePreset,
   duplicatePresetProgram,
   renamePresetProgram,
+  deletePresetProgram,
   reorderPresets,
   getPresetPrograms,
   getPresetProgramById,
@@ -2845,6 +2846,17 @@ const routes = {
     if (!Array.isArray(body.ids) || !body.ids.every(id => typeof id === 'string')) return json(res, 400, { error: 'invalid ids' });
     if (!reorderPresets(body.programId, body.ids)) return json(res, 409, { error: 'PROGRAM_CHANGED', code: 'PROGRAM_CHANGED' });
     json(res, 200, { ok: true });
+  },
+
+  // Borra un programa con todos sus días. Los socios que ya lo cargaron conservan su copia.
+  'POST /api/admin/programs/delete': async (req, res) => {
+    const admin = requireAdmin(req, res); if (!admin) return;
+    const body = await readBody(req);
+    const program = getPresetProgramById(body.id);
+    if (!program) return json(res, 404, { error: 'no such program' });
+    const days = deletePresetProgram(program.id);
+    audit(req, 'admin.program.delete', { user: admin, msg: `${program.name} (${days} días)` });
+    json(res, 200, { ok: true, days });
   },
 
   'PUT /api/admin/programs': async (req, res) => {

@@ -20,7 +20,7 @@ function usageLabel(usage) {
 // con series efectivas por músculo en escala fija, así dos programas se comparan de un
 // vistazo), cuántos socios lo tienen cargado, si la app del socio lo ofrece y sus días, que se
 // reordenan arrastrando.
-export default function ProgramCard({ program, days, usage, body, editingId, onEdit, onAddDay, onDuplicateDay, onDeleteDay, onRename, onDuplicate, onAssign, onReorder, onToggleVisible }) {
+export default function ProgramCard({ program, days, usage, body, editingId, onEdit, onAddDay, onDuplicateDay, onDeleteDay, onRename, onDuplicate, onDelete, onAssign, onReorder, onToggleVisible }) {
   const stats = programStats(days)
   const ids = days.map(d => d.id)
   const idsKey = ids.join('|')
@@ -51,6 +51,7 @@ export default function ProgramCard({ program, days, usage, body, editingId, onE
           <button type="button" className="iconbtn" aria-label={t('Asignar {0} a un socio', program.name)} title={t('Asignar a socio')} onClick={() => onAssign(program)}><Icon name="person" /></button>
           <button type="button" className="iconbtn" aria-label={t('Duplicar {0}', program.name)} title={t('Duplicar programa')} onClick={() => onDuplicate(program)}><Icon name="copy" /></button>
           <button type="button" className="iconbtn" aria-label={t('Renombrar {0}', program.name)} title={t('Renombrar programa')} onClick={() => onRename(program)}><Icon name="pencil" /></button>
+          <button type="button" className="iconbtn danger" aria-label={t('Eliminar programa {0}', program.name)} title={t('Eliminar programa')} onClick={() => onDelete(program)}><Icon name="trash" /></button>
         </>}
       </div>
     </div>
