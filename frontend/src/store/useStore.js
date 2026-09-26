@@ -158,6 +158,13 @@ export const useStore = create((set, get) => {
     set({ accountPending: on })
   }
   if (typeof window !== 'undefined') window.addEventListener('gym:account_pending', () => setAccountPending(true))
+  // Se registró con datos de invitado mientras la cuenta esperaba la aprobación (Login.jsx): se
+  // suben la primera vez que /api/me dice que ya está habilitada.
+  const pushAfterApproval = async () => {
+    if (localStorage.getItem('gym_push_on_approval') !== '1') return
+    localStorage.removeItem('gym_push_on_approval')
+    await get().pushState()
+  }
   // /api/me: pendiente y formulario de datos de una sola vez (profilePrompt: { fields } | null).
   const applyMeAccount = me => {
     if (me && 'pending' in me) setAccountPending(me.pending)
@@ -309,6 +316,7 @@ export const useStore = create((set, get) => {
       applyMeBilling(me)
       applyMeAccount(me)
       if (get().membershipBlocked || get().accountPending) return false
+      await pushAfterApproval()
       await get().syncPending()
       await get().pullState()
       return true
@@ -466,6 +474,7 @@ export const useStore = create((set, get) => {
         applyMeBilling(me)
         applyMeAccount(me)
         if (!get().membershipBlocked && !get().accountPending) {
+          await pushAfterApproval()
           // Apply any local operations that were recorded while the device was offline.
           await get().syncPending()
           // Pull after the queue is drained so a just-completed local change cannot be

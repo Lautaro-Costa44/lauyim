@@ -53,7 +53,12 @@ export function RegisterSheet({ close, setOnBack }) {
       setUser(u); close()
       // Con la aprobación del staff: pantalla de pendiente; los datos locales quedan en el
       // dispositivo y se sincronizan cuando la habiliten.
-      if (pending) { window.dispatchEvent(new CustomEvent('gym:account_pending')); return }
+      if (pending) {
+        // Datos de invitado en este dispositivo: se suben a la cuenta cuando la habiliten.
+        if (hasData(useStore.getState().S)) localStorage.setItem('gym_push_on_approval', '1')
+        window.dispatchEvent(new CustomEvent('gym:account_pending'))
+        return
+      }
       if (hasData(useStore.getState().S)) { await pushState(); useUI.getState().toast(t('Profile created — data from this device moved into it')) }
       else { await pullState(); useUI.getState().toast(t('Welcome, {0}', u.name)) }
     } catch (e) {
