@@ -1,5 +1,5 @@
 import { HashRouter, Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom'
-import { lazy, Suspense, useEffect, useLayoutEffect } from 'react'
+import { lazy, Suspense, useEffect, useLayoutEffect, useState } from 'react'
 import { useStore } from './store/useStore.js'
 import { useUI } from './store/useUI.js'
 import { bindUI } from './components/ui.jsx'
@@ -19,6 +19,7 @@ import { disableKeyboardAutofill } from './lib/input-safety.js'
 import Login from './views/Login.jsx'
 import LicenseExpired from './views/LicenseExpired.jsx'
 import MembershipBlocked from './views/MembershipBlocked.jsx'
+import { markNotifStepDone, notifStepDone, notifStepKind } from './lib/notif-step.js'
 // Keep every authenticated screen out of the initial payload. The service worker
 // caches each chunk after first use, so repeat visits remain instant without
 // forcing a large first download on mobile connections.
@@ -35,6 +36,7 @@ const SurveyWizard = lazy(() => import('./views/SurveyWizard.jsx'))
 const ImportPlan = lazy(() => import('./views/ImportPlan.jsx'))
 const Privacy = lazy(() => import('./views/Privacy.jsx'))
 const ProfileOnce = lazy(() => import('./views/ProfileOnce.jsx'))
+const NotificationsStep = lazy(() => import('./views/NotificationsStep.jsx'))
 
 bindUI(useUI)   // lets the shared controls open sheets without importing the store at module scope
 
@@ -105,6 +107,12 @@ function Shell() {
   const isAdminPath = loc.pathname === '/admin' || loc.pathname.startsWith('/admin/')
   // El aviso de privacidad es público: se ve sin sesión, con la licencia vencida o bloqueado.
   const isPrivacy = loc.pathname === '/privacidad'
+  // Primer ingreso (antes del tour y la encuesta, después del formulario de datos): ofrecer
+  // notificaciones una vez por dispositivo.
+  const [notifShown, setNotifShown] = useState(0)
+  const notifKind = user && !S.onboardingCompletado && !notifStepDone(user.id) ? notifStepKind() : null
+  const askNotif = !licenseExpired && !blocked && !askProfile && !!notifKind
+  void notifShown   // re-render al cerrar el paso (la marca vive en localStorage)
   if (!ready) return (
     <div id="app">
       <div style={{ paddingTop: '44vh', display: 'flex', justifyContent: 'center' }}>
@@ -122,7 +130,9 @@ function Shell() {
         <ErrorBoundary>
           {isPrivacy ? <Suspense fallback={<div className="page-loading" aria-busy="true" />}><Privacy /></Suspense>
             : licenseExpired ? <LicenseExpired /> : !authed ? <Login /> : blocked ? <MembershipBlocked />
-            : askProfile ? <Suspense fallback={<div className="page-loading" aria-busy="true" />}><ProfileOnce /></Suspense> : (
+            : askProfile ? <Suspense fallback={<div className="page-loading" aria-busy="true" />}><ProfileOnce /></Suspense>
+            : askNotif ? <Suspense fallback={<div className="page-loading" aria-busy="true" />}>
+              <NotificationsStep kind={notifKind} onDone={() => { markNotifStepDone(user.id); setNotifShown(n => n + 1) }} /></Suspense> : (
             <Suspense fallback={<div className="page-loading" aria-busy="true" />}> 
             <Routes>
               <Route path="/home" element={<Home />} />
@@ -145,7 +155,7 @@ function Shell() {
           )}
         </ErrorBoundary>
       </div>
-      {!licenseExpired && !blocked && !askProfile && !isPrivacy && loc.pathname !== '/onboarding/encuesta' && <TabBar onStart={startFlow} />}
+      {!licenseExpired && !blocked && !askProfile && !askNotif && !isPrivacy && loc.pathname !== '/onboarding/encuesta' && <TabBar onStart={startFlow} />}
       {!licenseExpired && !blocked && <RestTimer />}
       {/* Boundary propio: Modals vive fuera de #app, así que un throw acá subía hasta la raíz y
           desmontaba la app entera — pantalla negra sin salida. NO va keyed en la ruta: Modals
