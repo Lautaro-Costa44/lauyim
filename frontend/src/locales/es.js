@@ -700,6 +700,7 @@ export default {
   'Turned membership billing on': 'Activó el cobro de cuotas',
   'Turned membership billing off': 'Desactivó el cobro de cuotas',
   'Changed membership notice time': 'Cambió el horario de avisos de cuota',
+  'Changed the privacy notice details': 'Cambió los datos del aviso de privacidad',
   'Linked app access to a member record': 'Vinculó su acceso a la app',
   'App access linking failed': 'Error al vincular el acceso a la app',
   'Created an invite code': 'Código de invitación creado',

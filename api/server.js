@@ -136,6 +136,7 @@ import {
   normalizeDni, maskDni, profileChangeSummary, formatLinkCode, canonicalLinkCode, missingRequiredFields
 } from './members.js';
 import { parseImportBody, analyzeImport } from './member-import.js';
+import { PRIVACY_GYM_NAME_SETTING, PRIVACY_CONTACT_SETTING, validatePrivacySettings } from './privacy.js';
 import {
   getBillingSettings, validateBillingSettings, serializeBillingSetting, gymToday,
   billingStatus, nextDueDate, debtTotal, isIsoDate, daysBetween,
@@ -3244,6 +3245,36 @@ const routes = {
     json(res, 200, { billing_notify_hour: getBillingNotifyHour(getDatabase()), gym_tz: billingSettingsNow().gym_tz });
   },
 
+  /* ---------- aviso de privacidad ---------- */
+  // Público (sin sesión): la página /#/privacidad arma el texto con esto. Solo datos que el
+  // aviso tiene que decir de todos modos: quién es el responsable y qué datos se piden.
+  'GET /api/privacy': async (req, res) => {
+    const fields = memberFieldsNow();
+    json(res, 200, {
+      gymName: getAdminSetting(PRIVACY_GYM_NAME_SETTING, ''),
+      contact: getAdminSetting(PRIVACY_CONTACT_SETTING, ''),
+      fields: Object.keys(fields).filter(k => fields[k].enabled),
+      billingEnabled: billingEnabledNow(),
+      auditDays: AUDIT_ON ? AUDIT_DAYS : null
+    });
+  },
+
+  'GET /api/owner/privacy': async (req, res) => {
+    if (!requireOwner(req, res)) return;
+    json(res, 200, { gymName: getAdminSetting(PRIVACY_GYM_NAME_SETTING, ''), contact: getAdminSetting(PRIVACY_CONTACT_SETTING, '') });
+  },
+
+  'PUT /api/owner/privacy': async (req, res) => {
+    const owner = requireOwner(req, res); if (!owner) return;
+    const checked = validatePrivacySettings(await readBody(req));
+    if (checked.error) return json(res, 400, { error: checked.error });
+    if (checked.value.gymName !== undefined) setAdminSetting(PRIVACY_GYM_NAME_SETTING, checked.value.gymName);
+    if (checked.value.contact !== undefined) setAdminSetting(PRIVACY_CONTACT_SETTING, checked.value.contact);
+    const out = { gymName: getAdminSetting(PRIVACY_GYM_NAME_SETTING, ''), contact: getAdminSetting(PRIVACY_CONTACT_SETTING, '') };
+    audit(req, 'owner.privacy.settings', { user: owner, summary: `Responsable: ${out.gymName || '—'}` });
+    json(res, 200, out);
+  },
+
   /* ---------- fichas de socio ---------- */
   // Config de campos: la leen los admins (arman los formularios con ella), la cambia el owner.
   'GET /api/admin/members/settings': async (req, res) => {
@@ -3701,7 +3732,7 @@ http.createServer(async (req, res) => {
   // Verificar expiración de licencia por fecha (si está configurada y vencida)
   // Excluimos /api/health para que monitores o chequeos básicos puedan seguir funcionando si es necesario, 
   // pero endpoints protegidos / login / /api/me devuelven license_expired.
-  if (LICENSE_EXPIRES_AT && Date.now() > LICENSE_EXPIRES_AT && url.pathname.startsWith('/api/') && url.pathname !== '/api/health' && url.pathname !== '/api/support') {
+  if (LICENSE_EXPIRES_AT && Date.now() > LICENSE_EXPIRES_AT && url.pathname.startsWith('/api/') && url.pathname !== '/api/health' && url.pathname !== '/api/support' && url.pathname !== '/api/privacy') {
     return json(res, 403, { error: 'license_expired' });
   }
 
