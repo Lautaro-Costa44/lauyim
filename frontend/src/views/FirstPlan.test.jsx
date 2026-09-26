@@ -2,7 +2,7 @@
 // Primer ingreso: el cartel de bienvenida de Home ofrece los programas del gym visibles para
 // socios (con días y músculos principales) además de la encuesta y armar la rutina a mano; sin
 // programas (o ninguno visible) queda como antes. "Cargar un plan" en Plan abre el mismo
-// selector; sin programas carga el plan incluido. "Cargar planes pre-creados" en Configuración
+// selector; sin programas el botón no aparece (la app no trae un plan propio). "Cargar planes pre-creados" en Configuración
 // solo aparece si hay programas. Cargar un programa pasa por POST /api/presets/apply, que
 // rechaza (403) uno que el admin ocultó después de abierta la lista.
 import React, { act } from 'react'
@@ -132,12 +132,12 @@ describe('Plan · Cargar un plan', () => {
     expect(useUI.getState().sheets).toHaveLength(0)
   })
 
-  it('sin programas carga el plan incluido, como antes', async () => {
+  it('sin programas visibles el botón no aparece y no se carga ningún plan', async () => {
     presetsAnswer = { presets: [], groups: [], programs: [] }
     await render(<Plan />, {}, MEMBER)
-    await clickText('button', 'Cargar un plan')
-    expect(useUI.getState().sheets).toHaveLength(0)
-    expect(useStore.getState().S.routines.map(r => r.name)).toEqual(['Push Day', 'Pull Day', 'Leg Day'])
+    expect(text()).toContain('Aún no hay rutinas.')
+    expect([...container.querySelectorAll('button')].some(b => b.textContent.includes('Cargar un plan'))).toBe(false)
+    expect(useStore.getState().S.routines).toEqual([])
   })
 })
 

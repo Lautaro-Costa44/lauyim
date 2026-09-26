@@ -1,9 +1,12 @@
+import { useEffect, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useStore } from '../store/useStore.js'
 import { useUI } from '../store/useUI.js'
 import { DAYN, uid, exCount } from '../lib/format.js'
 import { t } from '../lib/i18n.js'
-import { dayAssignSheet, loadStarterPlan, planToolsSheet, confirmSheet, inputSheet } from '../sheets.jsx'
+import { dayAssignSheet, programPickerSheet, planToolsSheet, confirmSheet, inputSheet } from '../sheets.jsx'
+import { api } from '../lib/api.js'
+import { programsOf } from '../components/ProgramPicker.jsx'
 import { MAX_ROUTINE_GROUPS } from '../lib/routineGroups.js'
 import Icon from '../components/Icon.jsx'
 import { Button, Segmented } from '../components/ui.jsx'
@@ -23,6 +26,17 @@ export default function Plan() {
   const removeGroup = useStore(s => s.removeGroup)
 
   const renameGroup = useStore(s => s.renameGroup)
+  // Programas del gym visibles para socios, para "Cargar un plan" (solo sin rutinas). Sin
+  // ninguno el botón no aparece: la app no trae un plan propio.
+  const [presetData, setPresetData] = useState(null)
+  const empty = S.routines.length === 0
+  useEffect(() => {
+    if (!empty) return
+    let alive = true
+    api('/api/presets').then(d => { if (alive) setPresetData(d) }).catch(() => {})
+    return () => { alive = false }
+  }, [empty])
+  const canLoadPlan = programsOf(presetData).length > 0
 
   const addRoutine = () => {
     const r = { id: uid(), name: t('New routine'), emoji: DEFAULT_GLYPH, ex: [] }
@@ -111,8 +125,10 @@ export default function Plan() {
         <span className="lrow-i"><Icon name={glyphOf(r.emoji)} /></span>
         <div className="grow"><div className="tt">{r.name}</div><div className="ss">{exCount(r.ex.length)}</div></div>
         <Icon name="chevronRight" className="chev" /></div>)}</div> : <>
-        <div className="empty"><div className="ico"><Icon name="clipboard" /></div>{t('No routines yet.')}<br />{t('Create one or load the starter plan.')}
-          <div style={{ marginTop: 14 }}><Button variant="tinted" icon="list" onClick={loadStarterPlan}>{t('Cargar un plan')}</Button></div>
+        <div className="empty"><div className="ico"><Icon name="clipboard" /></div>{t('No routines yet.')}
+          {canLoadPlan && <><br />{t('Create one or load the starter plan.')}
+            <div style={{ marginTop: 14 }}><Button variant="tinted" icon="list" onClick={() => programPickerSheet(presetData)}>{t('Cargar un plan')}</Button></div>
+          </>}
         </div>
       </>}
       <div style={{ marginTop: 12, paddingTop: 10, borderTop: 'var(--sep) solid' }}>

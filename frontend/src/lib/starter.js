@@ -1,5 +1,6 @@
-// The Push/Pull/Legs starter plan. Shared by the "Load starter plan" action in Settings
-// and by the demo build, which seeds a history on top of exactly these routines.
+// The Push/Pull/Legs routines of the demo build, which seeds a history on top of exactly these.
+// The member app never offers them as a plan: a new gym gets the same PPL as its first program
+// from the server (DEFAULT_PRESETS in api/server.js), and "Cargar un plan" only lists programs.
 import { uid } from './format.js'
 import { addGroupToState, applyPlannedDays, canAddGroup, createRoutineGroup, syncActiveGroupInState, validateGroupName } from './routineGroups.js'
 

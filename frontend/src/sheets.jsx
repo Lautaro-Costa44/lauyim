@@ -8,8 +8,7 @@ import { lastEntryFor, bestWeightFor, buildSets, effectiveRoutineId, workoutVolu
 import { beep, vibrate } from './lib/sound.js'
 import { t, instrFor, exerciseNameFor, getLang, INSTR_LANGS } from './lib/i18n.js'
 import { nav } from './lib/nav.js'
-import { starterRoutines } from './lib/starter.js'
-import ProgramPicker, { programsOf } from './components/ProgramPicker.jsx'
+import ProgramPicker from './components/ProgramPicker.jsx'
 import { api } from './lib/api.js'
 import Media, { Thumb } from './components/Media.jsx'
 import Stepper from './components/Stepper.jsx'
@@ -69,32 +68,7 @@ export function inputSheet(opts) {
   ui().openSheet(close => <InputDialog {...opts} close={close} />, { kind: 'center' })
 }
 
-/* ============================ starter plan ============================ */
-// "Load starter plan": with programs set up by the gym, the member picks one (same selector as
-// the first-login card); without any (or offline), the built-in Push/Pull/Legs as before.
-export async function loadStarterPlan() {
-  let data = null
-  if (useStore.getState().user) {
-    try { data = await api('/api/presets') } catch (e) { /* offline: built-in plan below */ }
-  }
-  if (programsOf(data).length) return programPickerSheet(data)
-  const routines = starterRoutines()
-  let result
-  update(st => {
-    const candidate = [...(st.routines || []), ...routines]
-    result = applyPlannedDays(routines, st.week, { groupRoutines: candidate })
-    if (!result.ok) return
-    st.routines.push(...routines)
-    st.week = result.week
-    st.estadoInicial = 'plan_predeterminado'
-  })
-  if (result && !result.ok) {
-    toast(t('La rutina “{0}” ya está planeada para el {1}.', result.routine?.name || t('Routine'), t(DAYN[result.conflict.day])))
-    return
-  }
-  toast(t('Starter plan loaded'))
-}
-
+/* ============================ program picker ============================ */
 // The gym's programs in a sheet; picking one loads it and closes.
 export function programPickerSheet(data) {
   ui().openSheet(close => <>
