@@ -91,7 +91,7 @@ function arNational(n) {
 
 // Celular: se guarda lo ingresado y un phone_norm E.164 best-effort para Argentina
 // (+549 + área + abonado). Contempla 0 de larga distancia, 15 de celular y los prefijos +54,
-// +54 9 y 00 54. Si no se puede normalizar, phoneNorm = null; se rechaza solo con menos de 8
+// +54 9, 00 54 y 549 sin el +. Si no se puede normalizar, phoneNorm = null; se rechaza solo con menos de 8
 // dígitos o caracteres que no son de teléfono. → { value: { phone, phoneNorm } } o { error }.
 export function normalizePhone(raw) {
   if (typeof raw !== 'string' && typeof raw !== 'number') return { error: 'Celular inválido' };
@@ -102,6 +102,9 @@ export function normalizePhone(raw) {
 
   let international = phone.startsWith('+');
   if (!international && digits.startsWith('00')) { international = true; digits = digits.slice(2); }
+  // 549 + área + abonado sin el + (el formato de wa.me y del export de socios). Ningún número
+  // nacional empieza con 54 (las áreas empiezan con 11, 2 o 3), así que no hay ambigüedad.
+  if (!international && /^549?\d{10}$/.test(digits)) international = true;
   if (digits.length > 15) return { error: 'Celular inválido' };
 
   let national = null;

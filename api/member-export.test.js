@@ -14,7 +14,7 @@ test('csvCell: fórmulas neutralizadas, comillas y separador', () => {
 test('membersCsv: BOM, ";", columnas de cuota solo con cuotas encendido', () => {
   const members = [
     { name: 'ana', created: '2026-03-05T12:00:00.000Z', disabled: false, hasApp: true,
-      profile: { fullName: 'Ana Gómez', dni: '30.111.222', phone: '+54 9 11 5555-5555', email: 'ana@x.com' },
+      profile: { fullName: 'Ana Gómez', dni: '30.111.222', phone: '+54 9 11 5555-5555', phoneNorm: '+5491155555555', email: 'ana@x.com' },
       billing: { planName: 'Mensual', dueDate: '2026-10-10', status: 'al_dia' } },
     { name: '=cmd', created: null, disabled: true, hasApp: false, profile: null, billing: null }
   ];
@@ -22,8 +22,18 @@ test('membersCsv: BOM, ";", columnas de cuota solo con cuotas encendido', () => 
   assert.equal(on.count, 2);
   assert.ok(on.csv.startsWith('\uFEFFUsuario;Nombre y apellido;DNI;Celular;Mail;Usa la app;Estado;Alta;Plan;Vence;Estado de cuota\r\n'));
   const lines = on.csv.slice(1).trim().split('\r\n');
-  assert.equal(lines[1], "ana;Ana Gómez;30.111.222;'+54 9 11 5555-5555;ana@x.com;Sí;Activo;05/03/2026;Mensual;10/10/2026;Al día");
+  assert.equal(lines[1], "ana;Ana Gómez;30.111.222;5491155555555;ana@x.com;Sí;Activo;05/03/2026;Mensual;10/10/2026;Al día");
   assert.equal(lines[2], "'=cmd;;;;;No;Desactivado;;;;");
   const off = membersCsv(members, { billingEnabled: false });
   assert.ok(!off.csv.includes('Plan'));
+});
+
+test('celular: 549… sin + desde el normalizado; sin normalizar, lo cargado sin el +; y la importación lo entiende', async () => {
+  const { exportPhone } = await import('./member-export.js');
+  const { normalizePhone } = await import('./members.js');
+  assert.equal(exportPhone({ phone: '11 5555-5555', phoneNorm: '+5491155555555' }), '5491155555555');
+  assert.equal(exportPhone({ phone: '+1 415 555 2671', phoneNorm: '+14155552671' }), '14155552671');
+  assert.equal(exportPhone({ phone: '+598 99 123', phoneNorm: null }), '598 99 123');
+  assert.equal(exportPhone({ phone: null }), '');
+  assert.equal(normalizePhone(exportPhone({ phoneNorm: '+5491155555555' })).value.phoneNorm, '+5491155555555');
 });

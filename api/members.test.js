@@ -43,6 +43,10 @@ test('celular: casos argentinos a +549 + área + número', () => {
   assert.equal(norm('+54 9 351 123 4567'), '+5493511234567');
   assert.equal(norm('02966 15 12-3456'), '+5492966123456');          // área de 4 dígitos
   assert.equal(norm('+1 415 555 2671'), '+14155552671');             // otro país: E.164 tal cual
+  // 549 sin el + (wa.me y el export de socios): la importación lo vuelve a entender.
+  assert.equal(norm('5491112345678'), '+5491112345678');
+  assert.equal(norm('541112345678'), '+5491112345678');
+  assert.equal(norm('5493511234567'), '+5493511234567');
 });
 
 test('celular: sin normalizar se acepta con 8+ dígitos (phone_norm null); se rechaza lo demás', () => {
