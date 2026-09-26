@@ -2936,7 +2936,8 @@ const routes = {
         workouts: workouts.length,
         lastWorkout: last ? last.d : null,
         lastSync: S._ts || null,
-        hasPush: getSubscriptionsByUserId(u.id).length > 0,
+        // Solo suscripciones a las que se puede enviar: una bloqueada por la allowlist no cuenta.
+        hasPush: getSubscriptionsByUserId(u.id).some(sub => !pushEndpointError(sub.endpoint)),
         live: livePresence(u.id),
         billing: (b => ({ status: billingStatus(b, today, settings), dueDate: b.dueDate ?? null }))(billingByUser.get(u.id) || {})
       };
