@@ -87,3 +87,30 @@ el registro con datos lleva el check "Acepto" del aviso de privacidad, que vive 
   gym. Lo pide la spec; queda limitado por el rate limit de registro (30/IP) y el mensaje no dice
   a quién pertenece.
 - Con cuotas apagado, el modo guardado se conserva pero se aplica como "Aprobar".
+
+## Ronda 2 (decisiones de Lautaro, 26/09/2026)
+
+- Las cinco decisiones de aprobación quedan **aprobadas**. Además: al apagar la aprobación con
+  pendientes, el interruptor avisa "Hay N cuentas pendientes: habilitalas o siguen esperando"
+  (`pendingCount` en `GET /api/admin/approval`).
+- **Consentimiento de datos de salud** (peso, edad, género, altura, % de grasa, lesiones y
+  nutrición; `api/health.js`):
+  - `users.health_consent` (`granted` / `declined` / NULL = cuenta de antes) y `health_consent_at`.
+  - Registro (con y sin aprobación) y **vinculación con código** exigen `healthConsent: true`; en
+    la vinculación, que falte no suma intentos al código.
+  - Cuentas de antes: se pregunta una vez al entrar (Acepto / No acepto; hay que elegir).
+  - Revocable: Ajustes → Datos de salud (dar / retirar). Retirarlo = rechazarlo.
+  - Sin consentimiento **pueden seguir usando la app**. Se ocultan Nutrición, el peso corporal
+    (y su pedido antes de entrenar), edad/altura/grasa en Ajustes y la biometría y las lesiones
+    de la encuesta. Servidor: `GET /api/data` sin esos datos, PUT/sync los conservan sin cambios
+    (ni se muestran ni se sincronizan), nutrición responde 403 `health_consent_required`.
+  - Lo ya cargado queda guardado hasta que el socio toque "Borrar mis datos de salud"
+    (`POST /api/me/health-data/delete`, solo sin consentimiento, irreversible). Rutinas y
+    entrenamientos no se tocan.
+  - Admin: para ese socio, nutrición y lesiones de "Administrar" muestran "Sin consentimiento de
+    datos de salud" y quedan deshabilitadas (409 `no_health_consent`); tampoco ve sus pesajes.
+  - Si después lo da, todo vuelve a aparecer.
+- Auditoría: `auth.health.granted`, `auth.health.revoked`, `auth.health.deleted`.
+- **PREGUNTA (menor):** el diagrama del cuerpo de Ajustes ("Body diagram") sigue visible sin
+  consentimiento: es solo cómo se dibuja el mapa muscular, pero hoy también escribe `genero` (el
+  servidor lo ignora sin consentimiento). ¿Lo desacoplo de `genero`?

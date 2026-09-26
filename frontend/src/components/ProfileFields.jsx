@@ -27,7 +27,8 @@ export function profileBody(fields, values) {
 export const missingRequired = (fields, values) =>
   askedFields(fields).filter(f => fields[f.key].required && !String(values[f.prop] || '').trim())
 
-export function ProfileFields({ fields, values, onChange, errors = {}, accepted, onAccept, onPrivacy }) {
+// accept={false}: sin el check del aviso (el registro usa ConsentCheck, que suma los datos de salud).
+export function ProfileFields({ fields, values, onChange, errors = {}, accepted, onAccept, onPrivacy, accept = true }) {
   const shown = askedFields(fields)
   return <div className="profile-fields">
     {shown.map(f => <label key={f.key} className="member-field">
@@ -38,9 +39,9 @@ export function ProfileFields({ fields, values, onChange, errors = {}, accepted,
       {errors[f.key] && <span className="form-error" role="alert">{errors[f.key]}</span>}
     </label>)}
     {shown.some(f => fields[f.key].required) && <div className="dim small">{t('* Obligatorio')}</div>}
-    <label className="privacy-accept">
+    {accept && <label className="privacy-accept">
       <input type="checkbox" checked={!!accepted} onChange={e => onAccept(e.target.checked)} />
       <span>{t('Acepto el')} <PrivacyLink onClick={onPrivacy}>{t('aviso de privacidad')}</PrivacyLink></span>
-    </label>
+    </label>}
   </div>
 }

@@ -12,9 +12,9 @@ vi.mock('../lib/api.js', async importOriginal => {
   return {
     ...real, api: apiMock, webauthnOK: () => true,
     linkOptions: code => apiMock('/api/link/options', { method: 'POST', body: JSON.stringify({ code }) }),
-    linkPasskey: async ({ cid }) => {
+    linkPasskey: async ({ cid }, { healthConsent } = {}) => {
       await navigator.credentials.create({})
-      return (await apiMock('/api/link/verify', { method: 'POST', body: JSON.stringify({ cid }) })).user
+      return (await apiMock('/api/link/verify', { method: 'POST', body: JSON.stringify({ cid, healthConsent }) })).user
     }
   }
 })
@@ -42,6 +42,8 @@ const flush = async () => { for (let i = 0; i < 8; i++) await tick() }
 const text = () => document.body.textContent
 const button = label => [...document.querySelectorAll('button')].filter(b => b.textContent.trim() === label).at(-1)
 const click = async el => { expect(el).toBeTruthy(); await act(async () => { el.click() }); await flush() }
+// El consentimiento (aviso + datos de salud) va antes de crear la passkey.
+const acceptConsent = async () => { await act(async () => { document.querySelector('.privacy-accept input').click() }); await flush() }
 const codeInput = () => document.querySelector('input[aria-label="Código del gym"]')
 
 let root, container
@@ -106,8 +108,13 @@ describe('login con código del gym', () => {
     expect(JSON.parse(apiMock.mock.calls.find(([u]) => u === '/api/link/options')[1].body)).toEqual({ code: 'ABCD-EFGH' })
     expect(text()).toContain('Vas a crear tu acceso como Juan Pérez')
     expect(create).not.toHaveBeenCalled()
+    expect(button('Confirmar').disabled).toBe(true)
+    expect(document.querySelector('.privacy-accept').textContent).toContain('datos de salud')
+    await acceptConsent()
     await click(button('Confirmar'))
     expect(create).toHaveBeenCalledTimes(1)
+    expect(JSON.parse(apiMock.mock.calls.find(([u]) => u === '/api/link/verify')[1].body).healthConsent).toBe(true)
+    expect(useStore.getState().healthConsent).toBe('granted')
     expect(useStore.getState().user.id).toBe('f')
     expect(apiMock.mock.calls.some(([u]) => u === '/api/me')).toBe(true)     // boot normal: cuota
   })
@@ -116,6 +123,7 @@ describe('login con código del gym', () => {
     create.mockRejectedValue(Object.assign(new Error('cancelled'), { name: 'NotAllowedError' }))
     await mount('/?link=ABCDEFGH')
     await click(button('Continuar'))
+    await acceptConsent()
     await click(button('Confirmar'))
     expect(text()).toContain('Vas a crear tu acceso como Juan Pérez')
     expect(document.querySelector('.form-error')).toBeNull()
@@ -138,6 +146,7 @@ describe('login con código del gym', () => {
     verifyReply = () => fail(400, 'link_invalid')
     await mount('/?link=ABCDEFGH')
     await click(button('Continuar'))
+    await acceptConsent()
     await click(button('Confirmar'))
     expect(document.querySelector('.form-error').textContent).toBe('El código no es válido o venció. Pedí uno nuevo en recepción.')
     expect(useStore.getState().user).toBeNull()

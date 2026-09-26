@@ -97,6 +97,12 @@ const readJSON = key => { try { return JSON.parse(localStorage.getItem(key)) || 
 // motivo. Flag persistido; solo lo apaga un /api/me que diga pending: false.
 const PENDING_KEY = 'gym_account_pending'
 export const billingExempt = user => !!(user?.staff ?? user?.admin)
+// Consentimiento de datos de salud (api/health.js): 'granted' | 'declined' | null (cuenta de antes,
+// todavía no se le preguntó). Se guarda para que, offline, las secciones sigan ocultas.
+const HEALTH_KEY = 'gym_health_consent'
+const readHealth = () => { try { const v = localStorage.getItem(HEALTH_KEY); return v === 'granted' || v === 'declined' ? v : null } catch { return null } }
+// Sin consentimiento: se ocultan nutrición, peso corporal, lesiones y la biometría de la encuesta.
+export const healthOff = state => state.healthConsent === 'declined'
 export const isMembershipBlockedError = e => e?.data?.error === 'membership_blocked' || e?.data?.error === 'account_pending'
 
 const ascendingBodyweight = entries => (Array.isArray(entries)
@@ -172,6 +178,7 @@ export const useStore = create((set, get) => {
   const applyMeAccount = me => {
     if (me && 'pending' in me) setAccountPending(me.pending)
     set({ profilePrompt: me?.profilePrompt || null })
+    if (me && 'healthConsent' in me) get().setHealthConsent(me.healthConsent, { ask: me.healthConsent === null })
   }
 
   const scheduleSync = (delay = 2000) => {
@@ -211,6 +218,21 @@ export const useStore = create((set, get) => {
     membershipBlocked: (() => { try { return localStorage.getItem(BLOCK_KEY) === '1' } catch { return false } })(),
     accountPending: (() => { try { return localStorage.getItem(PENDING_KEY) === '1' } catch { return false } })(),
     profilePrompt: null,
+    healthConsent: readHealth(),
+    healthAsk: false,       // cuenta de antes sin respuesta: se le pregunta una vez al entrar
+    setHealthConsent(value, { ask = false } = {}) {
+      const v = value === 'granted' || value === 'declined' ? value : null
+      try { v ? localStorage.setItem(HEALTH_KEY, v) : localStorage.removeItem(HEALTH_KEY) } catch { /* storage off */ }
+      set({ healthConsent: v, healthAsk: !!ask && v === null })
+    },
+    // "Borrar mis datos de salud": lo que quedó en este dispositivo también se borra.
+    clearLocalHealthData() {
+      get().update(s => {
+        for (const k of ['edad', 'altura', 'grasaCorporal', 'pesoKg', 'targetW']) s[k] = null
+        s.bodyweight = []
+        if (s.respuestasEncuesta) for (const k of ['edad', 'pesoKg', 'altura', 'sexoBiologico', 'lesiones', 'tieneLesion']) delete s.respuestasEncuesta[k]
+      })
+    },
     // El socio completó o salteó el formulario de una sola vez: se cierra sin esperar a /api/me.
     dismissProfilePrompt() { set({ profilePrompt: null }) },
     billing: readJSON(BILLING_KEY),        // { hasPlan, status, dueDate, planName, blocked } de /api/me
@@ -252,8 +274,8 @@ export const useStore = create((set, get) => {
       // El bloqueo por cuota y el estado de cuota guardados son de quien estaba: otra cuenta (o
       // ninguna) en este dispositivo no los hereda hasta que su propio /api/me diga lo suyo.
       if (!u || u.id !== get().user?.id) {
-        try { localStorage.removeItem(BLOCK_KEY); localStorage.removeItem(BILLING_KEY); localStorage.removeItem(BILLING_OFF_KEY); localStorage.removeItem(PENDING_KEY) } catch { /* storage off */ }
-        set({ membershipBlocked: false, billing: null, billingEnabled: true, accountPending: false, profilePrompt: null })
+        try { localStorage.removeItem(BLOCK_KEY); localStorage.removeItem(BILLING_KEY); localStorage.removeItem(BILLING_OFF_KEY); localStorage.removeItem(PENDING_KEY); localStorage.removeItem(HEALTH_KEY) } catch { /* storage off */ }
+        set({ membershipBlocked: false, billing: null, billingEnabled: true, accountPending: false, profilePrompt: null, healthConsent: null, healthAsk: false })
       }
       if (u) { localStorage.setItem('gym_user', JSON.stringify(u)); localStorage.removeItem('gym_guest') }
       else localStorage.removeItem('gym_user')

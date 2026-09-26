@@ -280,7 +280,7 @@ test('vinculación: passkey nueva, sesión, un solo uso; un socio bloqueado por 
   const opts = await linkOptions(issued.code);
   assert.equal(opts.status, 200);
   const credential = fakeRegistration(opts.body.options.challenge);
-  const verified = await call(null, 'POST', '/api/link/verify', { cid: opts.body.cid, credential });
+  const verified = await call(null, 'POST', '/api/link/verify', { cid: opts.body.cid, credential, healthConsent: true });
   assert.equal(verified.status, 200, JSON.stringify(verified.body));
   assert.equal(verified.body.user.id, fichaId);
   const session = verified.setCookie.find(c => c.startsWith('gymsid='));
@@ -304,7 +304,7 @@ test('vinculación: 5 verificaciones fallidas revocan el código', async () => {
   for (let i = 0; i < 5; i++) {
     const opts = await linkOptions(issued.code);
     assert.equal(opts.status, 200, `intento ${i}`);
-    const bad = await call(null, 'POST', '/api/link/verify', { cid: opts.body.cid, credential: { id: 'x', rawId: 'x', type: 'public-key', response: {} } });
+    const bad = await call(null, 'POST', '/api/link/verify', { cid: opts.body.cid, healthConsent: true, credential: { id: 'x', rawId: 'x', type: 'public-key', response: {} } });
     assert.equal(bad.status, 400);
   }
   assert.equal((await linkOptions(issued.code)).status, 400);

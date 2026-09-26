@@ -88,12 +88,15 @@ describe('registro sin aprobación', () => {
     await type(fieldInput('DNI'), '40.123.456')
     expect(fieldInput('DNI').value).toBe('40123456')
     const create = () => button('Crear passkey')
-    expect(create().disabled).toBe(true)   // falta aceptar el aviso
+    expect(create().disabled).toBe(true)   // falta aceptar el aviso y los datos de salud
+    expect(document.querySelectorAll('.privacy-accept')).toHaveLength(1)
+    expect(document.querySelector('.privacy-accept').textContent).toContain('datos de salud (peso, edad, género, lesiones y nutrición)')
     await accept()
     expect(create().disabled).toBe(false)
     registerMock.mockResolvedValue({ id: 'u1', name: 'juan', admin: false, pending: false })
     await click(create())
-    expect(registerMock).toHaveBeenCalledWith('juan', '', null, { profile: { fullName: 'Juan Pérez', dni: '40123456' }, privacyAccepted: true })
+    expect(registerMock).toHaveBeenCalledWith('juan', '', null, { healthConsent: true, profile: { fullName: 'Juan Pérez', dni: '40123456' }, privacyAccepted: true })
+    expect(useStore.getState().healthConsent).toBe('granted')
     expect(useStore.getState().user).toEqual({ id: 'u1', name: 'juan', admin: false })
   })
 
@@ -118,9 +121,12 @@ describe('registro con aprobación', () => {
     expect(fieldInput('DNI')).toBeUndefined()
     expect(text()).toContain('acercate a recepción para que habiliten tu cuenta')
     await type(document.querySelector('input[placeholder="Tu nombre"]'), 'pepe')
+    // Con aprobación también se pide el consentimiento de datos de salud.
+    expect(button('Crear passkey').disabled).toBe(true)
+    await accept()
     registerMock.mockResolvedValue({ id: 'u1', name: 'pepe', admin: false, pending: true })
     await click(button('Crear passkey'))
-    expect(registerMock).toHaveBeenCalledWith('pepe', '', null, {})
+    expect(registerMock).toHaveBeenCalledWith('pepe', '', null, { healthConsent: true })
     expect(text()).toContain('Tu cuenta está pendiente, acercate a recepción')
     expect(localStorage.getItem('gym_account_pending')).toBe('1')
     // Reintentar: sigue pendiente.

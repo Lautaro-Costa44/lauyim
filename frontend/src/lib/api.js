@@ -95,9 +95,10 @@ export async function passkeyRegister(name, code, qr, extra = {}) {
 export async function linkOptions(code) {
   return api('/api/link/options', { method: 'POST', body: JSON.stringify({ code }) })
 }
-export async function linkPasskey({ cid, options }) {
+// healthConsent: el mismo consentimiento de datos de salud que el registro (el servidor lo exige).
+export async function linkPasskey({ cid, options }, { healthConsent = false } = {}) {
   const cred = await navigator.credentials.create({ publicKey: toCreationOptions(structuredClone(options)) })
-  const res = await api('/api/link/verify', { method: 'POST', body: JSON.stringify({ cid, credential: credToJSON(cred) }) })
+  const res = await api('/api/link/verify', { method: 'POST', body: JSON.stringify({ cid, credential: credToJSON(cred), healthConsent }) })
   return res.user
 }
 export async function passkeyLogin() {

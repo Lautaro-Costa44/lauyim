@@ -611,8 +611,10 @@ function AdminRoutineCard({ userId }) {
   const activeGroup = data.routineGroups.find(g => g.id === data.activeGroupId)
 
   return <>
-    <Section title={bigSectionTitle(t('Lesiones'))} footer={<Button size="sm" icon="plus" onClick={openAddLesion}>{t('Agregar')}</Button>}>
-      {(data.lesiones || []).length ? data.lesiones.map(value => <Row key={value} title={LESIONES_OPTIONS.find(o => o.value === value)?.label || value}>
+    {/* Lesiones: dato de salud. Sin consentimiento del socio, deshabilitado. */}
+    <Section title={bigSectionTitle(t('Lesiones'))} footer={<Button size="sm" icon="plus" disabled={data.healthConsent === 'declined'} onClick={openAddLesion}>{t('Agregar')}</Button>}>
+      {data.healthConsent === 'declined' ? <div className="empty no-health" style={{ marginBottom: 8 }}>{t('Sin consentimiento de datos de salud')}</div>
+      : (data.lesiones || []).length ? data.lesiones.map(value => <Row key={value} title={LESIONES_OPTIONS.find(o => o.value === value)?.label || value}>
         <button className="iconbtn" aria-label={t('Remove')} style={{ color: 'var(--red)' }} onClick={() => removeLesion(value)}><Icon name="trash" /></button>
       </Row>) : <div className="empty" style={{ marginBottom: 8 }}>{t('Ninguna registrada')}</div>}
     </Section>
@@ -642,7 +644,9 @@ function AdminRoutineCard({ userId }) {
 
 // Punto de entrada desde UserDetail. Exportado para poder testear el flujo completo de
 // administración de un socio (metas, sugerencias, comidas globales) sin montar todo el panel.
-export function AdminManageSheet({ userId, userName, close, setOnBack }) {
+// healthConsent 'declined': el socio no dio consentimiento de datos de salud; nutrición y
+// lesiones quedan deshabilitadas (el servidor igual responde 409).
+export function AdminManageSheet({ userId, userName, healthConsent = null, close, setOnBack }) {
   const [tab, setTab] = useState('nutrition')
   const [suggestionFlow, setSuggestionFlow] = useState(null)
   const suggestionFlowRef = useRef(suggestionFlow)
@@ -693,7 +697,9 @@ export function AdminManageSheet({ userId, userName, close, setOnBack }) {
           <button type="button" className="iconbtn" onClick={close} aria-label={t('Close')}><Icon name="xmark" /></button>
         </div>
         <Segmented options={[{ value: 'nutrition', label: t('Nutrición') }, { value: 'routine', label: t('Rutina') }]} value={tab} onChange={setTab} />
-        {tab === 'nutrition' ? <AdminNutritionCard userId={userId} openSuggestion={openSuggestion} editSuggestion={editSuggestion} picker={picker.open} /> : <AdminRoutineCard userId={userId} />}
+        {tab === 'nutrition' && healthConsent === 'declined' ? <div className="card no-health"><div className="empty">{t('Sin consentimiento de datos de salud')}</div>
+          <div className="small muted">{t('El socio no dio su consentimiento para el tratamiento de datos de salud: nutrición y lesiones quedan deshabilitadas hasta que lo dé desde Ajustes.')}</div></div>
+        : tab === 'nutrition' ? <AdminNutritionCard userId={userId} openSuggestion={openSuggestion} editSuggestion={editSuggestion} picker={picker.open} /> : <AdminRoutineCard userId={userId} />}
         </div>
       </>}
     </div>
@@ -747,7 +753,7 @@ export function UserDetail({ id, billingEnabled = true, users, openUser, onChang
     </div>
     {hasApp && <div className="tiles" style={{ textAlign: 'left' }}>
       <div className="tile"><div className="l">{t('Workouts')}</div><div className="v" style={{ fontSize: '1.1rem' }}>{d.workouts.length}</div></div>
-      <div className="tile"><div className="l">{t('Weigh-ins')}</div><div className="v" style={{ fontSize: '1.1rem' }}>{d.bodyweight.length}</div></div>
+      <div className="tile"><div className="l">{t('Weigh-ins')}</div><div className="v" style={{ fontSize: '1.1rem' }} title={d.healthConsent === 'declined' ? t('Sin consentimiento de datos de salud') : undefined}>{d.healthConsent === 'declined' ? '—' : d.bodyweight.length}</div></div>
       <div className="tile"><div className="l">{t('Routines')}</div><div className="v" style={{ fontSize: '1.1rem' }}>{d.routines.length}</div></div>
       <div className="tile"><div className="l">{t('Last sync')}</div><div className="v" style={{ fontSize: '.95rem' }}>{rel(d.lastSync)}</div></div>
     </div>}
@@ -768,8 +774,9 @@ export function UserDetail({ id, billingEnabled = true, users, openUser, onChang
     </div>}
     <FichaCard user={{ ...u, hasApp }} users={users} openSheet={openSheet} openUser={showUser} onLink={merge} />
     {billingEnabled !== false && <BillingSummaryCard userId={u.id} userName={u.name} openSheet={openSheet} onChanged={onChanged} />}
+    {hasApp && d.healthConsent === 'declined' && <div className="small muted no-health-note">{t('Sin consentimiento de datos de salud: nutrición, lesiones y peso corporal no se muestran.')}</div>}
     {hasApp && <Button variant="tinted" style={{ width: '100%', margin: '4px 0 4px' }}
-      onClick={() => openSheet((c, { setOnBack }) => <AdminManageSheet userId={u.id} userName={u.name} close={c} setOnBack={setOnBack} />, { locked: true, fullScreen: true, backGesture: true })}>
+      onClick={() => openSheet((c, { setOnBack }) => <AdminManageSheet userId={u.id} userName={u.name} healthConsent={d.healthConsent ?? null} close={c} setOnBack={setOnBack} />, { locked: true, fullScreen: true, backGesture: true })}>
       {t('Administrar Nutrición/Rutina')}
     </Button>}
     {hasApp && currentUser?.owner && !u.owner && <button className="btn primary" style={{ margin: '12px 0 4px' }}

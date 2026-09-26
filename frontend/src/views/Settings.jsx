@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { RegisterSheet } from './Login.jsx'
 import { startTourA, startTourB, startTourNutrition } from '../lib/onboarding.js'
-import { useStore, DEF, hasData } from '../store/useStore.js'
+import { useStore, DEF, hasData, healthOff } from '../store/useStore.js'
+import { HealthConsentSheet } from './HealthConsent.jsx'
 import { useUI } from '../store/useUI.js'
 import { ACCENTS, todayISO, localTZ, DAYN, fmtDateDMY } from '../lib/format.js'
 import { effortOf } from '../lib/history.js'
@@ -92,6 +93,7 @@ export default function Settings() {
   const [online, setOnline] = useState(() => navigator.onLine !== false)
   const [pendingSync, setPendingSync] = useState(0)
   const S = useStore(s => s.S)
+  const noHealth = useStore(healthOff)
   const user = useStore(s => s.user)
   const [presetGroups, setPresetGroups] = useState([])
   useEffect(() => { api('/api/presets').then(d => setPresetGroups(d.groups || [])).catch(() => {}) }, [])
@@ -256,6 +258,8 @@ export default function Settings() {
             if (e.name !== 'NotAllowedError' && e.name !== 'AbortError') toast(e.message || t('Error al agregar passkey'))
           }
         }} />
+        <Row icon="heart" iconTint="var(--pink)" title={t('Datos de salud')} value={noHealth ? t('Sin consentimiento') : t('Consentimiento dado')} accessory="chevron"
+          onClick={() => useUI.getState().openSheet(close => <HealthConsentSheet close={close} />)} />
         <Row icon="lock" iconTint="var(--grey)" title={t('Aviso de privacidad')} subtitle={t('Qué datos guarda el gimnasio y cómo pedir que los corrijan o borren')} accessory="chevron" onClick={() => nav('/privacidad')} />
         <Row icon="signOut" iconTint="var(--red)" title={t('Sign out')} danger onClick={() => confirmSheet({ title: t('Sign out?'), message: t('Your data is synced to your profile first, then cleared from this device.'), confirmText: t('Sign out'), danger: true, onConfirm: () => { signOut(); nav('/home') } })} />
         <Row icon="shield" iconTint="var(--red)" title={t('Sign out everywhere')} subtitle={t('Ends this profile’s sessions on all your devices.')} danger onClick={signOutEverywhere} />
@@ -298,6 +302,8 @@ export default function Settings() {
           { value: 'fitness_general', label: t('Fitness general') },
         ]}
       />
+      {/* Edad, altura y grasa: datos de salud. Sin consentimiento no se muestran. */}
+      {!noHealth && <>
       <Row icon="person" iconTint="var(--orange)" title={t('Edad')}>
         <input
           {...NO_AUTOFILL} name="app-age"
@@ -341,6 +347,7 @@ export default function Settings() {
         />
         <span className="dim small" style={{ marginLeft: 6 }}>%</span>
       </Row>
+      </>}
     </Section>
 
     <Section title={t('During a workout')} footer={wakeOK ? t('The screen stays on while a workout is running, so you don’t have to unlock your phone between sets.') : null}>

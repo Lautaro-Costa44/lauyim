@@ -23,7 +23,7 @@ const EVENTS = [
   'admin.member.merge', 'owner.member.fields', 'auth.link.ok', 'auth.link.fail',
   'owner.billing.enabled', 'owner.billing.disabled', 'admin.notifications.settings', 'admin.billing.trial_start',
   'owner.privacy.settings', 'owner.approval.settings', 'admin.member.approve', 'admin.member.reject',
-  'auth.profile.self',
+  'auth.profile.self', 'auth.health.granted', 'auth.health.revoked', 'auth.health.deleted',
   'owner.member.export'
 ]
 const REASONS = [

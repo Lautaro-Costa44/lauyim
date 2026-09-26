@@ -75,7 +75,10 @@ const LABELS = {
   'owner.approval.settings': 'Changed account approval',
   'admin.member.approve': 'Approved a pending account',
   'admin.member.reject': 'Rejected a pending account',
-  'auth.profile.self': 'Filled in their member details'
+  'auth.profile.self': 'Filled in their member details',
+  'auth.health.granted': 'Gave consent for health data',
+  'auth.health.revoked': 'Withdrew consent for health data',
+  'auth.health.deleted': 'Deleted their health data'
 }
 
 const UNKNOWN_EVENT = 'Unknown activity'

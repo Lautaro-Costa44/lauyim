@@ -131,6 +131,8 @@ import {
   getAllMemberProfiles,
   importMembers,
   writeRegistrationProfile,
+  setHealthConsent,
+  deleteHealthData,
   approveAccount,
   completeProfilePrompt
 } from './database.js';
@@ -145,6 +147,7 @@ import {
   effectiveMode, allowedStarts, needsProfilePrompt, anyFieldEnabled
 } from './approval.js';
 import { membersCsv } from './member-export.js';
+import { HEALTH_SURVEY_KEYS, healthConsentOf, healthDeclined, keepStoredHealth, stripHealth } from './health.js';
 import {
   getBillingSettings, validateBillingSettings, serializeBillingSetting, gymToday,
   billingStatus, nextDueDate, debtTotal, isIsoDate, daysBetween,
@@ -668,11 +671,18 @@ function isMembershipBlocked(user) {
   return billingStatus(getMemberBilling(user.id), billingToday(settings), settings) === 'bloqueado';
 }
 
+// Sin consentimiento de datos de salud, un PUT o un sync no los cambia: se guarda lo demás con los
+// datos de salud que ya había en el servidor.
+const healthAwareSave = (user, saveOpts) => (uid, st) =>
+  saveUserState(uid, healthDeclined(user) ? keepStoredHealth(st, getUserState(uid)) : st, saveOpts);
+
 // Aprobación de cuentas (spec 12.3): una cuenta registrada con la aprobación encendida queda
 // 'pending' hasta que el staff la habilita. Mismo mecanismo que el bloqueo por cuota (conserva la
 // sesión, se le rechazan las rutas de MEMBERSHIP_GATED), otro motivo. Staff nunca.
 const approvalNow = () => readApprovalSettings(getAdminSetting);
 const isAccountPending = user => !!user && user.approval_status === 'pending' && !isRealStaff(user);
+// Pendientes que esperan al staff (el aviso al apagar la aprobación). Los desactivados ya se rechazaron.
+const countPendingAccounts = () => getAllUsers().filter(u => !u.disabled && isAccountPending(u)).length;
 
 // Entrenamiento, sync y nutrición del socio. Fuera a propósito: /api/me, logout, credenciales,
 // vinculación de dispositivos y push (el aviso de cuota tiene que poder llegarle), endpoints
@@ -685,6 +695,8 @@ const MEMBERSHIP_GATED = new Set([
   'POST /api/plantillas', 'GET /api/plantillas', 'PUT /api/plantillas/:id', 'DELETE /api/plantillas/:id',
   'POST /api/comidas-compuestas', 'GET /api/nutrition/goals'
 ]);
+
+const NUTRITION_ROUTES = new Set([...MEMBERSHIP_GATED].filter(k => /alimentos|comidas|plantillas|nutrition/.test(k)));
 
 const MAX_PLAN_PRICE = 100000000;      // pesos enteros
 const MAX_PLAN_DAYS = 3660;
@@ -1871,7 +1883,8 @@ const routes = {
       dayPlan: getDayPlanByUserId(userId),
       routineGroups,
       activeGroupId,
-      lesiones: getLesiones(userId),
+      lesiones: healthDeclined(getUserById(userId)) ? [] : getLesiones(userId),
+      healthConsent: healthConsentOf(getUserById(userId)),
       unit: prefs.unit || 'kg',
       body: prefs.body || 'male'
     });
@@ -2268,6 +2281,8 @@ const routes = {
     // Pendiente de aprobación / formulario de datos de una sola vez (socios que ya existían).
     const fields = memberFieldsNow();
     const account = {
+      // Consentimiento de datos de salud: null = cuenta de antes, se le pregunta una vez.
+      healthConsent: healthConsentOf(user),
       pending: isAccountPending(user),
       profilePrompt: needsProfilePrompt(user, { admin: isAdmin(user), approvalRequired: approvalNow().required, fields, profile: getMemberProfile(user.id) })
         ? { fields } : null
@@ -2306,6 +2321,8 @@ const routes = {
     // Con aprobación: solo nombre + passkey, la cuenta queda pendiente. Sin aprobación y con
     // campos pedidos: los datos (con los obligatorios) y la aceptación del aviso de privacidad.
     // Un DNI que ya está en el gym frena el registro: nunca se vincula solo.
+    // Consentimiento expreso de datos de salud (Ley 25.326, art. 7): siempre, con o sin aprobación.
+    if (body.healthConsent !== true) return json(res, 400, { error: 'health_consent_required', message: 'Tenés que aceptar el tratamiento de tus datos de salud' });
     const approval = approvalNow().required;
     let profile = null;
     const fields = memberFieldsNow();
@@ -2324,7 +2341,7 @@ const routes = {
       authenticatorSelection: { residentKey: 'required', userVerification: 'preferred' },
       excludeCredentials: []
     });
-    const cid = putChallenge({ challenge: options.challenge, name, uid, code, qr: qrValid ? qr : null, pending: approval, profile });
+    const cid = putChallenge({ challenge: options.challenge, name, uid, code, qr: qrValid ? qr : null, pending: approval, profile, healthConsent: true });
     json(res, 200, { cid, options });
   },
 
@@ -2367,7 +2384,7 @@ const routes = {
         return json(res, 403, { error: 'invite code is no longer valid — ask for a new one' });
       }
     }
-    const user = { id: c.uid, name: c.name, created: new Date().toISOString(), pending: !!c.pending, privacyAcceptedAt: c.profile ? new Date().toISOString() : null };
+    const user = { id: c.uid, name: c.name, created: new Date().toISOString(), pending: !!c.pending, privacyAcceptedAt: c.profile ? new Date().toISOString() : null, healthConsent: !!c.healthConsent };
     if (invite) { user.invitedBy = invite.code; }
     // El DNI pudo cargarse entre options y verify (otra alta): se frena igual.
     if (c.profile?.dniNorm && findMemberByDni(c.profile.dniNorm)) return json(res, 409, { error: 'dni_exists', message: DNI_EXISTS_MESSAGE });
@@ -2442,6 +2459,8 @@ const routes = {
       return json(res, 400, { error: 'challenge expired — try again' });
     }
     const ficha = getUserById(c.link.userId);
+    // Mismo consentimiento que el registro. No es un fallo del código: no suma intentos.
+    if (body.healthConsent !== true) return json(res, 400, { error: 'health_consent_required', message: 'Tenés que aceptar el tratamiento de tus datos de salud' });
     // Fallo atribuible al código: suma un intento y al quinto lo revoca.
     const fail = (status, error, msg) => {
       const revoked = recordLinkCodeFailure(c.link.id);
@@ -2477,7 +2496,8 @@ const routes = {
       audit(req, 'auth.link.fail', { ok: false, user: ficha, uid: c.link.userId, msg: out.error });
       return json(res, out.error === 'link-invalid' ? 400 : 409, { error: out.error === 'link-invalid' ? 'link_invalid' : 'link_unavailable' });
     }
-    const user = out.user;
+    setHealthConsent(out.user.id, true);
+    const user = getUserById(out.user.id);
     audit(req, 'auth.link.ok', { user });
     json(res, 200, { user: { id: user.id, name: user.name, admin: isAdmin(user), owner: !!user.owner } }, { 'Set-Cookie': sessionCookie(user) });
   },
@@ -2698,7 +2718,8 @@ const routes = {
     const user = readSession(req);
     if (!user) return json(res, 401, { error: 'No has iniciado sesión' });
     const state = getUserState(user.id);
-    json(res, 200, { state });
+    // Sin consentimiento de datos de salud: no se muestran (quedan guardados hasta que los borre).
+    json(res, 200, { state: healthDeclined(user) ? stripHealth(state) : state });
   },
 
   'GET /api/public-exercises': async (req, res) => json(res, 200, { exercises: getPublicCustomExercises() }),
@@ -2710,7 +2731,7 @@ const routes = {
     if (!user) return json(res, 401, { error: 'No has iniciado sesión' });
     const body = await readBody(req);
     const saveOpts = routineSaveOpts(req);
-    const { status, body: payload } = applyStatePut({ db: getDatabase(), userId: user.id, state: body.state, getUserState, saveUserState: (uid, st) => saveUserState(uid, st, saveOpts) });
+    const { status, body: payload } = applyStatePut({ db: getDatabase(), userId: user.id, state: body.state, getUserState, saveUserState: healthAwareSave(user, saveOpts) });
     json(res, status, payload);
   },
 
@@ -2724,7 +2745,7 @@ const routes = {
     const body = await readBody(req);
     if (!Array.isArray(body.operations) || body.operations.length > 50) return json(res, 400, { error: 'invalid operations batch' });
     const saveOpts = routineSaveOpts(req);
-    const processed = processSyncBatch({ db: getDatabase(), userId: user.id, operations: body.operations, getUserState, saveUserState: (uid, st) => saveUserState(uid, st, saveOpts) });
+    const processed = processSyncBatch({ db: getDatabase(), userId: user.id, operations: body.operations, getUserState, saveUserState: healthAwareSave(user, saveOpts) });
     return json(res, 200, processed);
   },
 
@@ -3030,7 +3051,9 @@ const routes = {
       unit: S.unit || 'kg',
       lastSync: S._ts || null,
       routines: (S.routines || []).map(r => ({ id: r.id, name: r.name, emoji: r.emoji, count: (r.ex || []).length })),
-      bodyweight: S.bodyweight || [],
+      // Sin consentimiento de datos de salud, el admin tampoco ve el peso corporal.
+      bodyweight: healthDeclined(u) ? [] : S.bodyweight || [],
+      healthConsent: healthConsentOf(u),
       workouts: (S.workouts || []).slice().reverse()
     });
   },
@@ -3307,7 +3330,9 @@ const routes = {
       contact: getAdminSetting(PRIVACY_CONTACT_SETTING, ''),
       fields: Object.keys(fields).filter(k => fields[k].enabled),
       billingEnabled: billingEnabledNow(),
-      auditDays: AUDIT_ON ? AUDIT_DAYS : null
+      auditDays: AUDIT_ON ? AUDIT_DAYS : null,
+      // Encargado del tratamiento (lauyim): opcional, por instancia.
+      operator: { name: (process.env.OPERATOR_NAME || '').trim().slice(0, 80) || null, cuit: (process.env.OPERATOR_CUIT || '').trim().slice(0, 20) || null }
     });
   },
 
@@ -3333,7 +3358,7 @@ const routes = {
     if (!requireAdmin(req, res)) return;
     const approval = approvalNow();
     const billingEnabled = billingEnabledNow();
-    json(res, 200, { ...approval, effectiveMode: effectiveMode(approval.mode, billingEnabled), billingEnabled, dniEnabled: memberFieldsNow().dni.enabled });
+    json(res, 200, { ...approval, effectiveMode: effectiveMode(approval.mode, billingEnabled), billingEnabled, dniEnabled: memberFieldsNow().dni.enabled, pendingCount: countPendingAccounts() });
   },
 
   'PUT /api/owner/approval': async (req, res) => {
@@ -3348,7 +3373,7 @@ const routes = {
       audit(req, 'owner.approval.settings', { user: owner, summary: `${approval.required ? 'Aprobación del staff' : 'Sin aprobación'} · modo ${APPROVAL_MODE_LABELS[approval.mode]}` });
     }
     const billingEnabled = billingEnabledNow();
-    json(res, 200, { ...approval, effectiveMode: effectiveMode(approval.mode, billingEnabled), billingEnabled, dniEnabled: memberFieldsNow().dni.enabled });
+    json(res, 200, { ...approval, effectiveMode: effectiveMode(approval.mode, billingEnabled), billingEnabled, dniEnabled: memberFieldsNow().dni.enabled, pendingCount: countPendingAccounts() });
   },
 
   // Habilitar una cuenta pendiente: el staff completa los datos de la config y confirma según el
@@ -3434,6 +3459,28 @@ const routes = {
     if (!reason || reason.length > 200) return json(res, 400, { error: 'El motivo es obligatorio (máx. 200 caracteres)' });
     updateUser(userId, { disabled: true });
     audit(req, 'admin.member.reject', { user: admin, target, summary: `Motivo: ${reason}` });
+    json(res, 200, { ok: true });
+  },
+
+  // Consentimiento de datos de salud: darlo o retirarlo (Ajustes, o la pregunta de una sola vez a
+  // las cuentas de antes). Retirarlo no borra nada: eso es "Borrar mis datos de salud".
+  'POST /api/me/health-consent': async (req, res) => {
+    const user = readSession(req);
+    if (!user) return json(res, 401, { error: 'No has iniciado sesión' });
+    const body = await readBody(req);
+    if (typeof body.granted !== 'boolean') return json(res, 400, { error: 'granted debe ser true o false' });
+    setHealthConsent(user.id, body.granted);
+    audit(req, body.granted ? 'auth.health.granted' : 'auth.health.revoked', { user });
+    json(res, 200, { healthConsent: body.granted ? 'granted' : 'declined' });
+  },
+
+  // Borra los datos de salud del socio (lo decide él: es irreversible). Solo sin consentimiento.
+  'POST /api/me/health-data/delete': async (req, res) => {
+    const user = readSession(req);
+    if (!user) return json(res, 401, { error: 'No has iniciado sesión' });
+    if (!healthDeclined(user)) return json(res, 409, { error: 'health_consent_active', message: 'Primero retirá el consentimiento de datos de salud' });
+    deleteHealthData(user.id, HEALTH_SURVEY_KEYS);
+    audit(req, 'auth.health.deleted', { user });
     json(res, 200, { ok: true });
   },
 
@@ -3965,6 +4012,16 @@ http.createServer(async (req, res) => {
     const sessionUser = readSession(req);
     if (isAccountPending(sessionUser)) return json(res, 403, { error: 'account_pending' });
     if (isMembershipBlocked(sessionUser)) return json(res, 403, { error: 'membership_blocked' });
+    // Sin consentimiento de datos de salud, nutrición no se usa (ni lee ni escribe).
+    if (NUTRITION_ROUTES.has(routeKey) && healthDeclined(sessionUser)) return json(res, 403, { error: 'health_consent_required' });
+  }
+  // Admin sobre nutrición o lesiones de un socio sin consentimiento: deshabilitado. Solo con una
+  // sesión de admin (a los demás les responde el handler, como siempre).
+  if (/ \/api\/admin\/users\/:userId\/(nutrition|injuries)/.test(routeKey)) {
+    const sessionUser = readSession(req);
+    if (sessionUser && isAdmin(sessionUser) && healthDeclined(getUserById(userIdFromPath(req)))) {
+      return json(res, 409, { error: 'no_health_consent', message: 'Sin consentimiento de datos de salud' });
+    }
   }
 
   const handler = routes[routeKey];

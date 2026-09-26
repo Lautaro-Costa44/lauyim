@@ -203,6 +203,9 @@ export function initDatabase() {
   try { db.exec(`ALTER TABLE users ADD COLUMN approval_status TEXT;`); } catch {}
   try { db.exec(`ALTER TABLE users ADD COLUMN privacy_accepted_at TEXT;`); } catch {}
   try { db.exec(`ALTER TABLE users ADD COLUMN profile_prompted_at TEXT;`); } catch {}
+  // Consentimiento de datos de salud (health.js): 'granted' | 'declined' | NULL (no se preguntó).
+  try { db.exec(`ALTER TABLE users ADD COLUMN health_consent TEXT;`); } catch {}
+  try { db.exec(`ALTER TABLE users ADD COLUMN health_consent_at TEXT;`); } catch {}
   try { db.exec(`ALTER TABLE member_profile ADD COLUMN trial_used_at INTEGER;`); } catch {}
   backfillMemberTrials(db);
   db.exec(`CREATE TABLE IF NOT EXISTS sync_operations (
@@ -403,11 +406,12 @@ export function createUser(user) {
   // Pendiente de aprobación: nunca la primera cuenta (owner) ni una ficha.
   const pending = user.pending && !owner && !user.member ? 'pending' : null;
   const stmt = getDatabase().prepare(`
-    INSERT INTO users (id, name, admin, owner, disabled, created_at, invited_by, approval_status, privacy_accepted_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO users (id, name, admin, owner, disabled, created_at, invited_by, approval_status, privacy_accepted_at, health_consent, health_consent_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
   stmt.run(user.id, user.name, admin, owner, user.disabled ? 1 : 0,
-    isoTimestamp(user.created) || new Date().toISOString(), user.invitedBy || null, pending, user.privacyAcceptedAt || null);
+    isoTimestamp(user.created) || new Date().toISOString(), user.invitedBy || null, pending, user.privacyAcceptedAt || null,
+    user.healthConsent ? 'granted' : null, user.healthConsent ? new Date().toISOString() : null);
 }
 
 export function updateUser(id, updates) {
@@ -2408,6 +2412,37 @@ export function completeProfilePrompt(userId, { profile = null, privacyAcceptedA
     if (profile) writeMemberProfile(db, userId, profile, nowIso);
     db.prepare('UPDATE users SET profile_prompted_at = ?, privacy_accepted_at = COALESCE(?, privacy_accepted_at) WHERE id = ?')
       .run(nowIso, privacyAcceptedAt, userId);
+    db.exec('COMMIT');
+  } catch (error) {
+    try { db.exec('ROLLBACK'); } catch {}
+    throw error;
+  }
+}
+
+// Dar o retirar el consentimiento de datos de salud.
+export function setHealthConsent(userId, granted) {
+  getDatabase().prepare('UPDATE users SET health_consent = ?, health_consent_at = ? WHERE id = ?')
+    .run(granted ? 'granted' : 'declined', new Date().toISOString(), userId);
+}
+
+// "Borrar mis datos de salud": peso corporal, edad, género, altura, % de grasa, peso objetivo,
+// las respuestas de salud de la encuesta (lesiones incluidas), metas y registros de nutrición y
+// sus plantillas. Todo junto. Las rutinas y los entrenamientos no se tocan.
+export function deleteHealthData(userId, surveyKeys) {
+  const db = getDatabase();
+  db.exec('BEGIN IMMEDIATE');
+  try {
+    db.prepare('DELETE FROM bodyweight WHERE user_id = ?').run(userId);
+    db.prepare('DELETE FROM comidas_registradas WHERE user_id = ?').run(userId);
+    db.prepare('DELETE FROM plantillas_comida WHERE user_id = ?').run(userId);
+    const row = db.prepare('SELECT respuestas_encuesta FROM user_state WHERE user_id = ?').get(userId);
+    if (row) {
+      const resp = safeJsonParse(row.respuestas_encuesta, null);
+      if (resp && typeof resp === 'object') for (const k of surveyKeys) delete resp[k];
+      db.prepare(`UPDATE user_state SET edad = NULL, altura = NULL, genero = NULL, grasa_corporal = NULL, peso_kg = NULL,
+        target_w = NULL, nutrition_goals = NULL, respuestas_encuesta = ?, _ts = ? WHERE user_id = ?`)
+        .run(resp ? JSON.stringify(resp) : null, Date.now(), userId);
+    }
     db.exec('COMMIT');
   } catch (error) {
     try { db.exec('ROLLBACK'); } catch {}
