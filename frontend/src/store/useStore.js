@@ -93,6 +93,7 @@ const BILLING_KEY = 'gym_billing'
 // clave, cuotas está encendido, como en el servidor.
 const BILLING_OFF_KEY = 'gym_billing_off'
 const readJSON = key => { try { return JSON.parse(localStorage.getItem(key)) || null } catch { return null } }
+export const billingExempt = user => !!(user?.staff ?? user?.admin)
 export const isMembershipBlockedError = e => e?.data?.error === 'membership_blocked'
 
 const ascendingBodyweight = entries => (Array.isArray(entries)
@@ -129,8 +130,10 @@ export const useStore = create((set, get) => {
   }
 
   // Nunca para staff: admins y owner no se bloquean por cuota (el servidor tampoco los bloquea).
+  // Con DEMO_ADMIN_ALL_USERS todos son admin, pero solo el staff de verdad (user.staff de
+  // /api/me) queda exento; sin ese dato (sesión vieja) vale admin, como antes.
   const setMembershipBlocked = blocked => {
-    const on = !!blocked && !get().user?.admin
+    const on = !!blocked && !billingExempt(get().user)
     try { on ? localStorage.setItem(BLOCK_KEY, '1') : localStorage.removeItem(BLOCK_KEY) } catch { /* storage off */ }
     set({ membershipBlocked: on })
   }
@@ -144,7 +147,7 @@ export const useStore = create((set, get) => {
     } catch { /* storage off */ }
     set({ billing, billingEnabled })
     // Con cuotas apagado nadie queda bloqueado: se apaga el flag (y su localStorage).
-    if (me?.user?.admin || !billingEnabled) setMembershipBlocked(false)
+    if (billingExempt(me?.user) || !billingEnabled) setMembershipBlocked(false)
     else if (billing?.blocked === true) setMembershipBlocked(true)
     else if (billing?.blocked === false) setMembershipBlocked(false)
   }

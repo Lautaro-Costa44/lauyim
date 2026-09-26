@@ -1,6 +1,6 @@
 import { HashRouter, Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom'
 import { lazy, Suspense, useEffect, useLayoutEffect } from 'react'
-import { useStore } from './store/useStore.js'
+import { useStore, billingExempt } from './store/useStore.js'
 import { useUI } from './store/useUI.js'
 import { bindUI } from './components/ui.jsx'
 import { ACCENTS } from './lib/format.js'
@@ -94,7 +94,7 @@ function Shell() {
   // Si no se permiten invitados, estar en modo invitado NO cuenta como estar autenticado
   const authed = !!user || (allowGuest && isGuest)
   // Bloqueo por cuota: pantalla completa, sin TabBar ni RestTimer. Nunca para staff.
-  const blocked = !licenseExpired && membershipBlocked && !!user && !user.admin
+  const blocked = !licenseExpired && membershipBlocked && !!user && !billingExempt(user)
   const isAdminPath = loc.pathname === '/admin' || loc.pathname.startsWith('/admin/')
   if (!ready) return (
     <div id="app">

@@ -282,6 +282,10 @@ const SECRET = fs.readFileSync(secretFile, 'utf8').trim();
 // Funciones auxiliares para compatibilidad
 const isAdmin = user => !!user && (DEMO_ADMIN_ALL_USERS || user.admin === 1 || user.admin === true || ADMIN_UIDS.includes(user.id));
 const isOwner = user => !!user && (user.owner === 1 || user.owner === true);
+// Staff de verdad (admin en la base, ADMIN_UIDS u owner), sin DEMO_ADMIN_ALL_USERS: cuotas solo
+// exceptúa a estos. Así la demo (todos admins para ver el panel) igual muestra bloqueos y el
+// resumen de Cuotas con socios.
+const isRealStaff = user => !!user && (user.admin === 1 || user.admin === true || ADMIN_UIDS.includes(user.id) || isOwner(user));
 function readState(uid) {
   return getUserState(uid);
 }
@@ -650,7 +654,7 @@ function checkPayment(body, current, settings) {
 // rechazan las rutas de MEMBERSHIP_GATED. Admins y owner nunca quedan bloqueados, y nadie
 // queda bloqueado con cuotas apagado.
 function isMembershipBlocked(user) {
-  if (!user || isAdmin(user) || !billingEnabledNow()) return false;
+  if (!user || isRealStaff(user) || !billingEnabledNow()) return false;
   const settings = billingSettingsNow();
   return billingStatus(getMemberBilling(user.id), billingToday(settings), settings) === 'bloqueado';
 }
@@ -2229,7 +2233,7 @@ const routes = {
     const today = billingToday(settings);
     const counts = { bloqueado: 0, vencido: 0, por_vencer: 0 };
     for (const b of getAllMemberBilling()) {
-      if (b.disabled || b.owner || isAdmin({ id: b.userId, admin: b.admin })) continue;
+      if (b.disabled || isRealStaff({ id: b.userId, admin: b.admin, owner: b.owner })) continue;
       const status = billingStatus(b, today, settings);
       if (status in counts) counts[status]++;
     }
@@ -2239,7 +2243,8 @@ const routes = {
   'GET /api/me': async (req, res) => {
     const user = readSession(req);
     if (!user) return json(res, 401, { error: 'No has iniciado sesión' });
-    const me = { id: user.id, name: user.name, admin: isAdmin(user), owner: !!user.owner };
+    // staff: admin de verdad (sin DEMO_ADMIN_ALL_USERS). El frontend lo usa para el bloqueo por cuota.
+    const me = { id: user.id, name: user.name, admin: isAdmin(user), owner: !!user.owner, staff: isRealStaff(user) };
     // Con cuotas apagado el socio no ve estado de cuota: billing null y sin bloqueo.
     if (!billingEnabledNow()) return json(res, 200, { user: me, billingEnabled: false, billing: null });
     const settings = billingSettingsNow();
@@ -2250,7 +2255,7 @@ const routes = {
       billingEnabled: true,
       billing: {
         hasPlan: billing.planId != null, status, dueDate: billing.dueDate, planName: billing.planName,
-        blocked: status === 'bloqueado' && !isAdmin(user), trialUntil: billing.trialUntil, trialEnded: isTrialEnded(billing, status)
+        blocked: status === 'bloqueado' && !isRealStaff(user), trialUntil: billing.trialUntil, trialEnded: isTrialEnded(billing, status)
       }
     });
   },
@@ -3038,7 +3043,7 @@ const routes = {
     const today = billingToday(settings);
     const members = getAllMemberBilling().map(b => {
       const view = billingView(b, today, settings);
-      return { id: b.userId, name: b.name, disabled: b.disabled, admin: isAdmin({ id: b.userId, admin: b.admin }), hasApp: b.hasApp, planId: view.planId, planName: view.planName, dueDate: view.dueDate, trialUntil: view.trialUntil, status: view.status, debt: view.debt };
+      return { id: b.userId, name: b.name, disabled: b.disabled, admin: isRealStaff({ id: b.userId, admin: b.admin, owner: b.owner }), hasApp: b.hasApp, planId: view.planId, planName: view.planName, dueDate: view.dueDate, trialUntil: view.trialUntil, status: view.status, debt: view.debt };
     });
     // El resumen cuenta socios activos y no admins: un desactivado no es deuda por cobrar ni un
     // cupo, y admins/owner no quedan bloqueados por cuota. Siguen en members con admin: true.
@@ -3224,7 +3229,7 @@ const routes = {
     const billing = billingView(getMemberBilling(userId), billingToday(settings), settings);
     const back = backToTrial ? `vuelve a la prueba (hasta ${backToTrial})` : `vuelve a vencer ${backTo}`;
     audit(req, 'admin.billing.payment_void', { user: admin, target, summary: `$${payment.amount} · ${back}${reason ? ' · ' + reason : ''}` });
-    if (billing.status === 'bloqueado' && !isAdmin(target)) audit(req, 'admin.billing.blocked', { user: admin, target, summary: backToTrial ? `Prueba terminada el ${backToTrial}` : `Venció ${backTo}` });
+    if (billing.status === 'bloqueado' && !isRealStaff(target)) audit(req, 'admin.billing.blocked', { user: admin, target, summary: backToTrial ? `Prueba terminada el ${backToTrial}` : `Venció ${backTo}` });
     json(res, 200, { billing, payment: getPaymentById(paymentId) });
   },
 
