@@ -1,8 +1,42 @@
-# Resumen de Claude Code — entregas 0 a 5
+# Resumen de Claude Code — entregas 0 a 5 (+ ronda 2)
 
 Fecha: 26/09/2026. Nada se mergeó a `main`, no se deployó y no se tocó `.env`,
 `docker-compose.yml` ni el servidor. Cada entrega tiene su `docs/plan-<entrega>.md` con la
 auditoría, el plan y sus PREGUNTAS.
+
+## Ronda 2 (decisiones de Lautaro, 26/09/2026)
+
+Aplicadas en la rama de cada entrega y re-mergeadas en la integración:
+
+| Rama | Commit | Qué |
+|---|---|---|
+| entrega-1 | `3891a1a` | Runbook: orden obligatorio, **primero `gdrive-crypt:`, después copiar el script** |
+| entrega-2 | `302d029` | Aviso: peso, edad, género, altura, lesiones y nutrición como datos sensibles con consentimiento expreso y revocable; sección de transferencia internacional; encargado con `OPERATOR_NAME` / `OPERATOR_CUIT` (opcionales); notas para la consulta legal en el plan |
+| entrega-3 | `0c966b9`, `64b6d2b` | **Consentimiento de datos de salud**: check en el registro (con y sin aprobación) y en la vinculación con código (el servidor lo exige, sin gastar intentos del código); pregunta única a las cuentas de antes; Ajustes → Datos de salud (dar / retirar / "Borrar mis datos de salud"); sin consentimiento se ocultan Nutrición, peso corporal (y su pedido al entrenar), edad/altura/grasa y la biometría y lesiones de la encuesta, el servidor no los muestra ni los sincroniza, nutrición 403, admin de nutrición/lesiones 409 con "Sin consentimiento de datos de salud" |
+| entrega-3 | `aac2163` | Al apagar la aprobación con pendientes: "Hay N cuentas pendientes: habilitalas o siguen esperando" |
+| entrega-3 | `a57431f` | Plan actualizado (entrega-3 ahora también trae el merge de la entrega-2 actualizada) |
+| entrega-4 | `7d18936` | iOS: al abrir la app instalada por primera vez se vuelve a ofrecer "Activar" una vez |
+| entrega-5 | `277ea79` | CSV: celular `549…` sin `+`. **Hallazgo:** la importación aceptaba `549…` sin `+` pero no lo normalizaba; arreglado en `normalizePhone` con test de ida y vuelta |
+
+**PREGUNTAS nuevas:**
+- **Legal:** ¿edad y género son datos de salud o solo personales? (hoy: sensibles). ¿Alcanza el
+  check en la app como consentimiento expreso, y hay que guardar la versión del texto aceptado?
+  ¿Contrato de encargo gym ↔ lauyim (art. 25)? Detalle en `docs/plan-entrega-2-privacidad.md`.
+- **Menor:** el "Body diagram" de Ajustes sigue visible sin consentimiento y escribe `genero`
+  (el servidor lo ignora). ¿Lo desacoplo?
+
+**Ojo al deployar (además de lo de abajo):** todas las cuentas que ya existen, staff incluido,
+van a ver una vez la pregunta de datos de salud al entrar (Acepto / No acepto). Si querés el
+encargado con nombre y CUIT, agregá `OPERATOR_NAME` y `OPERATOR_CUIT` al `.env` **y** a
+`environment:` del compose.
+
+**Qué probar además:** registro y vinculación con código (el botón no se habilita sin el check);
+un socio viejo que toca "No acepto" (desaparecen Nutrición y el peso corporal, la encuesta no pide
+biometría ni lesiones, entrenar no pide el peso); Ajustes → Datos de salud (retirar, borrar, volver
+a dar); en el admin, "Administrar" de ese socio (nutrición y lesiones deshabilitadas, pesajes "—");
+apagar la aprobación con una cuenta pendiente; en iPhone: instrucciones en Safari → instalar →
+abrir desde el ícono → se ofrece "Activar"; exportar socios y reimportar el CSV (el celular vuelve
+normalizado).
 
 ## Ramas
 
@@ -94,9 +128,9 @@ auditoría, el plan y sus PREGUNTAS.
 
 Suite completa al final de cada entrega y en la integración:
 
-- frontend: 820/820 en la integración (65–68 archivos según la rama), `npm run build` y
-  `check-locales` OK.
-- api: 245 pasan en la integración; **2 fallan en este contenedor y no por el código**:
+- frontend: 829/829 en la integración (después de la ronda 2), `npm run build` y
+  `check-locales` OK. Backup: `scripts/tests/backup-restore.test.sh` 11/11.
+- api: 253 pasan en la integración; **2 fallan en este contenedor y no por el código**:
   `push-send.test.js` ("PUSH_AGENT solo no frena una IP literal" y "hostname que resuelve a
   loopback") fallan con `listen EAFNOSUPPORT ::` porque el contenedor no tiene IPv6. Fallaban igual
   en `main` antes de tocar nada; en CI (ubuntu-latest) deberían pasar.
