@@ -1,123 +1,211 @@
 #!/usr/bin/env bash
-
-# Daily SQLite backups for the production and development gym instances.
-# Configure cron to run this script at 02:00; do not run cron installation here.
+# Backup de las instancias de lauyim: un paquete .tar.gz por instancia con gym.db (VACUUM INTO,
+# consistente con la API andando), vapid.json, secret y audit.log, subido con rclone a un remote
+# cifrado (crypt). Ver docs/backup-restore.md.
+#
+# Variables:
+#   BACKUP_REMOTE            obligatorio. Remote de rclone de destino, ej. gdrive-crypt:lauyim
+#   BACKUP_INSTANCES         "nombre|contenedor ..." (default: "prod|lauyim-api-1 dev|lauyim-dev-api-1")
+#   BACKUP_RETENTION_DAYS    días que se conservan en el remote (default 7)
+#   BACKUP_LOG_FILE          log (default: backup.log junto a este script)
+#   BACKUP_ALLOW_UNENCRYPTED 1 = permitir un remote que no es crypt (no recomendado: hay DNIs y secretos)
+#
+# Uso:  backup.sh           hace el backup
+#       backup.sh --check   solo valida la configuración (rclone, remote, contenedores)
+#
+# Códigos de salida: 0 ok · 1 falló el dump/empaquetado de alguna instancia
+#                    2 configuración inválida · 3 falló rclone (subida o rotación)
+#
+# Cron (crontab -e del usuario que corre docker):
+#   0 2 * * * BACKUP_REMOTE=gdrive-crypt:lauyim /home/lauyyii/hub/scripts/backup.sh
 set -u -o pipefail
+umask 077
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-LOG_FILE="${SCRIPT_DIR}/backup.log"
-REMOTE="gdrive-backup:lauyim-backups/"
-RETENTION_DAYS=7
-TIMESTAMP="$(date '+%Y-%m-%d_%H-%M')"
-
-INSTANCES=(
-  "prod|lauyim-api-1"
-  "dev|lauyim-dev-api-1"
-)
+LOG_FILE="${BACKUP_LOG_FILE:-${SCRIPT_DIR}/backup.log}"
+REMOTE="${BACKUP_REMOTE:-}"
+RETENTION_DAYS="${BACKUP_RETENTION_DAYS:-7}"
+read -r -a INSTANCES <<< "${BACKUP_INSTANCES:-prod|lauyim-api-1 dev|lauyim-dev-api-1}"
+TIMESTAMP="$(date '+%Y-%m-%d_%H-%M-%S')"
+DATA_FILES=(vapid.json secret audit.log)
+EXIT_DUMP=1
+EXIT_CONFIG=2
+EXIT_RCLONE=3
 
 log() {
   printf '[%s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*" >> "$LOG_FILE"
 }
 
-fail() {
+error() {
   log "ERROR: $*"
-  return 1
+  printf 'backup.sh: ERROR: %s\n' "$*" >&2
 }
 
-overall_status=0
+# remote_path "gdrive-crypt:lauyim" prod -> gdrive-crypt:lauyim/prod ("gdrive-crypt:" -> gdrive-crypt:prod)
+remote_path() {
+  case "$1" in
+    *: | */) printf '%s%s' "$1" "$2" ;;
+    *) printf '%s/%s' "$1" "$2" ;;
+  esac
+}
 
-log "===== Backup started (timestamp=${TIMESTAMP}) ====="
+check_config() {
+  if [[ -z "$REMOTE" ]]; then
+    error "falta BACKUP_REMOTE (ej. BACKUP_REMOTE=gdrive-crypt:lauyim). Ver docs/backup-restore.md."
+    return 1
+  fi
+  if [[ "$REMOTE" != *:* ]]; then
+    error "BACKUP_REMOTE='$REMOTE' no es un remote de rclone (tiene que ser nombre:ruta)."
+    return 1
+  fi
+  if ! [[ "$RETENTION_DAYS" =~ ^[1-9][0-9]*$ ]]; then
+    error "BACKUP_RETENTION_DAYS='$RETENTION_DAYS' tiene que ser un entero positivo."
+    return 1
+  fi
+  if ! command -v rclone > /dev/null 2>&1; then
+    error "rclone no está instalado."
+    return 1
+  fi
+  if ! command -v docker > /dev/null 2>&1; then
+    error "docker no está instalado."
+    return 1
+  fi
+  local name="${REMOTE%%:*}" remotes type
+  if ! remotes="$(rclone listremotes --long 2>&1)"; then
+    error "rclone listremotes falló: ${remotes}"
+    return 1
+  fi
+  type="$(printf '%s\n' "$remotes" | awk -v n="${name}:" '$1 == n { print $2; exit }')"
+  if [[ -z "$type" ]]; then
+    error "el remote '${name}:' no existe en rclone (rclone config). Ver docs/backup-restore.md."
+    return 1
+  fi
+  if [[ "$type" != crypt ]]; then
+    if [[ "${BACKUP_ALLOW_UNENCRYPTED:-}" == 1 ]]; then
+      log "AVISO: el remote '${name}:' es de tipo '${type}', no crypt: el backup se sube SIN cifrar."
+    else
+      error "el remote '${name}:' es de tipo '${type}', no crypt: el backup tiene DNIs y secretos y no se sube sin cifrar (BACKUP_ALLOW_UNENCRYPTED=1 para forzarlo)."
+      return 1
+    fi
+  fi
+  return 0
+}
 
-# Remove stale local backup artifacts older than the retention period.
-if find /tmp -maxdepth 1 -type f \( \
-  -name 'prod_*.db' -o -name 'prod_*.db.gz' -o \
-  -name 'dev_*.db' -o -name 'dev_*.db.gz' \
-  \) -mtime +"$RETENTION_DAYS" -delete; then
-  log "Local retention cleanup completed (older than ${RETENTION_DAYS} days)."
-else
-  fail "Local retention cleanup failed."
-  overall_status=1
+# Arma el paquete de una instancia en $1 (directorio vacío). Devuelve 1 si algo falla.
+dump_instance() {
+  local instance="$1" container="$2" dir="$3"
+  local ctmp="/tmp/lauyim-backup-${TIMESTAMP}-$$.db" f
+
+  if ! docker inspect -f '{{.State.Running}}' "$container" 2> /dev/null | grep -qx true; then
+    error "${instance}: el contenedor ${container} no está corriendo."
+    return 1
+  fi
+
+  # VACUUM INTO da una copia consistente sin frenar la API; se verifica antes de copiarla.
+  if ! docker exec -e OUT="$ctmp" "$container" node -e "
+    const { DatabaseSync } = require('node:sqlite');
+    const db = new DatabaseSync('/data/gym.db', { readOnly: true });
+    db.exec(\"VACUUM INTO '\" + process.env.OUT + \"'\");
+    db.close();
+    const copy = new DatabaseSync(process.env.OUT, { readOnly: true });
+    const r = copy.prepare('PRAGMA integrity_check').get();
+    copy.close();
+    if (Object.values(r)[0] !== 'ok') { console.error('integrity_check: ' + JSON.stringify(r)); process.exit(1); }
+  "; then
+    error "${instance}: VACUUM INTO / integrity_check falló dentro de ${container}."
+    docker exec "$container" rm -f "$ctmp" > /dev/null 2>&1
+    return 1
+  fi
+  if ! docker cp "${container}:${ctmp}" "${dir}/gym.db" > /dev/null; then
+    error "${instance}: docker cp de gym.db falló."
+    docker exec "$container" rm -f "$ctmp" > /dev/null 2>&1
+    return 1
+  fi
+  docker exec "$container" rm -f "$ctmp" > /dev/null 2>&1 || log "${instance}: no se pudo borrar ${ctmp} del contenedor."
+
+  for f in "${DATA_FILES[@]}"; do
+    if docker exec "$container" test -f "/data/${f}"; then
+      if ! docker cp "${container}:/data/${f}" "${dir}/${f}" > /dev/null; then
+        error "${instance}: docker cp de ${f} falló."
+        return 1
+      fi
+    elif [[ "$f" == audit.log ]]; then
+      log "${instance}: sin audit.log (AUDIT_LOG=0 o todavía vacío), se sigue."
+    else
+      error "${instance}: falta /data/${f} en ${container}."
+      return 1
+    fi
+  done
+
+  (cd "$dir" && sha256sum -- * > MANIFEST.sha256) || { error "${instance}: no se pudo generar MANIFEST.sha256."; return 1; }
+  return 0
+}
+
+if [[ "${1:-}" == --check ]]; then
+  check_config || exit "$EXIT_CONFIG"
+  for entry in "${INSTANCES[@]}"; do
+    container="${entry#*|}"
+    if docker inspect -f '{{.State.Running}}' "$container" 2> /dev/null | grep -qx true; then
+      echo "ok: ${entry%%|*} (${container}) corriendo"
+    else
+      echo "AVISO: ${entry%%|*}: el contenedor ${container} no está corriendo" >&2
+    fi
+  done
+  echo "ok: remote ${REMOTE}, retención ${RETENTION_DAYS} días"
+  exit 0
+elif [[ $# -gt 0 ]]; then
+  echo "uso: $0 [--check]" >&2
+  exit "$EXIT_CONFIG"
 fi
 
+log "===== Backup iniciado (${TIMESTAMP}) ====="
+check_config || { log "===== Backup abortado (configuración) ====="; exit "$EXIT_CONFIG"; }
+
+WORK="$(mktemp -d "${TMPDIR:-/tmp}/lauyim-backup.XXXXXX")" || { error "mktemp falló."; exit "$EXIT_DUMP"; }
+trap 'rm -rf "$WORK"' EXIT
+
+status=0
 for entry in "${INSTANCES[@]}"; do
   instance="${entry%%|*}"
   container="${entry#*|}"
-  db_file="/tmp/${instance}_${TIMESTAMP}.db"
-  gz_file="${db_file}.gz"
+  pkg_name="${instance}_${TIMESTAMP}"
+  dir="${WORK}/${pkg_name}"
+  pkg="${WORK}/${pkg_name}.tar.gz"
+  dest="$(remote_path "$REMOTE" "$instance")"
+  log "${instance}: inicio (contenedor ${container})."
+  mkdir -p "$dir"
 
-  log "Starting instance=${instance}, container=${container}."
-
-  # Avoid VACUUM INTO failing because a previous interrupted run left its
-  # fixed temporary file behind. This does not stop/restart the container.
-  if docker exec "$container" rm -f /tmp/backup_tmp.db; then
-    log "${instance}: stale container temp file cleared."
-  else
-    fail "${instance}: could not clear container temp file; skipping instance."
-    overall_status=1
+  if ! dump_instance "$instance" "$container" "$dir"; then
+    [[ $status -eq 0 ]] && status=$EXIT_DUMP
+    rm -rf "$dir"
     continue
   fi
-
-  if docker exec "$container" node -e "const {DatabaseSync}=require('node:sqlite'); const db=new DatabaseSync('/data/gym.db'); db.exec(\"VACUUM INTO '/tmp/backup_tmp.db'\"); db.close();"; then
-    log "${instance}: consistent SQLite dump created."
-  else
-    fail "${instance}: docker exec/VACUUM INTO failed; skipping instance."
-    overall_status=1
+  if ! tar -czf "$pkg" -C "$WORK" "$pkg_name"; then
+    error "${instance}: no se pudo crear ${pkg_name}.tar.gz."
+    [[ $status -eq 0 ]] && status=$EXIT_DUMP
+    rm -rf "$dir" "$pkg"
     continue
   fi
+  rm -rf "$dir"
+  log "${instance}: paquete $(du -h "$pkg" | cut -f1) listo."
 
-  if docker cp "$container:/tmp/backup_tmp.db" "$db_file"; then
-    log "${instance}: dump copied to ${db_file}."
-  else
-    fail "${instance}: docker cp failed; skipping compression/upload."
-    overall_status=1
-    # Best-effort cleanup of the container temp file after a failed copy.
-    if docker exec "$container" rm -f /tmp/backup_tmp.db; then
-      log "${instance}: container temp file removed after failed copy."
-    else
-      fail "${instance}: could not remove container temp file after failed copy."
-    fi
+  if ! out="$(rclone copy "$pkg" "$dest" 2>&1)"; then
+    error "${instance}: rclone copy a ${dest} falló; no se rota el remote. ${out}"
+    status=$EXIT_RCLONE
+    rm -f "$pkg"
     continue
   fi
+  rm -f "$pkg"
+  log "${instance}: subido a ${dest}/${pkg_name}.tar.gz."
 
-  if docker exec "$container" rm -f /tmp/backup_tmp.db; then
-    log "${instance}: container temp file removed."
+  # Rotación solo después de una subida buena: si el remote falla, lo viejo se queda.
+  if ! out="$(rclone delete "$dest" --min-age "${RETENTION_DAYS}d" --include "${instance}_*.tar.gz" 2>&1)"; then
+    error "${instance}: la rotación en ${dest} falló. ${out}"
+    status=$EXIT_RCLONE
   else
-    fail "${instance}: could not remove container temp file."
-    overall_status=1
-  fi
-
-  if gzip -f "$db_file"; then
-    log "${instance}: compressed to ${gz_file}."
-  else
-    fail "${instance}: gzip failed; local dump retained at ${db_file}."
-    overall_status=1
-    continue
-  fi
-
-  if rclone copy "$gz_file" "$REMOTE"; then
-    log "${instance}: upload succeeded to ${REMOTE}."
-    if rm -f "$gz_file"; then
-      log "${instance}: local compressed backup removed after successful upload."
-    else
-      fail "${instance}: uploaded successfully but local cleanup failed; file retained at ${gz_file}."
-      overall_status=1
-    fi
-  else
-    fail "${instance}: rclone copy failed; local backup retained at ${gz_file}."
-    overall_status=1
+    log "${instance}: rotación hecha (más de ${RETENTION_DAYS} días)."
   fi
 done
 
-# Remote retention is intentionally performed after all instance uploads.
-if rclone delete "$REMOTE" --min-age "${RETENTION_DAYS}d"; then
-  log "Remote retention cleanup completed (older than ${RETENTION_DAYS} days)."
-else
-  fail "Remote retention cleanup failed."
-  overall_status=1
-fi
-
-log "===== Backup finished (status=${overall_status}) ====="
-exit "$overall_status"
-
-# Cron (add manually with `crontab -e`):
-# 0 2 * * * /home/lauyyii/hub/scripts/backup.sh >> /home/lauyyii/hub/scripts/backup.log 2>&1
+log "===== Backup terminado (código ${status}) ====="
+exit "$status"
