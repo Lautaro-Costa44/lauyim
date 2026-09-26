@@ -70,7 +70,11 @@ const LABELS = {
   'owner.billing.enabled': 'Turned membership billing on',
   'owner.billing.disabled': 'Turned membership billing off',
   'admin.notifications.settings': 'Changed membership notice time',
-  'owner.privacy.settings': 'Changed the privacy notice details'
+  'owner.privacy.settings': 'Changed the privacy notice details',
+  'owner.approval.settings': 'Changed account approval',
+  'admin.member.approve': 'Approved a pending account',
+  'admin.member.reject': 'Rejected a pending account',
+  'auth.profile.self': 'Filled in their member details'
 }
 
 const UNKNOWN_EVENT = 'Unknown activity'

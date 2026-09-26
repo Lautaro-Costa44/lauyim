@@ -22,7 +22,8 @@ const EVENTS = [
   'admin.member.create', 'admin.member.profile_update', 'admin.member.link_code', 'admin.member.link_code_revoke',
   'admin.member.merge', 'owner.member.fields', 'auth.link.ok', 'auth.link.fail',
   'owner.billing.enabled', 'owner.billing.disabled', 'admin.notifications.settings', 'admin.billing.trial_start',
-  'owner.privacy.settings'
+  'owner.privacy.settings', 'owner.approval.settings', 'admin.member.approve', 'admin.member.reject',
+  'auth.profile.self'
 ]
 const REASONS = [
   'challenge-expired', 'unknown-credential', 'verify-error', 'not-verified',
