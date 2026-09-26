@@ -72,6 +72,8 @@ describe('Rutinas', () => {
     expect(cards()[1].querySelector('.program-usage').textContent).toContain('Ningún socio')
     expect(cards()[0].querySelector('.bodymap.mini')).toBeTruthy()
     expect(cards()[0].querySelector('.preset-day-badge.planned').textContent).toBe('Lu')
+    // No estimated duration, on the program or on its days.
+    expect(cards()[0].textContent).not.toMatch(/\bmin\b|≈/)
   })
 
   it('search finds days by exercise name; the chips narrow to one program', async () => {

@@ -7,7 +7,7 @@ import { exOr } from '../../../lib/exercises.js'
 import { exLine } from '../../../lib/history.js'
 import { glyphOf } from '../../../lib/glyphs.js'
 import { MUSCLE_NAME } from '../../../lib/muscles.js'
-import { presetStats, DURATION_ASSUMPTIONS } from '../../../lib/presetStats.js'
+import { presetStats } from '../../../lib/presetStats.js'
 import { t, exerciseNameFor } from '../../../lib/i18n.js'
 import Icon from '../../../components/Icon.jsx'
 import { useDragReorder } from '../../../components/useDragReorder.js'
@@ -18,9 +18,6 @@ const INTENSIFIER_LABEL = { dropset: 'Drop-set', topback: 'Top-set + Backoff', r
 let rowKey = 0
 const keyed = item => ({ ...item, _k: ++rowKey })
 const unkeyed = ({ _k, ...item }) => item
-
-export const durationHint = () => t('Estimado: {0} s por repetición, {1} s de descanso entre series y {2} s entre ejercicios.',
-  DURATION_ASSUMPTIONS.secPerRep, DURATION_ASSUMPTIONS.restSec, DURATION_ASSUMPTIONS.transitionSec)
 
 // Un día (preset) de un programa. En el teléfono vive en un sheet; en escritorio, en el panel
 // lateral de Rutinas (sin setOnBack). El día planeado se elige en un paso interno; el back
@@ -86,8 +83,8 @@ export default function PresetEditor({ existing, defaultGroup = '', programs = [
         <span className="small muted">{t('Ícono de la rutina')}</span>
       </div>
 
-      {!!ex.length && <div className="preset-editor-stats small muted" title={durationHint()}>
-        {t('{0} ejercicios · {1} series · ≈ {2} min', stats.exercises, stats.sets, stats.minutes)}
+      {!!ex.length && <div className="preset-editor-stats small muted">
+        {t('{0} ejercicios · {1} series', stats.exercises, stats.sets)}
       </div>}
       {!!stats.top.length && <div className="mchips">{stats.top.slice(0, 6).map(m => <span key={m} className="mchip">{t(MUSCLE_NAME[m] || m)}</span>)}</div>}
 

@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
-// Primer ingreso: el cartel de bienvenida de Home ofrece los programas del gym (con días,
-// músculos principales y duración estimada) además de la encuesta y armar la rutina a mano; sin
+// Primer ingreso: el cartel de bienvenida de Home ofrece los programas del gym (con días y
+// músculos principales) además de la encuesta y armar la rutina a mano; sin
 // programas queda como antes. "Cargar un plan" en Plan abre el mismo selector; sin programas
 // carga el plan incluido.
 import React, { act } from 'react'
@@ -61,12 +61,12 @@ beforeEach(async () => {
 afterEach(async () => { await act(async () => { root.unmount() }); container.remove() })
 
 describe('primer ingreso', () => {
-  it('el cartel muestra los programas con días, duración y músculos, y conserva encuesta y manual', async () => {
+  it('el cartel muestra los programas con días y músculos, sin duración estimada, y conserva encuesta y manual', async () => {
     await render(<Home />)
     const cards = [...container.querySelectorAll('.program-choice')]
     expect(cards.map(c => c.querySelector('.tt').textContent)).toEqual(['Push Pull Legs', 'Full Body'])
     expect(cards[0].textContent).toContain('2 días')
-    expect(cards[0].textContent).toMatch(/≈ \d+ min por día/)
+    expect(cards[0].textContent).not.toMatch(/min/)
     expect(cards[0].querySelectorAll('.mchip').length).toBeGreaterThan(0)
     expect(text()).toContain('Recomendarme una rutina')
     expect(text()).toContain('Crear rutina manualmente')

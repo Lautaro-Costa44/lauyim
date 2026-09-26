@@ -44,8 +44,8 @@ export function chooseProgram(data, program) {
 }
 
 /**
- * The gym's programs to pick one as your plan: name, days, the muscles it works most and an
- * estimated session length — the same numbers the admin sees in Rutinas. `data` is a GET
+ * The gym's programs to pick one as your plan: name, days and the muscles it works most — the
+ * same numbers the admin sees in Rutinas. `data` is a GET
  * /api/presets answer (fetched here when not passed). Renders nothing when the gym has no
  * programs, so the caller keeps its own fallback.
  */
@@ -67,7 +67,6 @@ export default function ProgramPicker({ data: given, onPicked }) {
         <div className="tt">{p.name}</div>
         <div className="ss">
           {p.stats.days === 1 ? t('1 día') : t('{0} días', p.stats.days)}
-          {p.stats.avgMinutes ? ' · ≈ ' + t('{0} min por día', p.stats.avgMinutes) : ''}
         </div>
         {!!p.stats.top.length && <div className="mchips">{p.stats.top.slice(0, 4).map(m => <span key={m} className="mchip">{t(MUSCLE_NAME[m] || m)}</span>)}</div>}
       </span>

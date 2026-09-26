@@ -7,7 +7,6 @@ import { t } from '../../../lib/i18n.js'
 import Icon from '../../../components/Icon.jsx'
 import BodyMap from '../../../components/BodyMap.jsx'
 import { useDragReorder } from '../../../components/useDragReorder.js'
-import { durationHint } from './PresetEditor.jsx'
 
 const muscleName = m => t(MUSCLE_NAME[m] || m)
 
@@ -39,7 +38,6 @@ export default function ProgramCard({ program, days, usage, body, editingId, onE
         <h3 className="program-name">{program.name}</h3>
         <div className="small muted">
           {t('{0} días', stats.days)} · {t('{0} series/semana', stats.sets)}
-          {!!stats.avgMinutes && <span title={durationHint()}> · {t('≈ {0} min por día', stats.avgMinutes)}</span>}
         </div>
       </div>
       <div className="row program-actions">
@@ -80,7 +78,7 @@ export default function ProgramCard({ program, days, usage, body, editingId, onE
           <button type="button" className="grow preset-day-main" onClick={() => onEdit(day)}>
             <div className="tt">{day.name}</div>
             <div className="ss">
-              {t('{0} ej · {1} series', s.exercises, s.sets)}{s.minutes ? ' · ≈ ' + t('{0} min', s.minutes) : ''}
+              {t('{0} ej · {1} series', s.exercises, s.sets)}
               {!!s.top.length && ' · ' + s.top.slice(0, 3).map(muscleName).join(', ')}
             </div>
           </button>
