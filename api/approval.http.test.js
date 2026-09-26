@@ -107,7 +107,7 @@ after(async () => {
 
 // Registro completo con passkey simulada → { status, body, cookie }.
 async function register(name, extra = {}) {
-  const opt = await call(null, 'POST', '/api/register/options', { name, ...extra });
+  const opt = await call(null, 'POST', '/api/register/options', { name, healthConsent: true, ...extra });
   if (opt.status !== 200) return opt;
   const ver = await call(null, 'POST', '/api/register/verify', { cid: opt.body.cid, credential: fakeRegistration(opt.body.options.challenge) });
   return { ...ver, cookie: ver.setCookie.map(c => c.split(';')[0]).join('; ') };
@@ -118,9 +118,9 @@ test('sin aprobación: el registro pide los campos configurados y aceptar el avi
   const cfg = await call(null, 'GET', '/api/config');
   assert.equal(cfg.body.registration.approval, false);
   assert.equal(cfg.body.registration.fields.dni.required, true);
-  assert.equal((await call(null, 'POST', '/api/register/options', { name: 'juan' })).body.field, 'full_name');
-  assert.equal((await call(null, 'POST', '/api/register/options', { name: 'juan', profile: PROFILE })).body.error, 'privacy_required');
-  const bad = await call(null, 'POST', '/api/register/options', { name: 'juan', profile: { ...PROFILE, dni: '12' }, privacyAccepted: true });
+  assert.equal((await call(null, 'POST', '/api/register/options', { name: 'juan', healthConsent: true })).body.field, 'full_name');
+  assert.equal((await call(null, 'POST', '/api/register/options', { name: 'juan', healthConsent: true, profile: PROFILE })).body.error, 'privacy_required');
+  const bad = await call(null, 'POST', '/api/register/options', { name: 'juan', healthConsent: true, profile: { ...PROFILE, dni: '12' }, privacyAccepted: true });
   assert.equal(bad.body.field, 'dni');
   const ok = await register('juan', { profile: PROFILE, privacyAccepted: true });
   assert.equal(ok.status, 200);
@@ -136,7 +136,7 @@ test('sin aprobación: el registro pide los campos configurados y aceptar el avi
 });
 
 test('sin aprobación: un DNI que ya existe frena el registro (nunca vincula solo)', async () => {
-  const r = await call(null, 'POST', '/api/register/options', { name: 'otra', profile: { ...PROFILE, dni: '30111222' }, privacyAccepted: true });
+  const r = await call(null, 'POST', '/api/register/options', { name: 'otra', healthConsent: true, profile: { ...PROFILE, dni: '30111222' }, privacyAccepted: true });
   assert.equal(r.status, 409);
   assert.equal(r.body.error, 'dni_exists');
   assert.equal(r.body.message, 'Ya hay un socio con este DNI. Pedí en recepción tu código de vinculación');
