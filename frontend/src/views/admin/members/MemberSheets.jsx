@@ -507,20 +507,38 @@ export function ApproveSheet({ user, billingEnabled, close, setOnBack, onApprove
   // Obligatorios de la config vacíos: no se avanza (el servidor igual valida formato y obligatorios).
   const missing = fields && values ? MEMBER_FIELDS.filter(f => fields[f.key]?.enabled && fields[f.key]?.required && !String(values[f.prop] ?? '').trim()) : []
 
-  const save = () => {
+  const profileBody = () => {
     const profile = {}
     for (const f of MEMBER_FIELDS) if (fields[f.key]?.enabled) profile[f.prop] = (values[f.prop] || '').trim()
-    const body = { profile, start: { type: start } }
+    return profile
+  }
+  // Error del servidor en los datos (formato, obligatorio o DNI de otra persona): se marca en el
+  // paso "Datos". Las reglas son las del servidor, las mismas en "Siguiente" y en "Habilitar".
+  const showDataError = e => {
+    const dup = duplicateFrom(e)
+    if (dup) { setDuplicate(dup); setStep('datos'); return true }
+    if (e?.data?.field) { setErrors(fieldError(e)); setStep('datos'); return true }
+    return false
+  }
+  // "Siguiente": revisa los datos en el servidor (approve/check, sin guardar) antes de avanzar.
+  const [checking, setChecking] = useState(false)
+  const next = () => {
+    setChecking(true); setErrors({})
+    api(userUrl(user.id, '/approve/check'), { method: 'POST', body: JSON.stringify({ profile: profileBody() }) })
+      .then(() => setStep('cuota'))
+      .catch(e => { if (!showDataError(e)) setErrors({ general: e?.data?.message || e?.message || t('No se pudo verificar') }) })
+      .finally(() => setChecking(false))
+  }
+
+  const save = () => {
+    const body = { profile: profileBody(), start: { type: start } }
     if (start === 'payment') body.start = { type: 'payment', planId: pay.planId, method: pay.method, paidAt: paidAtFor(pay.date, today), note: pay.note.trim() || undefined, amount: pay.amount }
     setSaving(true); setErrors({})
     api(approveUrl, { method: 'POST', body: JSON.stringify(body) })
       .then(() => { toast(t('Cuenta habilitada')); close(); onApproved() })
       .catch(e => {
         setSaving(false)
-        const dup = duplicateFrom(e)
-        if (dup) { setDuplicate(dup); setStep('datos') }
-        else if (e?.data?.field) { setErrors(fieldError(e)); setStep('datos') }
-        else setErrors({ general: e?.data?.message || e?.message || t('No se pudo guardar') })
+        if (!showDataError(e)) setErrors({ general: e?.data?.message || e?.message || t('No se pudo guardar') })
       })
   }
   // Vincular: la ficha (sin app) se une a esta cuenta. La cuenta sigue pendiente: después se
@@ -554,7 +572,7 @@ export function ApproveSheet({ user, billingEnabled, close, setOnBack, onApprove
         </>}
         <div style={{ height: 12 }} />
         {withBilling && step === 'datos'
-          ? <Button variant="primary" disabled={!!duplicate || missing.length > 0} onClick={() => { setErrors({}); setStep('cuota') }}>{t('Siguiente')}</Button>
+          ? <Button variant="primary" disabled={checking || !!duplicate || missing.length > 0} onClick={next}>{checking ? t('Verificando…') : t('Siguiente')}</Button>
           : <Button variant="primary" disabled={saving || !!duplicate || missing.length > 0 || !payOk || !opts.allowed.includes(start)} onClick={save}>{saving ? t('Guardando…') : t('Habilitar cuenta')}</Button>}
         {step === 'datos' && missing.length > 0 && <p className="dim small approve-missing">{t('Completá los datos obligatorios (*) para seguir.')}</p>}
         <p className="dim small member-privacy">{t(PRIVACY_NOTE)} <PrivacyLink onClick={privacy.open} /></p>

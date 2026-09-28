@@ -781,6 +781,29 @@ const profileView = (user, profile) => ({
 });
 
 // Otra persona ya tiene ese DNI: datos mínimos para que la UI ofrezca vincular.
+// Cuenta a habilitar: existe, no está desactivada y sigue pendiente. → target o null (ya respondió).
+function pendingApprovalTarget(res, userId) {
+  const target = getUserById(userId);
+  if (!target) { json(res, 404, { error: 'El usuario no existe' }); return null; }
+  if (target.disabled) { json(res, 409, { error: 'El socio está desactivado' }); return null; }
+  if (!isAccountPending(target)) { json(res, 409, { error: 'not_pending', message: 'La cuenta ya no está pendiente' }); return null; }
+  return target;
+}
+
+// Datos de la ficha al habilitar una cuenta: config de campos (formato y obligatorios) y DNI de
+// otra persona. Única fuente de reglas para "Siguiente" (approve/check) y "Habilitar" (approve).
+// → { value: { profile, current, fields } } o { status, error: <cuerpo de la respuesta> }.
+function checkApprovalProfile(userId, rawProfile) {
+  const fields = memberFieldsNow();
+  const current = getMemberProfile(userId);
+  const checked = validateMemberProfile(rawProfile || {}, fields, { current });
+  if (checked.error) return { status: 400, error: { error: checked.error, field: checked.field } };
+  const profile = checked.value;
+  const other = profile.dniNorm && findMemberByDni(profile.dniNorm, userId);
+  if (other) return { status: 409, error: { error: 'dni_duplicado', userId: other.userId, name: other.name, hasApp: other.hasApp } };
+  return { value: { profile, current, fields } };
+}
+
 const APPROVAL_MODE_LABELS = { approve: 'aprobar', payment: 'primer pago', trial: 'prueba' };
 const DNI_EXISTS_MESSAGE = 'Ya hay un socio con este DNI. Pedí en recepción tu código de vinculación';
 const dniDuplicate = (res, other) => json(res, 409, { error: 'dni_duplicado', userId: other.userId, name: other.name, hasApp: other.hasApp });
@@ -3392,16 +3415,23 @@ const routes = {
     json(res, 200, { ...approval, effectiveMode: effectiveMode(approval.mode, billingEnabled), billingEnabled, dniEnabled: memberFieldsNow().dni.enabled, pendingCount: countPendingAccounts() });
   },
 
+  // "Siguiente" del formulario de habilitar: los datos con las MISMAS reglas que al habilitar
+  // (checkApprovalProfile), sin guardar nada. Solo admins.
+  'POST /api/admin/users/:userId/approve/check': async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    const target = pendingApprovalTarget(res, userIdFromPath(req)); if (!target) return;
+    const checked = checkApprovalProfile(target.id, (await readBody(req)).profile);
+    if (checked.error) return json(res, checked.status, checked.error);
+    json(res, 200, { ok: true });
+  },
+
   // Habilitar una cuenta pendiente: el staff completa los datos de la config y confirma según el
   // modo (aprobar / primer pago / prueba). Todo en una transacción. dry_run: vencimiento o fin de
   // prueba que quedaría, sin validar los datos ni guardar.
   'POST /api/admin/users/:userId/approve': async (req, res) => {
     const admin = requireAdmin(req, res); if (!admin) return;
     const userId = userIdFromPath(req);
-    const target = getUserById(userId);
-    if (!target) return json(res, 404, { error: 'El usuario no existe' });
-    if (target.disabled) return json(res, 409, { error: 'El socio está desactivado' });
-    if (!isAccountPending(target)) return json(res, 409, { error: 'not_pending', message: 'La cuenta ya no está pendiente' });
+    const target = pendingApprovalTarget(res, userId); if (!target) return;
     const body = await readBody(req);
     const billingEnabled = billingEnabledNow();
     const settings = billingSettingsNow();
@@ -3429,15 +3459,9 @@ const routes = {
     }
     if (body.dry_run === true) return json(res, 200, { dry_run: true, mode, allowed, covered, dueDate: payment?.period.dueDate ?? null, amount: payment?.amount ?? null, trialUntil, trialDays: settings.trial_days });
 
-    const fields = memberFieldsNow();
-    const current = getMemberProfile(userId);
-    const checked = validateMemberProfile(body.profile || {}, fields, { current });
-    if (checked.error) return json(res, 400, { error: checked.error, field: checked.field });
-    const profile = checked.value;
-    if (profile.dniNorm) {
-      const other = findMemberByDni(profile.dniNorm, userId);
-      if (other) return dniDuplicate(res, other);
-    }
+    const checked = checkApprovalProfile(userId, body.profile);
+    if (checked.error) return json(res, checked.status, checked.error);
+    const { profile, current, fields } = checked.value;
     if (trialUntil) {
       if (!fields.dni.enabled || !profile.dniNorm) return json(res, 409, { error: 'trial_requires_dni', message: TRIAL_ERRORS.trial_requires_dni });
       if (current?.trialUsedAt) return json(res, 409, { error: 'trial_used', message: TRIAL_ERRORS.trial_used });
@@ -4003,6 +4027,8 @@ http.createServer(async (req, res) => {
       ? req.method + ' /api/admin/users/:userId/link-code'
     : req.method === 'POST' && /^\/api\/admin\/users\/[^/]+\/merge$/.test(url.pathname)
       ? 'POST /api/admin/users/:userId/merge'
+    : req.method === 'POST' && /^\/api\/admin\/users\/[^/]+\/approve\/check$/.test(url.pathname)
+      ? 'POST /api/admin/users/:userId/approve/check'
     : req.method === 'POST' && /^\/api\/admin\/users\/[^/]+\/(approve|reject)$/.test(url.pathname)
       ? 'POST /api/admin/users/:userId/' + url.pathname.split('/').pop()
     : req.method === 'PUT' && /^\/api\/admin\/nutrition\/templates\/[^/]+$/.test(url.pathname)

@@ -37,7 +37,14 @@ apiMock.mockImplementation((url, opts = {}) => {
     return Promise.resolve({ user: { ...u, created: '2026-01-01' }, workouts: [], bodyweight: [], routines: [], lastSync: null, unit: 'kg' })
   }
   if (url.endsWith('/profile')) return Promise.resolve({ profile: {}, fields: FIELDS })
+  // "Siguiente": misma respuesta que daría habilitar con esos datos.
+  if (url.endsWith('/approve/check')) {
+    if (body.profile?.dni === '123') return fail(400, { error: 'DNI inválido (6 a 8 dígitos)', field: 'dni' })
+    if (body.profile?.dni === '30999888') return fail(409, { error: 'dni_duplicado', userId: 'f', name: 'Ana Ficha', hasApp: false })
+    return Promise.resolve({ ok: true })
+  }
   if (url.endsWith('/approve')) {
+    if (!body.dry_run && body.profile?.fullName === 'Nombre Rechazado') return fail(400, { error: 'Nombre y apellido inválido', field: 'full_name' })
     const allowed = mode === 'approve' ? ['none', 'payment', 'trial'] : [mode]
     if (body.dry_run) return Promise.resolve({ dry_run: true, mode, allowed, covered: false, dueDate: body.start?.type === 'payment' ? '2026-10-26' : null, trialUntil: null, trialDays: 1 })
     users = users.map(u => u.id === 'p' ? { ...u, pending: false } : u)
@@ -181,6 +188,44 @@ describe('pendientes', () => {
     // Deshabilitado de verdad: el click no avanza al paso de cuota.
     await click(button('Siguiente'))
     expect(sheet().textContent).toContain('Paso 1 de 2')
+  })
+
+  it('"Siguiente" revisa los datos en el servidor: formato y DNI de otra persona, sin avanzar', async () => {
+    await openPepe()
+    await click(button('Revisar y habilitar'))
+    await type(fieldInput('Nombre y apellido'), 'Pepe Pérez')
+    await type(fieldInput('DNI'), '123')
+    await flush()
+    await click(button('Siguiente'))
+    const checks = posts('/approve/check')
+    expect(checks.at(-1)).toEqual({ profile: { fullName: 'Pepe Pérez', dni: '123' } })
+    expect(sheet().textContent).toContain('Paso 1 de 2')
+    expect(sheet().textContent).toContain('DNI inválido (6 a 8 dígitos)')
+    await type(fieldInput('DNI'), '30999888')
+    await flush()
+    await click(button('Siguiente'))
+    expect(sheet().textContent).toContain('Ya existe Ana Ficha (sin app)')
+    expect(sheet().textContent).toContain('Paso 1 de 2')
+    await type(fieldInput('DNI'), '41000111')
+    await flush()
+    await click(button('Siguiente'))
+    expect(sheet().textContent).toContain('Paso 2 de 2')
+    // Nada se guardó al revisar.
+    expect(posts('/approve').filter(b => !b.dry_run)).toHaveLength(0)
+  })
+
+  it('"Habilitar cuenta" usa las mismas reglas: un error en los datos vuelve al paso "Datos"', async () => {
+    useUI.setState({ toastMsg: null })
+    await openPepe()
+    await click(button('Revisar y habilitar'))
+    await type(fieldInput('Nombre y apellido'), 'Nombre Rechazado')
+    await type(fieldInput('DNI'), '41000111')
+    await flush()
+    await click(button('Siguiente'))
+    await click(button('Habilitar cuenta'))
+    expect(sheet().textContent).toContain('Paso 1 de 2')
+    expect(sheet().textContent).toContain('Nombre y apellido inválido')
+    expect(useUI.getState().toastMsg).not.toBe('Cuenta habilitada')
   })
 
   it('modo aprobar: "Solo habilitar" y las opciones de cuota como opcionales', async () => {

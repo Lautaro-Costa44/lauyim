@@ -206,6 +206,27 @@ test('con aprobación: registro con solo el nombre; queda pendiente y sin entren
   assert.equal((await call('adm', 'GET', '/api/admin/billing')).body.members.some(m => m.id === pendingId), false);
 });
 
+test('approve/check ("Siguiente"): solo admins, mismas reglas que habilitar, sin guardar', async () => {
+  const url = `/api/admin/users/${pendingId}/approve/check`;
+  assert.equal((await call(null, 'POST', url, { profile: PROFILE })).status, 401);
+  assert.equal((await call(pendingCookie, 'POST', url, { profile: PROFILE })).status, 403);
+  const bad = await call('adm', 'POST', url, { profile: { ...PROFILE, dni: '12' } });
+  assert.deepEqual([bad.status, bad.body.field], [400, 'dni']);
+  const missing = await call('adm', 'POST', url, { profile: { dni: '41000111' } });
+  assert.deepEqual([missing.status, missing.body.field], [400, 'full_name']);
+  const dup = await call('adm', 'POST', url, { profile: { ...PROFILE, dni: '30111222' } });
+  assert.deepEqual([dup.status, dup.body.error, dup.body.userId], [409, 'dni_duplicado', 'ficha']);
+  // La misma respuesta que da habilitar con esos datos.
+  const same = await call('adm', 'POST', `/api/admin/users/${pendingId}/approve`, { profile: { ...PROFILE, dni: '12' }, start: { type: 'payment', planId: plan.id, method: 'efectivo' } });
+  assert.deepEqual([same.status, same.body.field, same.body.error], [bad.status, bad.body.field, bad.body.error]);
+  const ok = await call('adm', 'POST', url, { profile: { ...PROFILE, dni: '41000111' } });
+  assert.deepEqual([ok.status, ok.body.ok], [200, true]);
+  // No guardó nada: sigue pendiente y sin ficha.
+  assert.equal((await call(pendingCookie, 'GET', '/api/me')).body.pending, true);
+  assert.equal(sql('SELECT COUNT(*) n FROM member_profile WHERE user_id = ?', pendingId)[0].n, 0);
+  assert.equal((await call('adm', 'POST', '/api/admin/users/old/approve/check', { profile: PROFILE })).body.error, 'not_pending');
+});
+
 test('aprobar: modo primer pago exige el pago; DNI de una ficha → 409 para vincular', async () => {
   const url = `/api/admin/users/${pendingId}/approve`;
   const r1 = await call('adm', 'POST', url, { profile: { ...PROFILE, dni: '41000111' } });
