@@ -2,7 +2,7 @@ name: restore-test
 
 services:
   api:
-    image: lauyim-api:local
+    image: ${RESTORE_API_IMAGE:-lauyim-api:local}
     restart: "no"
     environment:
       PORT: "3000"
@@ -18,7 +18,7 @@ services:
       - restore-test
 
   web:
-    image: lauyim-web:local
+    image: ${RESTORE_WEB_IMAGE:-lauyim-web:local}
     restart: "no"
     depends_on:
       - api

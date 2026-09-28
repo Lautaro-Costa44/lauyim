@@ -130,12 +130,24 @@ scripts/restore.sh --instance prod  # baja el último, verifica sha256 + integri
 # o uno puntual:  scripts/restore.sh --instance prod --file prod_2026-09-26_02-00-00.tar.gz
 # o uno ya bajado: scripts/restore.sh --package ~/prod_….tar.gz
 
-# Imágenes locales (si no existen):
-docker build -t lauyim-api:local api
-docker build -t lauyim-web:local -f web/Dockerfile .
-
 docker compose -f docker-compose.restore-test.yml -p restore-test up -d
 ```
+
+**Imágenes:** el entorno de prueba usa imágenes que **ya existen** en el servidor; no se
+construye nada. Por defecto son `lauyim-api:local` y `lauyim-web:local` (las de producción).
+**No correr `docker build -t lauyim-*:local`**: pisaría las imágenes de producción con lo que
+haya en esa copia del repo.
+
+Para probar el backup con las imágenes de dev (por ejemplo, antes de deployar una versión nueva):
+
+```bash
+export RESTORE_API_IMAGE=lauyim-dev-api:local
+export RESTORE_WEB_IMAGE=lauyim-dev-web:local
+export RESTORE_CHECK_IMAGE=$RESTORE_API_IMAGE   # la que usa restore.sh para el integrity_check
+docker compose -f docker-compose.restore-test.yml -p restore-test up -d
+```
+
+Sin esas variables se usan las de producción.
 
 Verificar:
 
