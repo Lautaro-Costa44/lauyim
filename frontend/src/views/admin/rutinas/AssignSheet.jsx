@@ -37,7 +37,7 @@ export default function AssignSheet({ program, days, users, close, onAssigned })
   // Solo socios activos con la app: una ficha sin app no tiene dónde ver la rutina.
   const q = normalizeStr(search.trim())
   const members = (users || [])
-    .filter(u => !u.disabled && u.hasApp !== false && (!q || normalizeStr(u.name).includes(q)))
+    .filter(u => !u.disabled && !u.pending && u.hasApp !== false && (!q || normalizeStr(u.name).includes(q)))   // ni desactivados ni sin aprobar
     .sort((a, b) => a.name.localeCompare(b.name))
 
   const assign = async u => {

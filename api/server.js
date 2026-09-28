@@ -681,6 +681,18 @@ const healthAwareSave = (user, saveOpts) => (uid, st) =>
 // sesión, se le rechazan las rutas de MEMBERSHIP_GATED), otro motivo. Staff nunca.
 const approvalNow = () => readApprovalSettings(getAdminSetting);
 const isAccountPending = user => !!user && user.approval_status === 'pending' && !isRealStaff(user);
+// Cuenta no activa: desactivada, o sin aprobar (pendiente; una rechazada es pendiente + desactivada).
+// No se le da rol de admin ni se le administra nutrición, rutinas o lesiones hasta que se active.
+const isInactiveAccount = user => !!user && (!!user.disabled || isAccountPending(user));
+const ACCOUNT_NOT_ACTIVE = { error: 'account_not_active', message: 'La cuenta no está activa: activala (o habilitala si está pendiente) antes de darle rol de admin o administrarle nutrición y rutina' };
+// Gate de las mutaciones de admin sobre nutrición/rutinas/lesiones de un socio: como
+// requireActiveTargetUser (existe y no está desactivado) y además aprobado.
+function requireManageableTarget(res, userId) {
+  const target = requireActiveTargetUser(res, userId); if (!target) return null;
+  if (isAccountPending(target)) { json(res, 409, ACCOUNT_NOT_ACTIVE); return null; }
+  return target;
+}
+
 // Pendientes que esperan al staff (el aviso al apagar la aprobación). Los desactivados ya se rechazaron.
 const countPendingAccounts = () => getAllUsers().filter(u => !u.disabled && isAccountPending(u)).length;
 
@@ -1659,7 +1671,7 @@ const routes = {
   'PUT /api/admin/users/:userId/nutrition/goals': async (req, res) => {
     const admin = requireAdmin(req, res); if (!admin) return;
     const userId = decodeURIComponent(new URL(req.url, 'http://x').pathname.split('/')[4]);
-    const target = requireActiveTargetUser(res, userId); if (!target) return;
+    const target = requireManageableTarget(res, userId); if (!target) return;
     const body = await readBody(req);
     const parsedGoals = parseNutritionGoalsBody(body);
     if (!parsedGoals.ok) return json(res, 400, { error: parsedGoals.error });
@@ -1681,7 +1693,7 @@ const routes = {
   'PUT /api/admin/users/:userId/nutrition/suggestions-limit': async (req, res) => {
     const admin = requireAdmin(req, res); if (!admin) return;
     const userId = decodeURIComponent(new URL(req.url, 'http://x').pathname.split('/')[4]);
-    const target = requireActiveTargetUser(res, userId); if (!target) return;
+    const target = requireManageableTarget(res, userId); if (!target) return;
     const body = await readBody(req);
     if (typeof body.limitarSugeridas !== 'boolean') return json(res, 400, { error: 'Falta limitarSugeridas (boolean)' });
     const before = getNutritionGoals(userId);
@@ -1703,7 +1715,7 @@ const routes = {
   'POST /api/admin/users/:userId/nutrition/suggestions': async (req, res) => {
     const admin = requireAdmin(req, res); if (!admin) return;
     const userId = decodeURIComponent(new URL(req.url, 'http://x').pathname.split('/')[4]);
-    const target = requireActiveTargetUser(res, userId); if (!target) return;
+    const target = requireManageableTarget(res, userId); if (!target) return;
     if (!limitarSugeridasEfectivo(userId)) return json(res, 409, { error: 'Activá "Limitar comidas sugeridas" para este socio antes de asignarle sugerencias' });
     const body = await readBody(req);
     const sourceId = Number(body.plantilla_id);
@@ -1728,7 +1740,7 @@ const routes = {
   'POST /api/admin/users/:userId/nutrition/suggestions/custom': async (req, res) => {
     const admin = requireAdmin(req, res); if (!admin) return;
     const userId = decodeURIComponent(new URL(req.url, 'http://x').pathname.split('/')[4]);
-    const target = requireActiveTargetUser(res, userId); if (!target) return;
+    const target = requireManageableTarget(res, userId); if (!target) return;
     if (!limitarSugeridasEfectivo(userId)) return json(res, 409, { error: 'Activá "Limitar comidas sugeridas" para este socio antes de asignarle sugerencias' });
     const body = await readBody(req);
     const nombre = String(body.nombre || '').trim();
@@ -1806,7 +1818,7 @@ const routes = {
     const parts = new URL(req.url, 'http://x').pathname.split('/');
     const userId = decodeURIComponent(parts[4]);
     const id = Number(parts[7]);
-    const target = requireActiveTargetUser(res, userId); if (!target) return;
+    const target = requireManageableTarget(res, userId); if (!target) return;
     const before = getPlantillaWithIngredientes(id);
     if (!before || before.user_id !== userId || before.scope !== 'admin') return json(res, 404, { error: 'Sugerencia no encontrada' });
     const body = await readBody(req);
@@ -1828,7 +1840,7 @@ const routes = {
     const parts = new URL(req.url, 'http://x').pathname.split('/');
     const userId = decodeURIComponent(parts[4]);
     const id = Number(parts[7]);
-    const target = requireActiveTargetUser(res, userId); if (!target) return;
+    const target = requireManageableTarget(res, userId); if (!target) return;
     const before = getPlantillaWithIngredientes(id);
     if (!before || before.user_id !== userId || before.scope !== 'admin') return json(res, 404, { error: 'Sugerencia no encontrada' });
     const body = await readBody(req);
@@ -1846,7 +1858,7 @@ const routes = {
     const parts = new URL(req.url, 'http://x').pathname.split('/');
     const userId = decodeURIComponent(parts[4]);
     const id = Number(parts[7]);
-    const target = requireActiveTargetUser(res, userId); if (!target) return;
+    const target = requireManageableTarget(res, userId); if (!target) return;
     const before = getPlantillaWithIngredientes(id);
     if (!before || before.user_id !== userId || before.scope !== 'admin') return json(res, 404, { error: 'Sugerencia no encontrada' });
     removeAdminSuggestion(id);
@@ -1860,7 +1872,7 @@ const routes = {
   'POST /api/admin/users/:userId/injuries/exercise-warning-override': async (req, res) => {
     const admin = requireAdmin(req, res); if (!admin) return;
     const userId = decodeURIComponent(new URL(req.url, 'http://x').pathname.split('/')[4]);
-    const target = requireActiveTargetUser(res, userId); if (!target) return;
+    const target = requireManageableTarget(res, userId); if (!target) return;
     const body = await readBody(req);
     const exerciseId = String(body?.exerciseId || '').trim();
     if (!exerciseId) return json(res, 400, { error: 'Falta exerciseId' });
@@ -1893,7 +1905,7 @@ const routes = {
   'PUT /api/admin/users/:userId/injuries': async (req, res) => {
     const admin = requireAdmin(req, res); if (!admin) return;
     const userId = decodeURIComponent(new URL(req.url, 'http://x').pathname.split('/')[4]);
-    const target = requireActiveTargetUser(res, userId); if (!target) return;
+    const target = requireManageableTarget(res, userId); if (!target) return;
     const body = await readBody(req);
     if (!Array.isArray(body?.lesiones) || !body.lesiones.every(l => typeof l === 'string' && l.trim())) {
       return json(res, 400, { error: 'Lesiones inválidas' });
@@ -1910,7 +1922,7 @@ const routes = {
   'PUT /api/admin/users/:userId/routines': async (req, res) => {
     const admin = requireAdmin(req, res); if (!admin) return;
     const userId = decodeURIComponent(new URL(req.url, 'http://x').pathname.split('/')[4]);
-    const target = requireActiveTargetUser(res, userId); if (!target) return;
+    const target = requireManageableTarget(res, userId); if (!target) return;
     const body = await readBody(req);
     const parsed = parseRoutinesBody(body);
     if (!parsed) return json(res, 400, { error: 'Rutinas inválidas' });
@@ -3082,6 +3094,8 @@ const routes = {
     if (!u) return json(res, 404, { error: 'El usuario no existe' });
     if (isOwner(u)) return json(res, 400, { error: 'cannot change the owner role' });
     const admin = !!body.admin;
+    // Dar el rol a una cuenta no activa, no; quitarlo, siempre.
+    if (admin && isInactiveAccount(u)) return json(res, 409, ACCOUNT_NOT_ACTIVE);
     updateUser(u.id, { admin });
     audit(req, admin ? 'owner.user.promote' : 'owner.user.demote', { user: owner, target: u });
     json(res, 200, { ok: true, id: u.id, admin });

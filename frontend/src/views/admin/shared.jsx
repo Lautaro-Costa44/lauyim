@@ -736,6 +736,8 @@ export function UserDetail({ id, billingEnabled = true, users, openUser, onChang
   }
   // Ficha without a passkey: nothing to train or sync, so the training parts stay out.
   const hasApp = u.hasApp !== false
+  // Desactivada o pendiente de aprobación. Quitar el rol de admin sigue permitido.
+  const inactive = !!u.disabled || !!u.pending
   // The ficha is gone after a merge: close its detail and show the account it joined.
   const merge = ({ fichaId, fichaName, targetId }) => openMemberSheet(openSheet, 'MergeSheet', {
     ficha: { id: fichaId, name: fichaName }, users, targetId,
@@ -777,11 +779,14 @@ export function UserDetail({ id, billingEnabled = true, users, openUser, onChang
     <FichaCard key={'ficha-' + reloadKey} user={{ ...u, hasApp }} users={users} openSheet={openSheet} openUser={showUser} onLink={merge} />
     {billingEnabled !== false && <BillingSummaryCard key={'cuota-' + reloadKey} userId={u.id} userName={u.name} openSheet={openSheet} onChanged={onChanged} />}
     {hasApp && d.healthConsent === 'declined' && <div className="small muted no-health-note">{t('Sin consentimiento de datos de salud: nutrición, lesiones y peso corporal no se muestran.')}</div>}
-    {hasApp && <Button variant="tinted" style={{ width: '100%', margin: '4px 0 4px' }}
+    {/* Cuenta no activa (desactivada o sin aprobar): ni rol de admin ni administrar nutrición o
+        rutina hasta que se active. La API rechaza igual (409 account_not_active). */}
+    {hasApp && inactive && <div className="small muted account-inactive-note" role="note">{t('Activá la cuenta para darle rol de admin o administrarle nutrición y rutina.')}</div>}
+    {hasApp && <Button variant="tinted" style={{ width: '100%', margin: '4px 0 4px' }} disabled={inactive}
       onClick={() => openSheet((c, { setOnBack }) => <AdminManageSheet userId={u.id} userName={u.name} healthConsent={d.healthConsent ?? null} close={c} setOnBack={setOnBack} />, { locked: true, fullScreen: true, backGesture: true })}>
       {t('Administrar Nutrición/Rutina')}
     </Button>}
-    {hasApp && currentUser?.owner && !u.owner && <button className="btn primary" style={{ margin: '12px 0 4px' }}
+    {hasApp && currentUser?.owner && !u.owner && <button className="btn primary" style={{ margin: '12px 0 4px' }} disabled={inactive && !u.admin}
       onClick={() => confirmSheet({ title: u.admin ? t('Remove admin from {0}?', u.name) : t('Make {0} an admin?', u.name), message: u.admin ? t('They will keep access to normal administrative tools only if promoted again.') : t('This gives the user access to the admin dashboard and administrative tools.'), confirmText: u.admin ? t('Remove admin') : t('Make admin'), danger: false, onConfirm: () => setAdmin(!u.admin) })}>
       {u.admin ? t('Remove admin role') : t('Make admin')}</button>}
     {!u.admin && !u.owner && <button className={'btn ' + (u.disabled ? 'primary' : 'danger')} style={{ margin: '8px 0 4px' }}
