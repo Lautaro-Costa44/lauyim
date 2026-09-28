@@ -453,6 +453,10 @@ const PUSH_CONCURRENCY = 6;
 const MAX_SUBS_PER_USER = 20;
 
 async function sendPush(userId, payload) {
+  // Cuenta no activa (desactivada, sin aprobar o borrada): nada, venga de donde venga el aviso
+  // (p. ej. una alarma de descanso agendada antes de desactivarla).
+  const user = getUserById(userId);
+  if (!user || isInactiveAccount(user)) return;
   const subs = getSubscriptionsByUserId(userId);
   if (!subs.length) return;
   const body = JSON.stringify(payload);
@@ -479,6 +483,12 @@ function scheduleRestTimer(userId, sec, lang) {
     restTimers.delete(userId);
     sendPush(userId, restTimerPush(lang));
   }, sec * 1000));
+}
+// Cuenta desactivada o rechazada: fuera sus suscripciones push y su alarma de descanso pendiente.
+// Si la reactivan, el socio vuelve a activar las notificaciones desde Ajustes.
+function endAccountPush(userId) {
+  cancelRestTimer(userId);
+  deleteSubscriptionsByUserId(userId);
 }
 function cancelRestTimer(userId) {
   const t = restTimers.get(userId);
@@ -561,6 +571,21 @@ function readSession(req) {
   const claimed = ver === undefined ? 0 : Number(ver);
   if (!Number.isInteger(claimed) || claimed !== sessionVersion(user)) return null;
   return user;
+}
+
+// Sin sesión válida: ¿por qué? Solo mira la cookie de quien pregunta. Si la firma es válida y la
+// cuenta ya no existe o está desactivada, lo dice (el cliente borra los datos locales en esos casos);
+// cualquier otra cosa es una sesión vencida o ausente (el cliente conserva la cola offline).
+// → 'account_deleted' | 'account_rejected' | 'account_disabled' | 'session_expired'
+function sessionEndReason(req) {
+  const tok = cookieToken(req);
+  const payload = tok && verifySig(tok);
+  if (!payload) return 'session_expired';
+  const [uid] = payload.split(':');
+  const user = uid ? getUserById(uid) : null;
+  if (!user) return uid ? 'account_deleted' : 'session_expired';
+  if (user.disabled) return user.approval_status === 'pending' ? 'account_rejected' : 'account_disabled';
+  return 'session_expired';
 }
 
 function requireAdmin(req, res) {
@@ -2311,7 +2336,8 @@ const routes = {
 
   'GET /api/me': async (req, res) => {
     const user = readSession(req);
-    if (!user) return json(res, 401, { error: 'No has iniciado sesión' });
+    // 401 con el motivo: el cliente distingue una sesión vencida de una cuenta dada de baja.
+    if (!user) return json(res, 401, { error: 'No has iniciado sesión', reason: sessionEndReason(req) });
     // staff: admin de verdad (sin DEMO_ADMIN_ALL_USERS). El frontend lo usa para el bloqueo por cuota.
     const me = { id: user.id, name: user.name, admin: isAdmin(user), owner: !!user.owner, staff: isRealStaff(user) };
     // Pendiente de aprobación / formulario de datos de una sola vez (socios que ya existían).
@@ -2737,6 +2763,13 @@ const routes = {
   'POST /api/logout': async (req, res) => {
     const user = readSession(req);
     if (user) audit(req, 'auth.logout', { user });
+    // La suscripción push de este dispositivo deja de ser de esta cuenta: si no, los avisos de quien
+    // cerró sesión le siguen llegando a quien entre después en el mismo navegador.
+    const body = await readBody(req).catch(() => ({}));
+    if (user && typeof body.endpoint === 'string') {
+      const sub = getSubscriptionsByUserId(user.id).find(s => s.endpoint === body.endpoint);
+      if (sub) deleteSubscription(sub.endpoint);
+    }
     json(res, 200, { ok: true }, { 'Set-Cookie': clearCookie });
   },
 
@@ -3102,7 +3135,8 @@ const routes = {
     if (isAdmin(u)) return json(res, 400, { error: 'cannot disable an admin' });
     const newDisabled = !!body.disabled;
     updateUser(u.id, { disabled: newDisabled });
-    if (newDisabled) presence.delete(u.id);
+    // Desactivada: sin avisos (se borran sus suscripciones y la alarma de descanso agendada).
+    if (newDisabled) { presence.delete(u.id); endAccountPush(u.id); }
     // saveDb(); // Eliminado: SQLite persiste automáticamente
     audit(req, newDisabled ? 'admin.user.disable' : 'admin.user.enable', { user: admin, target: u });
     json(res, 200, { ok: true, id: u.id, disabled: newDisabled });
@@ -3135,7 +3169,8 @@ const routes = {
     if (isOwner(u)) return json(res, 400, { error: 'cannot delete the owner account' });
 
     try {
-      const deleted = deleteUser(u.id);
+      const deleted = deleteUser(u.id);   // las suscripciones se borran en cascada
+      cancelRestTimer(u.id);
       audit(req, 'owner.user.delete', { user: owner, target: deleted });
       return json(res, 200, { ok: true, id: deleted.id });
     } catch (error) {
@@ -3498,6 +3533,7 @@ const routes = {
     const reason = typeof body.reason === 'string' ? body.reason.replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim() : '';
     if (!reason || reason.length > 200) return json(res, 400, { error: 'El motivo es obligatorio (máx. 200 caracteres)' });
     updateUser(userId, { disabled: true });
+    endAccountPush(userId);
     audit(req, 'admin.member.reject', { user: admin, target, summary: `Motivo: ${reason}` });
     json(res, 200, { ok: true });
   },
