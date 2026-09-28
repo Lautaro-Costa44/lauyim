@@ -57,7 +57,10 @@ export default function Resumen() {
   const openUser = id => openSheet(close => <UserDetail id={id} billingEnabled={billingEnabled} users={allUsers} onChanged={loadUsers} close={close} />)
   // Counters and tiles count app users only: a member record without a passkey (ficha) does not
   // use the app, same as the attendance total.
-  const users = allUsers && allUsers.filter(u => u.hasApp)
+  // Cuentas sin aprobar (pendientes, o rechazadas = pendiente + desactivada) no son socios todavía:
+  // no cuentan en Usuarios, Activos 7d, Entrenando ahora ni Desactivados. Las pendientes tienen su
+  // propio contador abajo; las rechazadas no se cuentan en el Resumen.
+  const users = allUsers && allUsers.filter(u => u.hasApp && !u.pending)
   const liveUsers = (users || []).filter(u => u.live)
   const activeCount = (users || []).filter(u => u.lastSync && Date.now() - u.lastSync < 7 * 86400000).length
   const disabledCount = (users || []).filter(u => u.disabled).length

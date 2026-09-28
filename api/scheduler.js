@@ -167,6 +167,8 @@ export function runSchedulerTick({ now = Date.now(), sendToUser = sendPushToUser
       LEFT JOIN reminder_settings rs ON u.id = rs.user_id
       LEFT JOIN member_billing mb ON u.id = mb.user_id
       WHERE u.disabled = 0
+        -- Cuenta sin aprobar (pendiente): ningún aviso hasta que el staff la habilite.
+        AND (u.approval_status IS NULL OR u.approval_status <> 'pending')
         -- Todos los avisos son push: sin suscripción no hay a quién mandarle nada.
         AND EXISTS (SELECT 1 FROM subscriptions s WHERE s.user_id = u.id)
     `);

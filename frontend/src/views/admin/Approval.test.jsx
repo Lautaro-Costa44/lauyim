@@ -127,6 +127,19 @@ describe('pendientes', () => {
     expect(items[0].textContent).toContain('Pendiente')
   })
 
+  it('Resumen: Usuarios, Activos 7d y Entrenando ahora solo aprobados; Desactivados sin rechazadas', async () => {
+    users = [
+      ANA,                                                                                   // activa, sincronizó hoy
+      { ...PEPE, lastSync: Date.now(), live: { name: 'Push' } },                             // pendiente
+      { id: 'r', name: 'rechazada', hasApp: true, pending: true, disabled: true, lastSync: Date.now() },
+      { id: 'd', name: 'desactivado', hasApp: true, disabled: true, lastSync: null },
+    ]
+    await mount('#/admin/resumen')
+    const tiles = [...document.querySelectorAll('.tiles .tile')].slice(0, 4).map(el => el.querySelector('.v').textContent)
+    expect(tiles).toEqual(['2', '0', '1', '1'])            // Usuarios (ana + desactivado), Entrenando, Activos 7d, Desactivados
+    expect(document.querySelector('.admin-pending-banner').textContent).toContain('1cuenta pendiente')
+  })
+
   it('sin pendientes no hay contador ni chip', async () => {
     users = [ANA]
     await mount('#/admin/resumen')

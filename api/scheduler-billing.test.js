@@ -22,8 +22,8 @@ const tick = async hhmm => {
 };
 const tags = userId => sent.filter(s => s.userId === userId).map(s => s.tag);
 
-function member(id, { planDue, feeOn } = {}) {
-  db.createUser({ id, name: id });
+function member(id, { planDue, feeOn, pending = false } = {}) {
+  db.createUser({ id, name: id, pending });
   db.createSubscription({ endpoint: `https://push.invalid/${id}`, userId: id, keys: { p256dh: 'x', auth: 'x' } });
   if (planDue) db.setMemberBilling(id, { planId: plan.id, dueDate: planDue });
   // Recordatorio manual: mensual, con el día de hoy como día de pago.
@@ -89,4 +89,18 @@ test('cuotas apagado: sin aviso de vencimiento y el manual sale aunque tenga pla
   assert.equal(db.getMemberBilling('offPlan').pushSentForDue ?? null, null);
   await tick('13:01');
   assert.deepEqual(tags('offPlan'), ['gym-fee']);
+});
+
+test('cuenta pendiente de aprobación: ningún aviso (vencimiento ni manual) hasta que la habilitan', async () => {
+  db.setAdminSetting('billing_enabled', '1');                     // el test anterior la apaga
+  member('pendPlan', { planDue: '2026-09-26', pending: true });   // p. ej. la unieron con su ficha
+  member('pendFee', { feeOn: true, pending: true });
+  await tick('13:00');
+  assert.deepEqual(tags('pendPlan'), []);
+  assert.deepEqual(tags('pendFee'), []);
+  // Habilitadas: les llega lo mismo que a cualquier socio.
+  db.getDatabase().prepare("UPDATE users SET approval_status = NULL WHERE id IN ('pendPlan', 'pendFee')").run();
+  await tick('13:01');
+  assert.deepEqual(tags('pendPlan'), ['billing-due']);
+  assert.deepEqual(tags('pendFee'), ['gym-fee']);
 });

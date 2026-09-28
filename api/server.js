@@ -3893,7 +3893,9 @@ const routes = {
       }
     }
 
-    const rawSubs = getAllSubscriptions();
+    // Solo cuentas activas: ni desactivadas ni sin aprobar (pendientes o rechazadas).
+    const activeIds = new Set(getAllUsers().filter(u => !isInactiveAccount(u)).map(u => u.id));
+    const rawSubs = getAllSubscriptions().filter(s => activeIds.has(s.user_id));
     if (!rawSubs.length) return json(res, 200, { ok: true, sent: 0 });
 
     const payload = {

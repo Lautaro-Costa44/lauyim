@@ -26,6 +26,13 @@ const oldKeys = { p256dh: 'x', auth: 'y' };
 db.createSubscription({ endpoint: 'https://push.otro-servicio.example/abc', userId: 'm2', keys: oldKeys });
 db.createSubscription({ endpoint: 'https://push.otro-servicio.example/def', userId: 'm3', keys: oldKeys });
 db.createSubscription({ endpoint: 'https://fcm.googleapis.com/fcm/send/m3', userId: 'm3', keys: oldKeys });
+// Push masivo: una cuenta pendiente, una desactivada y una activa, con endpoints que la allowlist
+// frena sin salir a la red (cada intento queda en el log del servidor).
+db.createUser({ id: 'pend', name: 'Pendiente', pending: true, created: Date.now() });
+db.createUser({ id: 'off', name: 'Desactivado', created: Date.now() });
+db.updateUser('off', { disabled: true });
+db.createUser({ id: 'act', name: 'Activo', created: Date.now() });
+for (const id of ['pend', 'off', 'act']) db.createSubscription({ endpoint: `https://push.no-permitido.example/${id}`, userId: id, keys: oldKeys });
 db.closeDatabase();
 
 const PORT = 44000 + Math.floor(Math.random() * 2000);
@@ -49,13 +56,14 @@ async function subscribe(endpoint, k = keys) {
   return { status: res.status, body: await res.json().catch(() => ({})) };
 }
 
+let serverLog = '';
 before(async () => {
   server = spawn(process.execPath, [fileURLToPath(new URL('./server.js', import.meta.url))], {
     env: { ...process.env, DATA_DIR: dataDir, PORT: String(PORT), LICENSE_EXPIRES_AT: '', PUSH_HOST_ALLOWLIST: '' },
     stdio: ['ignore', 'pipe', 'pipe']
   });
   let log = '';
-  server.stderr.on('data', d => { log += d; });
+  server.stderr.on('data', d => { log += d; serverLog += d; });
   await new Promise((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error('el server no arrancó:\n' + log)), 15000);
     server.stdout.on('data', d => { if (String(d).includes('gym-api on')) { clearTimeout(timer); resolve(); } });
@@ -97,4 +105,17 @@ test('hasPush: una suscripción bloqueada por la allowlist no cuenta', async () 
   const hasPush = Object.fromEntries(users.map(u => [u.id, u.hasPush]));
   assert.equal(hasPush.m2, false);
   assert.equal(hasPush.m3, true);
+});
+
+test('push masivo del admin: no les llega a cuentas pendientes ni desactivadas', async () => {
+  const res = await fetch(`http://127.0.0.1:${PORT}/api/admin/push`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json', Cookie: cookie('owner') },
+    body: JSON.stringify({ titulo: 'Aviso', texto: 'Hola' })
+  });
+  assert.equal(res.status, 200);
+  await new Promise(r => setTimeout(r, 50));
+  const tried = [...serverLog.matchAll(/admin push send failed (\S+)/g)].map(m => m[1]);
+  assert.ok(tried.includes('https://push.no-permitido.example/act'));
+  assert.ok(!tried.includes('https://push.no-permitido.example/pend'));
+  assert.ok(!tried.includes('https://push.no-permitido.example/off'));
 });
