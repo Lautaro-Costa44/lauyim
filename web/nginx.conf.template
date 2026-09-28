@@ -45,6 +45,14 @@ server {
         proxy_set_header CF-Connecting-IP "";
     }
 
+    # URL pública del aviso de privacidad: el router usa hash (#/privacidad). Con y sin barra
+    # final; relativo (absolute_redirect off) para no filtrar el host/puerto interno detrás del
+    # túnel. main.jsx y sw.js hacen lo mismo por si la navegación no llega acá.
+    location ~ ^/privacidad/?$ {
+        absolute_redirect off;
+        return 302 "/#/privacidad";
+    }
+
     # SPA fallback
     location ^~ /assets/ {
         try_files $uri =404;

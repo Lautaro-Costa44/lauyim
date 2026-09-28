@@ -56,7 +56,7 @@ describe('/privacidad', () => {
     await mount('#/privacidad')
     expect(apiMock).toHaveBeenCalledWith('/api/privacy')
     const body = text()
-    expect(body).toContain('Borrador para revisión legal')
+    expect(body).not.toContain('Borrador')
     expect(body).toContain('El responsable de la base de datos es Gimnasio Norte')
     expect(body).toContain('encargado del tratamiento')
     expect(body).toContain('Tus datos de socio: nombre y apellido, DNI.')
@@ -88,6 +88,15 @@ describe('/privacidad', () => {
     privacy = { ...privacy, operator: { name: 'Juan Pérez', cuit: '20-12345678-9' } }
     await mount('#/privacidad')
     expect(text()).toContain('lauyim (Juan Pérez, CUIT 20-12345678-9) provee la app')
+  })
+
+  it('"Problemas técnicos con la app" abre el mismo reporte de soporte de Ajustes', async () => {
+    await mount('#/privacidad')
+    const contact = [...document.querySelectorAll('.privacy-sect')].find(sct => sct.querySelector('h2').textContent === 'Contacto')
+    expect(contact.textContent).toContain('privacidad@norte.com.ar')          // el gym, para datos personales
+    await click(contact.querySelector('.privacy-support button'))
+    for (let i = 0; i < 20 && !document.querySelector('#modal-root h3'); i++) await tick()
+    expect(document.querySelector('#modal-root h3').textContent).toBe('Reportar un problema')
   })
 
   it('se ve también con la licencia vencida', async () => {

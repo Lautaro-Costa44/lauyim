@@ -1606,7 +1606,6 @@ input[type="search"]::-webkit-search-cancel-button{display:none;-webkit-appearan
 .privacy-doc p{margin:6px 0}
 .privacy-doc ul{margin:6px 0;padding-left:20px}
 .privacy-doc li{margin:4px 0}
-.privacy-draft{background:color-mix(in srgb,var(--warning) 16%,transparent);color:var(--label);border-radius:var(--r);padding:10px 12px;font-size:14px;line-height:1.45}
 .privacy-legal{color:var(--label-2);font-size:13px}
 .privacy-link{background:none;border:0;padding:0;font:inherit;color:var(--acc);text-decoration:underline;text-underline-offset:2px;cursor:pointer}
 .privacy-footer{margin-top:14px;text-align:center}
@@ -1643,3 +1642,13 @@ input[type="search"]::-webkit-search-cancel-button{display:none;-webkit-appearan
 .health-state.off{background:color-mix(in srgb,var(--warning) 18%,transparent);color:var(--warning)}
 .health-confirm{display:flex;flex-direction:column;gap:8px;padding:12px;border-radius:var(--r);background:color-mix(in srgb,var(--danger) 10%,transparent);font-size:14px;line-height:1.45}
 .no-health-note{margin:4px 2px 8px;line-height:1.4}
+/* Aviso de privacidad como página de lectura: en escritorio ocupa su propia columna centrada
+   (no el contenedor de 1080px de la app), con márgenes cómodos y texto más grande. */
+.privacy-support{margin-top:10px}
+@media (min-width:1000px){
+  #app.privacy-app{max-width:none;padding:48px 24px 96px}
+  #app.privacy-app .privacy-page{max-width:720px;margin:0 auto;padding:0}
+  #app.privacy-app .privacy-title{font-size:34px;margin:22px 0 6px}
+  #app.privacy-app .privacy-doc{max-width:none;font-size:16px;line-height:1.7}
+  #app.privacy-app .privacy-doc h2{font-size:19px;margin:30px 0 8px}
+}

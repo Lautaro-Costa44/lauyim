@@ -139,7 +139,7 @@ function Shell() {
       {/* keyed on the route: a view that throws is contained, and switching tabs
           re-mounts the boundary, so the tab bar is always a way out. Every /admin/* section
           shares one key: switching sections must not re-mount the admin layout (and its poll). */}
-      <div id="app" className={'vfade' + (isAdminPath ? ' admin-app' : '')} key={isAdminPath ? '/admin' : loc.pathname}>
+      <div id="app" className={'vfade' + (isAdminPath ? ' admin-app' : '') + (isPrivacy ? ' privacy-app' : '')} key={isAdminPath ? '/admin' : loc.pathname}>
         <ErrorBoundary>
           {isPrivacy ? <Suspense fallback={<div className="page-loading" aria-busy="true" />}><Privacy /></Suspense>
             : licenseExpired ? <LicenseExpired /> : !authed ? <Login /> : blocked ? <MembershipBlocked />

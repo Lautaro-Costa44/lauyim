@@ -93,6 +93,13 @@ self.addEventListener('fetch', e => {
   // be served from a stale service-worker cache.
   if (isApiRequest(url)) return
 
+  // Aviso de privacidad por su URL pública (/privacidad o /privacidad/): a la ruta hash, también
+  // offline. Con /privacidad/ el index.html de respaldo buscaría los assets en /privacidad/assets.
+  if (e.request.mode === 'navigate' && /\/privacidad\/?$/.test(url.pathname)) {
+    e.respondWith(Response.redirect(new URL('./#/privacidad', self.registration.scope).href, 302))
+    return
+  }
+
   if (e.request.mode === 'navigate') {
     // Navigation gets the only HTML fallback. JS/CSS/image requests can never
     // receive index.html, avoiding MIME errors after a partial/old deployment.

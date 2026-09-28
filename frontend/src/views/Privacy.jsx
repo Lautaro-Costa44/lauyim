@@ -14,6 +14,7 @@ export default function Privacy() {
     <Button size="sm" icon="chevronLeft" onClick={back}>{t('Volver')}</Button>
     <h1 className="privacy-title">{t('Aviso de privacidad')}</h1>
     {info?.gymName && <div className="muted" style={{ marginBottom: 14 }}>{info.gymName}</div>}
-    <PrivacyNotice info={info} />
+    {/* El mismo reporte que Ajustes → "Reportar un problema" (sheets.jsx), cargado recién al tocar. */}
+    <PrivacyNotice info={info} onSupport={() => import('../sheets.jsx').then(m => m.supportSheet())} />
   </div>
 }

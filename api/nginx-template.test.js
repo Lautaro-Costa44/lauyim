@@ -29,3 +29,13 @@ test('/api recibe la IP real en X-Real-IP / X-Forwarded-For y no recibe CF-Conne
   assert.ok(directives.includes('proxy_set_header CF-Connecting-IP "";'));
   assert.ok(directives.includes('proxy_pass http://api:3000;'));
 });
+
+test('/privacidad y /privacidad/: redirect relativo a la ruta hash del aviso', () => {
+  const at = rendered.indexOf('location ~ ^/privacidad/?$ {');
+  assert.ok(at > 0);
+  const block = rendered.slice(at, rendered.indexOf('}', at));
+  assert.match(block, /absolute_redirect off;/);
+  assert.match(block, /return 302 "\/#\/privacidad";/);   // entre comillas: el # no es un comentario
+  // Antes del fallback de la SPA (una location regex gana igual, pero así queda a la vista).
+  assert.ok(at < rendered.indexOf('location / {'));
+});
