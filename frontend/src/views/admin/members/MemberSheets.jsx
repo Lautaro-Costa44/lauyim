@@ -504,6 +504,8 @@ export function ApproveSheet({ user, billingEnabled, close, setOnBack, onApprove
   // Su propio DNI (ya cargado, p. ej. después de unirla con su ficha) no es un duplicado.
   const checkDni = () => lookupDni(values.dni).then(found => setDuplicate(found && found.userId !== user.id ? found : null))
   const withBilling = billingEnabled && opts && !(opts.allowed.length === 1 && opts.allowed[0] === 'none')
+  // Obligatorios de la config vacíos: no se avanza (el servidor igual valida formato y obligatorios).
+  const missing = fields && values ? MEMBER_FIELDS.filter(f => fields[f.key]?.enabled && fields[f.key]?.required && !String(values[f.prop] ?? '').trim()) : []
 
   const save = () => {
     const profile = {}
@@ -552,8 +554,9 @@ export function ApproveSheet({ user, billingEnabled, close, setOnBack, onApprove
         </>}
         <div style={{ height: 12 }} />
         {withBilling && step === 'datos'
-          ? <Button variant="primary" disabled={!!duplicate} onClick={() => { setErrors({}); setStep('cuota') }}>{t('Siguiente')}</Button>
-          : <Button variant="primary" disabled={saving || !!duplicate || !payOk || !opts.allowed.includes(start)} onClick={save}>{saving ? t('Guardando…') : t('Habilitar cuenta')}</Button>}
+          ? <Button variant="primary" disabled={!!duplicate || missing.length > 0} onClick={() => { setErrors({}); setStep('cuota') }}>{t('Siguiente')}</Button>
+          : <Button variant="primary" disabled={saving || !!duplicate || missing.length > 0 || !payOk || !opts.allowed.includes(start)} onClick={save}>{saving ? t('Guardando…') : t('Habilitar cuenta')}</Button>}
+        {step === 'datos' && missing.length > 0 && <p className="dim small approve-missing">{t('Completá los datos obligatorios (*) para seguir.')}</p>}
         <p className="dim small member-privacy">{t(PRIVACY_NOTE)} <PrivacyLink onClick={privacy.open} /></p>
       </>}
       {errors.general && <div className="form-error" role="alert">{errors.general}</div>}

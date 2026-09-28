@@ -772,8 +772,10 @@ export function UserDetail({ id, billingEnabled = true, users, openUser, onChang
       <Button variant="primary" onClick={() => openMemberSheet(openSheet, 'LinkCodeSheet', { user: u, onLinked: () => { setReloadKey(k => k + 1); onChanged() } })}>{t('Generar código de vinculación')}</Button>
       <Button variant="tinted" onClick={() => merge({ fichaId: u.id, fichaName: u.name })}>{t('Vincular con cuenta existente')}</Button>
     </div>}
-    <FichaCard user={{ ...u, hasApp }} users={users} openSheet={openSheet} openUser={showUser} onLink={merge} />
-    {billingEnabled !== false && <BillingSummaryCard userId={u.id} userName={u.name} openSheet={openSheet} onChanged={onChanged} />}
+    {/* keyed en reloadKey: cargan sus datos una vez por socio, así que al aprobar (o vincular un
+        código) se vuelven a montar y muestran la ficha y la cuota nuevas sin cambiar de socio. */}
+    <FichaCard key={'ficha-' + reloadKey} user={{ ...u, hasApp }} users={users} openSheet={openSheet} openUser={showUser} onLink={merge} />
+    {billingEnabled !== false && <BillingSummaryCard key={'cuota-' + reloadKey} userId={u.id} userName={u.name} openSheet={openSheet} onChanged={onChanged} />}
     {hasApp && d.healthConsent === 'declined' && <div className="small muted no-health-note">{t('Sin consentimiento de datos de salud: nutrición, lesiones y peso corporal no se muestran.')}</div>}
     {hasApp && <Button variant="tinted" style={{ width: '100%', margin: '4px 0 4px' }}
       onClick={() => openSheet((c, { setOnBack }) => <AdminManageSheet userId={u.id} userName={u.name} healthConsent={d.healthConsent ?? null} close={c} setOnBack={setOnBack} />, { locked: true, fullScreen: true, backGesture: true })}>

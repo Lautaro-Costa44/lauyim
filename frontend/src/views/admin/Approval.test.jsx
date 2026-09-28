@@ -124,6 +124,8 @@ describe('pendientes', () => {
     users = [ANA]
     await mount('#/admin/resumen')
     expect(document.querySelector('.admin-pending-banner')).toBeNull()
+    // Desmontar antes de montar otra App: si no, la primera sigue viva y ensucia los tests siguientes.
+    await act(async () => { root.unmount() }); container.remove()
     await mount('#/admin/usuarios')
     expect(text()).not.toContain('Pendientes')
   })
@@ -146,12 +148,39 @@ describe('pendientes', () => {
     const options = [...sheet().querySelectorAll('.start-opt')].map(r => r.querySelector('.lrow-t').textContent)
     expect(options).toEqual(['Registrar pago'])
     expect(sheet().textContent).toContain('Vence el')
+    const gets = suffix => apiMock.mock.calls.filter(([u, o]) => u.endsWith(suffix) && !o?.method).length
+    const before = { detail: gets('/api/admin/user?id=p'), ficha: gets('/users/p/profile'), cuota: gets('/users/p/billing') }
     await click(button('Habilitar cuenta'))
+    // La ficha abierta se refresca sola: detalle, card "Ficha" y card de cuota se vuelven a pedir.
+    expect(gets('/api/admin/user?id=p')).toBe(before.detail + 1)
+    expect(gets('/users/p/profile')).toBe(before.ficha + 1)
+    expect(gets('/users/p/billing')).toBe(before.cuota + 1)
+    expect(text()).not.toContain('Revisar y habilitar')
     const sent = posts('/approve').filter(b => !b.dry_run)
     expect(sent).toHaveLength(1)
     expect(sent[0].profile).toEqual({ fullName: 'Pepe Pérez', dni: '41000111' })
     expect(sent[0].start).toMatchObject({ type: 'payment', planId: 1, method: 'efectivo', amount: 20000 })
     expect(useUI.getState().toastMsg).toBe('Cuenta habilitada')
+  })
+
+  it('"Siguiente" queda deshabilitado hasta completar los obligatorios de la ficha', async () => {
+    await openPepe()
+    await click(button('Revisar y habilitar'))
+    expect(button('Siguiente').disabled).toBe(true)
+    expect(sheet().textContent).toContain('Completá los datos obligatorios (*) para seguir.')
+    await type(fieldInput('Nombre y apellido'), 'Pepe Pérez')
+    await flush()
+    expect(button('Siguiente').disabled).toBe(true)          // falta el DNI
+    await type(fieldInput('DNI'), '41000111')
+    await flush()
+    expect(button('Siguiente').disabled).toBe(false)
+    expect(sheet().textContent).not.toContain('Completá los datos obligatorios')
+    await type(fieldInput('Nombre y apellido'), '   ')        // solo espacios no cuenta
+    await flush()
+    expect(button('Siguiente').disabled).toBe(true)
+    // Deshabilitado de verdad: el click no avanza al paso de cuota.
+    await click(button('Siguiente'))
+    expect(sheet().textContent).toContain('Paso 1 de 2')
   })
 
   it('modo aprobar: "Solo habilitar" y las opciones de cuota como opcionales', async () => {

@@ -2265,7 +2265,8 @@ const routes = {
     const settings = billingSettingsNow();
     const today = billingToday(settings);
     const counts = { bloqueado: 0, vencido: 0, por_vencer: 0 };
-    for (const b of getAllMemberBilling()) {
+    // Las cuentas sin aprobar no están en Cuotas: tampoco cuentan acá.
+    for (const b of getAllMemberBilling().filter(b => !b.pending)) {
       if (b.disabled || isRealStaff({ id: b.userId, admin: b.admin, owner: b.owner })) continue;
       const status = billingStatus(b, today, settings);
       if (status in counts) counts[status]++;
@@ -3112,7 +3113,8 @@ const routes = {
     if (billingDisabled(res)) return;
     const settings = billingSettingsNow();
     const today = billingToday(settings);
-    const members = getAllMemberBilling().map(b => {
+    // Cuentas sin aprobar (pendientes o rechazadas): no son socios todavía, no van en Cuotas.
+    const members = getAllMemberBilling().filter(b => !b.pending).map(b => {
       const view = billingView(b, today, settings);
       return { id: b.userId, name: b.name, disabled: b.disabled, admin: isRealStaff({ id: b.userId, admin: b.admin, owner: b.owner }), hasApp: b.hasApp, planId: view.planId, planName: view.planName, dueDate: view.dueDate, trialUntil: view.trialUntil, status: view.status, debt: view.debt };
     });

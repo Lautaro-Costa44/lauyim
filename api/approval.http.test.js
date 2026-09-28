@@ -195,6 +195,8 @@ test('con aprobación: registro con solo el nombre; queda pendiente y sin entren
   assert.equal(list.body.users.find(u => u.id === 'old').pending, false);
   assert.equal((await call('adm', 'GET', '/api/admin/user?id=' + pendingId)).body.user.pending, true);
   assert.equal((await call('adm', 'GET', '/api/admin/approval')).body.pendingCount, 1);
+  // Pendiente: no aparece en Cuotas.
+  assert.equal((await call('adm', 'GET', '/api/admin/billing')).body.members.some(m => m.id === pendingId), false);
 });
 
 test('aprobar: modo primer pago exige el pago; DNI de una ficha → 409 para vincular', async () => {
@@ -234,9 +236,13 @@ test('aprobar después de vincular la ficha: con plan vigente alcanza con "solo 
   assert.equal(merged.status, 200, JSON.stringify(merged.body));
   const me = await call(r.cookie, 'GET', '/api/me');
   assert.equal(me.body.pending, true);   // unir no la habilita: falta confirmar
+  // Pendiente con plan vigente (lo trajo la ficha): igual no aparece en Cuotas hasta habilitarla.
+  const inBilling = async () => (await call('adm', 'GET', '/api/admin/billing')).body.members.some(m => m.id === anaId);
+  assert.equal(await inBilling(), false);
   const ok = await call('adm', 'POST', `/api/admin/users/${anaId}/approve`, { profile: { fullName: 'Ana Ficha', dni: '30111222', phone: '11 5555-5555' }, start: { type: 'none' } });
   assert.equal(ok.status, 200, JSON.stringify(ok.body));
   assert.equal((await call(r.cookie, 'GET', '/api/me')).body.pending, false);
+  assert.equal(await inBilling(), true);
 });
 
 test('rechazar: desactiva con motivo en Logs y sale de pendientes', async () => {
@@ -246,6 +252,12 @@ test('rechazar: desactiva con motivo en Logs y sale de pendientes', async () => 
   assert.equal((await call('adm', 'POST', `/api/admin/users/${id}/reject`, { reason: 'No es socio' })).status, 200);
   assert.equal((await call(r.cookie, 'GET', '/api/me')).status, 401);
   assert.ok(auditLog().includes('Motivo: No es socio'));
+  // Rechazada: tampoco en Cuotas (ni en la lista ni en el resumen), ni en la vista previa de activar.
+  const billing = await call('adm', 'GET', '/api/admin/billing');
+  assert.equal(billing.body.members.some(m => m.id === id), false);
+  const shown = billing.body.members.filter(m => !m.disabled && !m.admin).length;
+  const summed = ['al_dia', 'por_vencer', 'vencido', 'bloqueado', 'sin_plan', 'en_prueba'].reduce((n, k) => n + billing.body.summary[k], 0);
+  assert.equal(summed, shown);
   assert.equal((await call('adm', 'POST', `/api/admin/users/${id}/reject`, { reason: 'otra vez' })).body.error, 'not_pending');
 });
 

@@ -2098,7 +2098,7 @@ export function getMemberBilling(userId) {
 // de usuarios del admin).
 export function getAllMemberBilling() {
   return getDatabase().prepare(`
-    SELECT u.id AS user_id, u.name, u.disabled, u.admin, u.owner, ${BILLING_SELECT},
+    SELECT u.id AS user_id, u.name, u.disabled, u.admin, u.owner, u.approval_status, ${BILLING_SELECT},
       EXISTS (SELECT 1 FROM credentials c WHERE c.user_id = u.id) AS has_app
     FROM users u
     LEFT JOIN member_billing mb ON mb.user_id = u.id
@@ -2110,6 +2110,8 @@ export function getAllMemberBilling() {
     disabled: !!row.disabled,
     admin: row.admin === 1,
     owner: row.owner === 1,
+    // Cuenta sin aprobar (pendiente, o rechazada = pendiente + desactivada): fuera de Cuotas.
+    pending: row.approval_status === 'pending',
     hasApp: row.has_app === 1
   }));
 }
