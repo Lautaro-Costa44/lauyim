@@ -1,4 +1,5 @@
 const DB_NAME = 'lauyim-sync-v1'
+export const SYNC_DB_NAME = DB_NAME   // session-end.js la borra entera cuando la cuenta se da de baja
 const STORE = 'operations'
 const FALLBACK_KEY = 'gym_sync_queue_v1'
 

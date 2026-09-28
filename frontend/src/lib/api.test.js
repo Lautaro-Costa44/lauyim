@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { webauthnOK } from './api.js'
+import { api, webauthnOK } from './api.js'
 
 const originalPublicKeyCredential = window.PublicKeyCredential
 const originalCredentials = navigator.credentials
@@ -55,5 +55,28 @@ describe('linkPasskey', () => {
       expect(url).toBe('/api/link/verify')
       expect(JSON.parse(opts.body)).toMatchObject({ cid: 'c1', credential: { id: 'k', response: { transports: ['internal'] } } })
     } finally { fetchMock.mockRestore() }
+  })
+})
+
+describe('api: sin sesión', () => {
+  const realFetch = globalThis.fetch
+  afterEach(() => { globalThis.fetch = realFetch })
+  const listen = () => { const seen = []; const on = e => seen.push(e.detail); window.addEventListener('gym:unauthorized', on); return { seen, off: () => window.removeEventListener('gym:unauthorized', on) } }
+
+  it('un 401 de cualquier pedido avisa (gym:unauthorized); /api/me no, lo maneja el store', async () => {
+    globalThis.fetch = vi.fn(async () => new Response(JSON.stringify({ error: 'No has iniciado sesión' }), { status: 401 }))
+    const l = listen()
+    await expect(api('/api/data')).rejects.toMatchObject({ status: 401 })
+    await expect(api('/api/me')).rejects.toMatchObject({ status: 401 })
+    l.off()
+    expect(l.seen).toHaveLength(1)
+  })
+
+  it('un error de red no es "sin sesión"', async () => {
+    globalThis.fetch = vi.fn(async () => { throw new TypeError('Failed to fetch') })
+    const l = listen()
+    await expect(api('/api/data')).rejects.toBeInstanceOf(TypeError)
+    l.off()
+    expect(l.seen).toHaveLength(0)
   })
 })

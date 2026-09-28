@@ -38,6 +38,11 @@ export async function api(path, opts) {
     if (data.error === 'membership_blocked') {
       window.dispatchEvent(new CustomEvent('gym:membership_blocked', { detail: data }))
     }
+    // Sin sesión en cualquier pedido: el store pregunta a /api/me el motivo (sesión vencida o
+    // cuenta dada de baja). Un error de red no llega acá: fetch tira antes, sin status.
+    if (r.status === 401 && !String(path).startsWith('/api/me')) {
+      window.dispatchEvent(new CustomEvent('gym:unauthorized', { detail: data }))
+    }
     // Cuenta pendiente de aprobación: mismo mecanismo, otra pantalla.
     if (data.error === 'account_pending') {
       window.dispatchEvent(new CustomEvent('gym:account_pending', { detail: data }))

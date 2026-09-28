@@ -4,6 +4,7 @@ import { localTZ, workoutTime } from '../lib/format.js'
 import { registerCustom } from '../lib/exercises.js'
 import { DEMO, DEMO_SEEDED } from '../lib/demo.js'
 import { guestAllowed } from '../lib/guest.js'
+import { deviceSubscription, isAccountEnded, wipeDeviceData } from '../lib/session-end.js'
 import { enqueueSync, takeSyncBatch, removeSync, deferSync, countSync, diffState, applySyncMappings } from '../lib/sync-queue.js'
 import { MAX_ROUTINE_GROUPS, canAddGroup, validateGroupName, createRoutineGroup, syncActiveGroupInState, addGroupToState, removeGroupFromState } from '../lib/routineGroups.js'
 
@@ -211,8 +212,39 @@ export const useStore = create((set, get) => {
     persist(clone(DEF), false)
   }
 
+  // Fin de sesión forzado. Baja de la cuenta (desactivada / rechazada / eliminada): se borra todo
+  // lo del dispositivo y se muestra el motivo. Sesión vencida: al login, conservando los datos y
+  // la cola offline (se suben cuando la misma persona vuelva a entrar).
+  const endSession = async reason => {
+    if (!isAccountEnded(reason)) { get().setUser(null); return }
+    // Nada más del socio en este dispositivo: ni alarma de descanso ni timers en curso.
+    import('./useUI.js').then(({ useUI }) => { useUI.getState().stopRest?.(); useUI.getState().stopWork?.() }).catch(() => {})
+    await wipeDeviceData()
+    set({
+      user: null, membershipBlocked: false, accountPending: false, billing: null, billingEnabled: true,
+      profilePrompt: null, healthConsent: null, healthAsk: false, accountEnded: reason
+    })
+    persist(clone(DEF), false)
+  }
+  // ¿Sigue valiendo la sesión? /api/me dice el motivo si no. Sin red (o cualquier otro error) no
+  // se toca nada: offline nunca es "sin sesión". Un solo chequeo a la vez.
+  let verifying = null
+  const verifySession = () => {
+    if (!get().user || verifying) return verifying || Promise.resolve()
+    verifying = api('/api/me')
+      .then(() => {})
+      .catch(e => { if (e?.status === 401) return endSession(e.data?.reason || 'session_expired') })
+      .finally(() => { verifying = null })
+    return verifying
+  }
+  if (typeof window !== 'undefined') window.addEventListener('gym:unauthorized', () => { if (get().user) verifySession() })
+
   return {
     S: (() => { const s = loadState(); registerCustom(s.customEx); return s })(),
+    // Motivo de una baja (account_disabled | account_rejected | account_deleted): AccountEnded.
+    accountEnded: null,
+    dismissAccountEnded() { set({ accountEnded: null }) },
+    verifySession,
     user: (() => { try { return JSON.parse(localStorage.getItem('gym_user')) || null } catch { return null } })(),
     ready: false,
     membershipBlocked: (() => { try { return localStorage.getItem(BLOCK_KEY) === '1' } catch { return false } })(),
@@ -400,7 +432,11 @@ export const useStore = create((set, get) => {
     },
 
     async signOut() {
-      try { await get().pushState(); await api('/api/logout', { method: 'POST', body: '{}' }) } catch (e) { /* */ }
+      // La suscripción push de este navegador deja de ser de esta cuenta (servidor y navegador):
+      // si no, sus avisos le llegan a quien entre después en el mismo dispositivo.
+      const sub = await deviceSubscription()
+      try { await get().pushState(); await api('/api/logout', { method: 'POST', body: JSON.stringify({ endpoint: sub?.endpoint }) }) } catch (e) { /* */ }
+      try { await sub?.unsubscribe() } catch { /* */ }
       clearLocalSession()
     },
 
@@ -413,6 +449,7 @@ export const useStore = create((set, get) => {
     async signOutAll() {
       await get().pushState()   // never throws — stores gym_dirty and moves on when offline
       await api('/api/logout/all', { method: 'POST', body: '{}' })
+      try { await (await deviceSubscription())?.unsubscribe() } catch { /* */ }
       clearLocalSession()
     },
 
@@ -513,7 +550,7 @@ export const useStore = create((set, get) => {
           get().update(s => { s.reminder = { ...s.reminder, tz } })
         }
       } catch (e) {
-        if (e.status === 401) get().setUser(null)
+        if (e.status === 401) await endSession(e.data?.reason || 'session_expired')
         if (e.data?.error === 'license_expired') {
           set({ licenseExpired: true })
         }

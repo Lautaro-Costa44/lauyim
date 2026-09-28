@@ -19,6 +19,7 @@ import { disableKeyboardAutofill } from './lib/input-safety.js'
 import Login from './views/Login.jsx'
 import LicenseExpired from './views/LicenseExpired.jsx'
 import MembershipBlocked from './views/MembershipBlocked.jsx'
+import AccountEnded from './views/AccountEnded.jsx'
 import { clearIosReoffer, markIosReoffer, markNotifStepDone, notifStepFor } from './lib/notif-step.js'
 // Keep every authenticated screen out of the initial payload. The service worker
 // caches each chunk after first use, so repeat visits remain instant without
@@ -50,6 +51,8 @@ const resolveTheme = theme => theme === 'light' || theme === 'dark'
   ? theme
   : (window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
 
+const SESSION_CHECK_MS = 5 * 60 * 1000
+
 function applyPrefs(theme, accent) {
   const de = document.documentElement
   de.dataset.theme = resolveTheme(theme)
@@ -66,6 +69,8 @@ function Shell() {
   const licenseExpired = useStore(s => s.licenseExpired)
   const membershipBlocked = useStore(s => s.membershipBlocked)
   const accountPending = useStore(s => s.accountPending)
+  const accountEnded = useStore(s => s.accountEnded)
+  const verifySession = useStore(s => s.verifySession)
   const profilePrompt = useStore(s => s.profilePrompt)
   const healthAsk = useStore(s => s.healthAsk)
   const noHealth = useStore(healthOff)
@@ -79,6 +84,22 @@ function Shell() {
   }, [])
   useEffect(() => installKeyboardViewport(), [])
   useEffect(() => { setNav(navigate) }, [navigate])
+  // ¿La cuenta sigue activa? Al volver a primer plano y cada 5 min mientras la app está visible
+  // (en segundo plano el intervalo se pausa). Si la desactivaron o borraron, se corta en minutos
+  // aunque el socio no mande nada al servidor.
+  const signedIn = !!user
+  useEffect(() => {
+    if (!signedIn) return
+    let timer = null
+    const start = () => { clearInterval(timer); timer = setInterval(verifySession, SESSION_CHECK_MS) }
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') { verifySession(); start() }
+      else { clearInterval(timer); timer = null }
+    }
+    if (document.visibilityState === 'visible') start()
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => { clearInterval(timer); document.removeEventListener('visibilitychange', onVisibility) }
+  }, [signedIn, verifySession])
   useEffect(() => { applyPrefs(S.theme, S.accent) }, [S.theme, S.accent])
   // 'system' needs to react live if the OS theme flips while the app is open, not just on
   // the next mount — a fixed 'dark'/'light' choice never re-fires this since matchMedia
@@ -142,6 +163,7 @@ function Shell() {
       <div id="app" className={'vfade' + (isAdminPath ? ' admin-app' : '') + (isPrivacy ? ' privacy-app' : '')} key={isAdminPath ? '/admin' : loc.pathname}>
         <ErrorBoundary>
           {isPrivacy ? <Suspense fallback={<div className="page-loading" aria-busy="true" />}><Privacy /></Suspense>
+            : accountEnded ? <AccountEnded />
             : licenseExpired ? <LicenseExpired /> : !authed ? <Login /> : blocked ? <MembershipBlocked />
             : askProfile ? <Suspense fallback={<div className="page-loading" aria-busy="true" />}><ProfileOnce /></Suspense>
             : askHealth ? <Suspense fallback={<div className="page-loading" aria-busy="true" />}><HealthConsentOnce /></Suspense>
@@ -170,8 +192,8 @@ function Shell() {
           )}
         </ErrorBoundary>
       </div>
-      {!licenseExpired && !blocked && !askProfile && !askHealth && !askNotif && !isPrivacy && loc.pathname !== '/onboarding/encuesta' && <TabBar onStart={startFlow} />}
-      {!licenseExpired && !blocked && <RestTimer />}
+      {!accountEnded && !licenseExpired && !blocked && !askProfile && !askHealth && !askNotif && !isPrivacy && loc.pathname !== '/onboarding/encuesta' && <TabBar onStart={startFlow} />}
+      {!accountEnded && !licenseExpired && !blocked && <RestTimer />}
       {/* Boundary propio: Modals vive fuera de #app, así que un throw acá subía hasta la raíz y
           desmontaba la app entera — pantalla negra sin salida. NO va keyed en la ruta: Modals
           debe sobrevivir a la navegación (re-montarlo volvería a apilar entradas de historial
