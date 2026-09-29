@@ -101,3 +101,24 @@ describe('api() without a response from the server', () => {
     expect(error.name).toBe('AbortError')
   })
 })
+
+describe('api() ingreso rechazado por baja', () => {
+  const respond = (status, data) => { globalThis.fetch = vi.fn(async () => ({ ok: false, status, json: async () => data })) }
+  const seen = () => { const events = []; const on = e => events.push(e.detail); window.addEventListener('gym:account_ended', on); return { events, off: () => window.removeEventListener('gym:account_ended', on) } }
+
+  it.each(['account_disabled', 'account_rejected'])('403 %s avisa a la app', async code => {
+    respond(403, { error: code })
+    const l = seen()
+    await expect(api('/api/login/verify', { method: 'POST' })).rejects.toMatchObject({ status: 403 })
+    l.off()
+    expect(l.events).toEqual([{ error: code }])
+  })
+
+  it('otros 403 (por ejemplo una invitación inválida) no', async () => {
+    respond(403, { error: 'invite_invalid' })
+    const l = seen()
+    await expect(api('/api/register/verify', { method: 'POST' })).rejects.toBeTruthy()
+    l.off()
+    expect(l.events).toEqual([])
+  })
+})

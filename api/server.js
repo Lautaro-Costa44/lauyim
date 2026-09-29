@@ -584,9 +584,19 @@ function sessionEndReason(req) {
   const [uid] = payload.split(':');
   const user = uid ? getUserById(uid) : null;
   if (!user) return uid ? 'account_deleted' : 'session_expired';
-  if (user.disabled) return user.approval_status === 'pending' ? 'account_rejected' : 'account_disabled';
-  return 'session_expired';
+  return accountEndReason(user) || 'session_expired';
 }
+
+// Por qué una cuenta ya no puede usar la app: 'account_disabled' | 'account_rejected' (no se
+// aprobó), o null si sigue activa.
+function accountEndReason(user) {
+  if (!user.disabled) return null;
+  return user.approval_status === 'pending' ? 'account_rejected' : 'account_disabled';
+}
+// Respuesta de los caminos de ingreso (passkey, código del gym, pareo) para una cuenta dada de
+// baja. Solo se usa DESPUÉS de validar la aserción, el código o el pareo: a un pedido sin
+// credencial válida nunca se le dice el estado de una cuenta. Sin cookie de sesión.
+const accountEnded = (res, user) => json(res, 403, { error: accountEndReason(user) || 'account_disabled' });
 
 function requireAdmin(req, res) {
   const user = readSession(req);
@@ -2497,7 +2507,12 @@ const routes = {
       return json(res, 400, { error: 'link_invalid' });
     }
     const user = getUserById(row.user_id);
-    if (!user || user.disabled || countCredentials(user.id) > 0) {
+    // El código ya se validó: acá sí se puede decir que la cuenta está dada de baja.
+    if (user?.disabled) {
+      audit(req, 'auth.link.fail', { ok: false, user, msg: 'account-disabled' });
+      return accountEnded(res, user);
+    }
+    if (!user || countCredentials(user.id) > 0) {
       audit(req, 'auth.link.fail', { ok: false, user, msg: 'link-unavailable' });
       return json(res, 409, { error: 'link_unavailable' });
     }
@@ -2542,6 +2557,11 @@ const routes = {
       return fail(400, verifyError(e, { rpId: RP_ID, origin: ORIGIN }), 'verify-error');
     }
     if (!verification.verified) return fail(400, 'not verified', 'not-verified');
+    // Baja entre el código y la vinculación: no se crea la passkey ni se gasta el código.
+    if (ficha?.disabled) {
+      audit(req, 'auth.link.fail', { ok: false, user: ficha, msg: 'account-disabled' });
+      return accountEnded(res, ficha);
+    }
     const { credential } = verification.registrationInfo;
     const out = consumeLinkCode({
       linkId: c.link.id,
@@ -2620,7 +2640,7 @@ const routes = {
     }
     if (user.disabled) {
       audit(req, 'auth.login.fail', { ok: false, user, msg: 'account-disabled' });
-      return json(res, 403, { error: 'this account has been disabled' });
+      return accountEnded(res, user);
     }
     audit(req, 'auth.login.ok', { user });
     json(res, 200, { user: { id: user.id, name: user.name, admin: isAdmin(user), owner: !!user.owner } }, { 'Set-Cookie': sessionCookie(user) });
@@ -2697,8 +2717,13 @@ const routes = {
       return json(res, 200, { status: 'pending' });
     }
     if (pairing.status === 'approved' && pairing.user) {
-      const user = pairing.user;
+      // El estado de ahora, no el de cuando se aprobó el pareo.
+      const user = getUserById(pairing.user.id);
       dropPairing(pairing);
+      if (!user || user.disabled) {
+        audit(req, 'auth.device.login.fail', { ok: false, user: user || pairing.user, msg: 'account-disabled' });
+        return user ? accountEnded(res, user) : json(res, 403, { error: 'account_deleted' });
+      }
       audit(req, 'auth.device.login', { user });
       return json(res, 200, { status: 'approved', user: { id: user.id, name: user.name, admin: isAdmin(user), owner: !!user.owner } }, { 'Set-Cookie': sessionCookie(user) });
     }

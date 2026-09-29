@@ -54,6 +54,11 @@ export async function api(path, opts) {
     if (r.status === 401 && !String(path).startsWith('/api/me')) {
       window.dispatchEvent(new CustomEvent('gym:unauthorized', { detail: data }))
     }
+    // Ingreso rechazado por baja (passkey, código del gym, pareo), ya validada la credencial: el
+    // store muestra la pantalla de cuenta desactivada en vez de un error suelto.
+    if (r.status === 403 && (data.error === 'account_disabled' || data.error === 'account_rejected')) {
+      window.dispatchEvent(new CustomEvent('gym:account_ended', { detail: data }))
+    }
     // Cuenta pendiente de aprobación: mismo mecanismo, otra pantalla.
     if (data.error === 'account_pending') {
       window.dispatchEvent(new CustomEvent('gym:account_pending', { detail: data }))

@@ -104,6 +104,12 @@ const BILLING_OFF_KEY = 'gym_billing_off'
 const readJSON = key => { try { return JSON.parse(localStorage.getItem(key)) || null } catch { return null } }
 // Cuenta pendiente de aprobación (spec 12.3): mismo mecanismo que el bloqueo por cuota, otro
 // motivo. Flag persistido; solo lo apaga un /api/me que diga pending: false.
+// Motivo de una baja, guardado en el dispositivo: un arranque sin conexión (o sin sesión) muestra
+// AccountEnded antes que el login. Solo se borra cuando el servidor confirma la cuenta (verifyAccountEnded)
+// o quien usa el dispositivo elige entrar con otra cuenta.
+const ENDED_KEY = 'gym_account_ended'
+const readEnded = () => { try { const v = localStorage.getItem(ENDED_KEY); return isAccountEnded(v) ? v : null } catch { return null } }
+const writeEnded = reason => { try { reason ? localStorage.setItem(ENDED_KEY, reason) : localStorage.removeItem(ENDED_KEY) } catch { /* storage off */ } }
 const PENDING_KEY = 'gym_account_pending'
 export const billingExempt = user => !!(user?.staff ?? user?.admin)
 // Consentimiento de datos de salud (api/health.js): 'granted' | 'declined' | null (cuenta de antes,
@@ -235,10 +241,16 @@ export const useStore = create((set, get) => {
   // lo del dispositivo y se muestra el motivo. Sesión vencida: al login, conservando los datos y
   // la cola offline (se suben cuando la misma persona vuelva a entrar).
   const endSession = async reason => {
-    if (!isAccountEnded(reason)) { get().setUser(null); return }
+    if (!isAccountEnded(reason)) {
+      // Sesión vencida: si el dispositivo estaba en la pantalla de baja, ya no se sabe nada de la
+      // cuenta desde acá. Al login, con un aviso claro.
+      if (get().accountEnded) { writeEnded(null); set({ accountEnded: null, loginNotice: 'relogin' }) }
+      get().setUser(null); return
+    }
     // Nada más del socio en este dispositivo: ni alarma de descanso ni timers en curso.
     import('./useUI.js').then(({ useUI }) => { useUI.getState().stopRest?.(); useUI.getState().stopWork?.() }).catch(() => {})
     await wipeDeviceData()
+    writeEnded(reason)   // después del borrado: localStorage.clear() se lo llevaría
     set({
       user: null, membershipBlocked: false, accountPending: false, billing: null, billingEnabled: true,
       profilePrompt: null, healthConsent: null, healthAsk: false, accountEnded: reason
@@ -257,12 +269,46 @@ export const useStore = create((set, get) => {
     return verifying
   }
   if (typeof window !== 'undefined') window.addEventListener('gym:unauthorized', () => { if (get().user) verifySession() })
+  if (typeof window !== 'undefined') window.addEventListener('gym:account_ended', e => get().showAccountEnded(e.detail?.error))
 
   return {
     S: (() => { const s = loadState(); registerCustom(s.customEx); return s })(),
     // Motivo de una baja (account_disabled | account_rejected | account_deleted): AccountEnded.
-    accountEnded: null,
-    dismissAccountEnded() { set({ accountEnded: null }) },
+    accountEnded: readEnded(),
+    loginNotice: null,      // 'relogin': la sesión de una cuenta dada de baja ya no sirve
+    dismissLoginNotice() { set({ loginNotice: null }) },
+    // Quien usa el dispositivo elige otra cuenta: se sale de la pantalla sin esperar al servidor.
+    dismissAccountEnded() { writeEnded(null); set({ accountEnded: null }) },
+    // Un ingreso (passkey, código del gym, pareo) que el servidor rechazó por baja, después de
+    // validar la credencial. No hay datos de esa cuenta en el dispositivo que borrar.
+    showAccountEnded(reason) {
+      if (!isAccountEnded(reason) || get().user) return
+      writeEnded(reason)
+      // Los sheets del login (crear perfil, código, pareo) no quedan tapando la pantalla.
+      import('./useUI.js').then(({ useUI }) => useUI.getState().closeAll()).catch(() => {})
+      set({ accountEnded: reason })
+    },
+    // "Verificar de nuevo" (y volver a primer plano en la pantalla de baja): pregunta a /api/me.
+    // → 'active' (cuenta activa: se restaura la sesión) | 'ended' | 'relogin' | 'offline'
+    async verifyAccountEnded() {
+      try {
+        const me = await api('/api/me')
+        writeEnded(null)
+        set({ accountEnded: null, loginNotice: null })
+        get().setUser(me.user)
+        applyMeBilling(me)
+        applyMeAccount(me)
+        if (!get().membershipBlocked && !get().accountPending) { await get().syncPending(); await get().pullState() }
+        return 'active'
+      } catch (e) {
+        if (e?.status === 401) {
+          if (isAccountEnded(e.data?.reason)) { writeEnded(e.data.reason); set({ accountEnded: e.data.reason }); return 'ended' }
+          writeEnded(null); set({ accountEnded: null, loginNotice: 'relogin' })
+          return 'relogin'
+        }
+        return 'offline'
+      }
+    },
     verifySession,
     user: (() => { try { return JSON.parse(localStorage.getItem('gym_user')) || null } catch { return null } })(),
     ready: false,
@@ -571,6 +617,8 @@ export const useStore = create((set, get) => {
       if (!guestAllowed(cfg)) get().setGuest(false)
       try {
         const me = await api('/api/me')
+        // La cuenta volvió a estar activa (con el dispositivo en la pantalla de baja).
+        if (get().accountEnded) { writeEnded(null); set({ accountEnded: null }) }
         get().setUser(me.user)
         applyMeBilling(me)
         applyMeAccount(me)

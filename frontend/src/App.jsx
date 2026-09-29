@@ -88,6 +88,14 @@ function Shell() {
   // (en segundo plano el intervalo se pausa). Si la desactivaron o borraron, se corta en minutos
   // aunque el socio no mande nada al servidor.
   const signedIn = !!user
+  const verifyAccountEnded = useStore(s => s.verifyAccountEnded)
+  // En la pantalla de baja, volver a primer plano vuelve a preguntar: si reactivaron la cuenta, entra sola.
+  useEffect(() => {
+    if (!accountEnded) return
+    const onVisible = () => { if (document.visibilityState === 'visible') verifyAccountEnded() }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => document.removeEventListener('visibilitychange', onVisible)
+  }, [accountEnded, verifyAccountEnded])
   useEffect(() => {
     if (!signedIn) return
     let timer = null
