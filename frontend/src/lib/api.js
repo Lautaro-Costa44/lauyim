@@ -51,7 +51,8 @@ export async function api(path, opts) {
     }
     // Sin sesión en cualquier pedido: el store pregunta a /api/me el motivo (sesión vencida o
     // cuenta dada de baja). Un error de red no llega acá: fetch tira antes, sin status.
-    if (r.status === 401 && !String(path).startsWith('/api/me')) {
+    // Los endpoints del dispositivo de Ingreso Físico no son de una sesión: su 401 es otra cosa.
+    if (r.status === 401 && !String(path).startsWith('/api/me') && !String(path).startsWith('/api/checkin/')) {
       window.dispatchEvent(new CustomEvent('gym:unauthorized', { detail: data }))
     }
     // Ingreso rechazado por baja (passkey, código del gym, pareo), ya validada la credencial: el

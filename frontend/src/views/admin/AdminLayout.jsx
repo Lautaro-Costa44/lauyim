@@ -17,6 +17,7 @@ const Rutinas = lazy(() => import('./Rutinas.jsx'))
 const Notificaciones = lazy(() => import('./Notificaciones.jsx'))
 const Acceso = lazy(() => import('./Acceso.jsx'))
 const Logs = lazy(() => import('./Logs.jsx'))
+const IngresoFisico = lazy(() => import('./IngresoFisico.jsx'))
 
 // Admin-only operator dashboard (owner passkey + admin flag; guarded again server-side).
 // The layout owns every admin fetch — including the 15 s poll — and hands the data to the
@@ -41,13 +42,14 @@ export default function AdminLayout() {
   const [tick, setTick] = useState(0)          // the ↻ button; the activity log listens to it
   const [auditEnabled, setAuditEnabled] = useState(null)   // null until the server says; false = AUDIT_LOG=0
   const [billingEnabled, setBillingEnabled] = useState(null)   // null until the server says; false = cuotas off (owner switch in Acceso)
+  const [checkinEnabled, setCheckinEnabled] = useState(null)   // Ingreso Físico: el owner siempre ve la sección; los demás, solo encendido
 
   // audit_enabled and billing_enabled ride along with the users poll: they decide whether the
   // Logs and Cuotas tabs exist.
   // Sin respuesta del servidor no es un error de la sección: es la falta de conexión (un aviso,
   // no un toast por cada pedido y cada vuelta del poll).
   const loadFailed = (e, fallback) => { if (!e?.status) setUnreachable(true); else toast(errorText(e, fallback)) }
-  const loadUsers = () => api('/api/admin/users').then(d => { setUnreachable(false); setUsers(d.users); setInviteOnly(d.invite_only); setAuditEnabled(d.audit_enabled !== false); setBillingEnabled(d.billing_enabled !== false) }).catch(e => loadFailed(e, t('Failed to load')))
+  const loadUsers = () => api('/api/admin/users').then(d => { setUnreachable(false); setUsers(d.users); setInviteOnly(d.invite_only); setAuditEnabled(d.audit_enabled !== false); setBillingEnabled(d.billing_enabled !== false); setCheckinEnabled(d.checkin_enabled === true) }).catch(e => loadFailed(e, t('Failed to load')))
   const loadInvites = () => api('/api/admin/invites').then(d => setInvites(d.invites)).catch(() => {})
   const loadPresets = () => api('/api/admin/presets').then(d => { setPresets(d.presets); setPrograms(d.programs || []) }).catch(e => loadFailed(e, t('Failed to load presets')))
   const loadAttendance = () => api('/api/admin/attendance-heatmap').then(setAttendance).catch(e => loadFailed(e, t('Failed to load attendance')))
@@ -72,7 +74,7 @@ export default function AdminLayout() {
   useEffect(() => {
     const frame = requestAnimationFrame(() => { if (centerActiveTab(!firstCenter.current)) firstCenter.current = false })
     return () => cancelAnimationFrame(frame)
-  }, [loc.pathname, user?.owner, auditEnabled, billingEnabled])
+  }, [loc.pathname, user?.owner, auditEnabled, billingEnabled, checkinEnabled])
   // Chip widths change once the web font lands: center again, without animation.
   useEffect(() => {
     let alive = true
@@ -89,9 +91,10 @@ export default function AdminLayout() {
     ['rutinas', t('Rutinas')],
     ['notificaciones', t('Notificaciones')],
     ['acceso', t('Acceso')],
+    (user?.owner || checkinEnabled) && ['ingreso-fisico', t('Ingreso Físico')],
     auditEnabled !== false && ['logs', t('Logs')],
   ].filter(Boolean)
-  const ctx = { users, inviteOnly, invites, presets, programs, attendance, qrAccess, setQrAccess, tick, auditEnabled, billingEnabled, setBillingEnabled, loadUsers, loadInvites, loadPresets, loadAttendance, refresh }
+  const ctx = { users, inviteOnly, invites, presets, programs, attendance, qrAccess, setQrAccess, tick, auditEnabled, billingEnabled, setBillingEnabled, checkinEnabled, setCheckinEnabled, loadUsers, loadInvites, loadPresets, loadAttendance, refresh }
 
   return <div className="admin-shell">
     <nav className="admin-nav chips" ref={navRef} aria-label={t('Admin')}>
@@ -119,6 +122,9 @@ export default function AdminLayout() {
             <Route path="acceso" element={<Acceso />} />
             <Route path="qr" element={<Navigate to="/admin/acceso" replace />} />
             <Route path="logs" element={<Logs />} />
+            {/* Apagado: solo el owner (para encenderlo). Los demás van a Resumen sin cargar el chunk. */}
+            <Route path="ingreso-fisico" element={!user?.owner && checkinEnabled === false ? <Navigate to="/admin/resumen" replace />
+              : !user?.owner && checkinEnabled == null ? <div className="page-loading" aria-busy="true" /> : <IngresoFisico />} />
             <Route path="*" element={<Navigate to="/admin/resumen" replace />} />
           </Routes>
         </Suspense>

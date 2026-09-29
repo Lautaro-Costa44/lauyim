@@ -3137,7 +3137,7 @@ const routes = {
         billing: (b => ({ status: billingStatus(b, today, settings), dueDate: b.dueDate ?? null }))(billingByUser.get(u.id) || {})
       };
     });
-    json(res, 200, { users, invite_only: INVITE_ONLY, audit_enabled: AUDIT_ON, billing_enabled: billingEnabledNow(), now: Date.now() });
+    json(res, 200, { users, invite_only: INVITE_ONLY, audit_enabled: AUDIT_ON, billing_enabled: billingEnabledNow(), checkin_enabled: checkinSettingsNow().enabled, now: Date.now() });
   },
 
   'GET /api/admin/attendance-heatmap': async (req, res) => {

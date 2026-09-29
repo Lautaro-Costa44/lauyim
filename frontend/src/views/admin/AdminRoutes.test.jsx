@@ -28,12 +28,17 @@ let billingOn
 let dniEnabled
 let anaCreated = '2026-01-01'
 let approval = { required: false, mode: 'approve' }
+let checkin = { enabled: false, mode: 'full', digits: 4, showStatus: true }
+let devices = []
 const ANA = { id: 'a', name: 'ana', lastSync: Date.now(), workouts: 1, hasApp: true }
 // A member record without a passkey: listed in Usuarios, never counted in Resumen.
 const FICHA = { id: 'f', name: 'ficha', lastSync: null, workouts: 0, hasApp: false, disabled: true }
 const FIELDS = () => ({ full_name: { enabled: true, required: true }, dni: { enabled: dniEnabled, required: dniEnabled }, phone: { enabled: true, required: true }, email: { enabled: true, required: false } })
 apiMock.mockImplementation((url, opts) => {
-  if (url === '/api/admin/users') return Promise.resolve({ users: [ANA, FICHA], invite_only: false, audit_enabled: auditOn, billing_enabled: billingOn })
+  if (url === '/api/admin/users') return Promise.resolve({ users: [ANA, FICHA], invite_only: false, audit_enabled: auditOn, billing_enabled: billingOn, checkin_enabled: checkin.enabled })
+  if (url === '/api/admin/checkin') return Promise.resolve({ settings: checkin, billingEnabled: billingOn, today: '2026-09-24', devices, checkins: checkin.enabled ? [{ userId: 'a', name: 'Ana Pérez', source: 'physical', at: Date.UTC(2026, 8, 24, 12, 5) }] : [] })
+  if (url === '/api/owner/checkin/settings') { checkin = { ...checkin, ...JSON.parse(opts.body) }; if (checkin.enabled === false) devices = []; return Promise.resolve({ settings: checkin }) }
+  if (url.startsWith('/api/admin/checkin/devices/') && opts?.method === 'DELETE') { devices = devices.filter(d => '/api/admin/checkin/devices/' + d.id !== url); return Promise.resolve({ ok: true }) }
   if (url === '/api/admin/members/settings') return Promise.resolve({ fields: FIELDS() })
   if (url === '/api/owner/billing/enable-preview') return Promise.resolve({ today: '2026-09-24', bloqueado: 2, vencido: 1, por_vencer: 3 })
   if (url === '/api/owner/billing/enabled') { billingOn = JSON.parse(opts.body).enabled; return Promise.resolve({ enabled: billingOn }) }
@@ -111,6 +116,8 @@ beforeEach(async () => {
   dniEnabled = true
   anaCreated = '2026-01-01'
   approval = { required: false, mode: 'approve' }
+  checkin = { enabled: false, mode: 'full', digits: 4, showStatus: true }
+  devices = []
   desktop = false
   apiMock.mockClear()
   useUI.setState({ sheets: [] })
@@ -175,9 +182,9 @@ describe('admin routes', () => {
     expect(text()).toContain('Deuda total')
   })
 
-  it('tab order: Resumen, Usuarios, Cuotas, Rutinas, Notificaciones, Acceso, Logs', async () => {
+  it('tab order: Resumen, Usuarios, Cuotas, Rutinas, Notificaciones, Acceso, Ingreso Físico, Logs', async () => {
     await mount('#/admin/resumen', OWNER)
-    expect(tabs()).toEqual(['Resumen*', 'Usuarios', 'Cuotas', 'Rutinas', 'Notificaciones', 'Acceso', 'Logs', 'Volver a la app'])
+    expect(tabs()).toEqual(['Resumen*', 'Usuarios', 'Cuotas', 'Rutinas', 'Notificaciones', 'Acceso', 'Ingreso Físico', 'Logs', 'Volver a la app'])
   })
 
   it('/admin/qr redirects to Acceso', async () => {
@@ -384,8 +391,8 @@ describe('admin tabs on a phone: the active one is centered', () => {
   })
 
   it('a direct link to the last tab jumps to it, later taps glide', async () => {
-    await mount('#/admin/logs', OWNER)        // Logs is tab 6
-    expect(scrolls[0]).toEqual({ left: 500, behavior: 'auto' })
+    await mount('#/admin/logs', OWNER)        // Logs is tab 7 (the owner also sees Ingreso Físico)
+    expect(scrolls[0]).toEqual({ left: 600, behavior: 'auto' })
     expect(scrolls.every(s => s.behavior === 'auto')).toBe(true)
     await go('#/admin/resumen')
     expect(scrolls.at(-1)).toEqual({ left: 0, behavior: 'smooth' })   // clamped at the start
@@ -456,5 +463,54 @@ describe('Usuarios: member detail', () => {
       container.remove()
     }
     await mount('#/admin/usuarios', ADMIN)   // afterEach desmonta este
+  })
+
+  describe('Ingreso Físico', () => {
+    const ingresoTab = () => tabs().find(x => x.startsWith('Ingreso Físico'))
+    it('apagado: un admin no owner no ve la sección y el link directo va a Resumen', async () => {
+      await mount('#/admin/ingreso-fisico', ADMIN)
+      expect(ingresoTab()).toBeUndefined()
+      expect(window.location.hash).toBe('#/admin/resumen')
+    })
+
+    it('apagado: el owner ve la sección solo con el interruptor y la explicación; al encenderlo aparece todo', async () => {
+      await mount('#/admin/ingreso-fisico', OWNER)
+      expect(ingresoTab()).toBe('Ingreso Físico*')
+      expect(text()).toContain('tipea su DNI en un teclado numérico')
+      expect(text()).not.toContain('Dispositivos')
+      expect(text()).not.toContain('kiosco')
+      await clickSwitch('Ingreso Físico')
+      expect(checkin.enabled).toBe(true)
+      expect(text()).toContain('Identificación')
+      expect(text()).toContain('Dispositivos')
+      expect(text()).toContain('Abrir Ingreso Físico en este dispositivo')
+      expect(text()).toContain('Ingresos de hoy')
+      expect(text()).toContain('Ana Pérez')
+    })
+
+    it('encendido: un admin no owner ve dispositivos e ingresos, sin cambiar la configuración, y puede revocar', async () => {
+      checkin = { ...checkin, enabled: true }
+      devices = [{ id: 7, name: 'Tablet recepción', createdAt: Date.UTC(2026, 8, 1), lastUsedAt: null }]
+      await mount('#/admin/ingreso-fisico', ADMIN)
+      expect(ingresoTab()).toBe('Ingreso Físico*')
+      expect(document.querySelector('[role="switch"][aria-label="Ingreso Físico"]')).toBeNull()
+      expect(document.querySelector('[role="switch"][aria-label="Mostrar el estado de la cuota"]')).toBeNull()
+      expect(text()).toContain('Solo el dueño cambia esta configuración.')
+      expect(text()).toContain('Tablet recepción')
+      await clickButton(document, 'Revocar')
+      await clickButton(document.querySelector('#modal-root'), 'Revocar')
+      expect(apiMock.mock.calls.some(([u, o]) => u === '/api/admin/checkin/devices/7' && o?.method === 'DELETE')).toBe(true)
+      expect(text()).toContain('Ningún dispositivo activado.')
+    })
+
+    it('apagarlo pide confirmar y avisa que los dispositivos quedan desactivados', async () => {
+      checkin = { ...checkin, enabled: true }
+      await mount('#/admin/ingreso-fisico', OWNER)
+      await clickSwitch('Ingreso Físico')
+      expect(sheetText()).toContain('un admin tiene que activarlos de nuevo')
+      expect(checkin.enabled).toBe(true)
+      await clickButton(document.querySelector('#modal-root'), 'Desactivar')
+      expect(checkin.enabled).toBe(false)
+    })
   })
 })
