@@ -36,6 +36,10 @@ export function initDatabase() {
   // con el que se registró.
   try { db.exec(`ALTER TABLE users ADD COLUMN sv INTEGER NOT NULL DEFAULT 0;`); } catch {}
   try { db.exec(`ALTER TABLE users ADD COLUMN invited_by TEXT;`); } catch {}
+  // day_plan.plan: el override del día tal como lo escribe el cliente ({ fecha, estado, rutinaId }
+  // o el legado 'rest'). routine_id solo guardaba un id, así que "descanso" volvía como null y el
+  // día caía otra vez en la rutina semanal.
+  try { db.exec(`ALTER TABLE day_plan ADD COLUMN plan TEXT;`); } catch {}
   try {
     db.exec(`ALTER TABLE routine_exercises ADD COLUMN progression_type TEXT;`);
   } catch {}
@@ -1523,7 +1527,11 @@ export function getDayPlanByUserId(userId) {
   const rows = stmt.all(userId);
   const dayPlan = {};
   for (const row of rows) {
-    dayPlan[row.date] = row.routine_id;
+    const plan = safeJsonParse(row.plan, null);
+    // Filas anteriores a la columna `plan` (id suelto) o con un id ya borrado: sin override
+    // real. Devolver null hacía que el día figurara "reprogramado" a la rutina semanal.
+    if (plan != null) dayPlan[row.date] = plan;
+    else if (row.routine_id) dayPlan[row.date] = row.routine_id;
   }
   return dayPlan;
 }
@@ -1533,10 +1541,20 @@ export function saveDayPlan(userId, dayPlan, validRoutineIds = null) {
   const deleteStmt = db.prepare('DELETE FROM day_plan WHERE user_id = ?');
   deleteStmt.run(userId);
 
-  const stmt = db.prepare('INSERT INTO day_plan (user_id, date, routine_id) VALUES (?, ?, ?)');
-  for (const [date, routineId] of Object.entries(dayPlan)) {
-    const nextRoutineId = validRoutineIds && routineId ? (validRoutineIds.has(String(routineId)) ? String(routineId) : null) : (routineId || null);
-    stmt.run(userId, date, nextRoutineId);
+  const stmt = db.prepare('INSERT INTO day_plan (user_id, date, routine_id, plan) VALUES (?, ?, ?, ?)');
+  const known = id => id != null && (!validRoutineIds || validRoutineIds.has(String(id)));
+  for (const [date, value] of Object.entries(dayPlan)) {
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+      // { fecha, estado, rutinaId }: se guarda entero; un rutinaId de una rutina que ya no existe
+      // se anula (la fila sigue diciendo descanso / completado / sin rutina).
+      const rutinaId = known(value.rutinaId) ? String(value.rutinaId) : null;
+      stmt.run(userId, date, rutinaId, JSON.stringify({ ...value, rutinaId: value.rutinaId == null ? null : rutinaId }));
+    } else if (value === 'rest') {
+      stmt.run(userId, date, null, JSON.stringify('rest'));
+    } else if (known(value)) {
+      stmt.run(userId, date, String(value), null);
+    }
+    // Cualquier otra cosa (id de una rutina inexistente, null) no es un override: se descarta.
   }
 }
 

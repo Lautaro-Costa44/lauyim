@@ -49,11 +49,34 @@ test('saveUserState ignores invalid routine references instead of breaking forei
 
   const saved = dbMod.getUserState('u1');
   assert.equal(saved.week[0], null);
-  assert.equal(saved.dayPlan['2025-01-01'], null);
+  assert.equal('2025-01-01' in saved.dayPlan, false);
   assert.equal(saved.workouts[0].routineId, null);
   assert.equal(saved.onboardingNutritionCompletado, true);
 });
 
+test('dayPlan overrides keep their estado across save/load (descanso must not turn back into the weekly routine)', () => {
+  dbMod.initDatabase();
+  dbMod.createUser({ id: 'u-daypan', name: 'Day', admin: false, disabled: false, created: Date.now() });
+  const routines = [{ id: 'push', name: 'Push Day', emoji: '💪', created: Date.now(), ex: [] }];
+  const base = { _ts: Date.now(), unit: 'kg', routines, week: { 1: 'push' }, workouts: [], exWeights: {}, bodyweight: [], customEx: [], exNotes: {}, reminder: null, equipProfiles: [] };
+  const rest = { fecha: '2026-09-28', estado: 'descanso', rutinaId: null };
+  const planned = { fecha: '2026-09-29', estado: 'rutina', rutinaId: 'push' };
+  const done = { fecha: '2026-09-30', estado: 'completado', rutinaId: null };
+  dbMod.saveUserState('u-daypan', { ...base, dayPlan: { '2026-09-28': rest, '2026-09-29': planned, '2026-09-30': done, '2026-10-01': 'rest', '2026-10-02': 'push', '2026-10-03': 'gone' } });
+
+  const saved = dbMod.getUserState('u-daypan');
+  assert.deepEqual(saved.dayPlan['2026-09-28'], rest);
+  assert.deepEqual(saved.dayPlan['2026-09-29'], planned);
+  assert.deepEqual(saved.dayPlan['2026-09-30'], done);
+  assert.equal(saved.dayPlan['2026-10-01'], 'rest');
+  assert.equal(saved.dayPlan['2026-10-02'], 'push');
+  // Reference to a routine that does not exist carries no information: no override at all.
+  assert.equal('2026-10-03' in saved.dayPlan, false);
+
+  // An override for a routine deleted afterwards keeps its estado but loses the dangling id.
+  dbMod.saveUserState('u-daypan', { ...base, routines: [], week: {}, dayPlan: { '2026-09-29': planned } });
+  assert.deepEqual(dbMod.getUserState('u-daypan').dayPlan['2026-09-29'], { ...planned, rutinaId: null });
+});
 
 test.after(async () => {
   dbMod.closeDatabase();

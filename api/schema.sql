@@ -221,6 +221,7 @@ CREATE TABLE IF NOT EXISTS day_plan (
   user_id TEXT NOT NULL,
   date TEXT NOT NULL,          -- ISO date
   routine_id TEXT,
+  plan TEXT,                   -- override completo del cliente (JSON): { fecha, estado, rutinaId } o 'rest'
   PRIMARY KEY (user_id, date),
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
   FOREIGN KEY (routine_id) REFERENCES routines(id) ON DELETE SET NULL
