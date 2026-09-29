@@ -64,6 +64,14 @@ function loadState() {
   return s
 }
 
+// El plan semanal vive en S.week y, copiado, en el grupo activo. Si solo cambia S.week, el grupo
+// guarda el plan viejo y vuelve a pisarlo al cambiar de grupo o al leer en otro dispositivo.
+function mirrorWeekIntoActiveGroup(S, before) {
+  if (!S.routineGroups?.length || JSON.stringify(S.week) === JSON.stringify(before.week)) return
+  const i = S.routineGroups.findIndex(g => g.id === S.activeGroupId)
+  if (i !== -1) S.routineGroups[i] = { ...S.routineGroups[i], week: clone(S.week || {}) }
+}
+
 const hasData = st => !!((st.workouts || []).length || (st.routines || []).length || (st.bodyweight || []).length)
 
 // Every reader of S.bodyweight treats it as oldest-first: lastBW takes the final element, Home
@@ -130,6 +138,10 @@ function removeGroup(state, groupId) {
 export const useStore = create((set, get) => {
   let syncTm = null
   let syncing = false
+  // Counts local writes. A sync that started before the latest write cannot declare the device
+  // clean: that write may not have been in its batch.
+  let localWrites = 0
+  let lastPull = 0
   let licenseExpired = false
 
   const persist = (S, push = true, stamp = true) => {
@@ -195,8 +207,15 @@ export const useStore = create((set, get) => {
     // Volver a primer plano: traer las metas que un admin pudo cambiar mientras tanto. Son el
     // único dato que el socio nunca escribe y que no bumpea _ts, así que ningún otro camino
     // de sync las refresca en una sesión ya abierta (ver refreshNutritionGoals).
-    if (document.visibilityState !== 'hidden') return get().refreshNutritionGoals()
-    scheduleSync(0)
+    if (document.visibilityState !== 'hidden') {
+      get().refreshNutritionGoals()
+      // Otra pantalla del mismo socio pudo cambiar el plan mientras esta estaba en segundo plano:
+      // se sube lo pendiente y se baja lo del servidor (a lo sumo una vez cada 20 s).
+      if (get().user && Date.now() - lastPull > 20000) { lastPull = Date.now(); get().syncPending().then(() => get().pullState()) }
+      return
+    }
+    // Sin la espera al azar de scheduleSync: la app puede congelarse en cualquier momento.
+    get().syncPending()
   })
   window.addEventListener('online', () => scheduleSync(0))
 
@@ -276,7 +295,11 @@ export const useStore = create((set, get) => {
       const before = clone(S)
       mut(S)
       markPlanStarted(S)
+      mirrorWeekIntoActiveGroup(S, before)
       persist(S, false)
+      // Cambio local sin subir: marcado antes de que llegue a la cola (IndexedDB es asíncrono), para
+      // que ningún pull lo tome por un dispositivo al día.
+      if (push && get().user) { localWrites++; try { localStorage.setItem('gym_dirty', '1') } catch { /* storage off */ } }
       if (push && get().user) enqueueSync(get().user.id, diffState(before, S), before._ts || null).then(() => scheduleSync())
     },
     replaceState(S, push = false) {
@@ -284,6 +307,7 @@ export const useStore = create((set, get) => {
       const next = clone(S)
       markPlanStarted(next)
       persist(next, false)
+      if (push && get().user) { localWrites++; try { localStorage.setItem('gym_dirty', '1') } catch { /* storage off */ } }
       if (push && get().user) enqueueSync(get().user.id, diffState(before, next), before._ts || null).then(() => scheduleSync())
     },
 
@@ -331,12 +355,17 @@ export const useStore = create((set, get) => {
       // Bloqueado por cuota: la cola queda intacta hasta que /api/me diga lo contrario.
       if (!get().user || syncing || (navigator.onLine === false) || get().membershipBlocked || get().accountPending) return
       syncing = true
+      const writesAtStart = localWrites
       try {
         let rounds = 0
         while (rounds++ < 10) {
           const batch = await takeSyncBatch(get().user.id, 25)
           if (!batch.length) break
-          const response = await api('/api/data/sync', { method: 'POST', body: JSON.stringify({ operations: batch }) })
+          const body = JSON.stringify({ operations: batch })
+          // Al pasar a segundo plano iOS congela la página: keepalive deja que la request termine
+          // igual (el navegador lo limita a 64 KB, por eso el tope).
+          const keepalive = document.visibilityState === 'hidden' && body.length < 60000
+          const response = await api('/api/data/sync', { method: 'POST', body, keepalive })
           applySyncMappings(response.results || [])
           const confirmedTs = (response.results || []).reduce((latest, item) => Math.max(latest, Number(item.result?.ts || 0)), 0)
           if (confirmedTs) {
@@ -355,7 +384,7 @@ export const useStore = create((set, get) => {
           if (!response.appliedIds?.length && !conflicted.size && !terminal.length) break
         }
         if (await countSync(get().user.id)) localStorage.setItem('gym_dirty', '1')
-        else localStorage.removeItem('gym_dirty')
+        else if (writesAtStart === localWrites) localStorage.removeItem('gym_dirty')
       } catch (e) {
         localStorage.setItem('gym_dirty', '1')
         // Bloqueo por cuota: se corta el ciclo sin deferSync (sin subir attempts ni nextAttemptAt)
@@ -393,10 +422,19 @@ export const useStore = create((set, get) => {
     async pullState() {
       try {
         const { state } = await api('/api/data')
+        let dirty = localStorage.getItem('gym_dirty') === '1'
+        let pending = await countSync(get().user.id)
+        // Lo local pendiente sale primero: jamás se pisa con lo que el servidor tenía antes.
+        if (dirty || pending > 0) {
+          await get().syncPending()
+          dirty = localStorage.getItem('gym_dirty') === '1'
+          pending = await countSync(get().user.id)
+        }
         const S = get().S
-        const dirty = localStorage.getItem('gym_dirty') === '1'
-        const pending = await countSync(get().user.id)
-        if (state && pending === 0 && (!hasData(S) || ((state._ts || 0) >= (S._ts || 0) && !dirty))) {
+        if (state && !dirty && pending === 0) {
+          // Nada pendiente en este dispositivo: el servidor es la verdad. El orden de los _ts no
+          // decide nada (cada dispositivo pone el suyo con su propio reloj: uno adelantado subía su
+          // copia entera y borraba lo que el otro acababa de guardar).
           const active = S.active
           const next = Object.assign(clone(DEF), state)
           next.bodyweight = ascendingBodyweight(next.bodyweight)
@@ -409,13 +447,14 @@ export const useStore = create((set, get) => {
             }
           }
           if (active) next.active = active
-          persist(next, false, false)
+          if (JSON.stringify(next) !== JSON.stringify(S)) persist(next, false, false)
           if (onboardingChanges.length) enqueueSync(get().user.id, onboardingChanges, state._ts || null).then(() => scheduleSync(0))
-        } else if (hasData(S) && !dirty && pending === 0) {
-          // A newer local timestamp can mean offline edits that are already queued.
-          // Never promote that snapshot with the legacy full-state PUT: nutrition is
-          // entity-synced, while the other modules need the incremental queue so that
-          // another device's unrelated changes are not overwritten.
+        } else if (!state && hasData(S) && !dirty && pending === 0) {
+          // Cuenta sin estado en el servidor todavía: primera subida completa.
+          await get().pushState()
+        } else if (state && dirty && pending === 0 && hasData(S)) {
+          // Marcado como con cambios pero sin nada en la cola (la escritura a IndexedDB no llegó a
+          // completarse): es la única forma de no perderlos.
           await get().pushState()
         }
         // nutritionGoals lo administra únicamente el admin (endpoints propios, nunca el
