@@ -1726,3 +1726,6 @@ input[type="search"]::-webkit-search-cancel-button{display:none;-webkit-appearan
 .hm-sub{display:inline-flex;align-items:center;gap:4px}
 .hm-info{display:inline-flex;color:var(--label-2);cursor:help}
 .hm-info svg{width:14px;height:14px}
+/* Saludo: nombre completo siempre visible, en varias líneas si hace falta; el usuario en gris. */
+.checkin-hello{max-width:100%;overflow-wrap:anywhere;word-break:normal;hyphens:auto;line-height:1.2}
+.checkin-hello-nick{color:var(--label-2);font-weight:600}

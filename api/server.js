@@ -151,7 +151,7 @@ import { membersCsv } from './member-export.js';
 import {
   readCheckinSettings, validateCheckinSettings, CHECKIN_SETTINGS, createDevice, findDevice, touchDevice,
   listDevices, revokeDevice, revokeAllDevices, lookup as checkinLookup, confirm as checkinConfirm,
-  dayCheckins, firstName
+  dayCheckins
 } from './checkin.js';
 import { HEALTH_SURVEY_KEYS, healthConsentOf, healthDeclined, keepStoredHealth, stripHealth } from './health.js';
 import {
@@ -3229,7 +3229,8 @@ const routes = {
     if (out.error) return json(res, 400, { error: out.error });
     if (out.status === 'not_found') return json(res, 200, { status: 'not_found' });
     const target = getUserById(out.userId);
-    const result = { status: out.already ? 'already' : 'registered', name: firstName(out.name) };
+    // Saludo con nombre y apellido y el usuario (la pantalla arma "Juan Fernández [Juani]").
+    const result = { status: out.already ? 'already' : 'registered', fullName: out.fullName, nick: out.nick };
     // Estado de cuota: si el owner lo muestra y cuotas está encendido. Días en gym_tz.
     if (ctx.settings.showStatus && billingEnabledNow() && !isRealStaff(target)) {
       const billing = getMemberBilling(out.userId);

@@ -147,7 +147,8 @@ export default function IngresoFisico() {
     const late = result.billing && ['vencido', 'bloqueado'].includes(result.billing.status)
     return <div className="checkin checkin-result" role="status" onClick={reset}>
       <div className={'checkin-icon' + (late ? ' warn' : '')}><Icon name={late ? 'warning' : 'checkCircle'} size={40} /></div>
-      <h1>{t('¡Hola, {0}!', result.name)}</h1>
+      <h1 className="checkin-hello">{t('¡Hola, {0}', result.fullName || result.nick)}
+        {result.fullName && result.nick && result.nick.trim().toLowerCase() !== result.fullName.trim().toLowerCase() && <span className="checkin-hello-nick"> [{result.nick}]</span>}!</h1>
       <p className="checkin-sub">{result.status === 'already' ? t('Ya registraste tu ingreso hoy.') : t('Tu ingreso quedó registrado.')}</p>
       {result.billing && <div className="checkin-billing">
         <StatusBadge status={result.billing.status} />

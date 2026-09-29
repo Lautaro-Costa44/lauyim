@@ -161,7 +161,7 @@ test('DNI completo: saludo, estado de cuota y días en gym_tz; el log no tiene e
   const { token } = await newDevice();
   assert.deepEqual((await call(null, 'POST', '/api/checkin/info', {}, { token })).body, { name: 'Tablet recepción', mode: 'full', digits: 4 });
   const r = await checkIn(token, '30.111.222');
-  assert.deepEqual(r.body, { status: 'registered', name: 'Juan', billing: { status: 'por_vencer', days: 3 } });
+  assert.deepEqual(r.body, { status: 'registered', fullName: 'Juan Pérez', nick: 'juan', billing: { status: 'por_vencer', days: 3 } });
   assert.deepEqual(sql('SELECT user_id, date, source FROM attendance WHERE user_id = ?', 'juan'), [{ user_id: 'juan', date: today, source: 'physical' }]);
   assert.ok(!auditLog().includes('30111222'));
   const miss = await lookup(token, '39999999');
@@ -179,7 +179,7 @@ test('doble ingreso el mismo día: "already", sin otra fila', async () => {
 
 test('ficha sin app, vencido, bloqueado y en prueba: se registran igual, cada uno con su estado', async () => {
   const { token } = await newDevice();
-  assert.deepEqual((await checkIn(token, '40111333')).body, { status: 'registered', name: 'Ana', billing: { status: 'sin_plan', days: null } });
+  assert.deepEqual((await checkIn(token, '40111333')).body, { status: 'registered', fullName: 'Ana Gómez', nick: 'ficha', billing: { status: 'sin_plan', days: null } });
   assert.deepEqual((await checkIn(token, '20500501')).body.billing, { status: 'vencido', days: -2 });
   assert.deepEqual((await checkIn(token, '20500502')).body.billing, { status: 'bloqueado', days: -40 });
   assert.deepEqual((await checkIn(token, '20500503')).body.billing, { status: 'prueba', days: 1 });

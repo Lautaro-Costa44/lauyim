@@ -133,12 +133,12 @@ export function shortName(fullName) {
   if (!words.length) return '';
   return words.length > 1 ? `${words[0]} ${words[1][0].toUpperCase()}.` : words[0];
 }
-export const firstName = fullName => String(fullName || '').trim().split(/\s+/)[0] || '';
 
 // Socios que pueden registrar un ingreso: con DNI cargado, no desactivados ni pendientes de
 // aprobación (tampoco rechazados: quedan desactivados).
 const ACTIVE_WITH_DNI = `
-  SELECT u.id AS user_id, COALESCE(NULLIF(mp.full_name, ''), u.name) AS name, mp.dni_norm
+  SELECT u.id AS user_id, COALESCE(NULLIF(mp.full_name, ''), u.name) AS name, NULLIF(TRIM(mp.full_name), '') AS full_name,
+    u.name AS nick, mp.dni_norm
   FROM member_profile mp JOIN users u ON u.id = mp.user_id
   WHERE mp.dni_norm IS NOT NULL AND COALESCE(u.disabled, 0) = 0 AND u.approval_status IS NULL`;
 
@@ -179,7 +179,7 @@ export function confirm(db, { ticket, deviceId, today, now = Date.now() }) {
   // Sin SELECT previo: la clave primaria decide si ya había uno hoy (sin carrera entre dos taps).
   const r = db.prepare("INSERT OR IGNORE INTO attendance (user_id, date, source, device_id, created_at) VALUES (?, ?, 'physical', ?, ?)")
     .run(t.userId, today, deviceId, now);
-  return { userId: t.userId, name: active.name, already: r.changes === 0 };
+  return { userId: t.userId, name: active.name, fullName: active.full_name, nick: active.nick, already: r.changes === 0 };
 }
 
 // Ingresos de un día para la sección del admin (más nuevo primero). La asistencia se guarda

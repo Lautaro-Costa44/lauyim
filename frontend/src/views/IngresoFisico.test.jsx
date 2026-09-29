@@ -60,7 +60,7 @@ beforeEach(async () => {
     '/api/checkin/lookup': ({ dni }) => Promise.resolve(dni === '30111222'
       ? { status: 'found', candidates: [{ ticket: 't-juan', name: 'Juan P.' }] }
       : { status: 'not_found', candidates: [] }),
-    '/api/checkin/confirm': ({ ticket }) => Promise.resolve({ t_juan: { status: 'registered', name: 'Juan', billing: { status: 'por_vencer', days: 3 } } }[ticket.replace('-', '_')] || { status: 'registered', name: 'X' }),
+    '/api/checkin/confirm': ({ ticket }) => Promise.resolve({ t_juan: { status: 'registered', fullName: 'Juan Fernández', nick: 'Juani', billing: { status: 'por_vencer', days: 3 } } }[ticket.replace('-', '_')] || { status: 'registered', fullName: null, nick: 'x' }),
   }
 })
 afterEach(async () => {
@@ -93,10 +93,11 @@ describe('Ingreso Físico: pantalla', () => {
     await typeDni('30111222')
     expect(document.querySelector('.checkin-display').textContent).toBe('30111222')
     await click(key('Confirmar'))
-    expect(text()).toContain('¡Hola, Juan!')
+    expect(text()).toContain('¡Hola, Juan Fernández [Juani]!')
     expect(text()).toContain('Tu ingreso quedó registrado.')
     expect(text()).toContain('Por vencer')
     expect(text()).toContain('Tu cuota vence en 3 días.')
+    expect(document.querySelector('.checkin-hello-nick').textContent).toBe(' [Juani]')   // el usuario, en gris
     await act(async () => { await new Promise(r => setTimeout(r, RESULT_MS + 100)) })
     await flush()
     expect(text()).toContain('Ingresá tu DNI')
@@ -110,7 +111,7 @@ describe('Ingreso Físico: pantalla', () => {
     await keyboard('Backspace')
     await keyboard('2')
     await keyboard('Enter')
-    expect(text()).toContain('¡Hola, Juan!')
+    expect(text()).toContain('¡Hola, Juan Fernández [Juani]!')
     await click(document.querySelector('.checkin-result'))
     expect(text()).toContain('Ingresá tu DNI')
   })
@@ -119,7 +120,7 @@ describe('Ingreso Físico: pantalla', () => {
     await mount()
     for (const d of '30111222') await keyboard(d)
     await keyboard('Enter')
-    expect(text()).toContain('¡Hola, Juan!')
+    expect(text()).toContain('¡Hola, Juan Fernández [Juani]!')
     await keyboard('4')
     expect(text()).toContain('Ingresá tu DNI')
     expect(document.querySelector('.checkin-display').textContent).toBe('4')
@@ -152,7 +153,7 @@ describe('Ingreso Físico: pantalla', () => {
     routes['/api/checkin/info'] = () => Promise.resolve({ name: 'Tablet', mode: 'last', digits: 4 })
     routes['/api/checkin/lookup'] = ({ dni }) => Promise.resolve(dni === '5555' ? { status: 'too_many', candidates: [] }
       : { status: 'found', candidates: [{ ticket: 't-a', name: 'Carla U.' }, { ticket: 't-b', name: 'Carlos D.' }] })
-    routes['/api/checkin/confirm'] = ({ ticket }) => Promise.resolve({ status: ticket === 't-b' ? 'already' : 'registered', name: 'Carlos' })
+    routes['/api/checkin/confirm'] = ({ ticket }) => Promise.resolve({ status: ticket === 't-b' ? 'already' : 'registered', fullName: 'Carlos Díaz', nick: 'carlos díaz' })
     await mount()
     expect(text()).toContain('Ingresá los últimos 4 dígitos de tu DNI')
     await typeDni('5555')
@@ -166,16 +167,18 @@ describe('Ingreso Físico: pantalla', () => {
     expect(text()).toContain('Carla U.')
     expect(text()).not.toMatch(/\d{5,}/)
     await click(buttons().find(b => b.textContent.includes('Carlos D.')))
-    expect(text()).toContain('¡Hola, Carlos!')
+    expect(text()).toContain('¡Hola, Carlos Díaz!')
     expect(text()).toContain('Ya registraste tu ingreso hoy.')
   }, 15000)
 
   it('vencido o bloqueado: estado y "Pasá por recepción"', async () => {
-    routes['/api/checkin/confirm'] = () => Promise.resolve({ status: 'registered', name: 'Vera', billing: { status: 'vencido', days: -2 } })
+    routes['/api/checkin/confirm'] = () => Promise.resolve({ status: 'registered', fullName: null, nick: 'vera', billing: { status: 'vencido', days: -2 } })
     await mount()
     await typeDni('30111222')
     await click(key('Confirmar'))
     expect(text()).toContain('Vencido')
+    expect(text()).toContain('¡Hola, vera!')                 // sin nombre y apellido: solo el usuario
+    expect(document.querySelector('.checkin-hello-nick')).toBeNull()
     expect(text()).toContain('Tu cuota venció hace 2 días.')
     expect(text()).toContain('Pasá por recepción.')
   })
