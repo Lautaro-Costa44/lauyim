@@ -16,6 +16,8 @@ function fakeCaches(initial = {}) {
   const cacheOf = name => ({
     match: async req => store.get(name).get(key(req)),
     put: async (req, res) => { store.get(name).set(key(req), res) },
+    keys: async () => [...store.get(name).keys()],
+    delete: async req => store.get(name).delete(typeof req === 'string' ? key(req) : req),
     addAll: async urls => { for (const u of urls) store.get(name).set(key(u), new Response('body:' + u)) }
   })
   return {
@@ -134,6 +136,19 @@ describe('service worker caches', () => {
   it('assets come from the current release cache only', async () => {
     sw = boot({ 'opengym-rt-v4': { './assets/a.js': new Response('rt-v4:a') }, ...releaseCache('r2', 200, { './assets/a.js': new Response('r2:a') }) })
     expect(await sw.fetchEvent('https://gym.test/assets/a.js', 'cors', 'script')).toBe('r2:a')
+  })
+
+  it('gifs/images are cached cache-first in lauyim-media-v1 and survive activate', async () => {
+    sw = boot(releaseCache('r2', 200))
+    expect(await sw.fetchEvent('https://gym.test/gif/squat.gif', 'cors', 'image')).toBe('net:https://gym.test/gif/squat.gif')
+    expect(sw.caches.store.get('lauyim-media-v1').has('./gif/squat.gif')).toBe(true)
+    await sw.run('activate')
+    expect(await sw.caches.keys()).toContain('lauyim-media-v1')
+  })
+
+  it('a cached gif is served offline', async () => {
+    sw = boot({ ...releaseCache('r2', 200), 'lauyim-media-v1': { './gif/squat.gif': new Response('cached-gif') } }, { online: false })
+    expect(await sw.fetchEvent('https://gym.test/gif/squat.gif', 'cors', 'image')).toBe('cached-gif')
   })
 
   it('API requests are left to the network', () => {

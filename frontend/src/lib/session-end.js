@@ -6,10 +6,10 @@ import { SYNC_DB_NAME } from './sync-queue.js'
 export const ACCOUNT_ENDED_REASONS = ['account_disabled', 'account_rejected', 'account_deleted']
 export const isAccountEnded = reason => ACCOUNT_ENDED_REASONS.includes(reason)
 
-// Caches del Service Worker que NO son el app shell (lauyim-release-*, sin datos del socio: sin
+// Caches del Service Worker que NO son el app shell (lauyim-release-* y los gifs, sin datos del socio: sin
 // él la app no abre offline). Hoy el SW no cachea la API (network-only); si algún día lo hace,
 // esa cache se va con esto.
-const APP_SHELL_CACHE = 'lauyim-release-'
+const APP_SHELL_CACHES = ['lauyim-release-', 'lauyim-media-']   // media: gifs del gym, sin datos del socio
 
 // La suscripción push de ESTE navegador (o null). Se usa para desvincularla al cerrar sesión.
 export async function deviceSubscription() {
@@ -32,7 +32,7 @@ export async function wipeDeviceData() {
   })
   try {
     const keys = await caches.keys()
-    await Promise.all(keys.filter(k => !k.startsWith(APP_SHELL_CACHE)).map(k => caches.delete(k)))
+    await Promise.all(keys.filter(k => !APP_SHELL_CACHES.some(prefix => k.startsWith(prefix))).map(k => caches.delete(k)))
   } catch { /* sin Cache API */ }
   try { await (await deviceSubscription())?.unsubscribe() } catch { /* ya no estaba */ }
 }

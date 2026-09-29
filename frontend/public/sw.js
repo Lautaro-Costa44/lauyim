@@ -9,6 +9,12 @@ const NAVIGATION_FALLBACK = './index.html'
 // restarted worker (module state lost) still finds it without the network.
 const RELEASE_MARKER = './__release'
 
+// Exercise images/GIFs: immutable files the app mounts at /img and /gif. They are not part of a
+// release, so they live in their own cache, cache-first, and survive release changes. Capped so a
+// long-lived install cannot grow without bound.
+const MEDIA_CACHE = 'lauyim-media-v1'
+const MEDIA_MAX_ENTRIES = 400
+
 let currentName = null
 
 async function releaseCacheName() {
@@ -29,6 +35,24 @@ async function fromRelease(request) {
   const name = await releaseCacheName()
   if (!name) return undefined
   return (await caches.open(name)).match(request, { ignoreSearch: true })
+}
+
+function isMediaRequest(url) {
+  return url.origin === location.origin && /^\/(?:img|gif)\//.test(url.pathname)
+}
+
+async function fromMedia(request) {
+  const cache = await caches.open(MEDIA_CACHE)
+  const hit = await cache.match(request)
+  if (hit) return hit
+  const response = await fetch(request)
+  if (response.ok && response.status === 200) {
+    await cache.put(request, response.clone())
+    const keys = await cache.keys()
+    // Oldest first (insertion order).
+    for (const key of keys.slice(0, Math.max(0, keys.length - MEDIA_MAX_ENTRIES))) await cache.delete(key)
+  }
+  return response
 }
 
 function isApiRequest(url) {
@@ -83,12 +107,12 @@ self.addEventListener('activate', event => {
   event.waitUntil((async () => {
     // Activation is reached only after install completed atomically. Keep the current release
     // cache and delete every other cache — older releases, the legacy opengym-* names
-    // (opengym-release-*, opengym-rt-v4) and anything else this origin left behind.
+    // (opengym-release-*, opengym-rt-v4) and anything else this origin left behind, except the media cache.
     currentName = null
     const keep = await releaseCacheName()
     if (keep) {
       const keys = await caches.keys()
-      await Promise.all(keys.filter(key => key !== keep).map(key => caches.delete(key)))
+      await Promise.all(keys.filter(key => key !== keep && key !== MEDIA_CACHE).map(key => caches.delete(key)))
     }
     await self.clients.claim()
   })())
@@ -137,6 +161,11 @@ self.addEventListener('fetch', e => {
     // Navigation gets the only HTML fallback, and only the current release's. Responses are
     // never written to a cache here. JS/CSS/image requests can never receive index.html.
     e.respondWith(fetch(e.request).catch(async () => (await fromRelease(NAVIGATION_FALLBACK)) || (await fromRelease('./')) || Response.error()))
+    return
+  }
+
+  if (isMediaRequest(url)) {
+    e.respondWith(fromMedia(e.request))
     return
   }
 
