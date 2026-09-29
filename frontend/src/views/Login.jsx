@@ -6,6 +6,8 @@ import { hasData } from '../store/useStore.js'
 import { t } from '../lib/i18n.js'
 import { DEMO, REPO } from '../lib/demo.js'
 import { useState, useRef, useEffect } from 'react'
+import { useOnline } from '../lib/useOnline.js'
+import Icon from '../components/Icon.jsx'
 import { Button, useSheetBack } from '../components/ui.jsx'
 import { ConsentCheck, usePrivacyStep } from '../components/PrivacyNotice.jsx'
 import { ProfileFields, askedFields, missingRequired, profileBody } from '../components/ProfileFields.jsx'
@@ -244,6 +246,7 @@ const openLinkSheet = code => useUI.getState().openSheet((close, { setOnBack } =
 
 export default function Login() {
   const { setUser, pullState, setGuest } = useStore()
+  const online = useOnline()
   // ?link=CODE (fuera del hash, como ?qr=): abre el flujo con el código cargado y lo saca de la
   // URL en el acto, para que no quede en el historial ni se reabra al recargar.
   useEffect(() => {
@@ -292,6 +295,10 @@ export default function Login() {
     <div className="narrow" style={wrap}>
       {head}
       <div className="muted" style={{ marginBottom: 34 }}>{t('Tus entrenamientos. Tus pesos. Tus perfiles.')}</div>
+      {!online && <div className="card" role="status" style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16, padding: '14px 16px', textAlign: 'left' }}>
+        <div style={{ color: 'var(--yellow)', display: 'flex', flex: '0 0 auto' }}><Icon name="wifiOff" /></div>
+        <div className="small" style={{ lineHeight: 1.45 }}>{t('Necesitás conexión para el primer ingreso.')}</div>
+      </div>}
       {webauthnOK() ? <>
         <Button variant="primary" icon="person" onClick={signIn}>{t('Ingresar con passkey')}</Button>
         <div style={{ height: 10 }} />

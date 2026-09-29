@@ -130,6 +130,20 @@ describe('admin routes', () => {
     expect(window.location.hash).toBe('#/admin/resumen')
   })
 
+  it('offline: every section shows the connection notice instead of a spinner, and recovers online', async () => {
+    Object.defineProperty(navigator, 'onLine', { configurable: true, value: false })
+    try {
+      await mount('#/admin/usuarios', ADMIN)
+      expect(text()).toContain('Esta sección requiere conexión a internet')
+      expect(document.querySelector('.page-loading')).toBeNull()
+      expect(tabs()).toContain('Usuarios*')   // the menu stays, so there is a way out
+      Object.defineProperty(navigator, 'onLine', { configurable: true, value: true })
+      await act(async () => { window.dispatchEvent(new Event('online')) })
+      await flush()
+      expect(text()).not.toContain('Esta sección requiere conexión a internet')
+    } finally { Object.defineProperty(navigator, 'onLine', { configurable: true, value: true }) }
+  })
+
   it('a non-admin is sent home', async () => {
     await mount('#/admin/usuarios', { id: 'u', name: 'u', admin: false })
     expect(window.location.hash).toBe('#/home')

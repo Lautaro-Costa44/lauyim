@@ -4,6 +4,8 @@ import { useStore } from '../../store/useStore.js'
 import { useUI } from '../../store/useUI.js'
 import { api } from '../../lib/api.js'
 import { t } from '../../lib/i18n.js'
+import { useOnline } from '../../lib/useOnline.js'
+import Icon from '../../components/Icon.jsx'
 import { AdminContext } from './context.js'
 // Resumen is the landing section: static, in this chunk, so /admin -> /admin/resumen renders at
 // once instead of keeping the previous screen while another chunk loads. The rest are lazy.
@@ -23,6 +25,7 @@ export default function AdminLayout() {
   const loc = useLocation()
   const user = useStore(s => s.user)
   const toast = useUI(s => s.toast)
+  const online = useOnline()
   const navRef = useRef(null)
   const [users, setUsers] = useState(null)
   const [invites, setInvites] = useState(null)
@@ -89,7 +92,12 @@ export default function AdminLayout() {
       <NavLink to="/home" className="chip nocap admin-nav-back">{t('Volver a la app')}</NavLink>
     </nav>
     <div className="admin-main">
-      <AdminContext.Provider value={ctx}>
+      {/* Todas las secciones leen del servidor: sin conexión, un aviso en lugar de un spinner eterno. */}
+      {!online ? <div className="empty" role="status">
+        <div className="ico"><Icon name="wifiOff" /></div>
+        {t('Esta sección requiere conexión a internet')}
+        <br /><span className="dim small">{t('Se actualiza sola cuando vuelva la conexión.')}</span>
+      </div> : <AdminContext.Provider value={ctx}>
         <Suspense fallback={<div className="page-loading" aria-busy="true" />}>
           <Routes>
             <Route index element={<Navigate to="/admin/resumen" replace />} />
@@ -107,7 +115,7 @@ export default function AdminLayout() {
             <Route path="*" element={<Navigate to="/admin/resumen" replace />} />
           </Routes>
         </Suspense>
-      </AdminContext.Provider>
+      </AdminContext.Provider>}
     </div>
   </div>
 }

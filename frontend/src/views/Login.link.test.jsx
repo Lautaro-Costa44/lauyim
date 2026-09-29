@@ -76,6 +76,18 @@ afterEach(async () => {
 })
 
 describe('código del gym: formato', () => {
+
+  it('offline without a session: says a connection is needed for the first sign-in, and hides it online', async () => {
+    Object.defineProperty(navigator, 'onLine', { configurable: true, value: false })
+    try {
+      await mount()
+      expect(text()).toContain('Necesitás conexión para el primer ingreso.')
+      Object.defineProperty(navigator, 'onLine', { configurable: true, value: true })
+      await act(async () => { window.dispatchEvent(new Event('online')) })
+      await flush()
+      expect(text()).not.toContain('Necesitás conexión para el primer ingreso.')
+    } finally { Object.defineProperty(navigator, 'onLine', { configurable: true, value: true }) }
+  })
   it('mayúsculas, guion automático y sin caracteres ambiguos', () => {
     expect(formatLinkCodeInput('abcd')).toBe('ABCD')
     expect(formatLinkCodeInput('abcde')).toBe('ABCD-E')
