@@ -22,6 +22,7 @@ import MembershipBlocked from './views/MembershipBlocked.jsx'
 import AccountEnded from './views/AccountEnded.jsx'
 import UpdateGate from './components/UpdateGate.jsx'
 import { getUpdater } from './lib/update.js'
+import { CHECKIN_ROUTE, getCheckinToken } from './lib/checkin-device.js'
 import { clearIosReoffer, markIosReoffer, markNotifStepDone, notifStepFor } from './lib/notif-step.js'
 // Keep every authenticated screen out of the initial payload. The service worker
 // caches each chunk after first use, so repeat visits remain instant without
@@ -38,6 +39,7 @@ const AdminLayout = lazy(() => import('./views/admin/AdminLayout.jsx'))
 const SurveyWizard = lazy(() => import('./views/SurveyWizard.jsx'))
 const ImportPlan = lazy(() => import('./views/ImportPlan.jsx'))
 const Privacy = lazy(() => import('./views/Privacy.jsx'))
+const IngresoFisicoScreen = lazy(() => import('./views/IngresoFisico.jsx'))
 const ProfileOnce = lazy(() => import('./views/ProfileOnce.jsx'))
 const NotificationsStep = lazy(() => import('./views/NotificationsStep.jsx'))
 const HealthConsentOnce = lazy(() => import('./views/HealthConsent.jsx'))
@@ -143,6 +145,9 @@ function Shell() {
   const isAdminPath = loc.pathname === '/admin' || loc.pathname.startsWith('/admin/')
   // El aviso de privacidad es público: se ve sin sesión, con la licencia vencida o bloqueado.
   const isPrivacy = loc.pathname === '/privacidad'
+  // Pantalla de Ingreso Físico: por su ruta, o siempre que este navegador sea un dispositivo de
+  // recepción sin sesión. Va antes que todo lo demás y no depende de ningún usuario.
+  const isCheckin = loc.pathname === CHECKIN_ROUTE || (!user && !!getCheckinToken())
   // Primer ingreso (antes del tour y la encuesta, después del formulario de datos): ofrecer
   // notificaciones una vez por dispositivo.
   const [notifShown, setNotifShown] = useState(0)
@@ -170,9 +175,12 @@ function Shell() {
       {/* keyed on the route: a view that throws is contained, and switching tabs
           re-mounts the boundary, so the tab bar is always a way out. Every /admin/* section
           shares one key: switching sections must not re-mount the admin layout (and its poll). */}
-      <div id="app" className={'vfade' + (isAdminPath ? ' admin-app' : '') + (isPrivacy ? ' privacy-app' : '')} key={isAdminPath ? '/admin' : loc.pathname}>
+      <div id="app" className={'vfade' + (isAdminPath ? ' admin-app' : '') + (isPrivacy ? ' privacy-app' : '') + (isCheckin ? ' checkin-app' : '')} key={isAdminPath ? '/admin' : loc.pathname}>
         <ErrorBoundary>
-          {isPrivacy ? <Suspense fallback={<div className="page-loading" aria-busy="true" />}><Privacy /></Suspense>
+          {isCheckin ? (loc.pathname === CHECKIN_ROUTE
+              ? <Suspense fallback={<div className="page-loading" aria-busy="true" />}><IngresoFisicoScreen /></Suspense>
+              : <Navigate to={CHECKIN_ROUTE} replace />)
+            : isPrivacy ? <Suspense fallback={<div className="page-loading" aria-busy="true" />}><Privacy /></Suspense>
             : accountEnded ? <AccountEnded />
             : licenseExpired ? <LicenseExpired /> : !authed ? <Login /> : blocked ? <MembershipBlocked />
             : askProfile ? <Suspense fallback={<div className="page-loading" aria-busy="true" />}><ProfileOnce /></Suspense>
@@ -202,8 +210,8 @@ function Shell() {
           )}
         </ErrorBoundary>
       </div>
-      {!accountEnded && !licenseExpired && !blocked && !askProfile && !askHealth && !askNotif && !isPrivacy && loc.pathname !== '/onboarding/encuesta' && <TabBar onStart={startFlow} />}
-      {!accountEnded && !licenseExpired && !blocked && <RestTimer />}
+      {!isCheckin && !accountEnded && !licenseExpired && !blocked && !askProfile && !askHealth && !askNotif && !isPrivacy && loc.pathname !== '/onboarding/encuesta' && <TabBar onStart={startFlow} />}
+      {!isCheckin && !accountEnded && !licenseExpired && !blocked && <RestTimer />}
       {/* Boundary propio: Modals vive fuera de #app, así que un throw acá subía hasta la raíz y
           desmontaba la app entera — pantalla negra sin salida. NO va keyed en la ruta: Modals
           debe sobrevivir a la navegación (re-montarlo volvería a apilar entradas de historial

@@ -1666,3 +1666,33 @@ input[type="search"]::-webkit-search-cancel-button{display:none;-webkit-appearan
   font:inherit;font-size:13px;font-weight:600;box-shadow:0 4px 16px rgba(0,0,0,.25);cursor:pointer;
 }
 .update-pill .icon, .update-pill svg{width:16px;height:16px;color:var(--acc)}
+
+/* ---------------------------------------------------------- Ingreso Físico -- */
+/* Pantalla de recepción: pantalla completa, sin tab bar, centrada y con botones grandes para
+   usar con el dedo (o con el teclado de una notebook). */
+#app.checkin-app{max-width:none;padding:calc(var(--sat) + 16px) 16px calc(var(--sab) + 16px);min-height:100vh;display:flex}
+.checkin{position:relative;flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:10px;max-width:440px;margin:0 auto;width:100%}
+.checkin h1{font-size:28px;font-weight:700;margin:0;letter-spacing:-.02em}
+.checkin p{margin:0;line-height:1.45}
+.checkin-logo{width:64px;height:64px;object-fit:contain}
+.checkin-exit{position:absolute;top:0;right:0;background:none;border:0;color:var(--label-2);padding:10px;cursor:pointer;opacity:.6}
+.checkin-exit:hover,.checkin-exit:focus-visible{opacity:1}
+.checkin-display{font-size:44px;font-weight:700;letter-spacing:.14em;font-variant-numeric:tabular-nums;min-height:60px;margin-top:6px}
+.checkin-notice{min-height:22px;color:var(--warning);font-size:15px}
+.checkin-pad{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;width:100%;max-width:360px;margin-top:4px}
+.checkin-pad button{height:clamp(64px,11vh,84px);border-radius:var(--r-lg);border:0;background:var(--surface-2);color:var(--label);font:inherit;font-size:30px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:transform .08s ease,background .15s ease}
+.checkin-pad button:active{transform:scale(.96);background:var(--surface-3)}
+.checkin-pad button:disabled{opacity:.45}
+.checkin-pad button.alt{background:transparent;color:var(--label-2)}
+.checkin-pad button.ok{background:var(--acc);color:#000}
+.checkin-pad svg{width:28px;height:28px}
+.checkin-candidates{width:100%;max-width:360px;display:flex;flex-direction:column}
+.checkin-candidates .item{font:inherit;font-size:20px;text-align:left;cursor:pointer;min-height:60px}
+.checkin-result{cursor:pointer}
+.checkin-icon{width:84px;height:84px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:color-mix(in srgb,var(--success) 16%,transparent);color:var(--success);margin-bottom:6px}
+.checkin-icon.warn{background:color-mix(in srgb,var(--warning) 16%,transparent);color:var(--warning)}
+.checkin-ended .checkin-icon{background:color-mix(in srgb,var(--danger) 16%,transparent);color:var(--danger)}
+.checkin-sub{font-size:18px}
+.checkin-billing{display:flex;flex-direction:column;align-items:center;gap:8px;font-size:17px;margin-top:8px}
+.checkin-billing .tag{font-size:15px;padding:5px 12px}
+.checkin-warn{font-size:20px;font-weight:700;color:var(--danger)}

@@ -159,6 +159,7 @@ test('dispositivo: token de 32 bytes, en la base solo el sha256; sin token o con
 
 test('DNI completo: saludo, estado de cuota y días en gym_tz; el log no tiene el DNI completo', async () => {
   const { token } = await newDevice();
+  assert.deepEqual((await call(null, 'POST', '/api/checkin/info', {}, { token })).body, { name: 'Tablet recepción', mode: 'full', digits: 4 });
   const r = await checkIn(token, '30.111.222');
   assert.deepEqual(r.body, { status: 'registered', name: 'Juan', billing: { status: 'por_vencer', days: 3 } });
   assert.deepEqual(sql('SELECT user_id, date, source FROM attendance WHERE user_id = ?', 'juan'), [{ user_id: 'juan', date: today, source: 'physical' }]);

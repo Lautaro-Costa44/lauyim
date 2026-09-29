@@ -255,6 +255,7 @@ const RATE_LIMITS_BY_IP = {
   'POST /api/support': RATE_LIMIT_SUPPORT_MAX,
   'POST /api/link/options': RATE_LIMIT_LINK_MAX,
   'POST /api/link/verify': RATE_LIMIT_LINK_MAX,
+  'POST /api/checkin/info': RATE_LIMIT_CHECKIN_IP_MAX,
   'POST /api/checkin/lookup': RATE_LIMIT_CHECKIN_IP_MAX,
   'POST /api/checkin/confirm': RATE_LIMIT_CHECKIN_IP_MAX,
   'POST /api/checkin/exit/options': RATE_LIMIT_CHECKIN_IP_MAX,
@@ -3199,6 +3200,12 @@ const routes = {
   },
 
   // --- endpoints del dispositivo (X-Checkin-Token) ---
+
+  // Al abrir la pantalla: si el token sigue vigente y qué tiene que tipear el socio.
+  'POST /api/checkin/info': async (req, res) => {
+    const ctx = checkinDevice(req, res); if (!ctx) return;
+    json(res, 200, { name: ctx.device.name, mode: ctx.settings.mode, digits: ctx.settings.digits });
+  },
 
   'POST /api/checkin/lookup': async (req, res) => {
     const ctx = checkinDevice(req, res); if (!ctx) return;

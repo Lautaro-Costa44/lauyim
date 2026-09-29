@@ -11,12 +11,13 @@ export const setCheckinToken = token => { try { localStorage.setItem(CHECKIN_TOK
 export const clearCheckinToken = () => { try { localStorage.removeItem(CHECKIN_TOKEN_KEY) } catch { /* storage off */ } }
 
 // Pedido de la pantalla de Ingreso Físico: solo con el token, sin sesión. Ante 401 (revocado) o
-// 403 (módulo apagado) el token se borra y el error sigue viaje con `ended: true`.
+// 403 feature_disabled (módulo apagado) el token se borra y el error sigue viaje con `ended: true`.
+// Otro 403 (una passkey que no es de admin en la salida) no toca el token.
 export async function checkinApi(path, body) {
   try {
     return await api(path, { method: 'POST', body: JSON.stringify(body || {}), headers: { 'X-Checkin-Token': getCheckinToken() || '' } })
   } catch (e) {
-    if (e?.status === 401 || e?.status === 403) { clearCheckinToken(); e.ended = true }
+    if (e?.status === 401 || (e?.status === 403 && e?.data?.error === 'feature_disabled')) { clearCheckinToken(); e.ended = true }
     throw e
   }
 }
