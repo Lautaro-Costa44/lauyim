@@ -134,7 +134,8 @@ import {
   setHealthConsent,
   deleteHealthData,
   approveAccount,
-  completeProfilePrompt
+  completeProfilePrompt,
+  countAttendanceMembers,
 } from './database.js';
 import {
   MEMBER_FIELDS_SETTING, parseMemberFields, validateMemberFields, validateMemberProfile, validationErrorBody, normalizeUsername,
@@ -147,12 +148,17 @@ import {
   effectiveMode, allowedStarts, needsProfilePrompt, anyFieldEnabled
 } from './approval.js';
 import { membersCsv } from './member-export.js';
+import {
+  readCheckinSettings, validateCheckinSettings, CHECKIN_SETTINGS, createDevice, findDevice, touchDevice,
+  listDevices, revokeDevice, revokeAllDevices, lookup as checkinLookup, confirm as checkinConfirm,
+  todayCheckins, firstName
+} from './checkin.js';
 import { HEALTH_SURVEY_KEYS, healthConsentOf, healthDeclined, keepStoredHealth, stripHealth } from './health.js';
 import {
   getBillingSettings, validateBillingSettings, serializeBillingSetting, gymToday,
   billingStatus, nextDueDate, debtTotal, isIsoDate, daysBetween,
   isBillingEnabled, getBillingNotifyHour, isValidNotifyHour, BILLING_ENABLED_SETTING, BILLING_NOTIFY_HOUR_SETTING,
-  memberDebt, isTrialEnded, trialEndDate, hasActivePlan
+  memberDebt, isTrialEnded, trialEndDate, hasActivePlan, addDays
 } from './billing.js';
 
 const PORT = +(process.env.PORT || 3000);
@@ -231,6 +237,10 @@ const RATE_LIMIT_SUPPORT_MAX = envMax('RATE_LIMIT_SUPPORT_MAX', 5);
 const RATE_LIMIT_LINK_MAX = envMax('RATE_LIMIT_LINK_MAX', 30);                   // por IP: link/options, link/verify
 const RATE_LIMIT_PER_LINK_CODE_MAX = envMax('RATE_LIMIT_PER_LINK_CODE_MAX', 20); // por código: link/options
 const RATE_LIMIT_IMPORT_MAX = envMax('RATE_LIMIT_IMPORT_MAX', 30);               // por usuario: owner/members/import (vistas previas incluidas)
+// Ingreso Físico: el cupo principal es por dispositivo (una recepción con mucho movimiento hace
+// ~1 búsqueda por socio); el de IP es un techo alto, porque varias tablets pueden compartir wifi.
+const RATE_LIMIT_CHECKIN_DEVICE_MAX = envMax('RATE_LIMIT_CHECKIN_DEVICE_MAX', 120); // por dispositivo: checkin/lookup
+const RATE_LIMIT_CHECKIN_IP_MAX = envMax('RATE_LIMIT_CHECKIN_IP_MAX', 300);         // por IP: checkin/*
 // device/poll queda afuera: el cliente lo llama cada 2 s y el pairingId (128 bits) no se adivina.
 const RATE_LIMITS_BY_IP = {
   'POST /api/login/options': RATE_LIMIT_LOGIN_MAX,
@@ -244,7 +254,11 @@ const RATE_LIMITS_BY_IP = {
   'POST /api/share/plan': RATE_LIMIT_SHARE_MAX,
   'POST /api/support': RATE_LIMIT_SUPPORT_MAX,
   'POST /api/link/options': RATE_LIMIT_LINK_MAX,
-  'POST /api/link/verify': RATE_LIMIT_LINK_MAX
+  'POST /api/link/verify': RATE_LIMIT_LINK_MAX,
+  'POST /api/checkin/lookup': RATE_LIMIT_CHECKIN_IP_MAX,
+  'POST /api/checkin/confirm': RATE_LIMIT_CHECKIN_IP_MAX,
+  'POST /api/checkin/exit/options': RATE_LIMIT_CHECKIN_IP_MAX,
+  'POST /api/checkin/exit/verify': RATE_LIMIT_CHECKIN_IP_MAX
 };
 // Secure cookies require HTTPS; over plain http://localhost the flag would drop the cookie
 const SECURE = /^https:/i.test(ORIGIN) ? ' Secure;' : '';
@@ -905,6 +919,20 @@ function takeChallenge(cid) {
   return c;
 }
 setInterval(() => { for (const [k, v] of challenges) if (v.exp < Date.now()) challenges.delete(k); }, 60000).unref();
+
+/* ---------- Ingreso Físico: helpers ---------- */
+const checkinSettingsNow = () => readCheckinSettings(getAdminSetting);
+// Dispositivo de Ingreso Físico del header X-Checkin-Token, o responde y devuelve null:
+// 403 feature_disabled con el módulo apagado (salvo allowDisabled), 401 device_revoked sin un
+// token vigente. El cliente borra su token con cualquiera de los dos.
+function checkinDevice(req, res, { allowDisabled = false } = {}) {
+  const settings = checkinSettingsNow();
+  if (!settings.enabled && !allowDisabled) { json(res, 403, { error: 'feature_disabled' }); return null; }
+  const device = findDevice(getDatabase(), req.headers['x-checkin-token']);
+  if (!device) { json(res, 401, { error: 'device_revoked' }); return null; }
+  touchDevice(getDatabase(), device);
+  return { device, settings };
+}
 
 /* ---------- device pairing store ---------- */
 const pendingPairings = new Map();
@@ -3115,15 +3143,131 @@ const routes = {
   'GET /api/admin/attendance-heatmap': async (req, res) => {
     if (!requireAdmin(req, res)) return;
     const start = getAdminSetting('attendance_week_start', 'monday') === 'sunday' ? 'sunday' : 'monday';
-    const endDate = new Date();
-    endDate.setHours(12, 0, 0, 0);
-    const startDate = new Date(endDate);
-    startDate.setDate(endDate.getDate() - 27);
-    const iso = d => d.toISOString().slice(0, 10);
-    const rows = getAttendanceByDate(iso(startDate), iso(endDate));
+    // "Hoy" en la zona del gym, no en la del servidor (UTC en Docker corría el día de noche).
+    const today = billingToday(billingSettingsNow());
+    const rows = getAttendanceByDate(addDays(today, -27), today);
     const days = Object.fromEntries(rows.map(r => [r.date, Number(r.users) || 0]));
-    // Las fichas sin passkey no entrenan con la app: no cuentan en el total.
-    json(res, 200, { start, days, totalUsers: countAppUsers(), now: Date.now() });
+    // Entrenos en la app + Ingreso Físico; el total suma las fichas con DNI (pueden venir).
+    json(res, 200, { start, days, today, totalUsers: countAttendanceMembers(), now: Date.now() });
+  },
+
+  /* ---------- Ingreso Físico ---------- */
+
+  // Sección del admin. Con el módulo apagado solo la ve el owner (para encenderlo).
+  'GET /api/admin/checkin': async (req, res) => {
+    const admin = requireAdmin(req, res); if (!admin) return;
+    const settings = checkinSettingsNow();
+    if (!settings.enabled && !isOwner(admin)) return json(res, 403, { error: 'feature_disabled' });
+    const today = billingToday(billingSettingsNow());
+    json(res, 200, {
+      settings, billingEnabled: billingEnabledNow(), today,
+      devices: settings.enabled ? listDevices(getDatabase()) : [],
+      checkins: settings.enabled ? todayCheckins(getDatabase(), today) : []
+    });
+  },
+
+  // Configuración: solo el owner. Apagar revoca todos los dispositivos (un token viejo no
+  // vuelve a funcionar al encenderlo de nuevo).
+  'PUT /api/owner/checkin/settings': async (req, res) => {
+    const owner = requireOwner(req, res); if (!owner) return;
+    const checked = validateCheckinSettings(await readBody(req));
+    if (checked.error) return json(res, 400, { error: checked.error });
+    for (const [key, value] of Object.entries(checked.value)) setAdminSetting(CHECKIN_SETTINGS[key], String(value));
+    let revoked = 0;
+    if (checked.value.enabled === false) revoked = revokeAllDevices(getDatabase());
+    audit(req, 'owner.checkin.settings', { user: owner, summary: Object.entries(checked.value).map(([k, v]) => `${k}=${v}`).join(' · ') + (revoked ? ` · ${revoked} dispositivos revocados` : '') });
+    json(res, 200, { settings: checkinSettingsNow() });
+  },
+
+  // "Abrir Ingreso Físico en este dispositivo": cualquier admin, con el módulo encendido.
+  'POST /api/admin/checkin/devices': async (req, res) => {
+    const admin = requireAdmin(req, res); if (!admin) return;
+    if (!checkinSettingsNow().enabled) return json(res, 403, { error: 'feature_disabled' });
+    const out = createDevice(getDatabase(), { name: (await readBody(req)).name, createdBy: admin.id });
+    if (out.error) return json(res, 400, { error: out.error, fields: { name: 'Poné un nombre para el dispositivo' } });
+    audit(req, 'admin.checkin.device.create', { user: admin, msg: out.device.name });
+    json(res, 200, out);
+  },
+
+  // Revocar: cualquier admin (una tablet perdida se corta sin esperar al owner).
+  'DELETE /api/admin/checkin/devices/:id': async (req, res) => {
+    const admin = requireAdmin(req, res); if (!admin) return;
+    const id = Number(new URL(req.url, ORIGIN).pathname.split('/').pop());
+    if (!revokeDevice(getDatabase(), id)) return json(res, 404, { error: 'not_found' });
+    audit(req, 'admin.checkin.device.revoke', { user: admin, msg: String(id) });
+    json(res, 200, { ok: true });
+  },
+
+  // --- endpoints del dispositivo (X-Checkin-Token) ---
+
+  'POST /api/checkin/lookup': async (req, res) => {
+    const ctx = checkinDevice(req, res); if (!ctx) return;
+    if (!rateLimit(res, `checkin-device:${ctx.device.id} POST /api/checkin/lookup`, RATE_LIMIT_CHECKIN_DEVICE_MAX)) return;
+    const body = await readBody(req);
+    const out = checkinLookup(getDatabase(), { query: body.dni, settings: ctx.settings, deviceId: ctx.device.id });
+    if (out.error) return json(res, 400, { error: out.error });
+    if (out.status !== 'found') audit(req, 'checkin.fail', { ok: false, msg: `${out.status} dni=${maskDni(String(body.dni || '').replace(/\D/g, ''))} device=${ctx.device.name}` });
+    json(res, 200, { status: out.status, candidates: out.candidates || [], mode: ctx.settings.mode, digits: ctx.settings.digits });
+  },
+
+  'POST /api/checkin/confirm': async (req, res) => {
+    const ctx = checkinDevice(req, res); if (!ctx) return;
+    const body = await readBody(req);
+    const settings = billingSettingsNow();
+    const today = billingToday(settings);
+    const out = checkinConfirm(getDatabase(), { ticket: body.ticket, deviceId: ctx.device.id, today });
+    if (out.error) return json(res, 400, { error: out.error });
+    if (out.status === 'not_found') return json(res, 200, { status: 'not_found' });
+    const target = getUserById(out.userId);
+    const result = { status: out.already ? 'already' : 'registered', name: firstName(out.name) };
+    // Estado de cuota: si el owner lo muestra y cuotas está encendido. Días en gym_tz.
+    if (ctx.settings.showStatus && billingEnabledNow() && !isRealStaff(target)) {
+      const billing = getMemberBilling(out.userId);
+      const status = billingStatus(billing, today, settings);
+      const until = status === 'prueba' ? billing.trialUntil : billing.dueDate;
+      result.billing = { status, days: isIsoDate(until) ? daysBetween(today, until) : null };
+    }
+    if (!out.already) audit(req, 'checkin.ok', { target, msg: `device=${ctx.device.name}` });
+    json(res, 200, result);
+  },
+
+  // Salir de la pantalla: passkey de un admin de esta instancia. Verifica la aserción SIN crear
+  // sesión (el dispositivo nunca guarda la sesión del admin) y revoca este dispositivo.
+  'POST /api/checkin/exit/options': async (req, res) => {
+    const ctx = checkinDevice(req, res, { allowDisabled: true }); if (!ctx) return;
+    const options = await generateAuthenticationOptions({ rpID: RP_ID, userVerification: 'preferred', allowCredentials: [] });
+    const cid = putChallenge({ challenge: options.challenge, checkinDevice: ctx.device.id });
+    json(res, 200, { cid, options });
+  },
+
+  'POST /api/checkin/exit/verify': async (req, res) => {
+    const ctx = checkinDevice(req, res, { allowDisabled: true }); if (!ctx) return;
+    const body = await readBody(req);
+    const c = takeChallenge(body.cid);
+    // Un solo uso (takeChallenge lo borra) y atado a este dispositivo.
+    if (!c || c.checkinDevice !== ctx.device.id) return json(res, 400, { error: 'challenge_expired' });
+    const cred = getCredentialById(body.credential?.id);
+    if (!cred) return json(res, 403, { error: 'forbidden' });
+    let verification;
+    try {
+      verification = await verifyAuthenticationResponse({
+        response: body.credential, expectedChallenge: c.challenge, expectedOrigin: ORIGIN, expectedRPID: RP_ID,
+        requireUserVerification: false,
+        credential: { id: cred.id, publicKey: b64uToBuf(cred.public_key || cred.publicKey), counter: cred.counter, transports: typeof cred.transports === 'string' ? JSON.parse(cred.transports) : cred.transports }
+      });
+    } catch (e) {
+      return json(res, 400, { error: 'passkey_verify_failed' });
+    }
+    if (!verification.verified) return json(res, 400, { error: 'passkey_verify_failed' });
+    updateCredentialCounter(cred.id, verification.authenticationInfo.newCounter);
+    const user = getUserById(cred.user_id || cred.userId);
+    if (!user || user.disabled || !isAdmin(user)) {
+      audit(req, 'checkin.exit.denied', { ok: false, user, msg: `device=${ctx.device.name}` });
+      return json(res, 403, { error: 'forbidden' });
+    }
+    revokeDevice(getDatabase(), ctx.device.id);
+    audit(req, 'checkin.exit', { user, msg: `device=${ctx.device.name}` });
+    json(res, 200, { ok: true });
   },
 
   'POST /api/admin/attendance-week-start': async (req, res) => {
@@ -4103,6 +4247,8 @@ http.createServer(async (req, res) => {
       ? 'PUT /api/admin/nutrition/templates/:id'
     : req.method === 'DELETE' && /^\/api\/admin\/nutrition\/templates\/[^/]+$/.test(url.pathname)
       ? 'DELETE /api/admin/nutrition/templates/:id'
+    : req.method === 'DELETE' && /^\/api\/admin\/checkin\/devices\/\d+$/.test(url.pathname)
+      ? 'DELETE /api/admin/checkin/devices/:id'
     : key;
 
   // Cupo por IP; los cupos por credencial / usuario van en cada handler.

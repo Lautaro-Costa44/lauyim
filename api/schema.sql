@@ -578,3 +578,26 @@ CREATE TABLE IF NOT EXISTS link_codes (
   failed_attempts INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS idx_link_codes_user_id ON link_codes(user_id);
+
+-- Ingreso Físico (asistencia en recepción). Una fila por socio y día (fecha en gym_tz). Las
+-- fichas sin app también son filas de users. source: 'physical' (y más adelante 'qr').
+CREATE TABLE IF NOT EXISTS attendance (
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  date TEXT NOT NULL,
+  source TEXT NOT NULL DEFAULT 'physical',
+  device_id INTEGER,
+  created_at INTEGER NOT NULL,
+  PRIMARY KEY (user_id, date)
+);
+CREATE INDEX IF NOT EXISTS idx_attendance_date ON attendance(date);
+
+-- Dispositivos de Ingreso Físico: solo el sha256 del token (32 bytes aleatorios).
+CREATE TABLE IF NOT EXISTS checkin_devices (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  token_hash TEXT NOT NULL UNIQUE,
+  created_by TEXT,
+  created_at INTEGER NOT NULL,
+  last_used_at INTEGER,
+  revoked_at INTEGER
+);

@@ -11,10 +11,14 @@ const dur = ms => { const m = Math.max(0, Math.floor(ms / 60000)); return m < 60
 
 function AttendanceHeatmap({ data, onStartChange }) {
   if (!data) return <div className="card"><div className="dim small">{t('Loading…')}</div></div>
-  const today = new Date(); today.setHours(12, 0, 0, 0)
-  const offset = data.start === 'sunday' ? today.getDay() : (today.getDay() + 6) % 7
-  const end = new Date(today); end.setDate(today.getDate() - offset)
-  const start = new Date(end); start.setDate(end.getDate() - 21)
+  // "Hoy" es el del gym (gym_tz, lo manda el servidor), no el del navegador. Todo en UTC al
+  // mediodía para que ningún huso corra el día.
+  const localToday = new Date(); localToday.setHours(12, 0, 0, 0)
+  const todayKey = /^\d{4}-\d{2}-\d{2}$/.test(data.today || '') ? data.today : localToday.toISOString().slice(0, 10)
+  const today = new Date(todayKey + 'T12:00:00Z')
+  const offset = data.start === 'sunday' ? today.getUTCDay() : (today.getUTCDay() + 6) % 7
+  const end = new Date(today); end.setUTCDate(today.getUTCDate() - offset)
+  const start = new Date(end); start.setUTCDate(end.getUTCDate() - 21)
   const totalUsers = Math.max(1, Number(data.totalUsers) || 0)
   const max = totalUsers
   const level = n => !n ? 0 : Math.min(4, Math.ceil((n / max) * 4))
@@ -23,11 +27,11 @@ function AttendanceHeatmap({ data, onStartChange }) {
   for (let w = 0; w < 4; w++) {
     const cells = []
     for (let d = 0; d < dayCount; d++) {
-      const day = new Date(start); day.setDate(start.getDate() + w * 7 + d)
+      const day = new Date(start); day.setUTCDate(start.getUTCDate() + w * 7 + d)
       const key = day.toISOString().slice(0, 10)
       const n = Number(data.days[key] || 0)
-      cells.push(<div key={key} className={'hm-c l' + level(n) + (key === today.toISOString().slice(0, 10) ? ' today' : '')}
-        title={`${key} · ${t(n === 1 ? '{0} user' : '{0} users', n)}`} />)
+      cells.push(<div key={key} className={'hm-c l' + level(n) + (key === todayKey ? ' today' : '')}
+        title={`${key} · ${t(n === 1 ? '{0} socio' : '{0} socios', n)} · ${t('entrenos en la app + Ingreso Físico')}`} />)
     }
     weeks.push(<div key={w} className="hm-col">{cells}</div>)
   }
@@ -36,7 +40,7 @@ function AttendanceHeatmap({ data, onStartChange }) {
     : ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
   return <div className="card admin-attendance-heatmap">
     <div className="row between" style={{ gap: 10 }}>
-      <div><h2 style={{ margin: 0 }}>{t('Asistencia')}</h2><div className="small muted">{t('Miembros distintos que entrenaron cada día · últimas 4 semanas')}</div></div>
+      <div><h2 style={{ margin: 0 }}>{t('Asistencia')}</h2><div className="small muted" title={t('Socios distintos por día que entrenaron con la app o registraron su Ingreso Físico. Quien hizo las dos cosas cuenta una vez.')}>{t('Entrenos en la app + Ingreso Físico · socios distintos por día · últimas 4 semanas')}</div></div>
       <div className="hm-sunday-toggle seg" role="group" aria-label={t('Sunday')}>
         <button type="button" className={data.start === 'monday' ? 'on' : ''} onClick={() => onStartChange('monday')}>{t('Sin Domingo')}</button>
         <button type="button" className={data.start === 'sunday' ? 'on' : ''} onClick={() => onStartChange('sunday')}>{t('Con Domingo')}</button>

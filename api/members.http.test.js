@@ -214,9 +214,12 @@ test('listados: hasApp y hasProfile, nunca DNI ni celular', async () => {
       assert.ok(!text.includes(secret), secret);
     }
   }
-  // Las fichas no cuentan como usuarios de la app.
+  // Asistencia (Ingreso Físico): cuentan las cuentas con app y también las fichas con DNI, que
+  // pueden venir por recepción. Las fichas sin DNI no.
   const heat = await call('adm', 'GET', '/api/admin/attendance-heatmap');
-  assert.equal(heat.body.totalUsers, 5);
+  const fichasConDni = sql("SELECT COUNT(*) AS n FROM member_profile mp WHERE mp.dni_norm IS NOT NULL AND NOT EXISTS (SELECT 1 FROM credentials c WHERE c.user_id = mp.user_id)")[0].n;
+  assert.equal(heat.body.totalUsers, 5 + fichasConDni);
+  assert.ok(fichasConDni > 0);
 });
 
 test('DNI deshabilitado: lookup y duplicados responden como no disponibles', async () => {

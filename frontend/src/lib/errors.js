@@ -83,6 +83,10 @@ export const ERROR_TEXTS = {
   program_changed: 'El programa cambió; se recargó la lista.',
   program_name_taken: 'Ya existe un programa con ese nombre.',
   program_hidden: 'Ese programa no está disponible.',
+  // Ingreso Físico
+  feature_disabled: 'Ingreso Físico está desactivado.',
+  device_revoked: 'Este dispositivo ya no está activado para Ingreso Físico.',
+  invalid_ticket: 'La búsqueda venció. Ingresá el DNI de nuevo.',
   // notificaciones
   invalid_push_endpoint: 'Este navegador no permite recibir notificaciones.',
   // sync (conflictos que se descartan; no suelen llegar a un toast)

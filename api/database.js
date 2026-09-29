@@ -225,6 +225,9 @@ export function initDatabase() {
     value TEXT NOT NULL,
     updated_at INTEGER NOT NULL
   );`);
+  // Ingreso Físico: apagado en instancias nuevas y en las que ya existían (attendance y
+  // checkin_devices los crea schema.sql). OR IGNORE: no pisa lo que el owner haya elegido.
+  try { db.prepare("INSERT OR IGNORE INTO admin_settings (key, value, updated_at) VALUES ('ingreso_fisico_enabled', 'false', ?)").run(Date.now()); } catch {}
   db.exec(`CREATE TABLE IF NOT EXISTS admin_audit_log (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     actor_user_id TEXT NOT NULL,
@@ -1717,14 +1720,29 @@ export function getOrCreateQrAccessToken() {
   return token;
 }
 
+// Asistencia por día: socios distintos que entrenaron con la app o registraron un Ingreso Físico
+// (quien hizo las dos cosas cuenta una vez).
 export function getAttendanceByDate(startDate, endDate) {
   return getDatabase().prepare(`
-    SELECT date, COUNT(DISTINCT user_id) AS users
-    FROM workouts
-    WHERE date >= ? AND date <= ?
+    SELECT date, COUNT(DISTINCT user_id) AS users FROM (
+      SELECT user_id, date FROM workouts WHERE date >= ? AND date <= ?
+      UNION
+      SELECT user_id, date FROM attendance WHERE date >= ? AND date <= ?
+    )
     GROUP BY date
     ORDER BY date ASC
-  `).all(startDate, endDate);
+  `).all(startDate, endDate, startDate, endDate);
+}
+
+// Denominador del gráfico de asistencia: cuentas activas con app, más las fichas con DNI (pueden
+// venir por Ingreso Físico).
+export function countAttendanceMembers() {
+  return Number(getDatabase().prepare(`
+    SELECT COUNT(*) AS n FROM users u
+    WHERE COALESCE(u.disabled, 0) = 0 AND u.approval_status IS NULL AND (
+      EXISTS (SELECT 1 FROM credentials c WHERE c.user_id = u.id)
+      OR EXISTS (SELECT 1 FROM member_profile mp WHERE mp.user_id = u.id AND mp.dni_norm IS NOT NULL)
+    )`).get().n);
 }
 
 export function getPresetGroups() {
@@ -2643,6 +2661,9 @@ export function mergeMember({ fichaId, targetId, keepBilling = null, dryRun = fa
     // (si no, se iría con la ficha por el ON DELETE CASCADE).
     db.prepare('UPDATE payments SET user_id = ? WHERE user_id = ?').run(targetId, fichaId);
     db.prepare('UPDATE member_trials SET user_id = ? WHERE user_id = ?').run(targetId, fichaId);
+    // Ingresos de la ficha: pasan a la cuenta. Un día que ya tenía la cuenta queda una vez (el
+    // de la ficha se va con el borrado).
+    db.prepare('UPDATE OR IGNORE attendance SET user_id = ? WHERE user_id = ?').run(targetId, fichaId);
 
     if (plan.billing.ficha && plan.billing.keep === 'ficha') {
       const fb = db.prepare('SELECT plan_id, due_date, trial_until FROM member_billing WHERE user_id = ?').get(fichaId);

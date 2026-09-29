@@ -78,6 +78,20 @@ test('dayPlan overrides keep their estado across save/load (descanso must not tu
   assert.deepEqual(dbMod.getUserState('u-daypan').dayPlan['2026-09-29'], { ...planned, rutinaId: null });
 });
 
+test('migración de Ingreso Físico: una base existente arranca apagada y con las tablas; no pisa lo elegido', () => {
+  dbMod.initDatabase();
+  const db = dbMod.getDatabase();
+  // Base de antes de Ingreso Físico: sin la opción ni las tablas.
+  db.exec("DELETE FROM admin_settings WHERE key = 'ingreso_fisico_enabled'; DROP TABLE IF EXISTS attendance; DROP TABLE IF EXISTS checkin_devices;");
+  dbMod.initDatabase();
+  assert.equal(dbMod.getAdminSetting('ingreso_fisico_enabled'), 'false');
+  const tables = dbMod.getDatabase().prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('attendance', 'checkin_devices') ORDER BY name").all().map(r => r.name);
+  assert.deepEqual(tables, ['attendance', 'checkin_devices']);
+  dbMod.setAdminSetting('ingreso_fisico_enabled', 'true');
+  dbMod.initDatabase();
+  assert.equal(dbMod.getAdminSetting('ingreso_fisico_enabled'), 'true');
+});
+
 test.after(async () => {
   dbMod.closeDatabase();
   await rm(tmpDir, { recursive: true, force: true });
