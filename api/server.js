@@ -3278,7 +3278,8 @@ const routes = {
   'GET /api/admin/users/:userId/billing': async (req, res) => {
     if (!requireAdmin(req, res)) return;
     const userId = userIdFromPath(req);
-    if (!getUserById(userId)) return json(res, 404, { error: 'El usuario no existe' });
+    const target = getUserById(userId);
+    if (!target) return json(res, 404, { error: 'El usuario no existe' });
     const settings = billingSettingsNow();
     const today = billingToday(settings);
     const billing = getMemberBilling(userId);
@@ -3291,7 +3292,9 @@ const routes = {
       // anula y no suma a recaudación ni a deuda.
       history: billingHistory(payments, getTrialsByUserId(userId), settings),
       // Para la ficha de cuota: si se puede dar la prueba y, si no, por qué.
-      trial: { days: settings.trial_days, until: trialEndDate(today, settings.trial_days), available: !blocker, blocker }
+      trial: { days: settings.trial_days, until: trialEndDate(today, settings.trial_days), available: !blocker, blocker },
+      // Atajo "Desactivar / Reactivar cuenta" de la ficha de cuota (usa POST /api/admin/user/disable).
+      account: { disabled: !!target.disabled, hasApp: countCredentials(userId) > 0, staff: isRealStaff(target) }
     });
   },
 

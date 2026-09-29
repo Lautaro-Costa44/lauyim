@@ -207,3 +207,21 @@ test('pareo: aprobado y dado de baja antes del poll → 403 account_disabled, si
   const unknown = await call(null, 'GET', '/api/auth/device/poll?pairingId=nope');
   assert.doesNotMatch(JSON.stringify(unknown.body), /account_/);
 });
+
+// --- atajo de Cuotas (Entrega 3.2): la ficha de cuota dice el estado de la cuenta y un admin
+// que no es owner desactiva / reactiva con el mismo endpoint de Usuarios, que queda en el log.
+test('ficha de cuota: account { disabled, hasApp, staff }; un admin no owner desactiva y reactiva, con log', async () => {
+  const billingOf = async id => (await call('adm', 'GET', `/api/admin/users/${id}/billing`)).body.account;
+  assert.deepEqual(await billingOf('activo'), { disabled: false, hasApp: true, staff: false });
+  assert.deepEqual(await billingOf('adm'), { disabled: false, hasApp: true, staff: true });
+  const ficha = await newFicha('50333444');
+  assert.deepEqual(await billingOf(ficha), { disabled: false, hasApp: false, staff: false });
+
+  assert.equal((await call('adm', 'POST', '/api/admin/user/disable', { id: 'activo', disabled: true })).status, 200);
+  assert.equal((await billingOf('activo')).disabled, true);
+  assert.equal((await call('adm', 'POST', '/api/admin/user/disable', { id: 'activo', disabled: false })).status, 200);
+  assert.equal((await billingOf('activo')).disabled, false);
+  const log = fs.readFileSync(path.join(dataDir, 'audit.log'), 'utf8');
+  assert.match(log, /"admin\.user\.disable"[^\n]*"activo"|"activo"[^\n]*"admin\.user\.disable"/);
+  assert.match(log, /admin\.user\.enable/);
+});

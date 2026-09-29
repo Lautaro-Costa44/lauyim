@@ -271,6 +271,26 @@ export function MemberBillingSheet({ userId, userName, members, startWith = 'det
       .catch(e => setError(errorText(e)))
   })
 
+  // Atajo a la desactivación de cuenta (la misma de Usuarios: POST /api/admin/user/disable, con su
+  // registro en el log). Solo para socios con app que no son staff: una ficha sin app no entra a la app.
+  const account = data?.account
+  const setAccountDisabled = disabled => api('/api/admin/user/disable', { method: 'POST', body: JSON.stringify({ id: member.id, disabled }) })
+    .then(() => { toast(disabled ? t('Cuenta desactivada') : t('Cuenta reactivada')); changed() })
+    .catch(e => setError(errorText(e)))
+  const confirmDisable = () => confirmSheet({
+    title: t('¿Desactivar la cuenta de {0}?', member.name),
+    message: t('No va a poder usar la app hasta que la reactives. Sus datos y su cuota se conservan.'),
+    confirmText: t('Desactivar cuenta'),
+    danger: true,
+    onConfirm: () => setAccountDisabled(true),
+  })
+  const confirmEnable = () => confirmSheet({
+    title: t('¿Reactivar la cuenta de {0}?', member.name),
+    message: t('Va a poder volver a usar la app.'),
+    confirmText: t('Reactivar cuenta'),
+    onConfirm: () => setAccountDisabled(false),
+  })
+
   const voidPayment = payment => openSheet(c => <VoidDialog payment={payment} close={c} onConfirm={reason =>
     api(paymentsUrl(member.id) + '/' + payment.id + '/void', { method: 'POST', body: JSON.stringify(reason ? { reason } : {}) })
       .then(() => { toast(t('Pago anulado')); changed() })
@@ -321,6 +341,14 @@ export function MemberBillingSheet({ userId, userName, members, startWith = 'det
           {/* Prueba: una por persona (DNI); con plan vigente o prueba en curso no se ofrece. */}
           {trial?.blocker === 'trial_used' && <div className="dim small billing-trial-note">{t('Ya usó su prueba')}</div>}
           {trial?.blocker === 'trial_requires_dni' && <div className="dim small billing-trial-note">{t('Para darle una prueba, cargá su DNI en la ficha.')}</div>}
+          {account?.hasApp && !account.staff && (account.disabled
+            ? <div className="billing-account">
+              <div className="dim small">{t('La cuenta está desactivada: no puede usar la app.')}</div>
+              <Button size="sm" variant="tinted" icon="reset" onClick={confirmEnable}>{t('Reactivar cuenta')}</Button>
+            </div>
+            : ['vencido', 'por_vencer'].includes(billing.status) && <div className="billing-account">
+              <Button size="sm" variant="danger" icon="lock" onClick={confirmDisable}>{t('Desactivar cuenta')}</Button>
+            </div>)}
           <Section title={t('Historial de pagos')}>
             {history.length ? history.map(h => h.type === 'trial' ? <TrialRow key={'t' + h.id} trial={h} />
               : <PaymentRow key={h.id} payment={h} voidable={isVoidable(h)} onVoid={voidPayment} />)
