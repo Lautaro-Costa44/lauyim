@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest'
 import fs from 'node:fs'
 import path from 'node:path'
-import { errorText, ERROR_TEXTS, GENERIC_ERROR } from './errors.js'
+import { errorText, fieldErrors, ERROR_TEXTS, GENERIC_ERROR } from './errors.js'
 
 const API = path.resolve(process.cwd(), '../api')
 const serverSources = () => fs.readdirSync(API).filter(f => f.endsWith('.js') && !f.includes('.test.') && !f.startsWith('migrate-'))
@@ -48,5 +48,19 @@ describe('anti-regresión con el backend', () => {
     const spanish = /[áéíóúñ¿¡]|\b(debe|es|son|el|la|los|las|del|para|una?)\b/i
     const offenders = emittedErrors().filter(({ value }) => !/^[a-z0-9_-]+$/.test(value) && english.test(value) && !spanish.test(value))
     expect(offenders).toEqual([])
+  })
+})
+
+describe('fieldErrors', () => {
+  it('forma nueva: cada campo, código o frase', () => {
+    expect(fieldErrors({ data: { error: 'validation_error', fields: { dni: 'El DNI debe tener entre 6 y 8 dígitos', phone: 'validation_error' } } }))
+      .toEqual({ dni: 'El DNI debe tener entre 6 y 8 dígitos', phone: 'Revisá los datos ingresados.' })
+  })
+  it('forma vieja: field + frase', () => {
+    expect(fieldErrors({ data: { error: 'Mail inválido', field: 'email' } })).toEqual({ email: 'Mail inválido' })
+  })
+  it('un error que no es de un campo: vacío', () => {
+    expect(fieldErrors({ data: { error: 'dni_exists' } })).toEqual({})
+    expect(fieldErrors(new Error('x'))).toEqual({})
   })
 })

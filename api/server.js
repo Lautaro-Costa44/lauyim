@@ -137,7 +137,7 @@ import {
   completeProfilePrompt
 } from './database.js';
 import {
-  MEMBER_FIELDS_SETTING, parseMemberFields, validateMemberFields, validateMemberProfile,
+  MEMBER_FIELDS_SETTING, parseMemberFields, validateMemberFields, validateMemberProfile, validationErrorBody, normalizeUsername,
   normalizeDni, maskDni, profileChangeSummary, formatLinkCode, canonicalLinkCode, missingRequiredFields
 } from './members.js';
 import { parseImportBody, analyzeImport } from './member-import.js';
@@ -832,7 +832,7 @@ function checkApprovalProfile(userId, rawProfile) {
   const fields = memberFieldsNow();
   const current = getMemberProfile(userId);
   const checked = validateMemberProfile(rawProfile || {}, fields, { current });
-  if (checked.error) return { status: 400, error: { error: checked.error, field: checked.field } };
+  if (checked.error) return { status: 400, error: validationErrorBody(checked) };
   const profile = checked.value;
   const other = profile.dniNorm && findMemberByDni(profile.dniNorm, userId);
   if (other) return { status: 409, error: { error: 'dni_duplicado', userId: other.userId, name: other.name, hasApp: other.hasApp } };
@@ -2380,8 +2380,8 @@ const routes = {
 
   'POST /api/register/options': async (req, res) => {
     const body = await readBody(req);
-    const name = String(body.name || '').trim().slice(0, 40);
-    if (!name) return json(res, 400, { error: 'validation_error' });
+    const username = normalizeUsername(body.name);
+    const name = username.value || '';
     const code = String(body.code || '').trim().toUpperCase();
     const qr = String(body.qr || '');
     const qrValid = qrTokenMatches(qr);
@@ -2397,13 +2397,15 @@ const routes = {
     // campos pedidos: los datos (con los obligatorios) y la aceptación del aviso de privacidad.
     // Un DNI que ya está en el gym frena el registro: nunca se vincula solo.
     // Consentimiento expreso de datos de salud (Ley 25.326, art. 7): siempre, con o sin aprobación.
-    if (body.healthConsent !== true) return json(res, 400, { error: 'health_consent_required', message: 'Tenés que aceptar el tratamiento de tus datos de salud' });
     const approval = approvalNow().required;
     let profile = null;
     const fields = memberFieldsNow();
-    if (!approval && anyFieldEnabled(fields)) {
-      const checked = validateMemberProfile(body.profile || {}, fields);
-      if (checked.error) return json(res, 400, { error: checked.error, field: checked.field });
+    const askProfile = !approval && anyFieldEnabled(fields);
+    // Nombre de usuario y datos juntos: el formulario marca todos los campos con error a la vez.
+    const checked = askProfile ? validateMemberProfile(body.profile || {}, fields) : {};
+    if (username.error || checked.error) return json(res, 400, validationErrorBody(checked, username.error ? { username: username.error } : {}));
+    if (body.healthConsent !== true) return json(res, 400, { error: 'health_consent_required', message: 'Tenés que aceptar el tratamiento de tus datos de salud' });
+    if (askProfile) {
       if (body.privacyAccepted !== true) return json(res, 400, { error: 'privacy_required', message: 'Tenés que aceptar el aviso de privacidad' });
       if (checked.value.dniNorm && findMemberByDni(checked.value.dniNorm)) return json(res, 409, { error: 'dni_exists', message: DNI_EXISTS_MESSAGE });
       profile = checked.value;
@@ -3605,7 +3607,7 @@ const routes = {
       return json(res, 200, { ok: true, skipped: true });
     }
     const checked = validateMemberProfile(body.profile || {}, fields, { current });
-    if (checked.error) return json(res, 400, { error: checked.error, field: checked.field });
+    if (checked.error) return json(res, 400, validationErrorBody(checked));
     if (body.privacyAccepted !== true) return json(res, 400, { error: 'privacy_required', message: 'Tenés que aceptar el aviso de privacidad' });
     const profile = checked.value;
     if (profile.dniNorm && findMemberByDni(profile.dniNorm, user.id)) return json(res, 409, { error: 'dni_exists', message: DNI_EXISTS_MESSAGE });
@@ -3673,7 +3675,7 @@ const routes = {
     }
 
     const checked = validateMemberProfile(body, fields);
-    if (checked.error) return json(res, 400, { error: checked.error, field: checked.field });
+    if (checked.error) return json(res, 400, validationErrorBody(checked));
     const profile = checked.value;
     // Sin nombre de usuario explícito, se usa el nombre y apellido.
     const rawName = typeof body.name === 'string' && body.name.trim() ? body.name : (profile.fullName || '').slice(0, MAX_USER_NAME);
@@ -3818,7 +3820,7 @@ const routes = {
     let changed = [];
     if (['fullName', 'dni', 'phone', 'email'].some(k => Object.prototype.hasOwnProperty.call(body, k))) {
       const checked = validateMemberProfile(body, fields, { current: getMemberProfile(user.id), partial: true });
-      if (checked.error) return json(res, 400, { error: checked.error, field: checked.field });
+      if (checked.error) return json(res, 400, validationErrorBody(checked));
       ({ changed } = checked);
       profile = checked.value;
       if (changed.includes('dni') && profile.dniNorm) {

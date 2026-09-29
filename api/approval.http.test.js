@@ -122,6 +122,11 @@ test('sin aprobación: el registro pide los campos configurados y aceptar el avi
   assert.equal((await call(null, 'POST', '/api/register/options', { name: 'juan', healthConsent: true, profile: PROFILE })).body.error, 'privacy_required');
   const bad = await call(null, 'POST', '/api/register/options', { name: 'juan', healthConsent: true, profile: { ...PROFILE, dni: '12' }, privacyAccepted: true });
   assert.equal(bad.body.field, 'dni');
+  // Todo lo que está mal, a la vez: usuario vacío, DNI corto y celular corto.
+  const all = await call(null, 'POST', '/api/register/options', { name: ' ', healthConsent: true, profile: { ...PROFILE, dni: '12', phone: '123' }, privacyAccepted: true });
+  assert.equal(all.status, 400);
+  assert.equal(all.body.error, 'validation_error');
+  assert.deepEqual(Object.keys(all.body.fields), ['username', 'dni', 'phone']);
   const ok = await register('juan', { profile: PROFILE, privacyAccepted: true });
   assert.equal(ok.status, 200);
   assert.equal(ok.body.pending, false);

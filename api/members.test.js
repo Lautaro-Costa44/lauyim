@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {
   DEFAULT_MEMBER_FIELDS, parseMemberFields, validateMemberFields, validateMemberProfile,
   normalizeDni, normalizePhone, normalizeEmail, maskDni, profileChangeSummary,
-  formatLinkCode, canonicalLinkCode, LINK_CODE_ALPHABET
+  formatLinkCode, canonicalLinkCode, LINK_CODE_ALPHABET, validationErrorBody, normalizeUsername
 } from './members.js';
 
 test('DNI: solo dígitos, sin ceros adelante, 6 a 8 dígitos; guarda lo ingresado', () => {
@@ -134,4 +134,23 @@ test('código de vinculación: XXXX-XXXX sin caracteres ambiguos, tolerante al t
   assert.equal(canonicalLinkCode('ABCD-EFG0'), null);
   assert.equal(canonicalLinkCode('ABC'), null);
   assert.equal(canonicalLinkCode(undefined), null);
+});
+
+test('perfil: devuelve todos los campos con error, no solo el primero (error/field siguen siendo el primero)', () => {
+  const fields = { full_name: { enabled: true, required: true }, dni: { enabled: true, required: true }, phone: { enabled: true, required: false }, email: { enabled: true, required: true } };
+  const r = validateMemberProfile({ dni: '12', phone: '123', email: 'x@' }, fields);
+  assert.deepEqual(r.fields, { full_name: 'Nombre y apellido es obligatorio', dni: 'El DNI debe tener entre 6 y 8 dígitos', phone: 'El celular debe tener al menos 8 dígitos', email: 'Mail inválido' });
+  assert.equal(r.field, 'full_name');
+  assert.equal(r.error, 'Nombre y apellido es obligatorio');
+  const body = validationErrorBody(r, { username: 'El nombre de usuario es obligatorio' });
+  assert.equal(body.error, 'validation_error');
+  assert.equal(body.field, 'username');
+  assert.deepEqual(Object.keys(body.fields), ['username', 'full_name', 'dni', 'phone', 'email']);
+});
+
+test('nombre de usuario: obligatorio, se recorta a 40', () => {
+  assert.equal(normalizeUsername('  ').error, 'El nombre de usuario es obligatorio');
+  assert.equal(normalizeUsername(undefined).error, 'El nombre de usuario es obligatorio');
+  assert.equal(normalizeUsername(' juan ').value, 'juan');
+  assert.equal(normalizeUsername('x'.repeat(50)).value.length, 40);
 });

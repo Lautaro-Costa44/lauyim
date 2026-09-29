@@ -9,10 +9,10 @@
 //                     español): pasa tal cual.
 // Sin respuesta del servidor, api() lanza code 'network_error' (ver lib/api.js).
 //
-// Errores de validación por campo (Entrega 3): el servidor va a mandar
-// { error: 'validation_error', fields: { <campo>: '<código o frase>' } }. errorText sigue dando el
-// resumen para el toast ("Revisá los datos ingresados."); el detalle por campo lo leerá una función
-// aparte sobre e.data.fields, con esta misma regla para cada valor.
+// Errores de validación por campo: el servidor manda
+// { error: 'validation_error', message, field, fields: { <campo>: '<código o frase>' } }.
+// errorText da el resumen para un toast ("Revisá los datos ingresados."); fieldErrors, el detalle
+// por campo, con esta misma regla para cada valor.
 import { t } from './i18n.js'
 
 export const GENERIC_ERROR = 'Ocurrió un error, intentá de nuevo'
@@ -107,3 +107,18 @@ export function errorText(error, fallback = GENERIC_ERROR) {
   if (typeof message === 'string' && message.trim() && !CODE.test(message)) return message
   return t(fallback)
 }
+
+/**
+ * Errores por campo de una respuesta del servidor → { <clave de campo>: texto en español }.
+ * Vacío si el error no es de un campo (entonces va errorText a un toast o a un aviso general).
+ * Acepta la forma nueva (`fields`) y la vieja (`field` + la frase en `message` o `error`).
+ */
+export function fieldErrors(error) {
+  const data = error?.data
+  if (!data) return {}
+  const text = value => (typeof value === 'string' && value.trim() ? (CODE.test(value) ? t(ERROR_TEXTS[value] || GENERIC_ERROR) : value) : t(GENERIC_ERROR))
+  if (data.fields && typeof data.fields === 'object') return Object.fromEntries(Object.entries(data.fields).map(([key, value]) => [key, text(value)]))
+  if (typeof data.field === 'string') return { [data.field]: text(data.message || data.error) }
+  return {}
+}
+

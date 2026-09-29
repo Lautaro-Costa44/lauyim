@@ -10,9 +10,11 @@ import { useOnline } from '../lib/useOnline.js'
 import Icon from '../components/Icon.jsx'
 import { Button, useSheetBack } from '../components/ui.jsx'
 import { ConsentCheck, usePrivacyStep } from '../components/PrivacyNotice.jsx'
-import { ProfileFields, askedFields, missingRequired, profileBody } from '../components/ProfileFields.jsx'
+import { ProfileFields, askedFields, profileBody } from '../components/ProfileFields.jsx'
 import { NO_AUTOFILL } from '../lib/input-safety.js'
-import { errorText } from '../lib/errors.js'
+import { errorText, fieldErrors } from '../lib/errors.js'
+import { profileErrors } from '../lib/member-rules.js'
+import { focusFirstInvalid } from '../lib/focus-error.js'
 
 // Registro (login y Settings). Con la aprobación del staff encendida pide solo el nombre de
 // usuario y la cuenta queda pendiente; si no, pide también los datos que configuró el gym y
@@ -46,9 +48,13 @@ export function RegisterSheet({ close, setOnBack }) {
       .then(({ valid }) => { setQrToken(valid ? token : null); setQrChecked(true) })
       .catch(() => setQrChecked(true))
   }, [loadConfig])
+  const formRef = useRef(null)
+  const showErrors = errs => { setErrors(errs); focusFirstInvalid(formRef.current) }
   const go = async () => {
     const n = name.trim()
-    if (!n) { useUI.getState().toast(t('Enter a name')); return }
+    // Mismas reglas que el servidor (lib/member-rules.js): todos los campos con error a la vez.
+    const local = profileErrors({ ...values, name }, needsData ? fields : {}, { withUsername: true })
+    if (Object.keys(local).length) { showErrors(local); return }
     if (inviteOnly && !qrToken && !code.trim()) { useUI.getState().toast(t('An invite code is required')); return }
     setBusy(true); setErrors({})
     try {
@@ -68,21 +74,25 @@ export function RegisterSheet({ close, setOnBack }) {
     } catch (e) {
       setBusy(false)
       if (e.name === 'NotAllowedError' || e.name === 'AbortError') return
-      if (e?.data?.error === 'dni_exists') setErrors({ dni: e.data.message })
-      else if (e?.data?.field) setErrors({ [e.data.field]: errorText(e) })
+      const byField = fieldErrors(e)
+      if (e?.data?.error === 'dni_exists') showErrors({ dni: e.data.message })
+      else if (Object.keys(byField).length) showErrors(byField)
       else useUI.getState().toast(errorText(e, t('Registration failed')))
     }
   }
   // El check (aviso + datos de salud) va siempre, con o sin aprobación del staff.
-  const incomplete = !accepted || (needsData && missingRequired(fields, values).length > 0)
+  // Los datos se revisan al tocar el botón (errores en cada campo); sin el check no se puede seguir.
+  const incomplete = !accepted
   return <>
     {privacy.view}
-    <div hidden={privacy.isOpen}>
+    <div hidden={privacy.isOpen} ref={formRef}>
     <h3>{t('Create your profile')}</h3>
     <div className="muted small" style={{ marginBottom: 14 }}>{registration?.approval
       ? t('Elegí un nombre de usuario y confirmá con {0}. Después, acercate a recepción para que habiliten tu cuenta.', t(BIO))
       : t('Pick a name, then confirm with {0}. The passkey is saved in your device — no password needed.', t(BIO))}</div>
-    <input {...NO_AUTOFILL} name="app-profile-name" ref={ref} className="input" placeholder={t('Your name')} aria-label={t('Nombre de usuario')} maxLength={40} value={name} onChange={e => setName(e.target.value)} />
+    <input {...NO_AUTOFILL} name="app-profile-name" ref={ref} className="input" placeholder={t('Your name')} aria-label={t('Nombre de usuario')} maxLength={40} value={name}
+      aria-invalid={!!errors.username} onChange={e => { setName(e.target.value); setErrors(er => ({ ...er, username: null })) }} />
+    {errors.username && <div className="form-error" role="alert" style={{ textAlign: 'left', marginTop: 6 }}>{errors.username}</div>}
     {needsData && <div className="dim small" style={{ margin: '6px 2px 0', textAlign: 'left' }}>{t('Tu nombre de usuario en la app (no tiene que ser tu nombre real).')}</div>}
     {inviteOnly && qrChecked && !qrToken && <>
       <div style={{ height: 10 }} />

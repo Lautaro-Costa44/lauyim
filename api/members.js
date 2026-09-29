@@ -131,6 +131,15 @@ export function normalizeEmail(raw) {
   return { value: email };
 }
 
+// Nombre de usuario (el de la cuenta, siempre obligatorio). Más de MAX_USERNAME se recorta, como
+// siempre hizo el registro. → { value } o { error }.
+export const MAX_USERNAME = 40;
+export function normalizeUsername(raw) {
+  const name = typeof raw === 'string' ? raw.trim() : '';
+  if (!name) return { error: 'El nombre de usuario es obligatorio' };
+  return { value: name.slice(0, MAX_USERNAME) };
+}
+
 export function normalizeFullName(raw) {
   if (typeof raw !== 'string') return { error: 'Nombre y apellido inválido' };
   const fullName = raw.trim().replace(/\s+/g, ' ');
@@ -160,6 +169,8 @@ export function validateMemberProfile(body, fields, { current = null, partial = 
   const config = parseMemberFields(fields);
   const out = { ...EMPTY_PROFILE, ...(current || {}) };
   const changed = [];
+  // Todos los campos con error, no solo el primero: el formulario los marca a la vez.
+  const errors = {};
   for (const key of MEMBER_FIELDS) {
     if (!config[key].enabled) continue;
     const bodyKey = BODY_KEYS[key];
@@ -173,25 +184,27 @@ export function validateMemberProfile(body, fields, { current = null, partial = 
       else if (key === 'phone') { out.phone = null; out.phoneNorm = null; }
       else out.email = null;
     } else if (key === 'full_name') {
-      const r = normalizeFullName(raw); if (r.error) return { error: r.error, field: key };
+      const r = normalizeFullName(raw); if (r.error) { errors[key] = r.error; continue; }
       out.fullName = r.value;
     } else if (key === 'dni') {
-      const r = normalizeDni(raw); if (r.error) return { error: r.error, field: key };
+      const r = normalizeDni(raw); if (r.error) { errors[key] = r.error; continue; }
       out.dni = r.value.dni; out.dniNorm = r.value.dniNorm;
     } else if (key === 'phone') {
-      const r = normalizePhone(raw); if (r.error) return { error: r.error, field: key };
+      const r = normalizePhone(raw); if (r.error) { errors[key] = r.error; continue; }
       out.phone = r.value.phone; out.phoneNorm = r.value.phoneNorm;
     } else {
-      const r = normalizeEmail(raw); if (r.error) return { error: r.error, field: key };
+      const r = normalizeEmail(raw); if (r.error) { errors[key] = r.error; continue; }
       out.email = r.value;
     }
     const after = key === 'dni' ? out.dniNorm : key === 'phone' ? out.phone : key === 'full_name' ? out.fullName : out.email;
     if ((before ?? null) !== (after ?? null)) changed.push(key);
   }
   if (enforceRequired) {
-    const [missing] = missingRequiredFields(out, config);
-    if (missing) return { error: `${FIELD_LABELS[missing]} es obligatorio`, field: missing };
+    for (const missing of missingRequiredFields(out, config)) if (!errors[missing]) errors[missing] = `${FIELD_LABELS[missing]} es obligatorio`;
   }
+  const failed = MEMBER_FIELDS.filter(key => errors[key]);
+  // error/field: el primero (lo que ya leían la importación y los clientes viejos); fields: todos.
+  if (failed.length) return { error: errors[failed[0]], field: failed[0], fields: Object.fromEntries(failed.map(key => [key, errors[key]])) };
   return { value: out, changed };
 }
 
@@ -207,6 +220,15 @@ export function missingRequiredFields(profile, fields) {
 }
 
 export const memberFieldLabel = key => FIELD_LABELS[key];
+
+// Respuesta 400 de un formulario de datos: código estable, el primer error (compatibilidad) y el
+// detalle por campo. `extra` suma campos que no son del perfil (por ejemplo `username`).
+//   → { error: 'validation_error', message, field, fields }
+export function validationErrorBody(checked, extra = {}) {
+  const fields = { ...extra, ...(checked?.fields || (checked?.field ? { [checked.field]: checked.error } : {})) };
+  const [field] = Object.keys(fields);
+  return { error: 'validation_error', message: fields[field], field, fields };
+}
 
 // Resumen para auditoría: nombres de campos, DNI enmascarado, nunca el celular ni el mail.
 export function profileChangeSummary(changed, profile) {

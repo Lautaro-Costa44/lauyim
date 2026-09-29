@@ -150,6 +150,13 @@ describe('alta de ficha', () => {
     expect(labels).toEqual(['Nombre y apellido *', 'DNI *', 'Celular'])
     expect(text()).toContain('Estos datos se usan solo para identificar al socio en el gimnasio y solo los ve el staff.')
     expect(button('Crear socio')).toBeUndefined()
+    // Sin los obligatorios no avanza: los marca en cada campo, con el foco en el primero.
+    await click(button('Siguiente'))
+    expect(text()).toContain('Nombre y apellido es obligatorio')
+    expect(text()).toContain('DNI es obligatorio')
+    expect(document.activeElement).toBe(fieldInput('Nombre y apellido'))
+    expect(topSheet().querySelector('.start-opt')).toBeNull()
+    await fillData('Ana Nueva', '40111220')
     await click(button('Siguiente'))
     expect([...topSheet().querySelectorAll('.start-opt .lrow-t')].map(el => el.textContent)).toEqual(['Registrar pago', 'Iniciar prueba', 'Solo ficha'])
   })
@@ -218,6 +225,7 @@ describe('alta de ficha', () => {
   })
 
   it('iniciar prueba: deshabilitada sin DNI; con DNI muestra el vencimiento y crea con start trial', async () => {
+    fields = { ...fields, dni: { enabled: true, required: false } }   // DNI opcional: se puede avanzar sin él
     await openCreate()
     await fillData('Sin Documento')
     await click(button('Siguiente'))

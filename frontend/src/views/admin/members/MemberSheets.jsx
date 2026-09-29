@@ -10,7 +10,9 @@ import { Button, NumberField, Row, SearchField, Section, Segmented, SelectRow, T
 import { methodLabel, paidAtFor } from '../billing/common.jsx'
 import { DuplicateNotice, MEMBER_FIELDS, lookupDni, profileUrl } from './common.jsx'
 import { PrivacyLink, usePrivacyStep } from '../../../components/PrivacyNotice.jsx'
-import { errorText } from '../../../lib/errors.js'
+import { errorText, fieldErrors } from '../../../lib/errors.js'
+import { profileErrors } from '../../../lib/member-rules.js'
+import { focusFirstInvalid } from '../../../lib/focus-error.js'
 
 // Flujos de fichas de socio (admin). Cada uno es UN sheet a pantalla completa; los que tienen
 // pasos (unir ficha con cuenta) retroceden un paso con el gesto de atrás, como MemberBillingSheet.
@@ -60,8 +62,20 @@ function MemberFields({ fields, values, onChange, errors, onDniBlur, extra }) {
   </div>
 }
 
-// 400 del servidor → error del campo (field) o general.
-const fieldError = e => e?.data?.field ? { [e.data.field]: errorText(e) } : { general: errorText(e, t('No se pudo guardar')) }
+// 400 del servidor → errores por campo (todos los que mandó) o uno general.
+const fieldError = e => { const byField = fieldErrors(e); return Object.keys(byField).length ? byField : { general: errorText(e, t('No se pudo guardar')) } }
+// Mismas reglas que el servidor (lib/member-rules.js), para marcar todo al tocar el botón.
+// `name`: el nombre del socio cuando el gym no pide nombre y apellido (alta de ficha).
+const memberErrors = (values, fields, { needsName = false } = {}) => ({
+  ...(needsName && !String(values.name || '').trim() ? { name: t('El nombre del socio es obligatorio') } : {}),
+  ...profileErrors(values, fields),
+})
+// Marca los errores y lleva el foco al primero. → true si había alguno.
+const flagErrors = (setErrors, root, errs) => {
+  if (!Object.keys(errs).length) return false
+  setErrors(errs); focusFirstInvalid(root); return true
+}
+const clearFieldError = (setErrors, prop) => setErrors(er => ({ ...er, [prop === 'fullName' ? 'full_name' : prop]: null }))
 
 const PRIVACY_NOTE = 'Estos datos se usan solo para identificar al socio en el gimnasio y solo los ve el staff.'
 
@@ -176,8 +190,10 @@ export function MemberCreateSheet({ billingEnabled, close, setOnBack, onCreated,
     }).catch(e => setErrors({ general: errorText(e) }))
   }, [])
 
+  const formRef = useRef(null)
   const change = (prop, value) => {
     setValues(v => ({ ...v, [prop]: value }))
+    clearFieldError(setErrors, prop)
     if (prop === 'dni') setDuplicate(null)
   }
   const checkDni = () => lookupDni(values.dni).then(found => setDuplicate(found))
@@ -185,7 +201,9 @@ export function MemberCreateSheet({ billingEnabled, close, setOnBack, onCreated,
   // Sin DNI la prueba no se puede dar: si estaba elegida, vuelve a "solo ficha".
   useEffect(() => { if (start === 'trial' && !String(values.dni || '').trim()) setStart('none') }, [values.dni])
 
+  const checkData = () => { const bad = flagErrors(setErrors, formRef.current, memberErrors(values, fields, { needsName })); if (bad) setStep('datos'); return !bad }
   const save = () => {
+    if (!checkData()) return
     const body = {}
     for (const f of MEMBER_FIELDS) {
       const v = (values[f.prop] || '').trim()
@@ -203,8 +221,8 @@ export function MemberCreateSheet({ billingEnabled, close, setOnBack, onCreated,
         const dup = duplicateFrom(e)
         // Lo que falla en los datos se corrige en el primer paso.
         if (dup) { setDuplicate(dup); setStep('datos') }
-        else if (e?.data?.field) { setErrors(fieldError(e)); setStep('datos') }
-        else setErrors({ general: e?.data?.message || errorText(e, t('No se pudo guardar')) })
+        else if (Object.keys(fieldErrors(e)).length) { setStep('datos'); flagErrors(setErrors, formRef.current, fieldErrors(e)) }
+        else setErrors({ general: errorText(e, t('No se pudo guardar')) })
       })
   }
   const openExisting = id => { close(); onOpenExisting(id) }
@@ -214,7 +232,7 @@ export function MemberCreateSheet({ billingEnabled, close, setOnBack, onCreated,
   return <div className="compound-builder"><div className="compound-builder-content">
     {picker.view}
     {privacy.view}
-    <div hidden={picker.isOpen || privacy.isOpen}>
+    <div hidden={picker.isOpen || privacy.isOpen} ref={formRef}>
       <Header title={t('Nuevo socio')} subtitle={step === 'cuota' ? t('Paso 2 de 2 · Cuota inicial') : billingEnabled ? t('Paso 1 de 2 · Datos') : t('Sin app: lo carga el gimnasio')} onClose={close} />
       {loading ? <div className="dim small">{t('Loading…')}</div> : <>
         <div hidden={step !== 'datos'}>
@@ -231,7 +249,7 @@ export function MemberCreateSheet({ billingEnabled, close, setOnBack, onCreated,
         {errors.general && <div className="form-error" role="alert">{errors.general}</div>}
         <div style={{ height: 12 }} />
         {billingEnabled && step === 'datos'
-          ? <Button variant="primary" disabled={!!duplicate} onClick={() => { setErrors({}); setStep('cuota') }}>{t('Siguiente')}</Button>
+          ? <Button variant="primary" disabled={!!duplicate} onClick={() => { setErrors({}); if (checkData()) setStep('cuota') }}>{t('Siguiente')}</Button>
           : <Button variant="primary" disabled={saving || !!duplicate || !payOk} onClick={save}>{saving ? t('Guardando…') : t('Crear socio')}</Button>}
         <p className="dim small member-privacy">{t(PRIVACY_NOTE)} <PrivacyLink onClick={privacy.open} /></p>
       </>}
@@ -250,16 +268,18 @@ export function ProfileEditSheet({ user, users, profile, fields, close, onSaved,
   const [errors, setErrors] = useState({})
   const [duplicate, setDuplicate] = useState(null)
   const [saving, setSaving] = useState(false)
-  const change = (prop, value) => { setValues(v => ({ ...v, [prop]: value })); if (prop === 'dni') setDuplicate(null) }
+  const formRef = useRef(null)
+  const change = (prop, value) => { setValues(v => ({ ...v, [prop]: value })); clearFieldError(setErrors, prop); if (prop === 'dni') setDuplicate(null) }
   const body = {}
   for (const f of MEMBER_FIELDS) if (fields[f.key]?.enabled && (values[f.prop] || '').trim() !== (initial[f.prop] || '')) body[f.prop] = values[f.prop].trim()
   const dirty = Object.keys(body).length > 0
 
   const save = () => {
+    if (flagErrors(setErrors, formRef.current, memberErrors(values, fields))) return
     setSaving(true); setErrors({})
     api(profileUrl(user.id), { method: 'PUT', body: JSON.stringify(body) })
       .then(() => { toast(t('Ficha guardada')); close(); onSaved() })
-      .catch(e => { setSaving(false); const dup = duplicateFrom(e); dup ? setDuplicate(dup) : setErrors(fieldError(e)) })
+      .catch(e => { setSaving(false); const dup = duplicateFrom(e); dup ? setDuplicate(dup) : flagErrors(setErrors, formRef.current, fieldError(e)) })
   }
   // Unir tiene sentido entre una ficha sin app y una cuenta con app que no sea staff.
   const staff = id => { const u = (users || []).find(x => x.id === id); return !!(u && (u.admin || u.owner)) }
@@ -268,7 +288,7 @@ export function ProfileEditSheet({ user, users, profile, fields, close, onSaved,
     : null
   const canLink = pair && onLink && !staff(pair.targetId)
 
-  return <div className="compound-builder"><div className="compound-builder-content">
+  return <div className="compound-builder"><div className="compound-builder-content" ref={formRef}>
     <Header title={t('Editar ficha')} subtitle={user.name} onClose={close} />
     <MemberFields fields={fields} values={values} onChange={change} errors={errors} />
     {duplicate && <DuplicateNotice other={duplicate}
@@ -501,12 +521,13 @@ export function ApproveSheet({ user, billingEnabled, close, setOnBack, onApprove
     }).catch(e => setErrors({ general: errorText(e) }))
   }, [])
 
-  const change = (prop, value) => { setValues(v => ({ ...v, [prop]: value })); if (prop === 'dni') setDuplicate(null) }
+  const formRef = useRef(null)
+  const change = (prop, value) => { setValues(v => ({ ...v, [prop]: value })); clearFieldError(setErrors, prop); if (prop === 'dni') setDuplicate(null) }
   // Su propio DNI (ya cargado, p. ej. después de unirla con su ficha) no es un duplicado.
   const checkDni = () => lookupDni(values.dni).then(found => setDuplicate(found && found.userId !== user.id ? found : null))
   const withBilling = billingEnabled && opts && !(opts.allowed.length === 1 && opts.allowed[0] === 'none')
-  // Obligatorios de la config vacíos: no se avanza (el servidor igual valida formato y obligatorios).
-  const missing = fields && values ? MEMBER_FIELDS.filter(f => fields[f.key]?.enabled && fields[f.key]?.required && !String(values[f.prop] ?? '').trim()) : []
+  // Mismas reglas que el servidor, antes de preguntarle: todos los campos con error a la vez.
+  const checkData = () => { const bad = flagErrors(setErrors, formRef.current, memberErrors(values, fields)); if (bad) setStep('datos'); return !bad }
 
   const profileBody = () => {
     const profile = {}
@@ -518,20 +539,24 @@ export function ApproveSheet({ user, billingEnabled, close, setOnBack, onApprove
   const showDataError = e => {
     const dup = duplicateFrom(e)
     if (dup) { setDuplicate(dup); setStep('datos'); return true }
-    if (e?.data?.field) { setErrors(fieldError(e)); setStep('datos'); return true }
+    const byField = fieldErrors(e)
+    if (Object.keys(byField).length) { setStep('datos'); flagErrors(setErrors, formRef.current, byField); return true }
     return false
   }
   // "Siguiente": revisa los datos en el servidor (approve/check, sin guardar) antes de avanzar.
   const [checking, setChecking] = useState(false)
   const next = () => {
-    setChecking(true); setErrors({})
+    setErrors({})
+    if (!checkData()) return
+    setChecking(true)
     api(userUrl(user.id, '/approve/check'), { method: 'POST', body: JSON.stringify({ profile: profileBody() }) })
       .then(() => setStep('cuota'))
-      .catch(e => { if (!showDataError(e)) setErrors({ general: e?.data?.message || errorText(e, t('No se pudo verificar')) }) })
+      .catch(e => { if (!showDataError(e)) setErrors({ general: errorText(e, t('No se pudo verificar')) }) })
       .finally(() => setChecking(false))
   }
 
   const save = () => {
+    if (!checkData()) return
     const body = { profile: profileBody(), start: { type: start } }
     if (start === 'payment') body.start = { type: 'payment', planId: pay.planId, method: pay.method, paidAt: paidAtFor(pay.date, today), note: pay.note.trim() || undefined, amount: pay.amount }
     setSaving(true); setErrors({})
@@ -539,7 +564,7 @@ export function ApproveSheet({ user, billingEnabled, close, setOnBack, onApprove
       .then(() => { toast(t('Cuenta habilitada')); close(); onApproved() })
       .catch(e => {
         setSaving(false)
-        if (!showDataError(e)) setErrors({ general: e?.data?.message || errorText(e, t('No se pudo guardar')) })
+        if (!showDataError(e)) setErrors({ general: errorText(e, t('No se pudo guardar')) })
       })
   }
   // Vincular: la ficha (sin app) se une a esta cuenta. La cuenta sigue pendiente: después se
@@ -552,7 +577,7 @@ export function ApproveSheet({ user, billingEnabled, close, setOnBack, onApprove
   return <div className="compound-builder"><div className="compound-builder-content">
     {picker.view}
     {privacy.view}
-    <div hidden={picker.isOpen || privacy.isOpen}>
+    <div hidden={picker.isOpen || privacy.isOpen} ref={formRef}>
       <Header title={t('Habilitar cuenta')} subtitle={step === 'cuota' ? t('Paso 2 de 2 · Confirmación') : withBilling ? t('Paso 1 de 2 · Datos de {0}', user.name) : user.name} onClose={close} />
       {loading ? (errors.general ? null : <div className="dim small">{t('Loading…')}</div>) : <>
         <div hidden={step !== 'datos'}>
@@ -573,9 +598,8 @@ export function ApproveSheet({ user, billingEnabled, close, setOnBack, onApprove
         </>}
         <div style={{ height: 12 }} />
         {withBilling && step === 'datos'
-          ? <Button variant="primary" disabled={checking || !!duplicate || missing.length > 0} onClick={next}>{checking ? t('Verificando…') : t('Siguiente')}</Button>
-          : <Button variant="primary" disabled={saving || !!duplicate || missing.length > 0 || !payOk || !opts.allowed.includes(start)} onClick={save}>{saving ? t('Guardando…') : t('Habilitar cuenta')}</Button>}
-        {step === 'datos' && missing.length > 0 && <p className="dim small approve-missing">{t('Completá los datos obligatorios (*) para seguir.')}</p>}
+          ? <Button variant="primary" disabled={checking || !!duplicate} onClick={next}>{checking ? t('Verificando…') : t('Siguiente')}</Button>
+          : <Button variant="primary" disabled={saving || !!duplicate || !payOk || !opts.allowed.includes(start)} onClick={save}>{saving ? t('Guardando…') : t('Habilitar cuenta')}</Button>}
         <p className="dim small member-privacy">{t(PRIVACY_NOTE)} <PrivacyLink onClick={privacy.open} /></p>
       </>}
       {errors.general && <div className="form-error" role="alert">{errors.general}</div>}
