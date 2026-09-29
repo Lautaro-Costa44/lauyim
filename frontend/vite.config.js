@@ -1,4 +1,5 @@
-import { readFileSync } from 'node:fs'
+import { readFileSync, appendFileSync, existsSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { createHash } from 'node:crypto'
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
@@ -30,8 +31,21 @@ const umami = {
   }
 }
 
+let outDir = 'dist'
+let buildRelease = null
 const precacheManifest = {
   name: 'lauyim-precache-manifest',
+  // A browser reinstalls a service worker only when its script changes byte for byte. The release id
+  // lives in precache.json, so sw.js itself was identical across releases: installed PWAs kept the
+  // previous release's precache and served it offline while the network already had the new build.
+  // The id is stamped into the emitted sw.js below.
+  configResolved(config) { outDir = resolve(config.root, config.build.outDir) },
+  closeBundle() {
+    const sw = resolve(outDir, 'sw.js')
+    if (buildRelease && existsSync(sw)) appendFileSync(sw, `
+// release: ${buildRelease}
+`)
+  },
   generateBundle(_options, bundle) {
     const files = Object.keys(bundle).filter(name => /\.(js|css|html|png|svg|woff2?)$/i.test(name))
     const buildFingerprint = createHash('sha256')
@@ -41,6 +55,7 @@ const precacheManifest = {
       buildFingerprint.update(file).update(String(bundle[file].source ?? bundle[file].code ?? ''))
     }
     const release = `${pkgVersion}-${buildFingerprint.digest('hex').slice(0, 12)}`
+    buildRelease = release
     this.emitFile({
       type: 'asset',
       fileName: 'precache.json',
