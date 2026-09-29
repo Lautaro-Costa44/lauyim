@@ -20,6 +20,8 @@ import Login from './views/Login.jsx'
 import LicenseExpired from './views/LicenseExpired.jsx'
 import MembershipBlocked from './views/MembershipBlocked.jsx'
 import AccountEnded from './views/AccountEnded.jsx'
+import UpdateGate from './components/UpdateGate.jsx'
+import { getUpdater } from './lib/update.js'
 import { clearIosReoffer, markIosReoffer, markNotifStepDone, notifStepFor } from './lib/notif-step.js'
 // Keep every authenticated screen out of the initial payload. The service worker
 // caches each chunk after first use, so repeat visits remain instant without
@@ -208,12 +210,14 @@ function Shell() {
           por cada sheet abierto). El fallback deja el botón de recarga. */}
       <ErrorBoundary><Modals /></ErrorBoundary>
       <Toast />
+      <UpdateGate />
     </>
   )
 }
 
 export default function App() {
   const boot = useStore(s => s.boot)
-  useEffect(() => { boot() }, [boot])
+  // Al abrir la app (terminado el boot): chequeo de versión y, si hay una esperando, aplicarla.
+  useEffect(() => { Promise.resolve(boot()).then(() => getUpdater()?.opened()) }, [boot])
   return <HashRouter><Shell /></HashRouter>
 }

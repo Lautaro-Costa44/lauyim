@@ -3,6 +3,7 @@ import { useStore } from '../store/useStore.js'
 import { t } from '../lib/i18n.js'
 import Icon from './Icon.jsx'
 import { Button } from './ui.jsx'
+import { isChunkLoadError, reloadOnce } from '../lib/update.js'
 
 /**
  * Last line of defence: one bad render used to blank the whole app, with no way back —
@@ -15,7 +16,11 @@ import { Button } from './ui.jsx'
 export default class ErrorBoundary extends Component {
   constructor(props) { super(props); this.state = { failed: false } }
   static getDerivedStateFromError() { return { failed: true } }
-  componentDidCatch(err) { console.error('lauyim render error:', err) }
+  componentDidCatch(err) {
+    console.error('lauyim render error:', err)
+    // Un chunk de una versión que ya no está en el servidor: recargar trae la nueva (una sola vez).
+    if (isChunkLoadError(err)) reloadOnce()
+  }
 
   render() {
     if (!this.state.failed) return this.props.children

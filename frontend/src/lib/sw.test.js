@@ -14,7 +14,7 @@ function fakeCaches(initial = {}) {
     return u.replace(/^https:\/\/gym\.test\//, './').replace(/[?#].*$/, '')
   }
   const cacheOf = name => ({
-    match: async req => store.get(name).get(key(req)),
+    match: async req => store.get(name).get(key(req))?.clone(),
     put: async (req, res) => { store.get(name).set(key(req), res) },
     keys: async () => [...store.get(name).keys()],
     delete: async req => store.get(name).delete(typeof req === 'string' ? key(req) : req),
@@ -26,12 +26,13 @@ function fakeCaches(initial = {}) {
     open: async name => { if (!store.has(name)) store.set(name, new Map()); return cacheOf(name) },
     delete: async name => store.delete(name),
     // Like the real API without cacheName: every cache, in creation order.
-    match: async req => { for (const name of store.keys()) { const hit = store.get(name).get(key(req)); if (hit) return hit } }
+    match: async req => { for (const name of store.keys()) { const hit = store.get(name).get(key(req)); if (hit) return hit.clone() } }
   }
 }
 
-function boot(initialCaches, { online = true, release = 'r2' } = {}) {
+function boot(initialCaches, { online = true, release = 'r2', swRelease } = {}) {
   const caches = fakeCaches(initialCaches)
+  let skipped = 0
   const listeners = {}
   const netCalls = []
   const scope = {
@@ -50,7 +51,8 @@ function boot(initialCaches, { online = true, release = 'r2' } = {}) {
   scope.self = Object.assign(scope, {
     registration: { scope: 'https://gym.test/' },
     clients: { claim: async () => {} },
-    skipWaiting: async () => {},
+    skipWaiting: async () => { skipped++ },
+    SW_RELEASE: swRelease,
     addEventListener: (type, fn) => { listeners[type] = fn }
   })
   vm.runInNewContext(SOURCE, scope)
@@ -60,7 +62,8 @@ function boot(initialCaches, { online = true, release = 'r2' } = {}) {
     listeners.fetch({ request: { url, method: 'GET', mode, destination }, respondWith: x => { p = x } })
     return p === undefined ? undefined : Promise.resolve(p).then(r => r.text())
   }
-  return { caches, netCalls, run, fetchEvent }
+  const message = data => listeners.message({ data })
+  return { caches, netCalls, run, fetchEvent, message, skipped: () => skipped }
 }
 
 const releaseCache = (release, at, extra = {}) => ({
@@ -104,7 +107,41 @@ describe('service worker caches', () => {
       ...releaseCache('r2', 200)
     })
     await sw.run('activate')
-    expect(await sw.caches.keys()).toEqual(['lauyim-release-r2'])
+    // r1 stays one more release: the page still open on it takes its chunks from there until it reloads.
+    expect((await sw.caches.keys()).sort()).toEqual(['lauyim-release-r1', 'lauyim-release-r2'])
+  })
+
+  it('activate keeps only the previous release, never older ones', async () => {
+    sw = boot({ ...releaseCache('r0', 50), ...releaseCache('r1', 100), ...releaseCache('r2', 200) })
+    await sw.run('activate')
+    expect((await sw.caches.keys()).sort()).toEqual(['lauyim-release-r1', 'lauyim-release-r2'])
+  })
+
+  it('install does not skip waiting; only the page SKIP_WAITING message does', async () => {
+    sw = boot({})
+    await sw.run('install')
+    expect(sw.skipped()).toBe(0)
+    sw.message({ type: 'OTRO' })
+    expect(sw.skipped()).toBe(0)
+    sw.message({ type: 'SKIP_WAITING' })
+    expect(sw.skipped()).toBe(1)
+  })
+
+  it('a worker with SW_RELEASE serves its own release, even when a newer one is installed and waiting', async () => {
+    sw = boot({ ...releaseCache('r1', 100), ...releaseCache('r2', 200) }, { online: false, swRelease: 'r1' })
+    expect(await sw.fetchEvent('https://gym.test/', 'navigate')).toBe('r1:index')
+  })
+
+  it('install refuses a manifest from a different release than the worker', async () => {
+    sw = boot({}, { release: 'r3', swRelease: 'r2' })
+    await expect(sw.run('install')).rejects.toThrow(/r3/)
+    expect(await sw.caches.keys()).toEqual([])
+  })
+
+  it('a chunk of the previous release (page not reloaded yet) comes from its cache; navigation never does', async () => {
+    sw = boot({ ...releaseCache('r1', 100, { './assets/old-1.js': new Response('r1:old') }), ...releaseCache('r2', 200) }, { online: false, swRelease: 'r2' })
+    expect(await sw.fetchEvent('https://gym.test/assets/old-1.js', 'cors', 'script')).toBe('r1:old')
+    expect(await sw.fetchEvent('https://gym.test/', 'navigate')).toBe('r2:index')
   })
 
   it('activate never wipes everything when no release cache exists', async () => {

@@ -88,11 +88,13 @@ import { Section, Row, SelectRow, Switch, Segmented, Button, TextField } from '.
 import { NO_AUTOFILL } from '../lib/input-safety.js'
 import { countSync } from '../lib/sync-queue.js'
 import { LANGS, INSTR_LANGS, getLang, setLang, t } from '../lib/i18n.js'
+import { useBuildId } from '../lib/build-id.js'
 
 export default function Settings() {
   const nav = useNavigate()
   const [online, setOnline] = useState(() => navigator.onLine !== false)
   const [pendingSync, setPendingSync] = useState(0)
+  const build = useBuildId()
   const S = useStore(s => s.S)
   const noHealth = useStore(healthOff)
   const user = useStore(s => s.user)
@@ -600,7 +602,7 @@ export default function Settings() {
         address bar and no about box, so without this there is no way to tell which build you
         are running, or whether an update actually installed. */}
     <div className="dim small" style={{ textAlign: 'center', marginTop: 4, lineHeight: 1.6 }}>
-      lauyim v{__APP_VERSION__} · {t('free & open source (AGPL v3)')}<br />
+      lauyim v{__APP_VERSION__}{build && <> · <span title={t('Build')}>{build}</span></>} · {t('free & open source (AGPL v3)')}<br />
       <a href="https://github.com/Lautaro-Costa44/lauyim" target="_blank" rel="noopener">Código Fuente</a> · exercise data: hasaneyldrm/exercises-dataset (MIT)<br />
       exercise images and animations © <a href="https://gymvisual.com/" target="_blank" rel="noopener">Gym visual</a>
     </div>

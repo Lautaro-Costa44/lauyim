@@ -17,8 +17,16 @@ const MEDIA_MAX_ENTRIES = 400
 
 let currentName = null
 
+// The build appends `self.SW_RELEASE = '<release>'` to this file (vite.config.js), so every worker
+// knows which release it belongs to without the network: a waiting worker never serves, and an
+// older active one keeps serving its own release until the page reloads. Without it (dev server,
+// tests) the newest confirmed cache is used.
+const ownCacheName = () => self.SW_RELEASE ? CACHE_PREFIX + self.SW_RELEASE : null
+
 async function releaseCacheName() {
   if (currentName) return currentName
+  const own = ownCacheName()
+  if (own && (await caches.keys()).includes(own)) return (currentName = own)
   const keys = (await caches.keys()).filter(key => key.startsWith(CACHE_PREFIX))
   let best = null, bestAt = -1
   for (const key of keys) {
@@ -35,6 +43,26 @@ async function fromRelease(request) {
   const name = await releaseCacheName()
   if (!name) return undefined
   return (await caches.open(name)).match(request, { ignoreSearch: true })
+}
+
+// Hashed assets only (never navigations): after an update the page that is still open runs the
+// previous release until it reloads, and its lazy chunks live in the previous release cache,
+// which activate keeps for exactly that. Names carry a content hash, so no file can be confused
+// with another release's.
+async function fromAnyRelease(request) {
+  const hit = await fromRelease(request)
+  if (hit) return hit
+  const own = await releaseCacheName()
+  for (const key of (await caches.keys()).filter(k => k.startsWith(CACHE_PREFIX) && k !== own)) {
+    const other = await (await caches.open(key)).match(request, { ignoreSearch: true })
+    if (other) return other
+  }
+  return undefined
+}
+
+async function installedAt(key) {
+  const hit = await (await caches.open(key)).match(RELEASE_MARKER)
+  return hit ? Number((await hit.json()).installedAt) || 0 : 0
 }
 
 function isMediaRequest(url) {
@@ -62,7 +90,8 @@ function isApiRequest(url) {
 function isAssetRequest(request, url) {
   if (url.origin !== location.origin) return false
   if (request.destination && ['script', 'style', 'image', 'font', 'manifest'].includes(request.destination)) return true
-  return /\/assets\/|\.(?:js|css|png|jpe?g|gif|svg|webp|woff2?|ico)$/i.test(url.pathname)
+  // precache.json también: Ajustes lee de ahí el hash de la build que corre, con o sin red.
+  return /\/assets\/|\.(?:js|css|png|jpe?g|gif|svg|webp|woff2?|ico)$|\/precache\.json$/i.test(url.pathname)
 }
 
 self.addEventListener('install', event => {
@@ -76,6 +105,8 @@ self.addEventListener('install', event => {
       throw new Error('invalid precache manifest')
     }
 
+    // The server already has a newer build than this worker: fail, the browser retries with it.
+    if (self.SW_RELEASE && manifest.release !== self.SW_RELEASE) throw new Error(`precache manifest is ${manifest.release}, worker is ${self.SW_RELEASE}`)
     const cacheName = CACHE_PREFIX + manifest.release
     const cache = await caches.open(cacheName)
     const files = [
@@ -98,9 +129,13 @@ self.addEventListener('install', event => {
       throw error
     }
 
-    currentName = cacheName
-    await self.skipWaiting()
+    // No skipWaiting here: the new worker waits until the page says it is a safe moment
+    // (lib/update.js → postMessage SKIP_WAITING), so a workout or an unsynced change is never cut.
   })())
+})
+
+self.addEventListener('message', event => {
+  if (event.data && event.data.type === 'SKIP_WAITING') self.skipWaiting()
 })
 
 self.addEventListener('activate', event => {
@@ -108,11 +143,16 @@ self.addEventListener('activate', event => {
     // Activation is reached only after install completed atomically. Keep the current release
     // cache and delete every other cache — older releases, the legacy opengym-* names
     // (opengym-release-*, opengym-rt-v4) and anything else this origin left behind, except the media cache.
+    // Also keeps the previous release: the page still open on it reloads right after this, but
+    // until then its lazy chunks come from there (fromAnyRelease). It goes on the next activate.
     currentName = null
     const keep = await releaseCacheName()
     if (keep) {
       const keys = await caches.keys()
-      await Promise.all(keys.filter(key => key !== keep && key !== MEDIA_CACHE).map(key => caches.delete(key)))
+      const others = keys.filter(key => key.startsWith(CACHE_PREFIX) && key !== keep)
+      let previous = null, previousAt = -1
+      for (const key of others) { const at = await installedAt(key); if (at > previousAt) { previous = key; previousAt = at } }
+      await Promise.all(keys.filter(key => key !== keep && key !== previous && key !== MEDIA_CACHE).map(key => caches.delete(key)))
     }
     await self.clients.claim()
   })())
@@ -170,6 +210,6 @@ self.addEventListener('fetch', e => {
   }
 
   if (isAssetRequest(e.request, url)) {
-    e.respondWith(fromRelease(e.request).then(hit => hit || fetch(e.request)))
+    e.respondWith(fromAnyRelease(e.request).then(hit => hit || fetch(e.request)))
   }
 })

@@ -2292,6 +2292,9 @@ const routes = {
       // Qué pide el registro: con aprobación, solo el nombre de usuario (los datos los completa
       // el staff); sin aprobación, los campos de la config.
       registration: { approval: approvalNow().required, fields: memberFieldsNow() },
+      // Versión mínima de la app que el servidor acepta (x.y.z, de frontend/package.json). Un cliente
+      // más viejo muestra el modal de actualización necesaria (frontend/src/lib/update.js).
+      min_client_version: process.env.MIN_CLIENT_VERSION || null,
       instance_name: process.env.INSTANCE_NAME || req.headers['x-forwarded-host'] || req.headers['host'] || 'lauyim'
     });
   },

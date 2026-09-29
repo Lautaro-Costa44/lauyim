@@ -43,7 +43,7 @@ const precacheManifest = {
   closeBundle() {
     const sw = resolve(outDir, 'sw.js')
     if (buildRelease && existsSync(sw)) appendFileSync(sw, `
-// release: ${buildRelease}
+self.SW_RELEASE = ${JSON.stringify(buildRelease)}
 `)
   },
   generateBundle(_options, bundle) {
