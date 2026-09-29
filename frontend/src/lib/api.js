@@ -1,4 +1,5 @@
 // Backend + WebAuthn helpers (ported from the vanilla app).
+import { t } from './i18n.js'
 export const IS_APPLE = /iPhone|iPad|iPod|Macintosh/.test(navigator.userAgent)
 export const IS_ANDROID = /Android/.test(navigator.userAgent)
 export const BIO = IS_APPLE ? 'Face ID / Touch ID' : IS_ANDROID ? 'fingerprint or face unlock' : 'your fingerprint, face or PIN'
@@ -23,7 +24,17 @@ export async function api(path, opts) {
   const requestOpts = Object.assign({}, opts, { headers, signal: opts?.signal || controller.signal })
   delete requestOpts.timeoutMs
   let r
-  try { r = await fetch(path, requestOpts) } finally { clearTimeout(timer) }
+  try { r = await fetch(path, requestOpts) } catch (err) {
+    // Cancelado por quien llamó (su propio signal): se le devuelve tal cual.
+    if (opts?.signal?.aborted) throw err
+    // Sin respuesta del servidor (sin red, timeout, servidor caído): fetch tira "Failed to fetch"
+    // en inglés y el navegador cambia el texto según el idioma. Un solo error, con código estable,
+    // y sin `status`: los que preguntan `!e.status` para saber si fue la red siguen igual.
+    const e = new Error(t('Sin conexión. Revisá tu internet e intentá de nuevo.'))
+    e.code = 'network_error'
+    e.cause = err
+    throw e
+  } finally { clearTimeout(timer) }
   const data = await r.json().catch(() => ({}))
   if (!r.ok) { 
     const e = new Error(data.error || ('HTTP ' + r.status))

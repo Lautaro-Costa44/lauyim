@@ -75,8 +75,29 @@ describe('api: sin sesión', () => {
   it('un error de red no es "sin sesión"', async () => {
     globalThis.fetch = vi.fn(async () => { throw new TypeError('Failed to fetch') })
     const l = listen()
-    await expect(api('/api/data')).rejects.toBeInstanceOf(TypeError)
+    await expect(api('/api/data')).rejects.toMatchObject({ code: 'network_error' })
     l.off()
     expect(l.seen).toHaveLength(0)
+  })
+})
+
+describe('api() without a response from the server', () => {
+  it('turns fetch\'s "Failed to fetch" into a Spanish network_error with no status', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('Failed to fetch')))
+    const error = await api('/api/me').catch(e => e)
+    vi.unstubAllGlobals()
+    expect(error.code).toBe('network_error')
+    expect(error.status).toBeUndefined()
+    expect(error.message).toBe('Sin conexión. Revisá tu internet e intentá de nuevo.')
+    expect(error.message).not.toMatch(/fetch/i)
+  })
+
+  it('a request the caller cancelled with its own signal is left as it was', async () => {
+    const controller = new AbortController()
+    controller.abort()
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(Object.assign(new Error('aborted'), { name: 'AbortError' })))
+    const error = await api('/api/me', { signal: controller.signal }).catch(e => e)
+    vi.unstubAllGlobals()
+    expect(error.name).toBe('AbortError')
   })
 })
