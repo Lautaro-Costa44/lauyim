@@ -144,6 +144,21 @@ describe('admin routes', () => {
     } finally { Object.defineProperty(navigator, 'onLine', { configurable: true, value: true }) }
   })
 
+  it('navigator.onLine says online but the server is unreachable: same notice, no toast spam, recovers', async () => {
+    const real = apiMock.getMockImplementation()
+    let down = true
+    apiMock.mockImplementation((url, opts) => down && url.startsWith('/api/admin') ? Promise.reject(new TypeError('Failed to fetch')) : real(url, opts))
+    try {
+      await mount('#/admin/usuarios', ADMIN)
+      expect(text()).toContain('Esta sección requiere conexión a internet')
+      expect(text()).not.toContain('Failed to fetch')
+      expect(useUI.getState().toasts?.length ?? 0).toBe(0)
+      down = false
+      await act(async () => { document.querySelector('.admin-nav a:nth-child(1)')?.click() })
+      await flush()
+    } finally { apiMock.mockImplementation(real) }
+  })
+
   it('a non-admin is sent home', async () => {
     await mount('#/admin/usuarios', { id: 'u', name: 'u', admin: false })
     expect(window.location.hash).toBe('#/home')

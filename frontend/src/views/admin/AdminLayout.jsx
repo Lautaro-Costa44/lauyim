@@ -26,6 +26,9 @@ export default function AdminLayout() {
   const user = useStore(s => s.user)
   const toast = useUI(s => s.toast)
   const online = useOnline()
+  // navigator.onLine puede decir "conectado" sin salida real (modo avión en algunos iOS/Android):
+  // un pedido que falla sin respuesta del servidor cuenta igual como sin conexión.
+  const [unreachable, setUnreachable] = useState(false)
   const navRef = useRef(null)
   const [users, setUsers] = useState(null)
   const [invites, setInvites] = useState(null)
@@ -40,11 +43,14 @@ export default function AdminLayout() {
 
   // audit_enabled and billing_enabled ride along with the users poll: they decide whether the
   // Logs and Cuotas tabs exist.
-  const loadUsers = () => api('/api/admin/users').then(d => { setUsers(d.users); setInviteOnly(d.invite_only); setAuditEnabled(d.audit_enabled !== false); setBillingEnabled(d.billing_enabled !== false) }).catch(e => toast(e.message || t('Failed to load')))
+  // Sin respuesta del servidor no es un error de la sección: es la falta de conexión (un aviso,
+  // no un toast por cada pedido y cada vuelta del poll).
+  const loadFailed = (e, fallback) => { if (!e?.status) setUnreachable(true); else toast(e.message || fallback) }
+  const loadUsers = () => api('/api/admin/users').then(d => { setUnreachable(false); setUsers(d.users); setInviteOnly(d.invite_only); setAuditEnabled(d.audit_enabled !== false); setBillingEnabled(d.billing_enabled !== false) }).catch(e => loadFailed(e, t('Failed to load')))
   const loadInvites = () => api('/api/admin/invites').then(d => setInvites(d.invites)).catch(() => {})
-  const loadPresets = () => api('/api/admin/presets').then(d => { setPresets(d.presets); setPrograms(d.programs || []) }).catch(e => toast(e.message || t('Failed to load presets')))
-  const loadAttendance = () => api('/api/admin/attendance-heatmap').then(setAttendance).catch(e => toast(e.message || t('Failed to load attendance')))
-  const loadQrAccess = () => { if (user?.owner) api('/api/owner/qr').then(setQrAccess).catch(e => toast(e.message || t('Failed to load QR access'))) }
+  const loadPresets = () => api('/api/admin/presets').then(d => { setPresets(d.presets); setPrograms(d.programs || []) }).catch(e => loadFailed(e, t('Failed to load presets')))
+  const loadAttendance = () => api('/api/admin/attendance-heatmap').then(setAttendance).catch(e => loadFailed(e, t('Failed to load attendance')))
+  const loadQrAccess = () => { if (user?.owner) api('/api/owner/qr').then(setQrAccess).catch(e => loadFailed(e, t('Failed to load QR access'))) }
   const refresh = () => { loadUsers(); loadInvites(); loadPresets(); loadAttendance(); loadQrAccess(); setTick(n => n + 1) }
   // poll every 15s so the "training now" section stays live without a manual refresh
   useEffect(() => { if (!user?.admin) return; loadUsers(); loadInvites(); loadPresets(); loadAttendance(); loadQrAccess(); const iv = setInterval(() => { loadUsers(); loadAttendance() }, 15000); return () => clearInterval(iv) }, [user?.owner])
@@ -93,7 +99,7 @@ export default function AdminLayout() {
     </nav>
     <div className="admin-main">
       {/* Todas las secciones leen del servidor: sin conexión, un aviso en lugar de un spinner eterno. */}
-      {!online ? <div className="empty" role="status">
+      {!online || unreachable ? <div className="empty" role="status">
         <div className="ico"><Icon name="wifiOff" /></div>
         {t('Esta sección requiere conexión a internet')}
         <br /><span className="dim small">{t('Se actualiza sola cuando vuelva la conexión.')}</span>

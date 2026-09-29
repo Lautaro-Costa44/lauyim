@@ -266,7 +266,11 @@ export default function Login() {
       // Como al abrir la app: cuota, cuenta pendiente y formulario de datos, y después sus datos.
       await useStore.getState().retryMembership().catch(() => pullState())
     }
-    catch (e) { if (e.name !== 'NotAllowedError' && e.name !== 'AbortError') useUI.getState().toast(e.message || t('SIGN_IN_FAILED_LOGIN')) }
+    catch (e) {
+      if (e.name === 'NotAllowedError' || e.name === 'AbortError') return
+      // Sin respuesta del servidor (fetch tira sin status): no mostrar "Failed to fetch" en inglés.
+      useUI.getState().toast(!e.status ? t('Necesitás conexión para el primer ingreso.') : e.message || t('SIGN_IN_FAILED_LOGIN'))
+    }
   }
   const head = <>
     <div style={{ display: 'flex', justifyContent: 'center', paddingTop: 32 }}>
