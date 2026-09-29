@@ -15,7 +15,7 @@ vi.mock('../lib/onboarding.js', () => ({ startTourA: vi.fn(), esperarElemento: v
 const deleteDatabase = vi.fn(() => { const req = {}; setTimeout(() => req.onsuccess?.()); return req })
 window.indexedDB = { deleteDatabase, open: () => { const req = {}; setTimeout(() => req.onerror?.()); return req } }
 const cacheDelete = vi.fn(async () => true)
-window.caches = { keys: async () => ['opengym-release-abc', 'api-cache'], delete: cacheDelete }
+window.caches = { keys: async () => ['lauyim-release-abc', 'api-cache'], delete: cacheDelete }
 const unsubscribe = vi.fn(async () => true)
 Object.defineProperty(navigator, 'serviceWorker', { configurable: true, value: {
   getRegistration: async () => ({ pushManager: { getSubscription: async () => ({ endpoint: 'https://fcm.googleapis.com/x', unsubscribe }) } })

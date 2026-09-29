@@ -1,8 +1,35 @@
 /* lauyim service worker — release-atomic precache with separate navigation,
-   asset, and API strategies. The release is supplied by Vite's precache manifest. */
-const CACHE_PREFIX = 'opengym-release-'
+   asset, and API strategies. The release is supplied by Vite's precache manifest.
+   There is NO runtime cache: every cached byte belongs to one release, so navigation and its
+   chunks always come from the same build. */
+const CACHE_PREFIX = 'lauyim-release-'
 const PRECACHE_MANIFEST = './precache.json'
 const NAVIGATION_FALLBACK = './index.html'
+// Written last into each release cache: says which cache is the newest confirmed one, so a
+// restarted worker (module state lost) still finds it without the network.
+const RELEASE_MARKER = './__release'
+
+let currentName = null
+
+async function releaseCacheName() {
+  if (currentName) return currentName
+  const keys = (await caches.keys()).filter(key => key.startsWith(CACHE_PREFIX))
+  let best = null, bestAt = -1
+  for (const key of keys) {
+    const hit = await (await caches.open(key)).match(RELEASE_MARKER)
+    const at = hit ? Number((await hit.json()).installedAt) || 0 : 0
+    if (at > bestAt) { best = key; bestAt = at }
+  }
+  return (currentName = best)
+}
+
+// Only the current release cache is ever consulted: caches.match() without a cacheName would
+// search every cache, in creation order, and serve an older release first.
+async function fromRelease(request) {
+  const name = await releaseCacheName()
+  if (!name) return undefined
+  return (await caches.open(name)).match(request, { ignoreSearch: true })
+}
 
 function isApiRequest(url) {
   return url.origin === location.origin && url.pathname.startsWith('/api/')
@@ -30,6 +57,7 @@ self.addEventListener('install', event => {
     const files = [
       PRECACHE_MANIFEST,
       './',
+      NAVIGATION_FALLBACK,
       './logo-perf.svg',
       './icon-512.png',
       './icon-180.png',
@@ -38,6 +66,7 @@ self.addEventListener('install', event => {
 
     try {
       await cache.addAll([...new Set(files)])
+      await cache.put(RELEASE_MARKER, new Response(JSON.stringify({ installedAt: Date.now() })))
     } catch (error) {
       // addAll may have populated part of the cache before failing. Remove only
       // this unconfirmed release; the previous confirmed cache remains intact.
@@ -45,18 +74,22 @@ self.addEventListener('install', event => {
       throw error
     }
 
+    currentName = cacheName
     await self.skipWaiting()
   })())
 })
 
 self.addEventListener('activate', event => {
   event.waitUntil((async () => {
-    const keys = await caches.keys()
-    const confirmedReleases = keys.filter(key => key.startsWith(CACHE_PREFIX))
-    // Activation is reached only after install completed atomically, so it is
-    // safe to retire older releases now while preserving the confirmed new one.
-    const keep = confirmedReleases.sort().at(-1)
-    await Promise.all(confirmedReleases.filter(key => key !== keep).map(key => caches.delete(key)))
+    // Activation is reached only after install completed atomically. Keep the current release
+    // cache and delete every other cache — older releases, the legacy opengym-* names
+    // (opengym-release-*, opengym-rt-v4) and anything else this origin left behind.
+    currentName = null
+    const keep = await releaseCacheName()
+    if (keep) {
+      const keys = await caches.keys()
+      await Promise.all(keys.filter(key => key !== keep).map(key => caches.delete(key)))
+    }
     await self.clients.claim()
   })())
 })
@@ -101,15 +134,13 @@ self.addEventListener('fetch', e => {
   }
 
   if (e.request.mode === 'navigate') {
-    // Navigation gets the only HTML fallback. JS/CSS/image requests can never
-    // receive index.html, avoiding MIME errors after a partial/old deployment.
-    e.respondWith(fetch(e.request).catch(() => caches.match(NAVIGATION_FALLBACK)))
+    // Navigation gets the only HTML fallback, and only the current release's. Responses are
+    // never written to a cache here. JS/CSS/image requests can never receive index.html.
+    e.respondWith(fetch(e.request).catch(async () => (await fromRelease(NAVIGATION_FALLBACK)) || (await fromRelease('./')) || Response.error()))
     return
   }
 
   if (isAssetRequest(e.request, url)) {
-    e.respondWith(caches.match(e.request).then(hit =>
-      hit || fetch(e.request).then(response => response)
-    ))
+    e.respondWith(fromRelease(e.request).then(hit => hit || fetch(e.request)))
   }
 })
