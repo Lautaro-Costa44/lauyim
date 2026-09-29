@@ -36,7 +36,9 @@ const FICHA = { id: 'f', name: 'ficha', lastSync: null, workouts: 0, hasApp: fal
 const FIELDS = () => ({ full_name: { enabled: true, required: true }, dni: { enabled: dniEnabled, required: dniEnabled }, phone: { enabled: true, required: true }, email: { enabled: true, required: false } })
 apiMock.mockImplementation((url, opts) => {
   if (url === '/api/admin/users') return Promise.resolve({ users: [ANA, FICHA], invite_only: false, audit_enabled: auditOn, billing_enabled: billingOn, checkin_enabled: checkin.enabled })
-  if (url === '/api/admin/checkin') return Promise.resolve({ settings: checkin, billingEnabled: billingOn, today: '2026-09-24', devices, checkins: checkin.enabled ? [{ userId: 'a', name: 'Ana Pérez', source: 'physical', at: Date.UTC(2026, 8, 24, 12, 5) }] : [] })
+  if (url.split('?')[0] === '/api/admin/checkin') return Promise.resolve({ settings: checkin, billingEnabled: billingOn, today: '2026-09-24', devices, date: new URL('http://x' + url).searchParams.get('date') || '2026-09-24', checkins: !checkin.enabled ? [] : (new URL('http://x' + url).searchParams.get('date') || '2026-09-24') === '2026-09-24'
+    ? [{ userId: 'a', fullName: 'Ana Pérez', nick: 'anita', source: 'physical', at: Date.UTC(2026, 8, 24, 12, 5) }, { userId: 'b', fullName: null, nick: 'beto', source: 'physical', at: Date.UTC(2026, 8, 24, 11, 0) }]
+    : [] })
   if (url === '/api/owner/checkin/settings') { checkin = { ...checkin, ...JSON.parse(opts.body) }; if (checkin.enabled === false) devices = []; return Promise.resolve({ settings: checkin }) }
   if (url.startsWith('/api/admin/checkin/devices/') && opts?.method === 'DELETE') { devices = devices.filter(d => '/api/admin/checkin/devices/' + d.id !== url); return Promise.resolve({ ok: true }) }
   if (url === '/api/admin/members/settings') return Promise.resolve({ fields: FIELDS() })
@@ -484,8 +486,19 @@ describe('Usuarios: member detail', () => {
       expect(text()).toContain('Identificación')
       expect(text()).toContain('Dispositivos')
       expect(text()).toContain('Abrir Ingreso Físico en este dispositivo')
-      expect(text()).toContain('Ingresos de hoy')
-      expect(text()).toContain('Ana Pérez')
+      expect(text()).toContain('Registro de ingresos')
+      expect(text()).toContain('Ana Pérez [anita]')
+      expect(text()).toContain('2 ingresos')
+      expect(document.querySelector('.checkin-log .tag')).toBeNull()   // sin la etiqueta de origen en cada fila
+      expect([...document.querySelectorAll('.checkin-log-row')].map(r => r.getAttribute('title'))).toEqual(['Ana Pérez [anita]', 'beto'])
+      // Días anteriores: se consultan con ?date= y se vuelve a hoy.
+      const prev = document.querySelector('[aria-label="Día anterior"]')
+      await act(async () => { prev.click() }); await flush()
+      expect(apiMock.mock.calls.some(([u]) => u === '/api/admin/checkin?date=2026-09-23')).toBe(true)
+      expect(text()).toContain('Ayer')
+      expect(text()).toContain('No hubo ingresos este día.')
+      await clickButton(document, 'Volver a hoy')
+      expect(text()).toContain('Ana Pérez [anita]')
     })
 
     it('encendido: un admin no owner ve dispositivos e ingresos, sin cambiar la configuración, y puede revocar', async () => {

@@ -115,6 +115,23 @@ describe('Ingreso Físico: pantalla', () => {
     expect(text()).toContain('Ingresá tu DNI')
   })
 
+  it('notebook: con el resultado en pantalla, un dígito ya es el primero del próximo DNI', async () => {
+    await mount()
+    for (const d of '30111222') await keyboard(d)
+    await keyboard('Enter')
+    expect(text()).toContain('¡Hola, Juan!')
+    await keyboard('4')
+    expect(text()).toContain('Ingresá tu DNI')
+    expect(document.querySelector('.checkin-display').textContent).toBe('4')
+    for (const d of '0111333') await keyboard(d)
+    expect(document.querySelector('.checkin-display').textContent).toBe('40111333')
+  })
+
+  it('el numpad no tiene campos de texto: la tablet no abre su teclado', async () => {
+    await mount()
+    expect(document.querySelector('.checkin input, .checkin textarea, .checkin [contenteditable]')).toBeNull()
+  })
+
   it('no encontrado, DNI corto y sin conexión: mensajes claros, sin registrar', async () => {
     await mount()
     await typeDni('123')

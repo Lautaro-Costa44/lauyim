@@ -182,13 +182,15 @@ export function confirm(db, { ticket, deviceId, today, now = Date.now() }) {
   return { userId: t.userId, name: active.name, already: r.changes === 0 };
 }
 
-// Ingresos de hoy para la sección del admin (más nuevo primero).
-export function todayCheckins(db, today) {
+// Ingresos de un día para la sección del admin (más nuevo primero). La asistencia se guarda
+// sin vencimiento: cualquier día anterior se puede consultar.
+//   fullName: nombre y apellido de la ficha (null si no se cargó); nick: nombre de usuario.
+export function dayCheckins(db, date) {
   return db.prepare(`
-    SELECT a.user_id, a.source, a.created_at, COALESCE(NULLIF(mp.full_name, ''), u.name) AS name
+    SELECT a.user_id, a.source, a.created_at, NULLIF(TRIM(mp.full_name), '') AS full_name, u.name AS nick
     FROM attendance a JOIN users u ON u.id = a.user_id LEFT JOIN member_profile mp ON mp.user_id = a.user_id
-    WHERE a.date = ? ORDER BY a.created_at DESC`).all(today)
-    .map(r => ({ userId: r.user_id, name: r.name, source: r.source, at: r.created_at }));
+    WHERE a.date = ? ORDER BY a.created_at DESC`).all(date)
+    .map(r => ({ userId: r.user_id, fullName: r.full_name, nick: r.nick, source: r.source, at: r.created_at }));
 }
 
 // Solo para tests.

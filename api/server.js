@@ -151,7 +151,7 @@ import { membersCsv } from './member-export.js';
 import {
   readCheckinSettings, validateCheckinSettings, CHECKIN_SETTINGS, createDevice, findDevice, touchDevice,
   listDevices, revokeDevice, revokeAllDevices, lookup as checkinLookup, confirm as checkinConfirm,
-  todayCheckins, firstName
+  dayCheckins, firstName
 } from './checkin.js';
 import { HEALTH_SURVEY_KEYS, healthConsentOf, healthDeclined, keepStoredHealth, stripHealth } from './health.js';
 import {
@@ -239,7 +239,7 @@ const RATE_LIMIT_PER_LINK_CODE_MAX = envMax('RATE_LIMIT_PER_LINK_CODE_MAX', 20);
 const RATE_LIMIT_IMPORT_MAX = envMax('RATE_LIMIT_IMPORT_MAX', 30);               // por usuario: owner/members/import (vistas previas incluidas)
 // Ingreso Físico: el cupo principal es por dispositivo (una recepción con mucho movimiento hace
 // ~1 búsqueda por socio); el de IP es un techo alto, porque varias tablets pueden compartir wifi.
-const RATE_LIMIT_CHECKIN_DEVICE_MAX = envMax('RATE_LIMIT_CHECKIN_DEVICE_MAX', 120); // por dispositivo: checkin/lookup
+const RATE_LIMIT_CHECKIN_DEVICE_MAX = envMax('RATE_LIMIT_CHECKIN_DEVICE_MAX', 60);  // por dispositivo: checkin/lookup
 const RATE_LIMIT_CHECKIN_IP_MAX = envMax('RATE_LIMIT_CHECKIN_IP_MAX', 300);         // por IP: checkin/*
 // device/poll queda afuera: el cliente lo llama cada 2 s y el pairingId (128 bits) no se adivina.
 const RATE_LIMITS_BY_IP = {
@@ -3160,10 +3160,13 @@ const routes = {
     const settings = checkinSettingsNow();
     if (!settings.enabled && !isOwner(admin)) return json(res, 403, { error: 'feature_disabled' });
     const today = billingToday(billingSettingsNow());
+    // ?date=YYYY-MM-DD: registro de un día anterior (por defecto, hoy). Nunca uno futuro.
+    const date = new URL(req.url, ORIGIN).searchParams.get('date') || today;
+    if (!isIsoDate(date) || date > today) return json(res, 400, { error: 'validation_error' });
     json(res, 200, {
-      settings, billingEnabled: billingEnabledNow(), today,
+      settings, billingEnabled: billingEnabledNow(), today, date,
       devices: settings.enabled ? listDevices(getDatabase()) : [],
-      checkins: settings.enabled ? todayCheckins(getDatabase(), today) : []
+      checkins: settings.enabled ? dayCheckins(getDatabase(), date) : []
     });
   },
 

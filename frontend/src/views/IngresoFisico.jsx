@@ -41,6 +41,8 @@ export default function IngresoFisico() {
   const [candidates, setCandidates] = useState(null)
   const [result, setResult] = useState(null)        // respuesta de confirm
   const timer = useRef(null)
+  const resultRef = useRef(null)
+  resultRef.current = result
 
   const fail = useCallback(e => {
     if (e?.ended) return setEnded(true)
@@ -98,16 +100,22 @@ export default function IngresoFisico() {
   useEffect(() => {
     const onKey = e => {
       if (e.target?.closest?.('#modal-root')) return
+      // Con el resultado en pantalla, cualquier tecla sigue con el próximo socio; si es un dígito,
+      // ya cuenta como el primero de su DNI (sin tener que apretar Enter antes).
+      if (resultRef.current) {
+        if (e.key.length !== 1 && !['Enter', 'Escape', 'Backspace', 'Delete'].includes(e.key)) return
+        e.preventDefault()
+        reset()
+        if (/^\d$/.test(e.key)) setDigits(e.key)
+        return
+      }
       if (/^\d$/.test(e.key)) pressRef.current(e.key)
       else if (e.key === 'Backspace' || e.key === 'Delete') pressRef.current('del')
-      else if (e.key === 'Enter') { e.preventDefault(); if (resultRef.current) reset(); else pressRef.current('ok') }
-      else if (e.key === 'Escape' && resultRef.current) reset()
+      else if (e.key === 'Enter') { e.preventDefault(); pressRef.current('ok') }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [reset])
-  const resultRef = useRef(result)
-  resultRef.current = result
 
   const exit = () => confirmSheet({
     title: t('¿Salir de Ingreso Físico?'),

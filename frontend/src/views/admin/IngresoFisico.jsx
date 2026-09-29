@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Navigate } from 'react-router-dom'
 import { useAdmin } from './context.js'
 import { useStore } from '../../store/useStore.js'
@@ -17,7 +17,6 @@ import { Button, Segmented, Switch, TextField } from '../../components/ui.jsx'
 const POLL_MS = 30000
 const hhmm = ms => new Date(ms).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })
 const dmy = ms => new Date(ms).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' })
-const SOURCES = { physical: 'Físico', qr: 'QR' }
 
 const EXPLAIN = 'Una tablet o notebook en la recepción donde el socio tipea su DNI en un teclado numérico y queda registrado que vino. Ve su nombre y, si querés, el estado de su cuota. Los ingresos suman al gráfico de asistencia. Es distinto del QR de acceso (que sirve para registrarse).'
 
@@ -125,19 +124,59 @@ function DevicesCard({ devices, onRevoke }) {
   </div>
 }
 
-function TodayCard({ checkins, onRefresh }) {
-  return <div className="card">
+// "Juan Fernández [Juani]": nombre y apellido de la ficha y, entre corchetes, el nombre de usuario.
+// Sin nombre y apellido cargado, solo el usuario; si son iguales, una sola vez.
+export function checkinName({ fullName, nick }) {
+  if (!fullName) return nick || ''
+  return nick && nick.trim().toLowerCase() !== fullName.trim().toLowerCase() ? `${fullName} [${nick}]` : fullName
+}
+const initials = ({ fullName, nick }) => (fullName || nick || '?').trim().split(/\s+/).slice(0, 2).map(w => w[0]).join('').toUpperCase()
+
+// Días como YYYY-MM-DD en UTC al mediodía: el calendario del gym, sin que el huso del navegador
+// corra la fecha.
+const shiftDay = (iso, n) => { const d = new Date(iso + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10) }
+function dayLabel(date, today) {
+  if (date === today) return t('Hoy')
+  if (date === shiftDay(today, -1)) return t('Ayer')
+  const label = new Date(date + 'T12:00:00Z').toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC' })
+  return label.charAt(0).toUpperCase() + label.slice(1)
+}
+
+// Registro de ingresos: hoy por defecto (se refresca solo) y cualquier día anterior con las
+// flechas o eligiendo la fecha. Los ingresos se guardan sin vencimiento.
+function CheckinLogCard({ date, today, checkins, loading, onDate, onRefresh }) {
+  const isToday = date === today
+  const count = checkins.length
+  return <div className="card checkin-log">
     <div className="row between" style={{ gap: 10 }}>
-      <h2 style={{ margin: 0 }}>{t('Ingresos de hoy')}</h2>
+      <h2 style={{ margin: 0 }}>{t('Registro de ingresos')}</h2>
       <button className="iconbtn" onClick={onRefresh} aria-label={t('Actualizar')} title={t('Actualizar')}><Icon name="reset" /></button>
     </div>
-    {checkins.length ? <div className="list" style={{ marginTop: 10 }}>
-      {checkins.map(c => <div key={c.userId + c.at} className="item">
-        <div className="grow"><div className="tt">{c.name}</div></div>
-        <span className="tag">{t(SOURCES[c.source] || c.source)}</span>
-        <span className="dim small" style={{ minWidth: 44, textAlign: 'right' }}>{hhmm(c.at)}</span>
-      </div>)}
-    </div> : <div className="dim small" style={{ marginTop: 8 }}>{t('Todavía no hay ingresos hoy.')}</div>}
+    <div className="checkin-log-nav">
+      <button className="iconbtn" onClick={() => onDate(shiftDay(date, -1))} aria-label={t('Día anterior')}><Icon name="chevronLeft" /></button>
+      <label className="checkin-log-day">
+        <span className="checkin-log-day-t">{dayLabel(date, today)}</span>
+        <span className="checkin-log-day-s">{new Date(date + 'T12:00:00Z').toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'UTC' })} · {loading ? t('Cargando…') : t(count === 1 ? '{0} ingreso' : '{0} ingresos', count)}</span>
+        {/* El calendario nativo: tocar la fecha abre el selector. */}
+        <input type="date" className="checkin-log-picker" value={date} max={today} aria-label={t('Elegir día')}
+          onChange={e => e.target.value && e.target.value <= today && onDate(e.target.value)} />
+      </label>
+      <button className="iconbtn" onClick={() => onDate(shiftDay(date, 1))} disabled={isToday} aria-label={t('Día siguiente')}><Icon name="chevronRight" /></button>
+    </div>
+    {count ? <ol className="checkin-log-list">
+      {checkins.map(c => <li key={c.userId + c.at} className="checkin-log-row" title={checkinName(c)}>
+        <span className="checkin-log-avatar" aria-hidden="true">{initials(c)}</span>
+        <span className="checkin-log-name">
+          {c.fullName || c.nick}
+          {c.fullName && c.nick && c.nick.trim().toLowerCase() !== c.fullName.trim().toLowerCase() && <span className="checkin-log-nick"> [{c.nick}]</span>}
+        </span>
+        <time className="checkin-log-time" dateTime={new Date(c.at).toISOString()}>{hhmm(c.at)}</time>
+      </li>)}
+    </ol> : <div className="checkin-log-empty">
+      <Icon name="calendar" />
+      <div>{loading ? t('Cargando…') : isToday ? t('Todavía no hay ingresos hoy.') : t('No hubo ingresos este día.')}</div>
+    </div>}
+    {!isToday && <Button size="sm" variant="tinted" onClick={() => onDate(today)}>{t('Volver a hoy')}</Button>}
   </div>
 }
 
@@ -149,10 +188,16 @@ export default function IngresoFisico() {
   const [data, setData] = useState(null)
   const [denied, setDenied] = useState(false)
   const [busy, setBusy] = useState(false)
-  const load = () => api('/api/admin/checkin').then(d => { setData(d); setCheckinEnabled?.(d.settings.enabled) })
+  const [date, setDate] = useState(null)            // null = hoy (lo decide el servidor, en gym_tz)
+  const [loadingDay, setLoadingDay] = useState(false)
+  const dateRef = useRef(date)
+  dateRef.current = date
+  const load = (day = dateRef.current) => api('/api/admin/checkin' + (day ? '?date=' + day : ''))
+    .then(d => { if (day === dateRef.current) setData(d); setCheckinEnabled?.(d.settings.enabled) })
     .catch(e => { if (e?.data?.error === 'feature_disabled') { setDenied(true); setCheckinEnabled?.(false) } else toast(errorText(e)) })
-  // Ingresos de hoy con polling liviano mientras la sección está abierta.
-  useEffect(() => { load(); const iv = setInterval(load, POLL_MS); return () => clearInterval(iv) }, [])
+  const pickDay = day => { const next = day === data?.today ? null : day; setDate(next); dateRef.current = next; setLoadingDay(true); load(next).finally(() => setLoadingDay(false)) }
+  // Polling liviano mientras se mira el día de hoy (un día anterior no cambia).
+  useEffect(() => { load(); const iv = setInterval(() => { if (!dateRef.current) load() }, POLL_MS); return () => clearInterval(iv) }, [])
 
   if (denied) return <Navigate to="/admin/resumen" replace />
   if (!data) return <div className="card"><div className="dim small">{t('Loading…')}</div></div>
@@ -174,7 +219,8 @@ export default function IngresoFisico() {
     {settings.enabled && <>
       <IdentifyCard settings={settings} billingEnabled={data.billingEnabled} owner={owner} onSave={save} busy={busy} />
       <DevicesCard devices={data.devices} onRevoke={revoke} />
-      <TodayCard checkins={data.checkins} onRefresh={load} />
+      <CheckinLogCard date={data.date || data.today} today={data.today} checkins={data.checkins} loading={loadingDay}
+        onDate={pickDay} onRefresh={() => load()} />
     </>}
   </div>
 }

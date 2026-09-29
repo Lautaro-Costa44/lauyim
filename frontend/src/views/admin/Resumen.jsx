@@ -40,7 +40,7 @@ function AttendanceHeatmap({ data, onStartChange }) {
     : ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
   return <div className="card admin-attendance-heatmap">
     <div className="row between" style={{ gap: 10 }}>
-      <div><h2 style={{ margin: 0 }}>{t('Asistencia')}</h2><div className="small muted" title={t('Socios distintos por día que entrenaron con la app o registraron su Ingreso Físico. Quien hizo las dos cosas cuenta una vez.')}>{t('Entrenos en la app + Ingreso Físico · socios distintos por día · últimas 4 semanas')}</div></div>
+      <div><h2 style={{ margin: 0 }} title={t('Entrenos en la app + Ingreso Físico · socios distintos por día')}>{t('Asistencia')}</h2><div className="small muted hm-sub" title={t('Entrenos en la app + Ingreso Físico · socios distintos por día')}>{t('Últimas 4 semanas')} <span className="hm-info" aria-label={t('Entrenos en la app + Ingreso Físico · socios distintos por día')}><Icon name="info" /></span></div></div>
       <div className="hm-sunday-toggle seg" role="group" aria-label={t('Sunday')}>
         <button type="button" className={data.start === 'monday' ? 'on' : ''} onClick={() => onStartChange('monday')}>{t('Sin Domingo')}</button>
         <button type="button" className={data.start === 'sunday' ? 'on' : ''} onClick={() => onStartChange('sunday')}>{t('Con Domingo')}</button>

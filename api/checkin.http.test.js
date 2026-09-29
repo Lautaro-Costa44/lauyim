@@ -99,7 +99,7 @@ const auditLog = () => { try { return fs.readFileSync(path.join(dataDir, 'audit.
 
 before(async () => {
   server = spawn(process.execPath, [fileURLToPath(new URL('./server.js', import.meta.url))], {
-    env: { ...process.env, DATA_DIR: dataDir, PORT: String(PORT), LICENSE_EXPIRES_AT: '', ORIGIN, RP_ID, RATE_LIMIT_CHECKIN_DEVICE_MAX: '40' },
+    env: { ...process.env, DATA_DIR: dataDir, PORT: String(PORT), LICENSE_EXPIRES_AT: '', ORIGIN, RP_ID },
     stdio: ['ignore', 'pipe', 'pipe']
   });
   let log = '';
@@ -231,13 +231,27 @@ test('el ingreso cuenta en el gráfico de 4 semanas (una vez aunque también hay
   // Ingresos de hoy en la sección del admin, con el origen.
   const section = await call('adm', 'GET', '/api/admin/checkin');
   assert.equal(section.body.checkins.length, registered);
-  assert.ok(section.body.checkins.every(c => c.source === 'physical' && c.name && c.at));
+  assert.ok(section.body.checkins.every(c => c.source === 'physical' && c.nick && c.at));
+  // Nombre y apellido de la ficha y el nombre de usuario, por separado (la UI arma "Juan Pérez [juan]").
+  assert.deepEqual(section.body.checkins.filter(c => c.userId === 'juan').map(c => [c.fullName, c.nick]), [['Juan Pérez', 'juan']]);
+});
+
+test('registro de días anteriores: ?date= devuelve ese día; un día futuro o inválido → 400', async () => {
+  db.initDatabase();
+  db.getDatabase().prepare("INSERT INTO attendance (user_id, date, source, created_at) VALUES ('venc', ?, 'physical', 1)").run(addDays(today, -3));
+  db.closeDatabase();
+  const past = await call('adm', 'GET', `/api/admin/checkin?date=${addDays(today, -3)}`);
+  assert.equal(past.body.date, addDays(today, -3));
+  assert.deepEqual(past.body.checkins.map(c => c.userId), ['venc']);
+  assert.equal((await call('adm', 'GET', `/api/admin/checkin?date=${addDays(today, 1)}`)).status, 400);
+  assert.equal((await call('adm', 'GET', '/api/admin/checkin?date=ayer')).status, 400);
+  assert.equal((await call('adm', 'GET', '/api/admin/checkin')).body.date, today);
 });
 
 test('rate limit por dispositivo (principal) y por IP real (X-Real-IP del proxy)', async () => {
   const { token } = await newDevice('Límite');
   let last;
-  for (let i = 0; i < 41; i++) last = await lookup(token, '39999999', { ip: `198.21.0.${i}` });
+  for (let i = 0; i < 61; i++) last = await lookup(token, '39999999', { ip: `198.21.0.${i}` });   // cupo por defecto: 60 cada 5 min
   assert.equal(last.status, 429);                                          // mismo dispositivo, IPs distintas
   const other = await newDevice('Otro');
   assert.equal((await lookup(other.token, '39999999', { ip: '198.21.0.1' })).status, 200);
