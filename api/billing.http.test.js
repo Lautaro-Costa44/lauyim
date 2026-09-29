@@ -161,6 +161,8 @@ test('ajustes de cuotas: validación y guardado', async () => {
   assert.deepEqual(saved.body.settings.payment_methods, ['efectivo']);
   assert.equal((await call('owner', 'GET', '/api/admin/billing/settings')).body.settings.grace_days, 7);
   assert.equal((await call('m1', 'PUT', '/api/admin/billing/settings', { grace_days: 1 })).status, 403);
+  assert.equal((await call('owner', 'PUT', '/api/admin/billing/settings', { auto_block: 'no' })).status, 400);
+  assert.equal((await call('owner', 'GET', '/api/admin/billing/settings')).body.settings.auto_block, true);
 });
 
 test('dry_run devuelve el vencimiento que quedaría sin guardar nada', async () => {
@@ -235,4 +237,17 @@ test('anular devuelve el bloqueo y lo audita; un pago sin vencimiento previo no 
   const old = await call('owner', 'POST', `/api/admin/users/m2/payments/${legacy.id}/void`, {});
   assert.equal(old.status, 409);
   assert.match(old.body.error, /vencimiento anterior/);
+});
+
+test('bloqueo automático apagado: el socio con la cuota vencida sigue entrando; al prenderlo, se bloquea', async () => {
+  const plan = (await call('owner', 'POST', '/api/admin/billing/plans', { name: 'Mensual AB', price: 10000, durationDays: 30 })).body.plan;
+  await call('owner', 'PUT', '/api/admin/users/m2/billing', { planId: plan.id, dueDate: addDays(today, -40) });
+  assert.equal((await call('m2', 'GET', '/api/me')).body.billing.blocked, true);
+  assert.equal((await call('owner', 'PUT', '/api/admin/billing/settings', { auto_block: false })).body.settings.auto_block, false);
+  const me = await call('m2', 'GET', '/api/me');
+  assert.deepEqual([me.body.billing.status, me.body.billing.blocked], ['vencido', false]);
+  assert.equal((await call('m2', 'GET', '/api/data')).status, 200);
+  await call('owner', 'PUT', '/api/admin/billing/settings', { auto_block: true });
+  assert.equal((await call('m2', 'GET', '/api/me')).body.billing.blocked, true);
+  assert.equal((await call('m2', 'GET', '/api/data')).body.error, 'membership_blocked');
 });

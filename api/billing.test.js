@@ -138,3 +138,31 @@ test('ajustes: trial_days entre 1 y 30, default 1', () => {
   assert.ok(validateBillingSettings({ trial_days: 31 }).error);
   assert.ok(validateBillingSettings({ trial_days: 1.5 }).error);
 });
+
+test('bloqueo automático: encendido por defecto; apagado, lo que sería bloqueado queda vencido', () => {
+  assert.equal(BILLING_DEFAULTS.auto_block, true);
+  const today = '2026-09-28';
+  const late = { planId: 1, dueDate: addDays(today, -(BILLING_DEFAULTS.grace_days + 1)) };
+  const trialEnded = { planId: null, trialUntil: addDays(today, -1) };
+  assert.equal(billingStatus(late, today), 'bloqueado');
+  assert.equal(billingStatus(trialEnded, today), 'bloqueado');
+  const off = { ...BILLING_DEFAULTS, auto_block: false };
+  assert.equal(billingStatus(late, today, off), 'vencido');
+  assert.equal(billingStatus(trialEnded, today, off), 'vencido');
+  // Lo demás no cambia.
+  assert.equal(billingStatus({ planId: 1, dueDate: addDays(today, -1) }, today, off), 'vencido');
+  assert.equal(billingStatus({ planId: 1, dueDate: addDays(today, 2) }, today, off), 'por_vencer');
+});
+
+test('auto_block: se valida, se guarda como texto y se lee (un valor roto cae al default)', () => {
+  assert.deepEqual(validateBillingSettings({ auto_block: false }).value, { auto_block: false });
+  assert.ok(validateBillingSettings({ auto_block: 'no' }).error);
+  assert.equal(serializeBillingSetting('auto_block', false), 'false');
+  const db = new DatabaseSync(':memory:');
+  db.exec('CREATE TABLE admin_settings (key TEXT PRIMARY KEY, value TEXT)');
+  assert.equal(getBillingSettings(db).auto_block, true);
+  db.prepare('INSERT INTO admin_settings (key, value) VALUES (?, ?)').run('auto_block', 'false');
+  assert.equal(getBillingSettings(db).auto_block, false);
+  db.prepare('UPDATE admin_settings SET value = ? WHERE key = ?').run('basura', 'auto_block');
+  assert.equal(getBillingSettings(db).auto_block, true);
+});

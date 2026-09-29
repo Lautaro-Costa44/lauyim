@@ -18,6 +18,9 @@ export const BILLING_DEFAULTS = Object.freeze({
   due_soon_days: 5,
   push_days_before: 3,
   grace_days: 5,
+  // Bloqueo automático: pasada la tolerancia (o terminada la prueba), el socio no puede usar la
+  // app hasta que se registre su próximo pago. Encendido por defecto (así funcionaba siempre).
+  auto_block: true,
   trial_days: 1,
   payment_methods: PAYMENT_METHODS,
   gym_tz: 'America/Argentina/Buenos_Aires'
@@ -25,7 +28,7 @@ export const BILLING_DEFAULTS = Object.freeze({
 // Rango válido de cada ajuste entero. Una prueba dura al menos un día (el de hoy).
 const INT_RANGES = { due_soon_days: [0, 30], push_days_before: [0, 30], grace_days: [0, 30], trial_days: [1, 30] };
 const INT_SETTINGS = Object.keys(INT_RANGES);
-export const BILLING_SETTING_KEYS = [...INT_SETTINGS, 'payment_methods', 'gym_tz'];
+export const BILLING_SETTING_KEYS = [...INT_SETTINGS, 'payment_methods', 'gym_tz', 'auto_block'];
 
 /* ---------- fechas YYYY-MM-DD ---------- */
 
@@ -98,6 +101,10 @@ export function validateBillingSettings(input) {
     // Sin duplicados y en el orden canónico, para que el valor guardado sea estable.
     value.payment_methods = PAYMENT_METHODS.filter(m => list.includes(m));
   }
+  if (input.auto_block !== undefined) {
+    if (typeof input.auto_block !== 'boolean') return { error: 'auto_block debe ser true o false' };
+    value.auto_block = input.auto_block;
+  }
   if (input.gym_tz !== undefined) {
     if (!isValidTimeZone(input.gym_tz)) return { error: 'gym_tz debe ser una zona horaria IANA válida' };
     value.gym_tz = input.gym_tz;
@@ -120,6 +127,7 @@ export function getBillingSettings(db) {
     let parsed;
     if (INT_SETTINGS.includes(key)) parsed = Number(value);
     else if (key === 'payment_methods') { try { parsed = JSON.parse(value); } catch { continue; } }
+    else if (key === 'auto_block') parsed = value === 'true' ? true : value === 'false' ? false : null;
     else parsed = value;
     const checked = validateBillingSettings({ [key]: parsed });
     if (!checked.error) Object.assign(settings, checked.value);
@@ -158,13 +166,16 @@ export function getBillingNotifyHour(db) {
 // sin tolerancia. Un pago la cierra (trial_until = NULL), así que una prueba guardada siempre
 // es "sin pago posterior". Manda sobre el plan: quien la empieza no tiene plan vigente.
 export function billingStatus({ planId, dueDate, trialUntil } = {}, today, settings = BILLING_DEFAULTS) {
-  if (isIsoDate(trialUntil)) return daysBetween(today, trialUntil) >= 0 ? 'prueba' : 'bloqueado';
+  // Sin bloqueo automático, lo que sería 'bloqueado' queda en 'vencido': se ve en Cuotas, pero
+  // el socio sigue usando la app.
+  const blocked = settings.auto_block === false ? 'vencido' : 'bloqueado';
+  if (isIsoDate(trialUntil)) return daysBetween(today, trialUntil) >= 0 ? 'prueba' : blocked;
   if (planId == null) return 'sin_plan';
   // Un plan sin vencimiento no debería existir (la API lo exige). Si aparece, no se bloquea
   // a nadie por un dato faltante.
   if (!isIsoDate(dueDate)) return 'al_dia';
   const late = daysBetween(dueDate, today);           // días pasados desde el vencimiento
-  if (late > settings.grace_days) return 'bloqueado';
+  if (late > settings.grace_days) return blocked;
   if (late > 0) return 'vencido';
   if (-late <= settings.due_soon_days) return 'por_vencer';
   return 'al_dia';
