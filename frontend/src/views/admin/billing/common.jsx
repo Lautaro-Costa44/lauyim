@@ -3,6 +3,7 @@ import { api } from '../../../lib/api.js'
 import { fmtDateDMY, fmtPesos } from '../../../lib/format.js'
 import { t } from '../../../lib/i18n.js'
 import { Button } from '../../../components/ui.jsx'
+import { errorText } from '../../../lib/errors.js'
 
 // Cuotas v1 (admin): piezas chicas que comparten el tablero de Cuotas, la ficha del socio y
 // UserDetail. Las reglas (estado, vencimiento, deuda) viven en el backend (api/billing.js):
@@ -44,7 +45,7 @@ export function BillingSummaryCard({ userId, userName, openSheet, onChanged }) {
   const [error, setError] = useState(null)
   const load = () => api('/api/admin/users/' + encodeURIComponent(userId) + '/billing')
     .then(d => { setBilling(d.billing); setError(null) })
-    .catch(e => setError(e.message))
+    .catch(e => setError(errorText(e)))
   useEffect(() => { load() }, [userId])
   const open = () => openMemberBilling(openSheet, { userId, userName, onChanged: () => { load(); onChanged?.() } })
   return <div className="card billing-summary">

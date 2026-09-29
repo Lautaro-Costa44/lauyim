@@ -5,6 +5,7 @@ import { api } from '../../lib/api.js'
 import { t } from '../../lib/i18n.js'
 import Icon from '../../components/Icon.jsx'
 import { UserDetail } from './shared.jsx'
+import { errorText } from '../../lib/errors.js'
 
 const dur = ms => { const m = Math.max(0, Math.floor(ms / 60000)); return m < 60 ? m + 'm' : Math.floor(m / 60) + 'h' + (m % 60) + 'm' }
 
@@ -97,7 +98,7 @@ export default function Resumen() {
       </div>)}
     </div>}
 
-    <AttendanceHeatmap data={attendance} onStartChange={start => api('/api/admin/attendance-week-start', { method: 'POST', body: JSON.stringify({ start }) }).then(loadAttendance).catch(e => toast(e.message || t('Failed to save setting')))} />
+    <AttendanceHeatmap data={attendance} onStartChange={start => api('/api/admin/attendance-week-start', { method: 'POST', body: JSON.stringify({ start }) }).then(loadAttendance).catch(e => toast(errorText(e, t('Failed to save setting'))))} />
     </div>
   </>
 }

@@ -4,6 +4,7 @@ import { api } from '../../lib/api.js'
 import { t } from '../../lib/i18n.js'
 import { Button } from '../../components/ui.jsx'
 import { NO_AUTOFILL } from '../../lib/input-safety.js'
+import { errorText } from '../../lib/errors.js'
 
 function PushNotificationCard() {
   const [titulo, setTitulo] = useState('')
@@ -53,7 +54,7 @@ function PushNotificationCard() {
       })
       .catch(e => {
         setLoading(false)
-        toast(e.message || t('Failed to send push'))
+        toast(errorText(e, t('Failed to send push')))
       })
   }
 
@@ -121,7 +122,7 @@ function NotifyHourCard() {
   useEffect(() => {
     api('/api/admin/notifications/settings')
       .then(d => { saved.current = d.billing_notify_hour; setHour(d.billing_notify_hour) })
-      .catch(e => toast(e.message || t('Failed to load')))
+      .catch(e => toast(errorText(e, t('Failed to load'))))
     return () => clearTimeout(timer.current)
   }, [])
   const change = value => {
@@ -131,7 +132,7 @@ function NotifyHourCard() {
     timer.current = setTimeout(() => {
       api('/api/admin/notifications/settings', { method: 'PUT', body: JSON.stringify({ billing_notify_hour: value }) })
         .then(d => { saved.current = d.billing_notify_hour; toast(t('Horario de avisos guardado')) })
-        .catch(e => toast(e.message || t('Failed to save setting')))
+        .catch(e => toast(errorText(e, t('Failed to save setting'))))
     }, 600)
   }
   return <div className="card">

@@ -12,7 +12,7 @@ import { validateWorkouts, RowMetaError } from './row-meta.js';
  * @returns {{ status: number, body: object }}
  */
 export function applyStatePut({ db, userId, state, getUserState, saveUserState }) {
-  if (!state || typeof state !== 'object') return { status: 400, body: { error: 'state required' } };
+  if (!state || typeof state !== 'object') return { status: 400, body: { error: 'validation_error' } };
   delete state.active;
   try {
     validateWorkouts(state.workouts);

@@ -25,6 +25,7 @@ import { nextPrescription, applyPrescription, policyFor, defaultIncrement, POLIC
 import { buildCompletedWorkout } from './lib/finish-workout.js'
 import { isWarmupRow } from './lib/workout-model.js'
 import { applyPlannedDays } from './lib/routineGroups.js'
+import { errorText } from './lib/errors.js'
 
 const S = () => useStore.getState().S
 const update = (...a) => useStore.getState().update(...a)
@@ -1020,7 +1021,7 @@ function PlanTools({ close }) {
       close()
       ui().openSheet(closeModal => <QrShare code={code} close={closeModal} />)
     } catch (e) {
-      toast(e.message || t('No se pudo compartir por QR'))
+      toast(errorText(e, t('No se pudo compartir por QR')))
     } finally {
       setSharingQr(false)
     }
@@ -1031,7 +1032,7 @@ function PlanTools({ close }) {
     const rd = new FileReader()
     rd.onload = () => {
       try { const bundle = parsePlan(rd.result); close(); planImportSheet(bundle) }
-      catch (e) { toast(t('Import failed: {0}', e.message)) }
+      catch (e) { toast(t('Import failed: {0}', e instanceof SyntaxError ? t('el archivo no es válido') : errorText(e))) }
     }
     rd.readAsText(f)
   }
@@ -1620,7 +1621,7 @@ export function supportSheet() {
         toast(t('Reporte enviado con éxito'))
         close()
       } catch (e) {
-        toast(e.message || t('No se pudo enviar el reporte, intentá de nuevo'))
+        toast(errorText(e, t('No se pudo enviar el reporte, intentá de nuevo')))
       } finally {
         setLoading(false)
       }

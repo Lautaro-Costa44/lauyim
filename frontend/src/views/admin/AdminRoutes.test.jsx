@@ -183,6 +183,8 @@ describe('admin routes', () => {
   it('/admin/qr redirects to Acceso', async () => {
     await mount('#/admin/qr', ADMIN)
     expect(window.location.hash).toBe('#/admin/acceso')
+    // On a cold Acceso chunk the active tab lands a render after the first flush: settle on it.
+    for (let i = 0; i < 50 && !tabs().includes('Acceso*'); i++) await tick()
     expect(tabs()).toContain('Acceso*')
   })
 

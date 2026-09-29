@@ -406,7 +406,7 @@ export default {
   'Training now': 'Entrenando ahora', 'Active 7d': 'Activos 7 días', 'Disabled': 'Desactivados',
   'disabled': 'desactivado', 'admin': 'admin', 'owner': 'Dueño', 'invite': 'invitación', 'joined': 'alta',
   'used': 'usado', 'failed': 'fallido', 'off': 'inactivo', 'synced': 'sincronizado', 'training now': 'entrenando ahora',
-  'workouts': 'entrenamientos', 'Failed to load': 'No se pudo cargar', 'Failed to load presets': 'No se pudieron cargar los presets',
+  'workouts': 'entrenamientos', 'Failed to load': 'No se pudo cargar', 'Failed to load configuration': 'No se pudo cargar la configuración', 'Failed to load presets': 'No se pudieron cargar los presets',
   'events': 'eventos',
   'Workout history': 'Historial de entrenamientos', 'No workouts logged.': 'No hay entrenamientos registrados.',
   'sets': 'series', 'User disabled': 'Usuario desactivado', 'User enabled': 'Usuario activado',

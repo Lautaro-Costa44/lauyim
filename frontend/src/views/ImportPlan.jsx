@@ -7,6 +7,7 @@ import { planImportSheet } from '../sheets.jsx'
 import { t } from '../lib/i18n.js'
 import Icon from '../components/Icon.jsx'
 import { Button } from '../components/ui.jsx'
+import { errorText } from '../lib/errors.js'
 
 export default function ImportPlan() {
   const [searchParams] = useSearchParams()
@@ -38,7 +39,7 @@ export default function ImportPlan() {
         planImportSheet(bundle)
       })
       .catch(e => {
-        setError(e.message || t('No se pudo cargar el plan.'))
+        setError(errorText(e, t('No se pudo cargar el plan.')))
         setLoading(false)
       })
   }, [code, nav, toast])

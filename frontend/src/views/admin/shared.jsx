@@ -14,6 +14,7 @@ import { LESIONES_OPTIONS, OBJETIVO_OPTIONS, CheckPill } from '../SurveyWizard.j
 import { BillingSummaryCard } from './billing/common.jsx'
 import { FichaCard, NoAppBadge, PendingBadge, openMemberSheet } from './members/common.jsx'
 import { MAX_ROUTINE_GROUPS, canAddGroup, validateGroupName, syncActiveGroupInState, switchActiveGroup, addGroupToState, removeGroupFromState } from '../../lib/routineGroups.js'
+import { errorText } from '../../lib/errors.js'
 
 // Shared by more than one admin section: UserDetail opens from Resumen ("Training now") and
 // from Usuarios (the list), and carries the whole "Administrar Nutrición/Rutina" sheet with it.
@@ -51,7 +52,7 @@ function AdminSuggestionEditor({ userId, existing, close, onFinish = close, onSa
     const url = existing ? `${base}/${existing.id}` : `${base}/custom`
     api(url, { method: existing ? 'PUT' : 'POST', body })
       .then(() => { toast(existing ? t('Sugerencia actualizada') : t('Sugerencia creada')); onSaved(); onFinish() })
-      .catch(e => { setSaving(false); toast(e.message) })
+      .catch(e => { setSaving(false); toast(errorText(e)) })
   }
   return <div className="compound-builder">
     <div className="compound-builder-content">
@@ -138,7 +139,7 @@ function AdminGlobalTemplateEditor({ categorias, close, onCreated }) {
     const body = JSON.stringify({ nombre: nombre.trim(), categoria: categoria.trim(), franjas: [...franjas], ingredientes })
     api('/api/admin/nutrition/templates', { method: 'POST', body })
       .then(({ template }) => { toast(t('Comida global creada')); onCreated(template) })
-      .catch(e => { setSaving(false); toast(e.message) })
+      .catch(e => { setSaving(false); toast(errorText(e)) })
   }
   return <div className="compound-builder">
     <div className="compound-builder-content">
@@ -223,7 +224,7 @@ function AdminFranjaSelector({ userId, plantilla, suggestions, onSaved, onDone, 
     const base = `/api/admin/users/${encodeURIComponent(userId)}/nutrition/suggestions`
     Promise.all(nuevas.map(franja => api(base, { method: 'POST', body: JSON.stringify({ plantilla_id: plantilla.id, franja }) })))
       .then(() => { toast(t('Sugerencia asignada')); onSaved(); onDone() })
-      .catch(e => { setSaving(false); toast(e.message) })
+      .catch(e => { setSaving(false); toast(errorText(e)) })
   }
   return <>
     <h3>{t('¿A qué franja querés agregarla?')}</h3>
@@ -307,7 +308,7 @@ function AdminNutritionCard({ userId, openSuggestion, editSuggestion, picker }) 
   const [manualError, setManualError] = useState(null)
   const [expandedSuggestion, setExpandedSuggestion] = useState(null)
   const base = `/api/admin/users/${encodeURIComponent(userId)}/nutrition`
-  const load = () => api(base).then(d => { setData(d); setManualDraft(null) }).catch(e => toast(e.message))
+  const load = () => api(base).then(d => { setData(d); setManualDraft(null) }).catch(e => toast(errorText(e)))
   useEffect(() => { load() }, [userId])
   if (!data) return <div className="dim small">{t('Loading…')}</div>
   const goals = data.goals
@@ -325,7 +326,7 @@ function AdminNutritionCard({ userId, openSuggestion, editSuggestion, picker }) 
     if (manual) return setManualDraft(draft)
     setSaving(true)
     api(base + '/goals', { method: 'PUT', body: JSON.stringify({ mode: 'automatic' }) })
-      .then(() => { toast(t('Metas vueltas a automático')); load() }).catch(e => toast(e.message)).finally(() => setSaving(false))
+      .then(() => { toast(t('Metas vueltas a automático')); load() }).catch(e => toast(errorText(e))).finally(() => setSaving(false))
   }
   const saveManual = () => {
     const fields = [
@@ -346,17 +347,17 @@ function AdminNutritionCard({ userId, openSuggestion, editSuggestion, picker }) 
     setManualError(null)
     setSaving(true)
     api(base + '/goals', { method: 'PUT', body: JSON.stringify({ mode: 'manual', ...draft }) })
-      .then(() => { toast(t('Metas guardadas')); load() }).catch(e => toast(e.message)).finally(() => setSaving(false))
+      .then(() => { toast(t('Metas guardadas')); load() }).catch(e => toast(errorText(e))).finally(() => setSaving(false))
   }
   const toggleLimitar = value => {
     setSaving(true)
     api(base + '/suggestions-limit', { method: 'PUT', body: JSON.stringify({ limitarSugeridas: value }) })
-      .then(load).catch(e => toast(e.message)).finally(() => setSaving(false))
+      .then(load).catch(e => toast(errorText(e))).finally(() => setSaving(false))
   }
   const removeSuggestion = s => confirmSheet({
     title: t('¿Quitar sugerencia?'), message: t('“{0}” deja de mostrarse al socio. No afecta plantillas globales.', s.nombre),
     confirmText: t('Quitar'), danger: true,
-    onConfirm: () => api(`${base}/suggestions/${s.id}`, { method: 'DELETE' }).then(load).catch(e => toast(e.message))
+    onConfirm: () => api(`${base}/suggestions/${s.id}`, { method: 'DELETE' }).then(load).catch(e => toast(errorText(e)))
   })
   const move = (s, dir) => {
     const list = data.suggestions
@@ -365,7 +366,7 @@ function AdminNutritionCard({ userId, openSuggestion, editSuggestion, picker }) 
     Promise.all([
       api(`${base}/suggestions/${s.id}`, { method: 'PUT', body: JSON.stringify({ nombre: s.nombre, categoria: s.categoria, ingredientes: s.ingredientes, position: other.position }) }),
       api(`${base}/suggestions/${other.id}`, { method: 'PUT', body: JSON.stringify({ nombre: other.nombre, categoria: other.categoria, ingredientes: other.ingredientes, position: s.position }) }),
-    ]).then(load).catch(e => toast(e.message))
+    ]).then(load).catch(e => toast(errorText(e)))
   }
   return <>
     <Section title={bigSectionTitle(t('Metas nutricionales'))}>
@@ -445,7 +446,7 @@ function AdminRoutineEditorSheet({ userId, routineId, initial, close, onSaved })
     return next
   })
 
-  const save = () => persist(draft).then(() => { toast(t('Rutina guardada')); onSaved(); close() }).catch(e => toast(e.message))
+  const save = () => persist(draft).then(() => { toast(t('Rutina guardada')); onSaved(); close() }).catch(e => toast(errorText(e)))
 
   // Eliminar rutina vive solo en la lista de AdminRoutineCard (ícono de basura por fila) —
   // el botón "Delete routine" del propio RoutineEditor queda oculto acá (no se pasa
@@ -527,7 +528,7 @@ function AdminRoutineCard({ userId }) {
     }
     setData(d)
     return d
-  }).catch(e => { toast(e.message); return null })
+  }).catch(e => { toast(errorText(e)); return null })
   useEffect(() => { load() }, [userId])
   if (!data) return <div className="dim small">{t('Loading…')}</div>
 
@@ -546,7 +547,7 @@ function AdminRoutineCard({ userId }) {
     putAll({ ...data, routines: [...data.routines, routine] })
       .then(() => { toast(t('Rutina creada')); return load() })
       .then(fresh => openEditor(routine.id, fresh || data))
-      .catch(e => toast(e.message))
+      .catch(e => toast(errorText(e)))
   }
 
   const removeRoutine = routine => confirmSheet({
@@ -556,14 +557,14 @@ function AdminRoutineCard({ userId }) {
       routines: data.routines.filter(r => r.id !== routine.id),
       week: Object.fromEntries(Object.entries(data.week).filter(([, v]) => v !== routine.id)),
       dayPlan: Object.fromEntries(Object.entries(data.dayPlan).filter(([, v]) => v !== routine.id))
-    }).then(() => { toast(t('Rutina eliminada')); load() }).catch(e => toast(e.message))
+    }).then(() => { toast(t('Rutina eliminada')); load() }).catch(e => toast(errorText(e)))
   })
 
   const switchGroup = groupId => {
     if (groupId === data.activeGroupId) return
     const next = JSON.parse(JSON.stringify(data))
     switchActiveGroup(next, groupId)
-    putGroups(next).then(load).catch(e => toast(e.message))
+    putGroups(next).then(load).catch(e => toast(errorText(e)))
   }
 
   const createGroupPrompt = () => {
@@ -575,7 +576,7 @@ function AdminRoutineCard({ userId }) {
         if (!v.valid) return toast(v.error)
         const next = JSON.parse(JSON.stringify(data))
         addGroupToState(next, name, [], {}, true)
-        putGroups(next).then(() => { toast(t('Grupo "{0}" creado', name)); load() }).catch(e => toast(e.message))
+        putGroups(next).then(() => { toast(t('Grupo "{0}" creado', name)); load() }).catch(e => toast(errorText(e)))
       }
     })
   }
@@ -587,7 +588,7 @@ function AdminRoutineCard({ userId }) {
       if (!v.valid) return toast(v.error)
       const next = JSON.parse(JSON.stringify(data))
       next.routineGroups = next.routineGroups.map(x => x.id === g.id ? { ...x, name } : x)
-      putGroups(next).then(() => { toast(t('Grupo renombrado')); load() }).catch(e => toast(e.message))
+      putGroups(next).then(() => { toast(t('Grupo renombrado')); load() }).catch(e => toast(errorText(e)))
     }
   })
 
@@ -597,11 +598,11 @@ function AdminRoutineCard({ userId }) {
     onConfirm: () => {
       const next = JSON.parse(JSON.stringify(data))
       removeGroupFromState(next, g.id)
-      putGroups(next).then(() => { toast(t('Grupo eliminado')); load() }).catch(e => toast(e.message))
+      putGroups(next).then(() => { toast(t('Grupo eliminado')); load() }).catch(e => toast(errorText(e)))
     }
   })
 
-  const saveLesionesList = lesiones => api(injuriesBase, { method: 'PUT', body: JSON.stringify({ lesiones }) }).then(load).catch(e => toast(e.message))
+  const saveLesionesList = lesiones => api(injuriesBase, { method: 'PUT', body: JSON.stringify({ lesiones }) }).then(load).catch(e => toast(errorText(e)))
   const removeLesion = value => saveLesionesList((data.lesiones || []).filter(l => l !== value))
   const openAddLesion = () => openSheet(
     close => <AdminLesionPicker current={data.lesiones || []} close={close} onConfirm={saveLesionesList} />,
@@ -716,23 +717,23 @@ export function UserDetail({ id, billingEnabled = true, users, openUser, onChang
   const [reloadKey, setReloadKey] = useState(0)
   const showUser = openUser || (otherId => openSheet(c => <UserDetail id={otherId} billingEnabled={billingEnabled} users={users} onChanged={onChanged} close={c} />))
   const currentUser = useStore(s => s.user)
-  useEffect(() => { api('/api/admin/user?id=' + encodeURIComponent(id)).then(setD).catch(e => toast(e.message)) }, [id, reloadKey])
+  useEffect(() => { api('/api/admin/user?id=' + encodeURIComponent(id)).then(setD).catch(e => toast(errorText(e))) }, [id, reloadKey])
   if (!d) return <div className="muted small">{t('Loading…')}</div>
   const u = d.user
   const setDisabled = disabled => {
     api('/api/admin/user/disable', { method: 'POST', body: JSON.stringify({ id: u.id, disabled }) })
       .then(() => { toast(disabled ? t('User disabled') : t('User enabled')); onChanged(); close() })
-      .catch(e => toast(e.message))
+      .catch(e => toast(errorText(e)))
   }
   const deleteAccount = () => {
     api('/api/owner/user/delete', { method: 'POST', body: JSON.stringify({ id: u.id }) })
       .then(() => { toast(t('Account permanently deleted')); onChanged(); close() })
-      .catch(e => toast(e.message))
+      .catch(e => toast(errorText(e)))
   }
   const setAdmin = admin => {
     api('/api/owner/user/admin', { method: 'POST', body: JSON.stringify({ id: u.id, admin }) })
       .then(() => { toast(admin ? t('User promoted to admin') : t('Admin role removed')); onChanged(); close() })
-      .catch(e => toast(e.message))
+      .catch(e => toast(errorText(e)))
   }
   // Ficha without a passkey: nothing to train or sync, so the training parts stay out.
   const hasApp = u.hasApp !== false

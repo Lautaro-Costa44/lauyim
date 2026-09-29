@@ -9,6 +9,7 @@ import { confirmSheet } from '../../sheets.jsx'
 import { t } from '../../lib/i18n.js'
 import Icon from '../../components/Icon.jsx'
 import { Button } from '../../components/ui.jsx'
+import { errorText } from '../../lib/errors.js'
 
 // Who signed in, who tried and failed, what an admin changed. A card rather than its own route:
 // the dashboard is deliberately one page of cards, and the 95 % use of this is a glance at the
@@ -21,7 +22,7 @@ function AuditCard({ tick }) {
 
   const load = (c, before) => api('/api/admin/audit?limit=50&cat=' + c + (before ? '&before=' + before : ''))
     .then(r => { setMeta(r); setRows(x => (before ? x.concat(r.events) : r.events)) })
-    .catch(e => toast(e.message))
+    .catch(e => toast(errorText(e)))
   const pick = c => { setCat(c); setRows([]); setMeta(null); load(c) }
   // Reloads on mount and whenever the header's ↻ bumps the tick. Deliberately not on the 15s
   // poll that drives "training now": this is history, not presence.
@@ -32,7 +33,7 @@ function AuditCard({ tick }) {
     message: t('Every recorded event is deleted. The clear itself is logged, so the gap stays visible.'),
     confirmText: t('Clear'), danger: true,
     onConfirm: () => api('/api/admin/audit/clear', { method: 'POST', body: '{}' })
-      .then(() => { toast(t('Activity log cleared')); pick(cat) }).catch(e => toast(e.message))
+      .then(() => { toast(t('Activity log cleared')); pick(cat) }).catch(e => toast(errorText(e)))
   })
 
   if (meta && !meta.enabled) return null      // AUDIT_LOG=0 — the card isn't there at all

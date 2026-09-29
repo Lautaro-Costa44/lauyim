@@ -12,6 +12,7 @@ import { Button, useSheetBack } from '../components/ui.jsx'
 import { ConsentCheck, usePrivacyStep } from '../components/PrivacyNotice.jsx'
 import { ProfileFields, askedFields, missingRequired, profileBody } from '../components/ProfileFields.jsx'
 import { NO_AUTOFILL } from '../lib/input-safety.js'
+import { errorText } from '../lib/errors.js'
 
 // Registro (login y Settings). Con la aprobación del staff encendida pide solo el nombre de
 // usuario y la cuenta queda pendiente; si no, pide también los datos que configuró el gym y
@@ -68,8 +69,8 @@ export function RegisterSheet({ close, setOnBack }) {
       setBusy(false)
       if (e.name === 'NotAllowedError' || e.name === 'AbortError') return
       if (e?.data?.error === 'dni_exists') setErrors({ dni: e.data.message })
-      else if (e?.data?.field) setErrors({ [e.data.field]: e.message })
-      else useUI.getState().toast(e?.data?.message || e.message || t('Registration failed'))
+      else if (e?.data?.field) setErrors({ [e.data.field]: errorText(e) })
+      else useUI.getState().toast(errorText(e, t('Registration failed')))
     }
   }
   // El check (aviso + datos de salud) va siempre, con o sin aprobación del staff.
@@ -138,7 +139,7 @@ function DevicePairingSheet({ close }) {
         }
         timer = setTimeout(poll, 2000)
       } catch (e) {
-        if (active) { setError(e.message || t('Error al iniciar vinculación')); setLoading(false); }
+        if (active) { setError(errorText(e, t('Error al iniciar vinculación'))); setLoading(false); }
       }
     }
     start()
@@ -176,7 +177,7 @@ export function linkErrorMessage(e) {
   if (e?.status === 429) return t('Demasiados intentos, probá en unos minutos.')
   if (e?.data?.error === 'link_invalid') return t('El código no es válido o venció. Pedí uno nuevo en recepción.')
   if (e?.data?.error === 'link_unavailable') return t('Este socio ya tiene acceso. Iniciá sesión.')
-  return e?.message || t('No se pudo vincular. Probá de nuevo.')
+  return errorText(e, t('No se pudo vincular. Probá de nuevo.'))
 }
 const passkeyCancelled = e => e?.name === 'NotAllowedError' || e?.name === 'AbortError'
 
@@ -270,7 +271,7 @@ export default function Login() {
     catch (e) {
       if (e.name === 'NotAllowedError' || e.name === 'AbortError') return
       // Sin respuesta del servidor (fetch tira sin status): no mostrar "Failed to fetch" en inglés.
-      useUI.getState().toast(!e.status ? t('Necesitás conexión para el primer ingreso.') : e.message || t('SIGN_IN_FAILED_LOGIN'))
+      useUI.getState().toast(!e.status ? t('Necesitás conexión para el primer ingreso.') : errorText(e, t('SIGN_IN_FAILED_LOGIN')))
     }
   }
   const head = <>

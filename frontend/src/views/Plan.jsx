@@ -12,6 +12,7 @@ import Icon from '../components/Icon.jsx'
 import { Button, Segmented } from '../components/ui.jsx'
 import { glyphOf, DEFAULT_GLYPH } from '../lib/glyphs.js'
 import Library from './Library.jsx'
+import { errorText } from '../lib/errors.js'
 
 export default function Plan() {
   const nav = useNavigate()
@@ -74,7 +75,7 @@ export default function Plan() {
           renameGroup(g.id, newName)
           toast(t('Grupo renombrado'))
         } catch (e) {
-          toast(e.message || t('Error al renombrar grupo'))
+          toast(errorText(e, t('Error al renombrar grupo')))
         }
       }
     })

@@ -10,6 +10,7 @@ import { Button, NumberField, Row, SearchField, Section, Segmented, SelectRow, T
 import { methodLabel, paidAtFor } from '../billing/common.jsx'
 import { DuplicateNotice, MEMBER_FIELDS, lookupDni, profileUrl } from './common.jsx'
 import { PrivacyLink, usePrivacyStep } from '../../../components/PrivacyNotice.jsx'
+import { errorText } from '../../../lib/errors.js'
 
 // Flujos de fichas de socio (admin). Cada uno es UN sheet a pantalla completa; los que tienen
 // pasos (unir ficha con cuenta) retroceden un paso con el gesto de atrás, como MemberBillingSheet.
@@ -60,7 +61,7 @@ function MemberFields({ fields, values, onChange, errors, onDniBlur, extra }) {
 }
 
 // 400 del servidor → error del campo (field) o general.
-const fieldError = e => e?.data?.field ? { [e.data.field]: e.message } : { general: e?.message || t('No se pudo guardar') }
+const fieldError = e => e?.data?.field ? { [e.data.field]: errorText(e) } : { general: errorText(e, t('No se pudo guardar')) }
 
 const PRIVACY_NOTE = 'Estos datos se usan solo para identificar al socio en el gimnasio y solo los ve el staff.'
 
@@ -92,7 +93,7 @@ function InitialFee({ fields, dni, plans, settings, today, start, setStart, pay,
       : { type: 'payment', planId: pay.planId, method: pay.method, paidAt: paidAtFor(pay.date, today), ...(Number.isInteger(pay.amount) && pay.amount > 0 ? { amount: pay.amount } : {}) }
     const timer = setTimeout(() => fetchPreview(body)
       .then(r => { if (alive) setPreview(r) })
-      .catch(e => { if (alive) setPreview({ error: e.message }) }), 250)
+      .catch(e => { if (alive) setPreview({ error: errorText(e) }) }), 250)
     return () => { alive = false; clearTimeout(timer) }
   }, [start, pay.planId, pay.date, pay.method])
 
@@ -161,7 +162,7 @@ export function MemberCreateSheet({ billingEnabled, close, setOnBack, onCreated,
   useSheetBack(setOnBack, () => privacy.isOpen ? privacy.close() : picker.isOpen ? picker.close() : step === 'cuota' ? setStep('datos') : close())
 
   useEffect(() => {
-    api('/api/admin/members/settings').then(d => setFields(d.fields)).catch(e => setErrors({ general: e.message }))
+    api('/api/admin/members/settings').then(d => setFields(d.fields)).catch(e => setErrors({ general: errorText(e) }))
     if (!billingEnabled) return
     Promise.all([api('/api/admin/billing/plans'), api('/api/admin/billing/settings')]).then(([p, s]) => {
       const active = p.plans.filter(x => x.active)
@@ -172,7 +173,7 @@ export function MemberCreateSheet({ billingEnabled, close, setOnBack, onCreated,
         setStart('payment')
         setPay(cur => ({ ...cur, planId: active[0].id, amount: active[0].price, method: s.settings.payment_methods[0] }))
       }
-    }).catch(e => setErrors({ general: e.message }))
+    }).catch(e => setErrors({ general: errorText(e) }))
   }, [])
 
   const change = (prop, value) => {
@@ -203,7 +204,7 @@ export function MemberCreateSheet({ billingEnabled, close, setOnBack, onCreated,
         // Lo que falla en los datos se corrige en el primer paso.
         if (dup) { setDuplicate(dup); setStep('datos') }
         else if (e?.data?.field) { setErrors(fieldError(e)); setStep('datos') }
-        else setErrors({ general: e?.data?.message || e?.message || t('No se pudo guardar') })
+        else setErrors({ general: e?.data?.message || errorText(e, t('No se pudo guardar')) })
       })
   }
   const openExisting = id => { close(); onOpenExisting(id) }
@@ -301,7 +302,7 @@ export function LinkCodeSheet({ user, close, onLinked }) {
   useEffect(() => {
     if (asked.current) return
     asked.current = true
-    api(userUrl(user.id, '/link-code'), { method: 'POST', body: '{}' }).then(setData).catch(e => setError(e.message))
+    api(userUrl(user.id, '/link-code'), { method: 'POST', body: '{}' }).then(setData).catch(e => setError(errorText(e)))
   }, [])
   useEffect(() => {
     if (!data) return
@@ -329,7 +330,7 @@ export function LinkCodeSheet({ user, close, onLinked }) {
     confirmText: t('Revocar'), danger: true,
     onConfirm: () => api(userUrl(user.id, '/link-code'), { method: 'DELETE' })
       .then(() => { toast(t('Código revocado')); close() })
-      .catch(e => setError(e.message))
+      .catch(e => setError(errorText(e)))
   })
 
   return <div className="compound-builder"><div className="compound-builder-content">
@@ -419,7 +420,7 @@ export function MergeSheet({ ficha, users, targetId: presetTarget, close, setOnB
     let alive = true
     api(userUrl(ficha.id, '/merge'), { method: 'POST', body: JSON.stringify({ targetId: target.id, dry_run: true }) })
       .then(p => { if (alive) setPlan(p) })
-      .catch(e => { if (alive) setError(e.data?.message || e.message) })
+      .catch(e => { if (alive) setError(errorText(e)) })
     return () => { alive = false }
   }, [target?.id])
 
@@ -427,7 +428,7 @@ export function MergeSheet({ ficha, users, targetId: presetTarget, close, setOnB
     setSaving(true); setError(null)
     api(userUrl(ficha.id, '/merge'), { method: 'POST', body: JSON.stringify({ targetId: target.id, ...(plan.billing.conflict ? { keepBilling: keep } : {}) }) })
       .then(r => { toast(t('Ficha unida a {0}', r.target.name)); close(); onMerged(r.target.id) })
-      .catch(e => { setSaving(false); setError(e.data?.message || e.message) })
+      .catch(e => { setSaving(false); setError(errorText(e)) })
   }
   const confirm = () => confirmSheet({
     title: t('¿Unir {0} con {1}?', ficha.name, plan.target.name),
@@ -490,14 +491,14 @@ export function ApproveSheet({ user, billingEnabled, close, setOnBack, onApprove
       setValues(Object.fromEntries(MEMBER_FIELDS.map(f => [f.prop, p.profile?.[f.prop] ?? ''])))
       setOpts(o)
       setStart(o.allowed[0])
-    }).catch(e => setErrors({ general: e.message }))
+    }).catch(e => setErrors({ general: errorText(e) }))
     if (!billingEnabled) return
     Promise.all([api('/api/admin/billing/plans'), api('/api/admin/billing/settings')]).then(([p, s]) => {
       const active = p.plans.filter(x => x.active)
       setPlans(active)
       setSettings(s.settings)
       if (active.length) setPay(cur => ({ ...cur, planId: active[0].id, amount: active[0].price, method: s.settings.payment_methods[0] }))
-    }).catch(e => setErrors({ general: e.message }))
+    }).catch(e => setErrors({ general: errorText(e) }))
   }, [])
 
   const change = (prop, value) => { setValues(v => ({ ...v, [prop]: value })); if (prop === 'dni') setDuplicate(null) }
@@ -526,7 +527,7 @@ export function ApproveSheet({ user, billingEnabled, close, setOnBack, onApprove
     setChecking(true); setErrors({})
     api(userUrl(user.id, '/approve/check'), { method: 'POST', body: JSON.stringify({ profile: profileBody() }) })
       .then(() => setStep('cuota'))
-      .catch(e => { if (!showDataError(e)) setErrors({ general: e?.data?.message || e?.message || t('No se pudo verificar') }) })
+      .catch(e => { if (!showDataError(e)) setErrors({ general: e?.data?.message || errorText(e, t('No se pudo verificar')) }) })
       .finally(() => setChecking(false))
   }
 
@@ -538,7 +539,7 @@ export function ApproveSheet({ user, billingEnabled, close, setOnBack, onApprove
       .then(() => { toast(t('Cuenta habilitada')); close(); onApproved() })
       .catch(e => {
         setSaving(false)
-        if (!showDataError(e)) setErrors({ general: e?.data?.message || e?.message || t('No se pudo guardar') })
+        if (!showDataError(e)) setErrors({ general: e?.data?.message || errorText(e, t('No se pudo guardar')) })
       })
   }
   // Vincular: la ficha (sin app) se une a esta cuenta. La cuenta sigue pendiente: después se
@@ -592,7 +593,7 @@ export function RejectSheet({ user, close, onRejected }) {
     setBusy(true); setError(null)
     api(userUrl(user.id, '/reject'), { method: 'POST', body: JSON.stringify({ reason: reason.trim() }) })
       .then(() => { toast(t('Cuenta rechazada')); close(); onRejected() })
-      .catch(e => { setBusy(false); setError(e?.data?.message || e.message) })
+      .catch(e => { setBusy(false); setError(errorText(e)) })
   }
   return <div className="compound-builder"><div className="compound-builder-content">
     <Header title={t('Rechazar cuenta')} subtitle={user.name} onClose={close} />

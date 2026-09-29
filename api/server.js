@@ -359,14 +359,14 @@ function presetCatalog({ includeHidden }) {
 
 function cleanPreset(body, existingId) {
   const name = String(body.name || '').trim().slice(0, 80);
-  if (!name) return { error: 'name required' };
+  if (!name) return { error: 'validation_error' };
   const rawPlannedDay = body.plannedDay ?? body.planned_day;
   const plannedDay = rawPlannedDay === '' || rawPlannedDay === null || rawPlannedDay === undefined
     ? null
     : Number(rawPlannedDay);
-  if (plannedDay !== null && (!Number.isInteger(plannedDay) || plannedDay < 0 || plannedDay > 6)) return { error: 'invalid planned day' };
+  if (plannedDay !== null && (!Number.isInteger(plannedDay) || plannedDay < 0 || plannedDay > 6)) return { error: 'validation_error' };
   const exercises = Array.isArray(body.ex) ? body.ex : [];
-  if (exercises.length > 100) return { error: 'too many exercises' };
+  if (exercises.length > 100) return { error: 'too_many_exercises' };
   const ex = exercises.map(item => {
     const id = String(item?.id || '').trim().slice(0, 80);
     const sets = Math.max(1, Math.min(20, Math.round(+item?.sets || 0)));
@@ -387,7 +387,7 @@ function cleanPreset(body, existingId) {
     Object.assign(out, cleanPresetExtras(item, mode));
     return out;
   });
-  if (ex.some(item => !item.id || !item.sets || (item.mode === 'time' ? !item.sec : item.mode === 'cardio' ? !item.min : !item.reps))) return { error: 'invalid exercise' };
+  if (ex.some(item => !item.id || !item.sets || (item.mode === 'time' ? !item.sec : item.mode === 'cardio' ? !item.min : !item.reps))) return { error: 'validation_error' };
   return { value: { id: existingId || 'p' + crypto.randomBytes(8).toString('hex'), name, emoji: String(body.emoji || 'dumbbell').slice(0, 40), groupName: String(body.groupName || 'General').trim().slice(0, 80) || 'General', plannedDay, ex } };
 }
 
@@ -404,7 +404,7 @@ function findPresetDayConflict(preset, excludeId = null) {
 
 function presetConflictResponse(res, conflict, plannedDay) {
   return json(res, 409, {
-    error: 'ROUTINE_DAY_CONFLICT',
+    error: 'routine_day_conflict',
     code: 'ROUTINE_DAY_CONFLICT',
     routineName: conflict.name,
     plannedDay,
@@ -608,7 +608,7 @@ function requireAdmin(req, res) {
 function requireOwner(req, res) {
   const user = readSession(req);
   if (!user) { json(res, 401, { error: 'No has iniciado sesión' }); return null; }
-  if (!isOwner(user)) { audit(req, 'owner.denied', { ok: false, user }); json(res, 403, { error: 'owner required' }); return null; }
+  if (!isOwner(user)) { audit(req, 'owner.denied', { ok: false, user }); json(res, 403, { error: 'forbidden' }); return null; }
   return user;
 }
 
@@ -1011,7 +1011,7 @@ function rateLimit(res, key, max) {
   }
   entry.count += 1;
   if (entry.count > max) {
-    json(res, 429, { error: 'Demasiados intentos, intentá de nuevo más tarde.' });
+    json(res, 429, { error: 'rate_limited', message: 'Demasiados intentos, intentá de nuevo más tarde.' });
     return false;
   }
   return true;
@@ -1581,7 +1581,7 @@ const routes = {
     const nombre = String(body.nombre || '').trim();
     if (!nombre || !validarIngredientes(body.ingredientes)) return json(res, 400, { error: 'Nombre e ingredientes requeridos' });
     if (!/^\d{4}-\d{2}-\d{2}$/.test(String(body.fecha || '')) || !['desayuno', 'almuerzo', 'merienda', 'cena', 'extra'].includes(body.franja)) {
-      return json(res, 400, { error: 'fecha or franja invalid' });
+      return json(res, 400, { error: 'validation_error' });
     }
 
     const db = getDatabase();
@@ -1669,7 +1669,7 @@ const routes = {
     const id = new URL(req.url, 'http://x').pathname.split('/').pop();
     const db = getDatabase();
     const plantilla = db.prepare('SELECT id, user_id, updated_at FROM plantillas_comida WHERE id = ?').get(id);
-    if (!plantilla) return json(res, 404, { error: 'template not found' });
+    if (!plantilla) return json(res, 404, { error: 'not_found' });
     if (plantilla.user_id !== user.id) return json(res, 403, { error: 'No autorizado' });
     const body = await readBody(req);
     const nombre = String(body.nombre || '').trim();
@@ -1700,7 +1700,7 @@ const routes = {
     const id = new URL(req.url, 'http://x').pathname.split('/').pop();
     const db = getDatabase();
     const plantilla = db.prepare('SELECT id, user_id FROM plantillas_comida WHERE id = ?').get(id);
-    if (!plantilla) return json(res, 404, { error: 'template not found' });
+    if (!plantilla) return json(res, 404, { error: 'not_found' });
     if (plantilla.user_id !== user.id) return json(res, 403, { error: 'No autorizado' });
     db.prepare('DELETE FROM plantillas_comida WHERE id = ?').run(id);
     return json(res, 200, { ok: true });
@@ -2080,10 +2080,10 @@ const routes = {
     if (!user) return json(res, 401, { error: 'No has iniciado sesión' });
     const body = await readBody(req);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(String(body.fecha || '')) || !['desayuno', 'almuerzo', 'merienda', 'cena', 'extra'].includes(body.franja)) {
-      return json(res, 400, { error: 'fecha or franja invalid' });
+      return json(res, 400, { error: 'validation_error' });
     }
     const values = [body.fecha, body.franja, String(body.nombre_alimento || '').trim(), body.cantidad_gramos, body.calorias, body.proteina, body.carbohidratos, body.grasas];
-    if (!values[2] || values.slice(3).some(value => !Number.isFinite(Number(value)) || Number(value) < 0)) return json(res, 400, { error: 'invalid meal data' });
+    if (!values[2] || values.slice(3).some(value => !Number.isFinite(Number(value)) || Number(value) < 0)) return json(res, 400, { error: 'validation_error' });
     const result = getDatabase().prepare(`INSERT INTO comidas_registradas
       (user_id, fecha, franja, nombre_alimento, cantidad_gramos, calorias, proteina, carbohidratos, grasas)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(user.id, ...values);
@@ -2095,11 +2095,11 @@ const routes = {
     if (!user) return json(res, 401, { error: 'No has iniciado sesión' });
     const body = await readBody(req);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(String(body.fecha || '')) || !['desayuno', 'almuerzo', 'merienda', 'cena', 'extra'].includes(body.franja)) {
-      return json(res, 400, { error: 'fecha or franja invalid' });
+      return json(res, 400, { error: 'validation_error' });
     }
     const grupoNombre = String(body.grupo_nombre || '').trim();
     const ingredientes = Array.isArray(body.ingredientes) ? body.ingredientes : [];
-    if (!grupoNombre || !ingredientes.length) return json(res, 400, { error: 'grupo_nombre and ingredientes required' });
+    if (!grupoNombre || !ingredientes.length) return json(res, 400, { error: 'validation_error' });
 
     const values = ingredientes.map(item => [
       String(item?.nombre_alimento || '').trim(),
@@ -2110,7 +2110,7 @@ const routes = {
       item?.grasas
     ]);
     if (values.some(item => !item[0] || item.slice(1).some(value => !Number.isFinite(Number(value)) || Number(value) < 0))) {
-      return json(res, 400, { error: 'invalid ingredient data' });
+      return json(res, 400, { error: 'validation_error' });
     }
 
     const db = getDatabase();
@@ -2135,7 +2135,7 @@ const routes = {
     const user = readSession(req);
     if (!user) return json(res, 401, { error: 'No has iniciado sesión' });
     const fecha = new URL(req.url, 'http://x').searchParams.get('fecha') || '';
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha)) return json(res, 400, { error: 'fecha invalid' });
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha)) return json(res, 400, { error: 'validation_error' });
     const comidas = getDatabase().prepare('SELECT * FROM comidas_registradas WHERE user_id = ? AND fecha = ? ORDER BY id').all(user.id, fecha);
     return json(res, 200, comidas);
   },
@@ -2146,7 +2146,7 @@ const routes = {
 
     const dias = Number(new URL(req.url, 'http://x').searchParams.get('dias') || 30);
     if (!Number.isInteger(dias) || dias < 1 || dias > 365) {
-      return json(res, 400, { error: 'dias invalid' });
+      return json(res, 400, { error: 'validation_error' });
     }
 
     const desde = `-${dias - 1} days`;
@@ -2171,7 +2171,7 @@ const routes = {
     if (!user) return json(res, 401, { error: 'No has iniciado sesión' });
     const id = new URL(req.url, 'http://x').pathname.split('/').pop();
     const result = getDatabase().prepare('DELETE FROM comidas_registradas WHERE id = ? AND user_id = ?').run(id, user.id);
-    if (!result.changes) return json(res, 404, { error: 'meal not found' });
+    if (!result.changes) return json(res, 404, { error: 'not_found' });
     return json(res, 200, { ok: true });
   },
 
@@ -2180,14 +2180,14 @@ const routes = {
     if (!user) return json(res, 401, { error: 'No has iniciado sesión' });
     const grupoId = new URL(req.url, 'http://x').pathname.split('/').pop();
     const result = getDatabase().prepare('DELETE FROM comidas_registradas WHERE grupo_id = ? AND user_id = ?').run(grupoId, user.id);
-    if (!result.changes) return json(res, 404, { error: 'meal group not found' });
+    if (!result.changes) return json(res, 404, { error: 'not_found' });
     return json(res, 200, { ok: true });
   },
 
   'POST /api/share/plan': async (req, res) => {
     const body = await readBody(req);
     if (!body || !body.lauyim_plan) {
-      return json(res, 400, { error: 'invalid plan data' });
+      return json(res, 400, { error: 'validation_error' });
     }
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
     let code = '';
@@ -2378,7 +2378,7 @@ const routes = {
   'POST /api/register/options': async (req, res) => {
     const body = await readBody(req);
     const name = String(body.name || '').trim().slice(0, 40);
-    if (!name) return json(res, 400, { error: 'name required' });
+    if (!name) return json(res, 400, { error: 'validation_error' });
     const code = String(body.code || '').trim().toUpperCase();
     const qr = String(body.qr || '');
     const qrValid = qrTokenMatches(qr);
@@ -2387,7 +2387,7 @@ const routes = {
       const inv = getInviteByCode(code);
       if (!inv || inv.used_by || inv.revoked) {
         audit(req, 'auth.register.denied', { ok: false, name, msg: 'invite-rejected' });
-        return json(res, 403, { error: 'a valid invite code is required' });
+        return json(res, 403, { error: 'invite_required' });
       }
     }
     // Con aprobación: solo nombre + passkey, la cuenta queda pendiente. Sin aprobación y con
@@ -2422,7 +2422,7 @@ const routes = {
     const c = takeChallenge(body.cid);
     if (!c || !c.uid) {
       audit(req, 'auth.register.fail', { ok: false, msg: 'challenge-expired' });
-      return json(res, 400, { error: 'challenge expired — try again' });
+      return json(res, 400, { error: 'challenge_expired' });
     }
     let verification;
     try {
@@ -2435,16 +2435,16 @@ const routes = {
       });
     } catch (e) {
       audit(req, 'auth.register.fail', { ok: false, name: c.name, msg: 'verify-error' });
-      return json(res, 400, { error: verifyError(e, { rpId: RP_ID, origin: ORIGIN }) });
+      return json(res, 400, { error: 'passkey_verify_failed', detail: verifyError(e, { rpId: RP_ID, origin: ORIGIN }) });
     }
     if (!verification.verified) {
       audit(req, 'auth.register.fail', { ok: false, name: c.name, msg: 'not-verified' });
-      return json(res, 400, { error: 'not verified' });
+      return json(res, 400, { error: 'passkey_verify_failed' });
     }
     const { credential } = verification.registrationInfo;
     if (getCredentialById(credential.id)) {
       audit(req, 'auth.register.fail', { ok: false, name: c.name, msg: 'credential-exists' });
-      return json(res, 409, { error: 'credential already registered' });
+      return json(res, 409, { error: 'credential_exists' });
     }
     const qrValid = !!c.qr && qrTokenMatches(c.qr);
     if (c.qr && !qrValid) audit(req, 'auth.qr.validate.fail', { ok: false, name: c.name, msg: 'qr-invalid' });
@@ -2453,7 +2453,7 @@ const routes = {
       invite = getInviteByCode(c.code);
       if (!invite || invite.used_by || invite.revoked) {
         audit(req, 'auth.register.fail', { ok: false, name: c.name, msg: 'invite-invalid' });
-        return json(res, 403, { error: 'invite code is no longer valid — ask for a new one' });
+        return json(res, 403, { error: 'invite_invalid' });
       }
     }
     const user = { id: c.uid, name: c.name, created: new Date().toISOString(), pending: !!c.pending, privacyAcceptedAt: c.profile ? new Date().toISOString() : null, healthConsent: !!c.healthConsent };
@@ -2533,7 +2533,7 @@ const routes = {
     const c = takeChallenge(body.cid);
     if (!c || !c.link) {
       audit(req, 'auth.link.fail', { ok: false, msg: 'challenge-expired' });
-      return json(res, 400, { error: 'challenge expired — try again' });
+      return json(res, 400, { error: 'challenge_expired' });
     }
     const ficha = getUserById(c.link.userId);
     // Mismo consentimiento que el registro. No es un fallo del código: no suma intentos.
@@ -2554,9 +2554,9 @@ const routes = {
         requireUserVerification: false
       });
     } catch (e) {
-      return fail(400, verifyError(e, { rpId: RP_ID, origin: ORIGIN }), 'verify-error');
+      return fail(400, 'passkey_verify_failed', 'verify-error');
     }
-    if (!verification.verified) return fail(400, 'not verified', 'not-verified');
+    if (!verification.verified) return fail(400, 'passkey_verify_failed', 'not-verified');
     // Baja entre el código y la vinculación: no se crea la passkey ni se gasta el código.
     if (ficha?.disabled) {
       audit(req, 'auth.link.fail', { ok: false, user: ficha, msg: 'account-disabled' });
@@ -2573,7 +2573,7 @@ const routes = {
         transports: body.credential?.response?.transports || []
       }
     });
-    if (out.error === 'credential-exists') return fail(409, 'credential already registered', 'credential-exists');
+    if (out.error === 'credential-exists') return fail(409, 'credential_exists', 'credential-exists');
     if (out.error) {
       audit(req, 'auth.link.fail', { ok: false, user: ficha, uid: c.link.userId, msg: out.error });
       return json(res, out.error === 'link-invalid' ? 400 : 409, { error: out.error === 'link-invalid' ? 'link_invalid' : 'link_unavailable' });
@@ -2601,12 +2601,12 @@ const routes = {
     const c = takeChallenge(body.cid);
     if (!c) {
       audit(req, 'auth.login.fail', { ok: false, msg: 'challenge-expired' });
-      return json(res, 400, { error: 'challenge expired — try again' });
+      return json(res, 400, { error: 'challenge_expired' });
     }
     const cred = getCredentialById(body.credential?.id);
     if (!cred) {
       audit(req, 'auth.login.fail', { ok: false, msg: 'unknown-credential' });
-      return json(res, 404, { error: 'unknown passkey — create a profile first' });
+      return json(res, 404, { error: 'unknown_passkey' });
     }
     let verification;
     try {
@@ -2625,18 +2625,18 @@ const routes = {
       });
     } catch (e) {
       audit(req, 'auth.login.fail', { ok: false, user: getUserById(cred.user_id || cred.userId), uid: cred.user_id || cred.userId, msg: 'verify-error' });
-      return json(res, 400, { error: verifyError(e, { rpId: RP_ID, origin: ORIGIN }) });
+      return json(res, 400, { error: 'passkey_verify_failed', detail: verifyError(e, { rpId: RP_ID, origin: ORIGIN }) });
     }
     if (!verification.verified) {
       audit(req, 'auth.login.fail', { ok: false, user: getUserById(cred.user_id || cred.userId), uid: cred.user_id || cred.userId, msg: 'not-verified' });
-      return json(res, 400, { error: 'not verified' });
+      return json(res, 400, { error: 'passkey_verify_failed' });
     }
     updateCredentialCounter(cred.id, verification.authenticationInfo.newCounter);
     // saveDb(); // Eliminado: SQLite persiste automáticamente
     const user = getUserById(cred.user_id || cred.userId);
     if (!user) {
       audit(req, 'auth.login.fail', { ok: false, uid: cred.user_id || cred.userId, msg: 'user-missing' });
-      return json(res, 500, { error: 'user missing' });
+      return json(res, 500, { error: 'server_error' });
     }
     if (user.disabled) {
       audit(req, 'auth.login.fail', { ok: false, user, msg: 'account-disabled' });
@@ -2708,7 +2708,7 @@ const routes = {
     cleanExpiredPairings();
     const u = new URL(req.url, ORIGIN);
     const pairingId = u.searchParams.get('pairingId') || u.searchParams.get('id');
-    if (!pairingId) return json(res, 400, { error: 'pairingId required' });
+    if (!pairingId) return json(res, 400, { error: 'validation_error' });
     const pairing = pendingPairings.get(pairingId);
     if (!pairing || pairing.exp < Date.now()) {
       return json(res, 400, { status: 'expired', error: 'expired' });
@@ -2727,7 +2727,7 @@ const routes = {
       audit(req, 'auth.device.login', { user });
       return json(res, 200, { status: 'approved', user: { id: user.id, name: user.name, admin: isAdmin(user), owner: !!user.owner } }, { 'Set-Cookie': sessionCookie(user) });
     }
-    json(res, 400, { status: 'expired', error: 'invalid state' });
+    json(res, 400, { status: 'expired', error: 'pairing_expired' });
   },
 
   /* ---------- Additional Passkey Registration ---------- */
@@ -2753,7 +2753,7 @@ const routes = {
     const body = await readBody(req);
     const c = takeChallenge(body.cid);
     if (!c || c.uid !== user.id) {
-      return json(res, 400, { error: 'challenge expired — try again' });
+      return json(res, 400, { error: 'challenge_expired' });
     }
     let verification;
     try {
@@ -2765,14 +2765,14 @@ const routes = {
         requireUserVerification: false
       });
     } catch (e) {
-      return json(res, 400, { error: verifyError(e, { rpId: RP_ID, origin: ORIGIN }) });
+      return json(res, 400, { error: 'passkey_verify_failed', detail: verifyError(e, { rpId: RP_ID, origin: ORIGIN }) });
     }
     if (!verification.verified) {
-      return json(res, 400, { error: 'not verified' });
+      return json(res, 400, { error: 'passkey_verify_failed' });
     }
     const { credential } = verification.registrationInfo;
     if (getCredentialById(credential.id)) {
-      return json(res, 409, { error: 'credential already registered' });
+      return json(res, 409, { error: 'credential_exists' });
     }
     createCredential({
       id: credential.id, userId: user.id,
@@ -2817,7 +2817,7 @@ const routes = {
   },
 
   'GET /api/public-exercises': async (req, res) => json(res, 200, { exercises: getPublicCustomExercises() }),
-  'POST /api/admin/public-exercises': async (req, res) => { const admin = requireAdmin(req, res); if (!admin) return; const ex = await readBody(req); if (!ex.id || !ex.n) return json(res, 400, { error: 'invalid exercise' }); savePublicCustomExercise(ex); json(res, 200, { ok: true }); },
+  'POST /api/admin/public-exercises': async (req, res) => { const admin = requireAdmin(req, res); if (!admin) return; const ex = await readBody(req); if (!ex.id || !ex.n) return json(res, 400, { error: 'validation_error' }); savePublicCustomExercise(ex); json(res, 200, { ok: true }); },
   'POST /api/admin/public-exercises/delete': async (req, res) => { const admin = requireAdmin(req, res); if (!admin) return; deletePublicCustomExercise((await readBody(req)).id); json(res, 200, { ok: true }); },
 
   'PUT /api/data': async (req, res) => {
@@ -2837,7 +2837,7 @@ const routes = {
     const user = readSession(req);
     if (!user) return json(res, 401, { error: 'No has iniciado sesión' });
     const body = await readBody(req);
-    if (!Array.isArray(body.operations) || body.operations.length > 50) return json(res, 400, { error: 'invalid operations batch' });
+    if (!Array.isArray(body.operations) || body.operations.length > 50) return json(res, 400, { error: 'validation_error' });
     const saveOpts = routineSaveOpts(req);
     const processed = processSyncBatch({ db: getDatabase(), userId: user.id, operations: body.operations, getUserState, saveUserState: healthAwareSave(user, saveOpts) });
     return json(res, 200, processed);
@@ -2850,13 +2850,13 @@ const routes = {
     if (!user) return json(res, 401, { error: 'No has iniciado sesión' });
     const body = await readBody(req);
     const sub = body.subscription;
-    if (!sub?.endpoint || !sub?.keys?.p256dh || !sub?.keys?.auth) return json(res, 400, { error: 'invalid subscription' });
+    if (!sub?.endpoint || !sub?.keys?.p256dh || !sub?.keys?.auth) return json(res, 400, { error: 'validation_error' });
     const bad = pushEndpointError(sub.endpoint);
-    if (bad) return json(res, 400, { error: bad });
+    if (bad) return json(res, 400, { error: 'invalid_push_endpoint', detail: bad });
 
     const keys = { p256dh: String(sub.keys.p256dh), auth: String(sub.keys.auth) };
     // p256dh: 65 bytes en base64url (87 chars); auth: 16 bytes (22 chars).
-    if (keys.p256dh.length > 128 || keys.auth.length > 64) return json(res, 400, { error: 'invalid subscription' });
+    if (keys.p256dh.length > 128 || keys.auth.length > 64) return json(res, 400, { error: 'validation_error' });
     
     const db = getDatabase();
     db.exec('BEGIN');
@@ -2901,7 +2901,7 @@ const routes = {
     if (!user) return json(res, 401, { error: 'No has iniciado sesión' });
     const body = await readBody(req);
     const sec = Math.max(1, Math.min(3600, Math.round(+body.seconds || 0)));
-    if (!sec) return json(res, 400, { error: 'seconds required' });
+    if (!sec) return json(res, 400, { error: 'validation_error' });
     scheduleRestTimer(user.id, sec, readState(user.id)?.lang);
     json(res, 200, { ok: true });
   },
@@ -2951,7 +2951,7 @@ const routes = {
     if (!readSession(req)) return json(res, 401, { error: 'No has iniciado sesión' });
     const body = await readBody(req);
     const program = getPresetProgramById(body.id);
-    if (!program) return json(res, 404, { error: 'no such program' });
+    if (!program) return json(res, 404, { error: 'not_found' });
     if (!program.visibleToMembers) return json(res, 403, { error: 'program_hidden' });
     const presets = getAllPresets().filter(p => p.program_id === program.id).map(p => getPresetWithExercises(p.id));
     json(res, 200, { program, presets, customExercises: getPresetCustomExercises(presets) });
@@ -2972,7 +2972,7 @@ const routes = {
     const admin = requireAdmin(req, res); if (!admin) return;
     const body = await readBody(req);
     const existing = getPresetById(body.id);
-    if (!existing) return json(res, 404, { error: 'no such preset' });
+    if (!existing) return json(res, 404, { error: 'not_found' });
     const result = cleanPreset(body, existing.id);
     if (result.error) return json(res, 400, { error: result.error });
     const conflict = findPresetDayConflict(result.value, existing.id);
@@ -2986,7 +2986,7 @@ const routes = {
     const admin = requireAdmin(req, res); if (!admin) return;
     const body = await readBody(req);
     const preset = getPresetById(body.id);
-    if (!preset) return json(res, 404, { error: 'no such preset' });
+    if (!preset) return json(res, 404, { error: 'not_found' });
     deletePreset(preset.id);
     audit(req, 'admin.preset.delete', { user: admin, msg: preset.name });
     json(res, 200, { ok: true });
@@ -2997,7 +2997,7 @@ const routes = {
     const admin = requireAdmin(req, res); if (!admin) return;
     const body = await readBody(req);
     const preset = getPresetById(body.id);
-    if (!preset) return json(res, 404, { error: 'no such preset' });
+    if (!preset) return json(res, 404, { error: 'not_found' });
     const name = (String(body.name || '').trim() || `${preset.name} (copia)`).slice(0, 80);
     const copy = duplicatePreset(preset.id, name);
     audit(req, 'admin.preset.duplicate', { user: admin, msg: `${preset.name} → ${copy.name}` });
@@ -3008,9 +3008,9 @@ const routes = {
   'POST /api/admin/presets/reorder': async (req, res) => {
     const admin = requireAdmin(req, res); if (!admin) return;
     const body = await readBody(req);
-    if (!getPresetProgramById(body.programId)) return json(res, 404, { error: 'no such program' });
-    if (!Array.isArray(body.ids) || !body.ids.every(id => typeof id === 'string')) return json(res, 400, { error: 'invalid ids' });
-    if (!reorderPresets(body.programId, body.ids)) return json(res, 409, { error: 'PROGRAM_CHANGED', code: 'PROGRAM_CHANGED' });
+    if (!getPresetProgramById(body.programId)) return json(res, 404, { error: 'not_found' });
+    if (!Array.isArray(body.ids) || !body.ids.every(id => typeof id === 'string')) return json(res, 400, { error: 'validation_error' });
+    if (!reorderPresets(body.programId, body.ids)) return json(res, 409, { error: 'program_changed', code: 'PROGRAM_CHANGED' });
     json(res, 200, { ok: true });
   },
 
@@ -3019,7 +3019,7 @@ const routes = {
     const admin = requireAdmin(req, res); if (!admin) return;
     const body = await readBody(req);
     const program = getPresetProgramById(body.id);
-    if (!program) return json(res, 404, { error: 'no such program' });
+    if (!program) return json(res, 404, { error: 'not_found' });
     const days = deletePresetProgram(program.id);
     audit(req, 'admin.program.delete', { user: admin, msg: `${program.name} (${days} días)` });
     json(res, 200, { ok: true, days });
@@ -3029,11 +3029,11 @@ const routes = {
     const admin = requireAdmin(req, res); if (!admin) return;
     const body = await readBody(req);
     const program = getPresetProgramById(body.id);
-    if (!program) return json(res, 404, { error: 'no such program' });
+    if (!program) return json(res, 404, { error: 'not_found' });
     const name = String(body.name || '').trim().slice(0, 80);
-    if (!name) return json(res, 400, { error: 'name required' });
+    if (!name) return json(res, 400, { error: 'validation_error' });
     const taken = getPresetProgramByName(name);
-    if (taken && taken.id !== program.id) return json(res, 409, { error: 'PROGRAM_NAME_TAKEN', code: 'PROGRAM_NAME_TAKEN' });
+    if (taken && taken.id !== program.id) return json(res, 409, { error: 'program_name_taken', code: 'PROGRAM_NAME_TAKEN' });
     const renamed = renamePresetProgram(program.id, name);
     audit(req, 'admin.program.rename', { user: admin, msg: `${program.name} → ${name}` });
     json(res, 200, { program: renamed });
@@ -3044,8 +3044,8 @@ const routes = {
     const admin = requireAdmin(req, res); if (!admin) return;
     const body = await readBody(req);
     const program = getPresetProgramById(body.id);
-    if (!program) return json(res, 404, { error: 'no such program' });
-    if (typeof body.visible !== 'boolean') return json(res, 400, { error: 'visible must be a boolean' });
+    if (!program) return json(res, 404, { error: 'not_found' });
+    if (typeof body.visible !== 'boolean') return json(res, 400, { error: 'validation_error' });
     const updated = setPresetProgramVisibility(program.id, body.visible);
     audit(req, 'admin.program.visibility', { user: admin, msg: `${program.name}: ${body.visible ? 'visible' : 'oculto'} para socios` });
     json(res, 200, { program: updated });
@@ -3056,9 +3056,9 @@ const routes = {
     const admin = requireAdmin(req, res); if (!admin) return;
     const body = await readBody(req);
     const program = getPresetProgramById(body.id);
-    if (!program) return json(res, 404, { error: 'no such program' });
+    if (!program) return json(res, 404, { error: 'not_found' });
     let name = String(body.name || '').trim().slice(0, 80);
-    if (name && getPresetProgramByName(name)) return json(res, 409, { error: 'PROGRAM_NAME_TAKEN', code: 'PROGRAM_NAME_TAKEN' });
+    if (name && getPresetProgramByName(name)) return json(res, 409, { error: 'program_name_taken', code: 'PROGRAM_NAME_TAKEN' });
     for (let n = 1; !name; n++) {
       const candidate = `${program.name} (copia${n > 1 ? ' ' + n : ''})`.slice(0, 80);
       if (!getPresetProgramByName(candidate)) name = candidate;
@@ -3125,7 +3125,7 @@ const routes = {
     const admin = requireAdmin(req, res); if (!admin) return;
     const body = await readBody(req);
     const start = body.start === 'sunday' ? 'sunday' : body.start === 'monday' ? 'monday' : null;
-    if (!start) return json(res, 400, { error: 'start must be sunday or monday' });
+    if (!start) return json(res, 400, { error: 'validation_error' });
     setAdminSetting('attendance_week_start', start);
     audit(req, 'admin.attendance.settings', { user: admin, msg: start });
     json(res, 200, { ok: true, start });
@@ -3157,7 +3157,7 @@ const routes = {
     const body = await readBody(req);
     const u = getUserById(body.id);
     if (!u) return json(res, 404, { error: 'El usuario no existe' });
-    if (isAdmin(u)) return json(res, 400, { error: 'cannot disable an admin' });
+    if (isAdmin(u)) return json(res, 400, { error: 'admin_undisableable' });
     const newDisabled = !!body.disabled;
     updateUser(u.id, { disabled: newDisabled });
     // Desactivada: sin avisos (se borran sus suscripciones y la alarma de descanso agendada).
@@ -3171,10 +3171,10 @@ const routes = {
     const owner = requireOwner(req, res); if (!owner) return;
     const body = await readBody(req);
     const id = String(body.id || '').trim();
-    if (!id) return json(res, 400, { error: 'user id required' });
+    if (!id) return json(res, 400, { error: 'validation_error' });
     const u = getUserById(id);
     if (!u) return json(res, 404, { error: 'El usuario no existe' });
-    if (isOwner(u)) return json(res, 400, { error: 'cannot change the owner role' });
+    if (isOwner(u)) return json(res, 400, { error: 'owner_role_locked' });
     const admin = !!body.admin;
     // Dar el rol a una cuenta no activa, no; quitarlo, siempre.
     if (admin && isInactiveAccount(u)) return json(res, 409, ACCOUNT_NOT_ACTIVE);
@@ -3187,11 +3187,11 @@ const routes = {
     const owner = requireOwner(req, res); if (!owner) return;
     const body = await readBody(req);
     const id = String(body.id || '').trim();
-    if (!id) return json(res, 400, { error: 'user id required' });
+    if (!id) return json(res, 400, { error: 'validation_error' });
     const u = getUserById(id);
     if (!u) return json(res, 404, { error: 'El usuario no existe' });
-    if (!u.disabled) return json(res, 400, { error: 'only disabled accounts can be deleted' });
-    if (isOwner(u)) return json(res, 400, { error: 'cannot delete the owner account' });
+    if (!u.disabled) return json(res, 400, { error: 'delete_requires_disabled' });
+    if (isOwner(u)) return json(res, 400, { error: 'owner_undeletable' });
 
     try {
       const deleted = deleteUser(u.id);   // las suscripciones se borran en cascada
@@ -3927,8 +3927,8 @@ const routes = {
     const admin = requireAdmin(req, res); if (!admin) return;
     const body = await readBody(req);
     const inv = getInviteByCode(String(body.code || '').toUpperCase());
-    if (!inv) return json(res, 404, { error: 'no such code' });
-    if (inv.used_by || inv.usedBy) return json(res, 400, { error: 'already used — cannot revoke' });
+    if (!inv) return json(res, 404, { error: 'not_found' });
+    if (inv.used_by || inv.usedBy) return json(res, 400, { error: 'invite_used' });
     deleteInvite(inv.code);
     // saveDb(); // Eliminado: SQLite persiste automáticamente
     audit(req, 'admin.invite.revoke', { user: admin, msg: inv.code });
@@ -3940,9 +3940,9 @@ const routes = {
     const body = await readBody(req);
     const titulo = String(body.titulo || '').trim();
     const texto = String(body.texto || '').trim();
-    if (!titulo || !texto) return json(res, 400, { error: 'titulo and texto required' });
-    if (titulo.length > 50) return json(res, 400, { error: 'titulo exceeds 50 characters' });
-    if (texto.length > 120) return json(res, 400, { error: 'texto exceeds 120 characters' });
+    if (!titulo || !texto) return json(res, 400, { error: 'validation_error' });
+    if (titulo.length > 50) return json(res, 400, { error: 'validation_error' });
+    if (texto.length > 120) return json(res, 400, { error: 'validation_error' });
 
     let redirectUrl = body.redirectUrl ? String(body.redirectUrl).trim() : null;
     if (redirectUrl) {
@@ -3950,7 +3950,7 @@ const routes = {
         const u = new URL(redirectUrl);
         if (!['http:', 'https:'].includes(u.protocol)) throw new Error('invalid protocol');
       } catch {
-        return json(res, 400, { error: 'invalid redirectUrl' });
+        return json(res, 400, { error: 'validation_error' });
       }
     }
 
@@ -4032,7 +4032,7 @@ http.createServer(async (req, res) => {
     const item = sharedPlans.get(code);
     if (!item || Date.now() > item.expiresAt) {
       if (item) sharedPlans.delete(code);
-      return json(res, 404, { error: 'code not found or expired' });
+      return json(res, 404, { error: 'code_not_found' });
     }
     return json(res, 200, item.data);
   }
@@ -4130,15 +4130,15 @@ http.createServer(async (req, res) => {
   }
 
   const handler = routes[routeKey];
-  if (!handler) return json(res, 404, { error: 'not found' });
+  if (!handler) return json(res, 404, { error: 'not_found' });
   if (!csrfOk(req, routeKey)) {
     console.warn('refused cross-origin', routeKey, 'origin=' + req.headers.origin, 'expected=' + ORIGIN);
-    return json(res, 403, { error: 'cross-origin request refused' });
+    return json(res, 403, { error: 'cross_origin' });
   }
   try { await handler(req, res); }
   catch (e) {
     console.error(routeKey, e);
-    if (!res.headersSent) json(res, 500, { error: 'server error' });
+    if (!res.headersSent) json(res, 500, { error: 'server_error' });
   }
 }).listen(PORT, () => {
   console.log(`gym-api on :${PORT} (rpID=${RP_ID}, origin=${ORIGIN})`);

@@ -4,6 +4,7 @@ import { api } from '../../../lib/api.js'
 import { fmtPesos } from '../../../lib/format.js'
 import { t } from '../../../lib/i18n.js'
 import { Button, NumberField, Row, Section, Switch, TextField } from '../../../components/ui.jsx'
+import { errorText } from '../../../lib/errors.js'
 
 // Planes de cuota: lista, alta y edición en el mismo sheet (paso interno 'edit'). Los planes
 // no se borran; se desactivan (un plan inactivo no se asigna, quien ya lo tiene lo conserva).
@@ -23,7 +24,7 @@ function PlanEditor({ plan, onSaved, onCancel }) {
     const body = { name: name.trim(), price, durationDays, ...(plan ? { active } : {}) }
     api(plan ? '/api/admin/billing/plans/' + plan.id : '/api/admin/billing/plans', { method: plan ? 'PUT' : 'POST', body: JSON.stringify(body) })
       .then(() => { toast(plan ? t('Plan actualizado') : t('Plan creado')); onSaved() })
-      .catch(e => { setSaving(false); setError(e.message) })
+      .catch(e => { setSaving(false); setError(errorText(e)) })
   }
 
   return <>
@@ -52,7 +53,7 @@ export function PlansSheet({ close, setOnBack, onChanged }) {
   const [editing, setEditing] = useState(null)      // null | 'new' | plan
   const editingRef = useRef(editing)
   editingRef.current = editing
-  const load = () => api('/api/admin/billing/plans').then(d => setPlans(d.plans)).catch(e => setError(e.message))
+  const load = () => api('/api/admin/billing/plans').then(d => setPlans(d.plans)).catch(e => setError(errorText(e)))
   useEffect(() => { load() }, [])
   useEffect(() => {
     if (!setOnBack) return

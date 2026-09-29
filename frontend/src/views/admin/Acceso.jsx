@@ -9,15 +9,16 @@ import { t } from '../../lib/i18n.js'
 import Icon from '../../components/Icon.jsx'
 import { Button, Switch, TextField } from '../../components/ui.jsx'
 import QrCanvas from '../../components/QrCanvas.jsx'
+import { errorText } from '../../lib/errors.js'
 
 // Moved as-is from Usuarios: every admin can create and revoke invite codes.
 function InvitesCard({ invites, reload }) {
   const toast = useUI(s => s.toast)
   const gen = () => api('/api/admin/invites/new', { method: 'POST', body: '{}' })
     .then(({ invite }) => { navigator.clipboard?.writeText(invite.code).catch(() => {}); toast(t('Code {0} created & copied', invite.code)); reload() })
-    .catch(e => toast(e.message))
+    .catch(e => toast(errorText(e)))
   const revoke = code => api('/api/admin/invites/revoke', { method: 'POST', body: JSON.stringify({ code }) })
-    .then(() => { toast(t('Code revoked')); reload() }).catch(e => toast(e.message))
+    .then(() => { toast(t('Code revoked')); reload() }).catch(e => toast(errorText(e)))
   const open = (invites || []).filter(i => !i.usedBy)
   const used = (invites || []).filter(i => i.usedBy)
   return <div className="card">
@@ -41,7 +42,7 @@ function QrAccessCard({ data, reload }) {
   const config = useStore(s => s.config)
   const loadConfig = useStore(s => s.loadConfig)
   const [qrCanvas, setQrCanvas] = useState(null)
-  useEffect(() => { loadConfig().catch(e => toast(e.message || t('Failed to load configuration'))) }, [loadConfig])
+  useEffect(() => { loadConfig().catch(e => toast(errorText(e, t('Failed to load configuration')))) }, [loadConfig])
   const link = data?.token ? window.location.origin + '/?qr=' + encodeURIComponent(data.token) : ''
   const copy = () => link && navigator.clipboard?.writeText(link).then(() => toast(t('QR link copied'))).catch(() => toast(t('Could not copy the QR link')))
   const save = () => {
@@ -53,7 +54,7 @@ function QrAccessCard({ data, reload }) {
       a.download = `${name}-qr-acceso.png`
       a.click()
     } catch (e) {
-      toast(e.message || t('Could not save the QR'))
+      toast(errorText(e, t('Could not save the QR')))
     }
   }
   const regenerate = () => confirmSheet({
@@ -62,7 +63,7 @@ function QrAccessCard({ data, reload }) {
     confirmText: t('Regenerate'), danger: true,
     onConfirm: () => api('/api/owner/qr/regenerate', { method: 'POST', body: '{}' })
       .then(d => { reload(d); toast(t('QR access regenerated')) })
-      .catch(e => toast(e.message || t('Failed to regenerate QR access')))
+      .catch(e => toast(errorText(e, t('Failed to regenerate QR access'))))
   })
   return <div className="card">
     <h2 style={{ margin: 0 }}>{t('QR access')}</h2>
@@ -98,13 +99,13 @@ function MemberFieldsCard() {
   const [fields, setFields] = useState(null)
   const [saving, setSaving] = useState(false)
   useEffect(() => {
-    api('/api/admin/members/settings').then(d => setFields(d.fields)).catch(e => toast(e.message || t('Failed to load')))
+    api('/api/admin/members/settings').then(d => setFields(d.fields)).catch(e => toast(errorText(e, t('Failed to load'))))
   }, [])
   const save = patch => {
     setSaving(true)
     api('/api/admin/members/settings', { method: 'PUT', body: JSON.stringify({ fields: patch }) })
       .then(d => setFields(d.fields))
-      .catch(e => toast(e.message || t('Failed to save setting')))
+      .catch(e => toast(errorText(e, t('Failed to save setting'))))
       .finally(() => setSaving(false))
   }
   return <div className="card">
@@ -139,7 +140,7 @@ function BillingToggleCard({ enabled, onChanged }) {
     setBusy(true)
     api('/api/owner/billing/enabled', { method: 'PUT', body: JSON.stringify({ enabled: value }) })
       .then(d => { onChanged(d.enabled); toast(d.enabled ? t('Cobro de cuotas activado') : t('Cobro de cuotas desactivado')) })
-      .catch(e => toast(e.message || t('Failed to save setting')))
+      .catch(e => toast(errorText(e, t('Failed to save setting'))))
       .finally(() => setBusy(false))
   }
   const turnOff = () => confirmSheet({
@@ -163,7 +164,7 @@ function BillingToggleCard({ enabled, onChanged }) {
           onConfirm: () => put(true)
         })
       })
-      .catch(e => toast(e.message || t('Failed to load')))
+      .catch(e => toast(errorText(e, t('Failed to load'))))
       .finally(() => setBusy(false))
   }
   return <div className="card">
@@ -188,14 +189,14 @@ function PrivacyCard() {
   const [values, setValues] = useState({ gymName: '', contact: '' })
   const [busy, setBusy] = useState(false)
   useEffect(() => {
-    api('/api/owner/privacy').then(d => { setSaved(d); setValues(d) }).catch(e => toast(e.message || t('Failed to load')))
+    api('/api/owner/privacy').then(d => { setSaved(d); setValues(d) }).catch(e => toast(errorText(e, t('Failed to load'))))
   }, [])
   const dirty = saved && (values.gymName !== saved.gymName || values.contact !== saved.contact)
   const save = () => {
     setBusy(true)
     api('/api/owner/privacy', { method: 'PUT', body: JSON.stringify(values) })
       .then(d => { setSaved(d); setValues(d); toast(t('Aviso de privacidad guardado')) })
-      .catch(e => toast(e.message || t('Failed to save setting')))
+      .catch(e => toast(errorText(e, t('Failed to save setting'))))
       .finally(() => setBusy(false))
   }
   return <div className="card">
@@ -232,13 +233,13 @@ function ApprovalCard({ billingEnabled }) {
   const [data, setData] = useState(null)
   const [busy, setBusy] = useState(false)
   useEffect(() => {
-    api('/api/admin/approval').then(setData).catch(e => toast(e.message || t('Failed to load')))
+    api('/api/admin/approval').then(setData).catch(e => toast(errorText(e, t('Failed to load'))))
   }, [billingEnabled])
   const put = patch => {
     setBusy(true)
     api('/api/owner/approval', { method: 'PUT', body: JSON.stringify(patch) })
       .then(d => { setData(d); toast(t('Guardado')) })
-      .catch(e => toast(e?.data?.message || e.message || t('Failed to save setting')))
+      .catch(e => toast(errorText(e, t('Failed to save setting'))))
       .finally(() => setBusy(false))
   }
   const why = mode => mode !== 'approve' && !data.billingEnabled ? t('Necesita el cobro de cuotas activado.')

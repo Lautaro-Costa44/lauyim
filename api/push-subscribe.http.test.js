@@ -94,9 +94,10 @@ test('subscribe rechaza hosts desconocidos, IPs privadas, http, otro puerto y cl
     ['https://fcm.googleapis.com:8443/x', 'endpoint must use the default https port'],
     ['https://fcm.googleapis.com/' + 'a'.repeat(2048), 'endpoint is too long']
   ];
-  for (const [ep, error] of cases) assert.deepEqual(await subscribe(ep), { status: 400, body: { error } }, ep);
+  // Código estable para la app; el motivo concreto queda en `detail` (diagnóstico, no se muestra).
+  for (const [ep, detail] of cases) assert.deepEqual(await subscribe(ep), { status: 400, body: { error: 'invalid_push_endpoint', detail } }, ep);
   const longKey = await subscribe('https://fcm.googleapis.com/fcm/send/k', { p256dh: 'a'.repeat(129), auth: keys.auth });
-  assert.deepEqual(longKey, { status: 400, body: { error: 'invalid subscription' } });
+  assert.deepEqual(longKey, { status: 400, body: { error: 'validation_error' } });
 });
 
 test('hasPush: una suscripción bloqueada por la allowlist no cuenta', async () => {

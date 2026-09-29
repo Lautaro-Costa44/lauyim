@@ -27,7 +27,7 @@ function ClaimDeviceSheet({ close }) {
       const res = await api('/api/auth/device/claim', { method: 'POST', body: JSON.stringify({ code: c }) })
       setPending(res)
     } catch (e) {
-      toast(e.message || t('Código no válido o expirado'))
+      toast(errorText(e, t('Código no válido o expirado')))
     } finally {
       setLoading(false)
     }
@@ -41,7 +41,7 @@ function ClaimDeviceSheet({ close }) {
       toast(t('¡Dispositivo vinculado con éxito!'))
       close()
     } catch (e) {
-      toast(e.message || t('Error al confirmar vinculación'))
+      toast(errorText(e, t('Error al confirmar vinculación')))
     } finally {
       setLoading(false)
     }
@@ -78,6 +78,7 @@ function ClaimDeviceSheet({ close }) {
 }
 import { pushSupported, enablePush, disablePush, sendTestPush } from '../lib/push.js'
 import { wakeLockSupported } from '../lib/wakelock.js'
+import { errorText } from '../lib/errors.js'
 import { DEMO, REPO } from '../lib/demo.js'
 import { confirmSheet, importFromApp, equipmentProfileSheet } from '../sheets.jsx'
 import { routinesFromPresets, presetSourceFor, addPresetCustomExercises } from '../lib/starter.js'
@@ -135,7 +136,7 @@ export default function Settings() {
         toast(t('Group loaded successfully.'))
         close()
       } catch (e) {
-        toast(e.message || t('Could not load this group.'))
+        toast(errorText(e, t('Could not load this group.')))
       }
     }
 
@@ -202,15 +203,15 @@ export default function Settings() {
     rd.onload = () => {
       try {
         const data = JSON.parse(rd.result)
-        if (!data.workouts || !data.routines) throw new Error('not an lauyim backup')
+        if (!data.workouts || !data.routines) throw new Error(t('el archivo no es un respaldo de lauyim'))
         confirmSheet({ title: t('Import backup?'), message: t('This replaces all current data with the backup file.'), confirmText: t('Import'), danger: true, onConfirm: () => { replaceState(Object.assign(JSON.parse(JSON.stringify(DEF)), data), true); toast(t('Backup imported')) } })
-      } catch (e) { toast(t('Import failed: {0}', e.message)) }
+      } catch (e) { toast(t('Import failed: {0}', e instanceof SyntaxError ? t('el archivo no es válido') : errorText(e))) }
     }
     rd.readAsText(f)
   }
   const signInHere = async () => {
     try { const u = await passkeyLogin(); setUser(u); await pullState(); toast(t('Welcome back, {0}', u.name)) }
-    catch (e) { if (e.name !== 'NotAllowedError' && e.name !== 'AbortError') toast(e.message || t('SIGN_IN_FAILED_SETTINGS')) }
+    catch (e) { if (e.name !== 'NotAllowedError' && e.name !== 'AbortError') toast(errorText(e, t('SIGN_IN_FAILED_SETTINGS'))) }
   }
   // El mismo registro que la pantalla de inicio (datos del gym, aprobación y aviso incluidos).
   const registerHere = () => useUI.getState().openSheet((close, { setOnBack } = {}) => <RegisterSheet close={close} setOnBack={setOnBack} />)
@@ -255,7 +256,7 @@ export default function Settings() {
             await passkeyAddCredential()
             toast(t('¡Nueva passkey agregada con éxito!'))
           } catch (e) {
-            if (e.name !== 'NotAllowedError' && e.name !== 'AbortError') toast(e.message || t('Error al agregar passkey'))
+            if (e.name !== 'NotAllowedError' && e.name !== 'AbortError') toast(errorText(e, t('Error al agregar passkey')))
           }
         }} />
         <Row icon="heart" iconTint="var(--pink)" title={t('Datos de salud')} value={noHealth ? t('Sin consentimiento') : t('Consentimiento dado')} accessory="chevron"
@@ -670,13 +671,13 @@ function PushCard({ S, update, toast }) {
     try {
       if (!v) { await disablePush(); setOn(false); toast(t('Notifications off')) }
       else { await enablePush(); setOn(true); toast(t('Notifications on')) }
-    } catch (e) { toast(e.message || t('Could not change notification settings')) }
+    } catch (e) { toast(errorText(e, t('Could not change notification settings'))) }
     setBusy(false)
   }
   const test = async () => {
     try { await sendTestPush(); toast(t('Test sent — should arrive any second')) }
     catch (e) { 
-      toast(e.message || t('Test failed'))
+      toast(errorText(e, t('Test failed')))
     }
   }
 

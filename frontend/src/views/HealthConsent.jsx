@@ -6,6 +6,7 @@ import { t } from '../lib/i18n.js'
 import Icon from '../components/Icon.jsx'
 import { Button } from '../components/ui.jsx'
 import { HEALTH_DATA_LABEL, PrivacyLink, usePrivacyStep } from '../components/PrivacyNotice.jsx'
+import { errorText } from '../lib/errors.js'
 
 // Datos de salud (Ley 25.326, art. 7): consentimiento expreso y revocable. Sin él la app sirve
 // igual para entrenar; se ocultan nutrición, peso corporal, lesiones y la biometría de la encuesta.
@@ -24,7 +25,7 @@ export default function HealthConsentOnce() {
   const answer = async granted => {
     setBusy(true)
     try { await setHealthConsentRemote(granted) }
-    catch (e) { toast(e.message || t('No hay conexión. Probá de nuevo en un momento.')); setBusy(false) }
+    catch (e) { toast(errorText(e, t('No hay conexión. Probá de nuevo en un momento.'))); setBusy(false) }
   }
   return <div className="narrow health-consent">
     {privacy.view}
@@ -57,7 +58,7 @@ export function HealthConsentSheet({ close }) {
       await setHealthConsentRemote(value)
       toast(value ? t('Consentimiento dado') : t('Consentimiento retirado'))
       if (value) await useStore.getState().pullState()
-    } catch (e) { toast(e.message || t('No se pudo guardar')) }
+    } catch (e) { toast(errorText(e, t('No se pudo guardar'))) }
     setBusy(false)
   }
   const erase = async () => {
@@ -67,7 +68,7 @@ export function HealthConsentSheet({ close }) {
       useStore.getState().clearLocalHealthData()
       toast(t('Tus datos de salud se borraron'))
       close()
-    } catch (e) { toast(e.message || t('No se pudo borrar')); setBusy(false) }
+    } catch (e) { toast(errorText(e, t('No se pudo borrar'))); setBusy(false) }
   }
   return <>
     {privacy.view}

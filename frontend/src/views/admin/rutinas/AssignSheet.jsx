@@ -7,6 +7,7 @@ import { MAX_ROUTINE_GROUPS } from '../../../lib/routineGroups.js'
 import { normalizeStr } from '../../../lib/exercises.js'
 import { t } from '../../../lib/i18n.js'
 import { Row, Switch, TextField } from '../../../components/ui.jsx'
+import { errorText } from '../../../lib/errors.js'
 
 /**
  * Carga un programa en un socio como un grupo de rutinas nuevo, igual que "Cargar planes
@@ -54,7 +55,7 @@ export default function AssignSheet({ program, days, users, close, onAssigned })
       onAssigned?.()
       close()
     } catch (e) {
-      toast(e.message)
+      toast(errorText(e))
     } finally {
       setBusy(null)
     }

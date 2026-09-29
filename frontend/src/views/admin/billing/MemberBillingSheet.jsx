@@ -7,6 +7,7 @@ import { confirmSheet } from '../../../sheets.jsx'
 import Icon from '../../../components/Icon.jsx'
 import { Button, NumberField, Row, SearchField, Section, Segmented, SelectRow, TextField, usePickerStep } from '../../../components/ui.jsx'
 import { StatusBadge, methodLabel, paidAtFor, statusLabel } from './common.jsx'
+import { errorText } from '../../../lib/errors.js'
 
 // Ficha de cuota de un socio: estado, plan, historial y las acciones que lo cambian (registrar
 // pago, asignar plan, anular el último pago). UN solo sheet real con pasos internos, como el
@@ -95,7 +96,7 @@ function PaymentForm({ member, billing, plans, methods, today, picker, onDone })
     const timer = setTimeout(() => {
       api(paymentsUrl(member.id), { method: 'POST', body: JSON.stringify(body(true)) })
         .then(r => { if (alive) setPreview({ dueDate: r.billing.dueDate }) })
-        .catch(e => { if (alive) setPreview({ error: e.message }) })
+        .catch(e => { if (alive) setPreview({ error: errorText(e) }) })
     }, 250)
     return () => { alive = false; clearTimeout(timer) }
   }, [planId, date, method])
@@ -109,7 +110,7 @@ function PaymentForm({ member, billing, plans, methods, today, picker, onDone })
     setSaving(true)
     api(paymentsUrl(member.id), { method: 'POST', body: JSON.stringify(body(false)) })
       .then(r => { toast(t('Pago registrado · vence el {0}', fmtDateDMY(r.billing.dueDate))); onDone() })
-      .catch(e => { setSaving(false); setPreview({ error: e.message }) })
+      .catch(e => { setSaving(false); setPreview({ error: errorText(e) }) })
   }
 
   if (!options.length) return <div className="empty">{t('No hay planes activos. Creá uno desde Planes.')}</div>
@@ -165,7 +166,7 @@ function AssignForm({ member, billing, plans, today, picker, onDone }) {
     setSaving(true); setError(null)
     api(billingUrl(member.id), { method: 'PUT', body: JSON.stringify(payload) })
       .then(() => { toast(done); onDone() })
-      .catch(e => { setSaving(false); setError(e.message) })
+      .catch(e => { setSaving(false); setError(errorText(e)) })
   }
   const removePlan = () => confirmSheet({
     title: t('¿Quitar el plan?'),
@@ -251,11 +252,11 @@ export function MemberBillingSheet({ userId, userName, members, startWith = 'det
     return () => setOnBack(null)
   }, [setOnBack])
 
-  const load = id => api(billingUrl(id)).then(d => { setData(d); setError(null) }).catch(e => setError(e.message))
+  const load = id => api(billingUrl(id)).then(d => { setData(d); setError(null) }).catch(e => setError(errorText(e)))
   useEffect(() => { if (member) load(member.id) }, [member?.id])
   useEffect(() => {
-    api('/api/admin/billing/plans').then(d => setPlans(d.plans)).catch(e => setError(e.message))
-    api('/api/admin/billing/settings').then(d => setMethods(d.settings.payment_methods)).catch(e => setError(e.message))
+    api('/api/admin/billing/plans').then(d => setPlans(d.plans)).catch(e => setError(errorText(e)))
+    api('/api/admin/billing/settings').then(d => setMethods(d.settings.payment_methods)).catch(e => setError(errorText(e)))
   }, [])
 
   const changed = () => { if (member) load(member.id); onChanged?.() }
@@ -267,13 +268,13 @@ export function MemberBillingSheet({ userId, userName, members, startWith = 'det
     confirmText: t('Iniciar prueba'),
     onConfirm: () => api(userUrl(member.id, '/trial'), { method: 'POST', body: '{}' })
       .then(() => { toast(t('Prueba iniciada')); changed() })
-      .catch(e => setError(e.data?.message || e.message))
+      .catch(e => setError(errorText(e)))
   })
 
   const voidPayment = payment => openSheet(c => <VoidDialog payment={payment} close={c} onConfirm={reason =>
     api(paymentsUrl(member.id) + '/' + payment.id + '/void', { method: 'POST', body: JSON.stringify(reason ? { reason } : {}) })
       .then(() => { toast(t('Pago anulado')); changed() })
-      .catch(e => setError(e.message))
+      .catch(e => setError(errorText(e)))
   } />, { kind: 'center' })
 
   if (step === 'pick') return <div className="compound-builder"><div className="compound-builder-content">

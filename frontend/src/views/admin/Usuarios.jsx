@@ -10,6 +10,7 @@ import Icon from '../../components/Icon.jsx'
 import { Button, Row, TextField } from '../../components/ui.jsx'
 import { rel, UserDetail } from './shared.jsx'
 import { IncompleteBadge, NoAppBadge, PendingBadge, exportMembersCsv, looksLikeDni, lookupDni, openImportSheet, openMemberSheet } from './members/common.jsx'
+import { errorText } from '../../lib/errors.js'
 
 // Filtro por acceso a la app: las fichas (sin passkey) las carga el gimnasio. "Pendientes":
 // cuentas que esperan la aprobación del staff (solo aparece si hay alguna).
@@ -51,7 +52,7 @@ export default function Usuarios() {
   const [exporting, setExporting] = useState(false)
   const exportMembers = () => {
     setExporting(true)
-    exportMembersCsv().then(() => toast(t('Socios exportados'))).catch(e => toast(e.message || t('No se pudo exportar')))
+    exportMembersCsv().then(() => toast(t('Socios exportados'))).catch(e => toast(errorText(e, t('No se pudo exportar'))))
       .finally(() => setExporting(false))
   }
   const disabledCount = (users || []).filter(u => u.disabled).length

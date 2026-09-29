@@ -10,6 +10,7 @@ import { AdminContext } from './context.js'
 // Resumen is the landing section: static, in this chunk, so /admin -> /admin/resumen renders at
 // once instead of keeping the previous screen while another chunk loads. The rest are lazy.
 import Resumen from './Resumen.jsx'
+import { errorText } from '../../lib/errors.js'
 const Usuarios = lazy(() => import('./Usuarios.jsx'))
 const Cuotas = lazy(() => import('./Cuotas.jsx'))
 const Rutinas = lazy(() => import('./Rutinas.jsx'))
@@ -45,7 +46,7 @@ export default function AdminLayout() {
   // Logs and Cuotas tabs exist.
   // Sin respuesta del servidor no es un error de la sección: es la falta de conexión (un aviso,
   // no un toast por cada pedido y cada vuelta del poll).
-  const loadFailed = (e, fallback) => { if (!e?.status) setUnreachable(true); else toast(e.message || fallback) }
+  const loadFailed = (e, fallback) => { if (!e?.status) setUnreachable(true); else toast(errorText(e, fallback)) }
   const loadUsers = () => api('/api/admin/users').then(d => { setUnreachable(false); setUsers(d.users); setInviteOnly(d.invite_only); setAuditEnabled(d.audit_enabled !== false); setBillingEnabled(d.billing_enabled !== false) }).catch(e => loadFailed(e, t('Failed to load')))
   const loadInvites = () => api('/api/admin/invites').then(d => setInvites(d.invites)).catch(() => {})
   const loadPresets = () => api('/api/admin/presets').then(d => { setPresets(d.presets); setPrograms(d.programs || []) }).catch(e => loadFailed(e, t('Failed to load presets')))

@@ -10,6 +10,7 @@ import { STATUS_ORDER, StatusBadge, openMemberBilling, statusLabel } from './bil
 import { PlansSheet } from './billing/PlansSheet.jsx'
 import { SettingsSheet } from './billing/SettingsSheet.jsx'
 import { NoAppBadge } from './members/common.jsx'
+import { errorText } from '../../lib/errors.js'
 
 // Tablero de Cuotas (GET /api/admin/billing). Las tarjetas resumen cuentan socios activos y no
 // staff (así las calcula el servidor); la lista muestra también a los desactivados, con badge.
@@ -45,7 +46,7 @@ export default function Cuotas() {
 
   const load = () => Promise.all([api('/api/admin/billing'), api('/api/admin/billing/plans')])
     .then(([billing, planList]) => { setData(billing); setPlans(planList.plans || []); setError(null) })
-    .catch(e => setError(e.message))
+    .catch(e => setError(errorText(e)))
   useEffect(() => { load() }, [])
 
   const today = data?.today

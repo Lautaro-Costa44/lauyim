@@ -12,6 +12,7 @@ import { Button, TextField } from '../../components/ui.jsx'
 import PresetEditor from './rutinas/PresetEditor.jsx'
 import ProgramCard from './rutinas/ProgramCard.jsx'
 import AssignSheet from './rutinas/AssignSheet.jsx'
+import { errorText } from '../../lib/errors.js'
 
 // Programas (grupos de presets) del server; uno sin id si el server es anterior a los programas.
 function programsOf(programs, presets) {
@@ -52,12 +53,12 @@ export default function Rutinas() {
     title: t('Delete {0}?', day.name), message: t('This removes it from the preset catalog. Existing user routines are unchanged.'),
     confirmText: t('Delete'), danger: true,
     onConfirm: () => api('/api/admin/presets/delete', { method: 'POST', body: JSON.stringify({ id: day.id }) })
-      .then(() => { toast(t('Preset deleted')); if (editing?.preset?.id === day.id) setEditing(null); reload() }).catch(e => toast(e.message))
+      .then(() => { toast(t('Preset deleted')); if (editing?.preset?.id === day.id) setEditing(null); reload() }).catch(e => toast(errorText(e)))
   })
   const duplicateDay = day => api('/api/admin/presets/duplicate', { method: 'POST', body: JSON.stringify({ id: day.id }) })
-    .then(d => { toast(t('Día duplicado: {0}', d.preset.name)); reload() }).catch(e => toast(e.message))
+    .then(d => { toast(t('Día duplicado: {0}', d.preset.name)); reload() }).catch(e => toast(errorText(e)))
   const duplicateProgram = program => api('/api/admin/programs/duplicate', { method: 'POST', body: JSON.stringify({ id: program.id }) })
-    .then(d => { toast(t('Programa duplicado: {0}', d.program.name)); reload() }).catch(e => toast(e.message))
+    .then(d => { toast(t('Programa duplicado: {0}', d.program.name)); reload() }).catch(e => toast(errorText(e)))
   // Borra el programa con todos sus días. Lo que los socios ya cargaron es una copia: no cambia.
   const deleteProgram = program => {
     const days = daysOf(program, presets).length
@@ -75,22 +76,22 @@ export default function Rutinas() {
           reload()
           loadUsage()
         })
-        .catch(e => toast(e.message))
+        .catch(e => toast(errorText(e)))
     })
   }
   // Mostrar u ocultar el programa en la app del socio. Quien ya lo cargó conserva su rutina.
   const toggleVisible = (program, visible) => api('/api/admin/programs/visibility', { method: 'POST', body: JSON.stringify({ id: program.id, visible }) })
     .then(() => { toast(visible ? t('{0} ahora es visible para los socios', program.name) : t('{0} quedó oculto para los socios', program.name)); reload() })
-    .catch(e => toast(e.message))
+    .catch(e => toast(errorText(e)))
   const renameProgram = program => inputSheet({
     title: t('Renombrar programa'), placeholder: t('Nombre del programa'), defaultValue: program.name, confirmText: t('Guardar'),
     onConfirm: name => api('/api/admin/programs', { method: 'PUT', body: JSON.stringify({ id: program.id, name }) })
       .then(() => { toast(t('Programa renombrado')); if (filter === program.name) setFilter(name); reload() })
-      .catch(e => toast(e.data?.code === 'PROGRAM_NAME_TAKEN' ? t('Ya existe un programa con ese nombre.') : e.message))
+      .catch(e => toast(errorText(e)))
   })
   const reorder = (program, ids) => api('/api/admin/presets/reorder', { method: 'POST', body: JSON.stringify({ programId: program.id, ids }) })
     .then(reload)
-    .catch(e => { toast(e.data?.code === 'PROGRAM_CHANGED' ? t('El programa cambió; se recargó la lista.') : e.message); reload(); throw e })
+    .catch(e => { toast(errorText(e)); reload(); throw e })
   const assign = program => openSheet(close => <AssignSheet program={program} days={daysOf(program, presets)} users={users} close={close} onAssigned={loadUsage} />)
 
   // Buscador: un programa aparece si su nombre coincide (con todos sus días) o si alguno de sus

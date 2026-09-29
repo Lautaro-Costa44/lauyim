@@ -6,6 +6,7 @@ import { t } from '../lib/i18n.js'
 import { Button } from '../components/ui.jsx'
 import { ProfileFields, missingRequired, profileBody } from '../components/ProfileFields.jsx'
 import { usePrivacyStep } from '../components/PrivacyNotice.jsx'
+import { errorText } from '../lib/errors.js'
 
 // Socios que ya tenían cuenta antes de que el gym pidiera datos: el mismo formulario del
 // registro, UNA sola vez (guardar o "Ahora no" lo cierran para siempre; después los datos los
@@ -32,8 +33,8 @@ export default function ProfileOnce() {
       setBusy(false)
       // Ya no corresponde (lo completó en otro dispositivo): se cierra igual.
       if (e?.data?.error === 'profile_locked') return dismiss()
-      if (e?.data?.field) setErrors({ [e.data.field]: e.message })
-      else setErrors({ general: e?.data?.message || e?.message || t('No se pudo guardar') })
+      if (e?.data?.field) setErrors({ [e.data.field]: errorText(e) })
+      else setErrors({ general: e?.data?.message || errorText(e, t('No se pudo guardar')) })
     }
   }
 

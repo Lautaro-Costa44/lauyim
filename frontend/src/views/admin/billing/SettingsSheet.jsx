@@ -4,6 +4,7 @@ import { api } from '../../../lib/api.js'
 import { t } from '../../../lib/i18n.js'
 import { Button, NumberField, Row, Section, SelectRow, Switch, usePickerStep, useSheetBack } from '../../../components/ui.jsx'
 import { METHOD_LABELS, methodLabel } from './common.jsx'
+import { errorText } from '../../../lib/errors.js'
 
 // Configuración global de cuotas (admin_settings). El servidor valida lo mismo; acá se evita
 // mandar algo que sabemos que va a rechazar.
@@ -30,7 +31,7 @@ export function SettingsSheet({ close, setOnBack, onChanged }) {
   // La zona horaria se elige en un paso de este mismo sheet; el back vuelve al formulario.
   const picker = usePickerStep()
   useSheetBack(setOnBack, () => picker.isOpen ? picker.close() : close())
-  useEffect(() => { api('/api/admin/billing/settings').then(d => setForm(d.settings)).catch(e => setError(e.message)) }, [])
+  useEffect(() => { api('/api/admin/billing/settings').then(d => setForm(d.settings)).catch(e => setError(errorText(e))) }, [])
 
   if (!form) return <>
     <h3>{t('Configuración de cuotas')}</h3>
@@ -49,7 +50,7 @@ export function SettingsSheet({ close, setOnBack, onChanged }) {
     const { due_soon_days, push_days_before, grace_days, trial_days, payment_methods, gym_tz } = form
     api('/api/admin/billing/settings', { method: 'PUT', body: JSON.stringify({ due_soon_days, push_days_before, grace_days, trial_days, payment_methods, gym_tz }) })
       .then(() => { toast(t('Configuración guardada')); onChanged?.(); close() })
-      .catch(e => { setSaving(false); setError(e.message) })
+      .catch(e => { setSaving(false); setError(errorText(e)) })
   }
 
   return <>

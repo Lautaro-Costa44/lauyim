@@ -12,6 +12,7 @@ import { t, exerciseNameFor } from '../../../lib/i18n.js'
 import Icon from '../../../components/Icon.jsx'
 import { useDragReorder } from '../../../components/useDragReorder.js'
 import { Button, TextField, SelectRow, usePickerStep, useSheetBack } from '../../../components/ui.jsx'
+import { errorText } from '../../../lib/errors.js'
 
 const INTENSIFIER_LABEL = { dropset: 'Drop-set', topback: 'Top-set + Backoff', restpause: 'Rest-pause' }
 
@@ -49,9 +50,9 @@ export default function PresetEditor({ existing, defaultGroup = '', programs = [
       .then(() => { toast(existing ? t('Preset updated') : t('Preset created')); close(); reload() })
       .catch(e => {
         console.error('[Presets] Failed to save preset/day', e)
-        if (e.data?.error === 'ROUTINE_DAY_CONFLICT') {
+        if (e.data?.error === 'routine_day_conflict') {
           toast(t('La rutina “{0}” ya está planeada para el {1}.', e.data.routineName, t(DAYN[e.data.plannedDay])))
-        } else toast(e.message)
+        } else toast(errorText(e))
       })
       .finally(() => setSaving(false))
   }

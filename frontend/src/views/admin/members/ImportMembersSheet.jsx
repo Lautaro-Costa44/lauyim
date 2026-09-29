@@ -8,6 +8,7 @@ import { Button, NumberField, Row, Section, Segmented, SelectRow, TextField, use
 import { PrivacyLink, usePrivacyStep } from '../../../components/PrivacyNotice.jsx'
 import { methodLabel } from '../billing/common.jsx'
 import { useDesktop } from '../useDesktop.js'
+import { errorText } from '../../../lib/errors.js'
 import {
   FIELD_OPTIONS, buildRows, distinctPlans, downloadText, errorsCsv, fieldLabel, autodetectColumns,
   maskDni, mappingProblems, planKey, readImportFile, sampleValues, templateCsv
@@ -254,13 +255,13 @@ export function ImportMembersSheet({ billingEnabled, close, setOnBack, onImporte
   const [busy, setBusy] = useState(false)
 
   useEffect(() => {
-    api('/api/admin/members/settings').then(d => setFields(d.fields)).catch(e => setError(e.message))
+    api('/api/admin/members/settings').then(d => setFields(d.fields)).catch(e => setError(errorText(e)))
     if (!billingEnabled) return
     Promise.all([api('/api/admin/billing/plans'), api('/api/admin/billing/settings')]).then(([p, s]) => {
       setPlans(p.plans)
       setMethods(s.settings.payment_methods)
       setOptions(o => ({ ...o, paymentMethod: s.settings.payment_methods[0] }))
-    }).catch(e => setError(e.message))
+    }).catch(e => setError(errorText(e)))
   }, [])
 
   const dniEnabled = !!fields?.dni?.enabled
@@ -318,14 +319,14 @@ export function ImportMembersSheet({ billingEnabled, close, setOnBack, onImporte
     setBusy(true); setError(null)
     api(IMPORT_URL, { method: 'POST', body: JSON.stringify(body(true)) })
       .then(p => { setPreview(p); setTab(p.summary.nuevos ? 'nuevo' : p.summary.errores ? 'error' : 'existente'); go('preview') })
-      .catch(e => setError(e.data?.message || e.message))
+      .catch(e => setError(errorText(e)))
       .finally(() => setBusy(false))
   }
   const runImport = () => {
     setBusy(true); setError(null)
     api(IMPORT_URL, { method: 'POST', body: JSON.stringify(body(false)) })
       .then(r => { setResult(r); go('resultado'); onImported?.(); toast(t(r.created === 1 ? '1 socio importado' : '{0} socios importados', r.created)) })
-      .catch(e => setError(e.data?.message || e.message))
+      .catch(e => setError(errorText(e)))
       .finally(() => setBusy(false))
   }
 

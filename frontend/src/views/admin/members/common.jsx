@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { api } from '../../../lib/api.js'
 import { t } from '../../../lib/i18n.js'
 import { Button, Row } from '../../../components/ui.jsx'
+import { errorText } from '../../../lib/errors.js'
 
 // Fichas de socio (admin): piezas chicas que van con UserDetail y Usuarios. Los formularios y
 // flujos (alta, edición, código de vinculación, unir con una cuenta) están en MemberSheets.jsx,
@@ -90,7 +91,7 @@ export const openImportSheet = (openSheet, props) => openLazySheet(() => import(
 export function FichaCard({ user, users, openSheet, openUser, onLink }) {
   const [data, setData] = useState(null)
   const [error, setError] = useState(null)
-  const load = () => api(profileUrl(user.id)).then(d => { setData(d); setError(null) }).catch(e => setError(e.message))
+  const load = () => api(profileUrl(user.id)).then(d => { setData(d); setError(null) }).catch(e => setError(errorText(e)))
   useEffect(() => { load() }, [user.id])
   const fields = data?.fields || {}, profile = data?.profile || {}
   const edit = () => openMemberSheet(openSheet, 'ProfileEditSheet', {
