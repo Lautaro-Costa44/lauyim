@@ -128,6 +128,19 @@ describe('Ingreso Físico: pantalla', () => {
     expect(document.querySelector('.checkin-display').textContent).toBe('40111333')
   })
 
+  it('mantiene la pantalla encendida (Wake Lock) mientras está abierta y la suelta al salir', async () => {
+    const release = vi.fn(async () => {})
+    const request = vi.fn(async () => ({ release, addEventListener() {} }))
+    Object.defineProperty(navigator, 'wakeLock', { configurable: true, value: { request } })
+    try {
+      await mount()
+      expect(request).toHaveBeenCalledWith('screen')
+      await act(async () => { root.unmount() })
+      root = null; container.remove()
+      expect(release).toHaveBeenCalled()
+    } finally { delete navigator.wakeLock }
+  })
+
   it('el numpad no tiene campos de texto: la tablet no abre su teclado', async () => {
     await mount()
     expect(document.querySelector('.checkin input, .checkin textarea, .checkin [contenteditable]')).toBeNull()

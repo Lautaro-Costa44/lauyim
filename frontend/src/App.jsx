@@ -128,7 +128,9 @@ function Shell() {
   // every tab/route change starts at the top of the page
   useEffect(() => { window.scrollTo(0, 0) }, [loc.pathname])
   // bound to the workout, not to the route — checking Stats mid-session keeps the screen on
-  useWakeLock(!!S.active && S.keepAwake !== false)
+  // …y siempre en la pantalla de Ingreso Físico: es una tablet o notebook de recepción que tiene
+  // que quedar prendida (el mismo Wake Lock que Ajustes → "Mantener la pantalla encendida").
+  useWakeLock((!!S.active && S.keepAwake !== false) || loc.pathname === CHECKIN_ROUTE)
 
   // La configuración del backend es la única fuente de verdad para invitados.
   const allowGuest = guestAllowed(config)
