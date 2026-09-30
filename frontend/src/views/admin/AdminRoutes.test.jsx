@@ -317,7 +317,7 @@ describe('admin routes', () => {
 
   it('turning billing off asks first, then hides Cuotas', async () => {
     await mount('#/admin/acceso', OWNER)
-    await clickSwitch('Bloquear el acceso por cuota vencida')
+    await clickSwitch('Habilitar el módulo de cuotas')
     expect(sheetText()).toContain('No se borra ningún dato')
     expect(sheetText()).toContain('recordatorio manual')
     expect(called('/api/owner/billing/enabled')).toBe(false)
@@ -329,7 +329,7 @@ describe('admin routes', () => {
   it('turning billing on shows the enable-preview in the confirmation', async () => {
     billingOn = false
     await mount('#/admin/acceso', OWNER)
-    await clickSwitch('Bloquear el acceso por cuota vencida')
+    await clickSwitch('Habilitar el módulo de cuotas')
     expect(called('/api/owner/billing/enable-preview')).toBe(true)
     expect(sheetText()).toContain('Al activar, 2 socios quedan bloqueados y 1 vencido.')
     await clickButton(document.querySelector('#modal-root'), 'Activar')

@@ -159,7 +159,7 @@ function BillingToggleCard({ enabled, onChanged }) {
           title: t('¿Activar el cobro de cuotas?'),
           message: blocked
             ? t(blocked === 1 ? 'Al activar, {0} socio queda bloqueado' : 'Al activar, {0} socios quedan bloqueados', blocked) + ' ' + t(late === 1 ? 'y {0} vencido.' : 'y {0} vencidos.', late)
-            : t('Vuelven la sección Cuotas, los avisos de vencimiento y el bloqueo por cuota vencida.'),
+            : t('Vuelven la sección Cuotas y los avisos de vencimiento. El bloqueo por cuota vencida vuelve solo si está prendido en los ajustes de Cuotas.'),
           confirmText: t('Activar'),
           onConfirm: () => put(true)
         })
@@ -171,10 +171,10 @@ function BillingToggleCard({ enabled, onChanged }) {
     <h2 style={{ margin: 0 }}>{t('Cobro de cuotas')}</h2>
     <div className="row between" style={{ gap: 12, marginTop: 10 }}>
       <div className="grow">
-        <div style={{ fontWeight: 600 }}>{t('Bloquear el acceso por cuota vencida')}</div>
-        <div className="small muted" style={{ marginTop: 2 }}>{t('Quien pasa la tolerancia sin pagar no puede entrenar ni sincronizar hasta que registres el pago.')}</div>
+        <div style={{ fontWeight: 600 }}>{t('Habilitar el módulo de cuotas')}</div>
+        <div className="small muted" style={{ marginTop: 2 }}>{t('Muestra la sección Cuotas y los avisos de vencimiento. El bloqueo por cuota vencida se configura aparte, en los ajustes de Cuotas.')}</div>
       </div>
-      <Switch label={t('Bloquear el acceso por cuota vencida')} checked={enabled !== false} disabled={busy || enabled == null}
+      <Switch label={t('Habilitar el módulo de cuotas')} checked={enabled !== false} disabled={busy || enabled == null}
         onChange={v => v ? turnOn() : turnOff()} />
     </div>
   </div>
