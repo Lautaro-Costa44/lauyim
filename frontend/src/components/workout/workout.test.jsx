@@ -76,9 +76,9 @@ describe('WorkoutDetailView', () => {
     expect(rows[2].textContent).toContain('Drop set')
     // vs. el entreno anterior a esta fecha (05/09: 60×8), no el último de todos.
     const cmp = container.querySelector('.wd-cmp')
-    expect(cmp.textContent).toMatch(/\+2\.5 kg · −2 reps vs\. /)
+    expect(cmp.textContent).toBe('+2,5 kg · −2 reps vs. 5 sept')   // coma decimal en español; se lee sin color
     expect(cmp.classList.contains('up')).toBe(true)
-    expect(text()).toContain('Volumen 775 kg')                   // 62.5×6 + 50×8 + 40×6, sin el calentamiento
+    expect(text()).toContain('Volumen 1015 kg')                  // 62.5×6 + 50×8 + 40×6, sin el calentamiento
   })
 
   it('sin consentimiento de salud no muestra el peso corporal; el primer registro dice que no hay anterior', async () => {
