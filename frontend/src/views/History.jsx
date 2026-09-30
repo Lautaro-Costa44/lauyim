@@ -1,16 +1,32 @@
+import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useStore } from '../store/useStore.js'
 import { t } from '../lib/i18n.js'
-import { WorkoutRow, workoutDetailSheet } from '../sheets.jsx'
+import { WorkoutDetail, workoutDetailSheet } from '../sheets.jsx'
+import WorkoutHistoryList from '../components/workout/WorkoutHistoryList.jsx'
+import { useDesktop } from './admin/useDesktop.js'
 import Icon from '../components/Icon.jsx'
 
+// Historial del socio: agrupado por mes, con filtros. En escritorio el entreno elegido se ve al
+// lado; en tablet y celular se abre como panel (hoja desde abajo en el celular).
 export default function History() {
   const nav = useNavigate()
   const S = useStore(s => s.S)
+  const desktop = useDesktop()
+  const [selectedId, setSelectedId] = useState(null)
+  const selected = desktop ? S.workouts.find(w => w.id === selectedId) : null
+  const open = w => desktop ? setSelectedId(w.id) : workoutDetailSheet(w)
+  const data = { workouts: S.workouts, routines: S.routines, unit: S.unit }
   return <>
     <div className="hdr"><button className="iconbtn" onClick={() => nav('/stats')} aria-label={t('Stats')}><Icon name="chevronLeft" /></button>
       <div style={{ flex: 1, marginLeft: 12 }}><h1>{t('History')}</h1><div className="sub">{t('{0} workouts', S.workouts.length)}</div></div></div>
-    {S.workouts.length ? <div className="list">{[...S.workouts].reverse().map(w => <WorkoutRow key={w.id} w={w} onClick={() => workoutDetailSheet(w)} />)}</div>
-      : <div className="empty"><div className="ico"><Icon name="history" /></div>{t('No workouts yet.')}</div>}
+    <div className={desktop ? 'wh-split' : undefined}>
+      <WorkoutHistoryList data={data} selectedId={selected?.id} onOpen={open} />
+      {desktop && S.workouts.length > 0 && <div className="card wh-split-detail">
+        {/* keyed: otro entreno arranca con su propia nota, nunca con la del anterior */}
+        {selected ? <WorkoutDetail key={selected.id} w={selected} close={() => setSelectedId(null)} />
+          : <div className="empty">{t('Elegí un entreno para ver el detalle')}</div>}
+      </div>}
+    </div>
   </>
 }

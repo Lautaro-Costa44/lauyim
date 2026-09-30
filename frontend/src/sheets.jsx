@@ -10,6 +10,7 @@ import { t, instrFor, exerciseNameFor, getLang, INSTR_LANGS } from './lib/i18n.j
 import { nav } from './lib/nav.js'
 import ProgramPicker from './components/ProgramPicker.jsx'
 import { api } from './lib/api.js'
+import WorkoutDetailView from './components/workout/WorkoutDetailView.jsx'
 import Media, { Thumb } from './components/Media.jsx'
 import Stepper from './components/Stepper.jsx'
 import Icon from './components/Icon.jsx'
@@ -1227,9 +1228,12 @@ function DayAssign({ day, close }) {
 export const dayAssignSheet = day => ui().openSheet(close => <DayAssign day={day} close={close} />)
 
 /* ============================ workout detail ============================ */
-function WorkoutDetail({ w, close }) {
+// El detalle es WorkoutDetailView (components/workout/), el mismo que ve el staff. Acá se le suma
+// lo que es solo del socio: la nota editable, "Repetir este entreno" y borrar.
+export function WorkoutDetail({ w, close }) {
   const st = useStore(s => s.S)
   const update = useStore(s => s.update)
+  const noHealth = useStore(s => s.healthConsent === 'declined')
   // The session note is editable here rather than only at the finish sheet: what you want to
   // record about a session is often clearer once you have looked at what you actually did.
   const [note, setNote] = useState(w.note || '')
@@ -1255,29 +1259,58 @@ function WorkoutDetail({ w, close }) {
       if (text) rec.note = text; else delete rec.note
     })
   }, [])
-  return <>
-    <h3>{w.name}</h3>
-    <div className="muted small" style={{ marginBottom: 12 }}>{[fmtDate(w.d, true), ...durPart(w.end - w.start), fmtVol(w.vol, st.unit), ...(w.bw ? [fmtNum(w.bw) + ' ' + st.unit] : [])].join(' · ')}</div>
-    {w.entries.map((e, i) => {
-      const ex = EXIDX[e.id]
-      return <div key={i} className="row" style={{ marginBottom: 12, alignItems: 'flex-start' }}>
-        {ex && <Thumb ex={ex} />}
-        <div className="grow"><div className="tt capitalize" style={{ fontWeight: 600 }}>{ex ? exerciseNameFor(ex) : (e.n || e.id)} {w.prs && w.prs.includes(e.id) && <span className="pr"><Icon name="trophy" />PR</span>}</div>
-          <div className="ss">{e.sets.filter(s => s.done).map(s => setLabel(e.id, s, e.target)).join('  ·  ') || t('no sets')}</div>
-          {e.note && <div className="small dim" style={{ marginTop: 3 }}>
-            {e.notePin && <Icon name="flag" style={{ fontSize: 12, marginRight: 4, verticalAlign: '-1px', color: 'var(--yellow)' }} />}{e.note}
-          </div>}</div>
-      </div>
-    })}
+  const footer = <>
     <div className="small muted" style={{ margin: '4px 0 6px' }}>{t('Session note')}</div>
     <textarea {...NO_AUTOFILL} name="app-session-note-history" className="input" rows={2} maxLength={NOTE_MAX} value={note}
       placeholder={t('How the session went as a whole.')}
       onChange={e => setNote(e.target.value)} onBlur={saveNote} />
     <div style={{ height: 14 }} />
-    <Button variant="danger" onClick={() => confirmSheet({ title: t('Delete workout?'), message: t('This removes it from your history for good.'), confirmText: t('Delete'), danger: true, onConfirm: () => { update(s => { s.workouts = s.workouts.filter(x => x.id !== w.id) }); close(); toast(t('Workout deleted')) } })}>{t('Delete workout')}</Button>
+    <Button variant="primary" icon="reset" onClick={() => { if (repeatWorkout(w)) close?.() }}>{t('Repetir este entreno')}</Button>
+    <div style={{ height: 8 }} />
+    <Button variant="danger" onClick={() => confirmSheet({ title: t('Delete workout?'), message: t('This removes it from your history for good.'), confirmText: t('Delete'), danger: true, onConfirm: () => { update(s => { s.workouts = s.workouts.filter(x => x.id !== w.id) }); close?.(); toast(t('Workout deleted')) } })}>{t('Delete workout')}</Button>
   </>
+  return <WorkoutDetailView w={w} data={{ workouts: st.workouts, unit: st.unit }} showBw={!noHealth} footer={footer} />
 }
-export const workoutDetailSheet = w => ui().openSheet(close => <WorkoutDetail w={w} close={close} />)
+// Panel: hoja desde abajo en el celular; centrado sobre la vista en tablet y escritorio.
+export const workoutDetailSheet = w => ui().openSheet(close => <WorkoutDetail w={w} close={close} />, { kind: 'panel' })
+
+/**
+ * "Repetir este entreno": uno nuevo con los mismos ejercicios y, precargados, los pesos y reps de
+ * esa vez (series sin marcar; calentamientos, drop sets y rest-pause como estaban). Si la rutina
+ * ya no existe arranca como entreno libre; los ejercicios que ya no están en la biblioteca se
+ * omiten. Con un entreno en curso no hace nada. → true si arrancó.
+ */
+export function repeatWorkout(w) {
+  const st = S()
+  if (st.active) { toast(t('Ya tenés un entreno en curso. Terminalo o descartalo antes de repetir otro.')); return false }
+  const routine = w.routineId ? st.routines.find(r => r.id === w.routineId) : null
+  const missing = []
+  const unmark = o => (o && typeof o === 'object' && 'done' in o ? { ...o, done: false } : o)
+  const entries = []
+  for (const e of w.entries || []) {
+    if (!EXIDX[e.id]) { missing.push(e.n || e.id); continue }
+    const done = (e.sets || []).filter(x => x.done)
+    const sets = (done.length ? done : e.sets || []).map(x => {
+      const copy = { ...x, done: false }
+      if (Array.isArray(x.drops)) copy.drops = x.drops.map(unmark)
+      if (Array.isArray(x.clusters)) copy.clusters = x.clusters.map(unmark)
+      return copy
+    })
+    if (sets.length) entries.push({ id: e.id, ...(e.sg ? { sg: e.sg } : {}), target: { ...(e.target || { id: e.id }) }, sets })
+  }
+  if (!entries.length) { toast(t('Ninguno de los ejercicios de ese entreno está en la biblioteca.')); return false }
+  update(s => {
+    s.active = { id: uid(), d: todayISO(), start: Date.now(), routineId: routine ? routine.id : null, routineGroupId: routine ? (st.activeGroupId || null) : null,
+      name: w.name || t('Freestyle'), bw: null, cur: 0, entries }
+  })
+  const notes = []
+  if (w.routineId && !routine) notes.push(t('La rutina ya no existe: arranca como entreno libre.'))
+  if (missing.length) notes.push(t('Se omitieron ejercicios que ya no están en la biblioteca: {0}.', missing.join(', ')))
+  if (notes.length) toast(notes.join(' '))
+  useUI.getState().stopRest()
+  nav('/workout')
+  return true
+}
 
 /* ============================ calendar ============================ */
 function Calendar({ start, close }) {
