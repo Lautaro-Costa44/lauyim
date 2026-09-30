@@ -9,15 +9,27 @@ import Icon from './Icon.jsx'
 // `minimizable` (workout view) adds a persistent minimize/expand control so the animation stops
 // eating the screen; the chosen size is saved to settings and carries across exercises and
 // future workouts (issue #12).
-export default function Media({ ex, id, compact, minimizable }) {
+//
+// `steps` (las instrucciones del ejercicio): botón "Ver instrucciones" en la esquina del gif; al
+// tocarlo, la lista se despliega debajo con animación y se vuelve a plegar. No pausa el gif.
+export default function Media({ ex, id, compact, minimizable, steps }) {
   const [playing, setPlaying] = useState(true)
+  const [showSteps, setShowSteps] = useState(false)
   const gifSize = useStore(s => s.S.gifSize)
   const update = useStore(s => s.update)
   if (!ex || !ex.gif) return null
   const mini = minimizable && gifSize === 'mini'
   const toggleSize = e => { e.stopPropagation(); update(s => { s.gifSize = mini ? 'full' : 'mini' }) }
-  return (
-    <div className={'exmedia' + (compact ? ' compact' : '') + (mini ? ' mini' : '')} id={id} onClick={() => setPlaying(p => !p)}>
+  const hasSteps = Array.isArray(steps) && steps.length > 0
+  const stepsId = 'steps-' + ex.id
+  return (<>
+    <div className={'exmedia' + (compact ? ' compact' : '') + (mini ? ' mini' : '') + (hasSteps && showSteps ? ' with-steps' : '')} id={id} onClick={() => setPlaying(p => !p)}>
+      {hasSteps && (
+        <button type="button" className="gifsteps" aria-expanded={showSteps} aria-controls={stepsId}
+          onClick={e => { e.stopPropagation(); setShowSteps(v => !v) }}>
+          <Icon name="list" />{showSteps ? t('Ocultar instrucciones') : t('Ver instrucciones')}
+        </button>
+      )}
       <img decoding="async" src={playing ? gifSrc(ex) : imgSrc(ex)} alt={exerciseNameFor(ex)} />
       {minimizable && (
         <button className="giftoggle" onClick={toggleSize}>
@@ -30,7 +42,10 @@ export default function Media({ ex, id, compact, minimizable }) {
         </span>
       )}
     </div>
-  )
+    {hasSteps && <div className={'exsteps' + (showSteps ? ' open' : '')} id={stepsId} aria-hidden={!showSteps}>
+      <div className="exsteps-in"><ol className="steps-list">{steps.map((s, i) => <li key={i}>{s}</li>)}</ol></div>
+    </div>}
+  </>)
 }
 
 export function Thumb({ ex }) {

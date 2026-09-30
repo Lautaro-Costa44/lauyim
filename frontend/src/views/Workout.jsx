@@ -6,7 +6,7 @@ import { exOr } from '../lib/exercises.js'
 import { effectiveRoutine, lastEntryFor, bestWeightFor, buildSets, freestyleConfig, defaultConfig, setsDoneActive, supersetUnits, unitOf, setLabel, modeOf, isBw, isPerSide, sideReps, repStep, EFFORT, effortOf, stepEffort, capEffort, cascadeWeight, insertWarmupRow, removeRowAt, pairAdjacent, unpairSuperset, cleanupSg, applyIntensifierPlan, pinnedNoteFor, exNoteFor } from '../lib/history.js'
 import { fmtNum, fmtDate, todayISO, exCount, DAYN } from '../lib/format.js'
 import { beep, vibrate } from '../lib/sound.js'
-import { t, exerciseNameFor } from '../lib/i18n.js'
+import { t, exerciseNameFor, instrFor } from '../lib/i18n.js'
 import { api } from '../lib/api.js'
 import { setProgressHighWater, supersetFlowStep, restAfterSet, restOnRecheck } from '../lib/supersetFlow.js'
 import Media from '../components/Media.jsx'
@@ -169,7 +169,7 @@ function ExerciseBlock({ entryIdx, compact, onToggle, onField, onAddSet, onRemov
     </div>
   )
   return <>
-    <Media ex={ex} key={entry.id} compact={compact} minimizable />
+    <Media ex={ex} key={entry.id} compact={compact} minimizable steps={instrFor(ex)} />
     <div className="row between" style={{ marginBottom: 6 }}>
       <div style={{ fontSize: compact ? 17 : 20, fontWeight: 600, letterSpacing: '-.02em', textTransform: 'capitalize', lineHeight: 1.2 }}>{exerciseNameFor(ex)}</div>
       <div className="row" style={{ gap: 2, flex: 'none' }}>

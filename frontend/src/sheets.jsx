@@ -363,7 +363,7 @@ function ExerciseDetail({ ex, close, noAdd = false }) {
   const best = bestWeightFor(st, ex.id)
   return <>
     <h3 className="capitalize">{exerciseNameFor(ex)}</h3>
-    <Media ex={ex} />
+    <Media ex={ex} steps={instrFor(ex)} />
     <div className="row" style={{ gap: 6, flexWrap: 'wrap', margin: '10px 0' }}>
       <span className="tag acc">{t(ex.bp)}</span>
       {(ex.primaries?.length ? ex.primaries : (ex.tg ? [ex.tg] : [])).map((s, i) => <span key={i} className="tag"><Icon name="target" />{t(s)}</span>)}
@@ -378,7 +378,8 @@ function ExerciseDetail({ ex, close, noAdd = false }) {
       <Button variant="danger" icon="trash" style={{ flex: 1 }} onClick={() => deleteCustomEx(ex, close)}>{t('Delete')}</Button>
     </div>}
     {!isCardio(ex) && !isStretch(ex) && !isBw(ex) && <OneRM ex={ex} />}
-    {instrFor(ex).length > 0 &&<><h4 className="sec">{t('How to')}{!INSTR_LANGS.includes(getLang()) && <span className="dim" style={{ textTransform: 'none', letterSpacing: 0 }}> · {t('instructions in English')}</span>}</h4><ol className="steps-list">{instrFor(ex).map((s, i) => <li key={i}>{s}</li>)}</ol></>}
+    {/* Con gif, las instrucciones van en el botón sobre el gif; sin gif, acá al final. */}
+    {!ex.gif && instrFor(ex).length > 0 &&<><h4 className="sec">{t('How to')}{!INSTR_LANGS.includes(getLang()) && <span className="dim" style={{ textTransform: 'none', letterSpacing: 0 }}> · {t('instructions in English')}</span>}</h4><ol className="steps-list">{instrFor(ex).map((s, i) => <li key={i}>{s}</li>)}</ol></>}
   </>
 }
 export const exerciseDetailSheet = ex => ui().openSheet(close => <ExerciseDetail ex={ex} close={close} />)
@@ -813,7 +814,7 @@ function ExConfig({ ex, existing, onSave, onDelete, close, routine, initial }) {
   }
   return <>
     <h3 className="capitalize">{exerciseNameFor(ex)}</h3>
-    <Media ex={ex} />
+    <Media ex={ex} steps={instrFor(ex)} />
     {/* The same tags the exercise detail sheet shows, secondaries included: choosing what goes
         into a plan is exactly when "what else does this hit" matters, and until now that was
         only visible from the Exercises tab, after the fact. */}

@@ -1799,3 +1799,20 @@ button.checkin-log-row:active{background:var(--surface-3)}
 .utable .tt{font-size:15px}
 .uicons{color:var(--label-3);display:flex;justify-content:flex-end}
 .uicons svg{width:15px;height:15px}
+
+/* Instrucciones del ejercicio junto al gif (Media, prop `steps`): botón en la esquina superior
+   izquierda (las de abajo son minimizar y pausar) y la lista que se despliega debajo. */
+.exmedia .gifsteps{
+  position:absolute;top:9px;left:9px;display:inline-flex;align-items:center;gap:5px;border:0;cursor:pointer;
+  background:rgba(0,0,0,.45);color:#fff;border-radius:99px;padding:5px 11px;font:inherit;font-size:12px;font-weight:600;
+  -webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);
+}
+.exmedia .gifsteps svg{width:13px;height:13px}
+.exmedia .gifsteps[aria-expanded="true"]{background:var(--acc);color:var(--on-acc)}
+.exmedia.with-steps{margin-bottom:4px}
+/* 0fr → 1fr: la altura se anima sin medir el contenido. */
+.exsteps{display:grid;grid-template-rows:0fr;opacity:0;transition:grid-template-rows .28s var(--ease),opacity .2s ease,margin .28s var(--ease)}
+.exsteps.open{grid-template-rows:1fr;opacity:1;margin-bottom:14px}
+.exsteps-in{overflow:hidden;min-height:0}
+.exsteps .steps-list{margin:8px 0 0;padding:12px 14px 12px 32px;background:var(--surface);border-radius:var(--r-card)}
+@media (prefers-reduced-motion:reduce){ .exsteps{transition:none} }
