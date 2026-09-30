@@ -3329,7 +3329,8 @@ const routes = {
       // Sin consentimiento de datos de salud, el admin tampoco ve el peso corporal.
       bodyweight: healthDeclined(u) ? [] : S.bodyweight || [],
       healthConsent: healthConsentOf(u),
-      workouts: (S.workouts || []).slice().reverse()
+      // Tampoco el peso corporal anotado en cada entreno (bw).
+      workouts: (S.workouts || []).slice().reverse().map(w => (healthDeclined(u) && w && 'bw' in w ? (({ bw, ...rest }) => rest)(w) : w))
     });
   },
 
