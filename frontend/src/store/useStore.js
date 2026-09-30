@@ -158,8 +158,8 @@ export const useStore = create((set, get) => {
   }
 
   // Nunca para staff: admins y owner no se bloquean por cuota (el servidor tampoco los bloquea).
-  // Con DEMO_ADMIN_ALL_USERS todos son admin, pero solo el staff de verdad (user.staff de
-  // /api/me) queda exento; sin ese dato (sesión vieja) vale admin, como antes.
+  // Exento: el staff (user.staff de /api/me: admin u owner); sin ese dato (sesión vieja) vale
+  // admin, como antes.
   const setMembershipBlocked = blocked => {
     const on = !!blocked && !billingExempt(get().user)
     try { on ? localStorage.setItem(BLOCK_KEY, '1') : localStorage.removeItem(BLOCK_KEY) } catch { /* storage off */ }

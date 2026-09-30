@@ -176,7 +176,12 @@ try {
 // Admin dashboard (issue): admins are matched by uid; INVITE_ONLY gates new signups behind a
 // code the admin generates. Both default off so a fresh self-hosted instance stays open.
 const ADMIN_UIDS = (process.env.ADMIN_UIDS || '').split(',').map(s => s.trim()).filter(Boolean);
-const DEMO_ADMIN_ALL_USERS = /^(1|true|yes|on)$/i.test(process.env.DEMO_ADMIN_ALL_USERS || '');
+// NEW_USERS_ADMIN=1 (la demo de venta): cada cuenta que se registra por su cuenta queda admin en la
+// base, como si el owner la hubiera promovido; se le puede sacar como a cualquiera. Nunca una ficha
+// cargada por el staff ni quien activa su ficha con el código del gym. Reemplaza a
+// DEMO_ADMIN_ALL_USERS (todos admin sin estar en la base), que ya no existe.
+const NEW_USERS_ADMIN = /^(1|true|yes|on)$/i.test(process.env.NEW_USERS_ADMIN || '');
+if (process.env.DEMO_ADMIN_ALL_USERS) console.warn('DEMO_ADMIN_ALL_USERS ya no existe: usá NEW_USERS_ADMIN=1 (ver docs/runbook-actualizaciones.md).');
 const INVITE_ONLY = /^(1|true|yes|on)$/i.test(process.env.INVITE_ONLY || '');
 // Guest mode ("Continue without account") keeps everything in the browser and never touches this
 // server — but on an instance meant for a known set of people, an entrance nobody can walk back
@@ -307,9 +312,9 @@ if (!fs.existsSync(secretFile)) fs.writeFileSync(secretFile, crypto.randomBytes(
 const SECRET = fs.readFileSync(secretFile, 'utf8').trim();
 
 // Funciones auxiliares para compatibilidad
-const isAdmin = user => !!user && (DEMO_ADMIN_ALL_USERS || user.admin === 1 || user.admin === true || ADMIN_UIDS.includes(user.id));
+const isAdmin = user => !!user && (user.admin === 1 || user.admin === true || ADMIN_UIDS.includes(user.id));
 const isOwner = user => !!user && (user.owner === 1 || user.owner === true);
-// Staff de verdad (admin en la base, ADMIN_UIDS u owner), sin DEMO_ADMIN_ALL_USERS: cuotas solo
+// Staff (admin en la base, ADMIN_UIDS u owner): cuotas solo
 // exceptúa a estos. Así la demo (todos admins para ver el panel) igual muestra bloqueos y el
 // resumen de Cuotas con socios.
 const isRealStaff = user => !!user && (user.admin === 1 || user.admin === true || ADMIN_UIDS.includes(user.id) || isOwner(user));
@@ -2397,7 +2402,7 @@ const routes = {
     const user = readSession(req);
     // 401 con el motivo: el cliente distingue una sesión vencida de una cuenta dada de baja.
     if (!user) return json(res, 401, { error: 'No has iniciado sesión', reason: sessionEndReason(req) });
-    // staff: admin de verdad (sin DEMO_ADMIN_ALL_USERS). El frontend lo usa para el bloqueo por cuota.
+    // staff: admin u owner. El frontend lo usa para el bloqueo por cuota.
     const me = { id: user.id, name: user.name, admin: isAdmin(user), owner: !!user.owner, staff: isRealStaff(user) };
     // Pendiente de aprobación / formulario de datos de una sola vez (socios que ya existían).
     const fields = memberFieldsNow();
@@ -2508,6 +2513,9 @@ const routes = {
       }
     }
     const user = { id: c.uid, name: c.name, created: new Date().toISOString(), pending: !!c.pending, privacyAcceptedAt: c.profile ? new Date().toISOString() : null, healthConsent: !!c.healthConsent };
+    // NEW_USERS_ADMIN: admin desde el registro; una cuenta pendiente de aprobación, recién al habilitarla
+    // (un admin nunca queda pendiente: saltearía la aprobación).
+    if (NEW_USERS_ADMIN && !c.pending) user.admin = true;
     if (invite) { user.invitedBy = invite.code; }
     // El DNI pudo cargarse entre options y verify (otra alta): se frena igual.
     if (c.profile?.dniNorm && findMemberByDni(c.profile.dniNorm)) return json(res, 409, { error: 'dni_exists', message: DNI_EXISTS_MESSAGE });
@@ -3728,6 +3736,8 @@ const routes = {
       throw error;
     }
     if (!approved) return json(res, 409, { error: 'not_pending', message: 'La cuenta ya no está pendiente' });
+    // Las pendientes son siempre registros abiertos (una ficha nunca queda pendiente).
+    if (NEW_USERS_ADMIN) updateUser(userId, { admin: true });
     const how = type === 'payment' ? 'con primer pago' : type === 'trial' ? 'con prueba' : 'sin pago';
     audit(req, 'admin.member.approve', { user: admin, target, summary: [`Habilitada ${how}`, profile.dniNorm ? `DNI ${maskDni(profile.dniNorm)}` : null].filter(Boolean).join(' · ') });
     if (payment) audit(req, 'admin.billing.payment', { user: admin, target, summary: `$${payment.amount} · ${payment.method} · ${payment.plan.name} · vence ${payment.period.dueDate}` });

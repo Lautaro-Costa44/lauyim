@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
-// Bloqueo por cuota con DEMO_ADMIN_ALL_USERS: todos son admin (ven el panel), pero solo el staff
-// de verdad (user.staff de /api/me) queda exento. Sin ese dato vale admin, como antes.
+// Bloqueo por cuota: solo el staff (user.staff de /api/me: admin u owner) queda exento. Sin ese
+// dato (sesión de antes) vale admin, como antes.
 import { beforeEach, describe, expect, it } from 'vitest'
 import { billingExempt, useStore } from './useStore.js'
 

@@ -57,3 +57,16 @@ conexión. Comparalo con el `release` de `https://<instancia>/precache.json`.
   (`docker compose -p <proyecto> build --no-cache web`).
 - **Se actualiza en medio de algo:** no debería. Revisá si había un sheet abierto (se posterga) o un
   entrenamiento (`S.active`).
+
+## Instancia de demo (venta)
+
+`DEMO_ADMIN_ALL_USERS` ya no existe (si queda en el `.env`, la API lo ignora y avisa en el log).
+En su lugar:
+
+- `NEW_USERS_ADMIN=1`: cada cuenta que se **registra** ("Crear nuevo perfil") queda admin en la
+  base, como si el owner la hubiera promovido, y se le puede sacar desde Usuarios. Con la
+  aprobación de cuentas encendida, queda admin recién al habilitarla.
+- Nunca quedan admin: las fichas que carga el staff ni quien activa su ficha con el código del gym.
+  Así los socios de ejemplo se ven como socios (con su cuota, sus bloqueos y en Ingreso Físico).
+- Al cambiar la variable, las cuentas que ya existían no se tocan: las que eran socios dejan de
+  entrar al panel. Si alguna tiene que seguir entrando, hacela admin desde Usuarios.
