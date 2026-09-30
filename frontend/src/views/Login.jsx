@@ -113,23 +113,27 @@ export function RegisterSheet({ close, setOnBack }) {
   </>
 }
 
+// "Usar mi cuenta de otro dispositivo": este dispositivo muestra un código y el socio lo aprueba
+// desde cualquier otro donde ya tenga sesión (celular, tablet o computadora), en Ajustes →
+// "Vincular otro dispositivo". Mientras tanto se pregunta cada 2 s si ya lo aprobó.
+const pad2 = n => String(n).padStart(2, '0')
 function DevicePairingSheet({ close }) {
   const { setUser, pullState } = useStore()
   const [pairing, setPairing] = useState(null)
-  const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+  const [expired, setExpired] = useState(false)
+  const [attempt, setAttempt] = useState(0)          // "Generar otro código" vuelve a empezar
+  const [now, setNow] = useState(Date.now())
 
   useEffect(() => {
     let timer = null
     let active = true
-
+    setPairing(null); setError(null); setExpired(false)
     const start = async () => {
       try {
         const res = await api('/api/auth/device/start', { method: 'POST', body: '{}' })
         if (!active) return
         setPairing(res)
-        setLoading(false)
-
         const poll = async () => {
           try {
             const p = await api(`/api/auth/device/poll?pairingId=${res.pairingId}`)
@@ -140,46 +144,65 @@ function DevicePairingSheet({ close }) {
               close()
               return
             }
-            if (p.status === 'expired') {
-              setError(t('El código ha expirado. Reintenta.'))
-              return
-            }
-          } catch (e) { /* retry */ }
+          } catch (e) {
+            if (e?.data?.status === 'expired' || e?.data?.error === 'expired') { if (active) setExpired(true); return }
+            // Sin red o un error pasajero: se reintenta.
+          }
           if (active) timer = setTimeout(poll, 2000)
         }
         timer = setTimeout(poll, 2000)
       } catch (e) {
-        if (active) { setError(errorText(e, t('Error al iniciar vinculación'))); setLoading(false); }
+        if (active) setError(errorText(e, t('Error al iniciar vinculación')))
       }
     }
     start()
+    return () => { active = false; if (timer) clearTimeout(timer) }
+  }, [setUser, pullState, close, attempt])
 
-    return () => {
-      active = false
-      if (timer) clearTimeout(timer)
-    }
-  }, [setUser, pullState, close])
+  // Cuenta regresiva hasta que vence el código.
+  useEffect(() => {
+    if (!pairing || expired) return
+    const iv = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(iv)
+  }, [pairing, expired])
+  const left = pairing ? Math.max(0, Math.round((pairing.expiresAt - now) / 1000)) : 0
+  useEffect(() => { if (pairing && left === 0) setExpired(true) }, [pairing, left])
 
-  return <>
-    <h3>{t('Iniciar sesión desde el celu')}</h3>
-    <div className="muted small" style={{ marginBottom: 14 }}>
-      {t('Abrí la app en tu celular donde tengas sesión iniciada e ingresá este código en Configuración → Vincular dispositivo.')}
+  const [first, second] = String(pairing?.manualCode || '').split('-')
+  return <div className="pairing">
+    <h3>{t('Usar tu cuenta de otro dispositivo')}</h3>
+    <p className="muted small">{t('En el celular, la tablet o la computadora donde ya usás lauyim:')}</p>
+    <ol className="pairing-steps">
+      <li>{t('Abrí Ajustes.')}</li>
+      <li>{t('Tocá "Vincular otro dispositivo".')}</li>
+      <li>{t('Ingresá este código.')}</li>
+    </ol>
+    <div className={'pairing-code' + (expired ? ' expired' : '')} aria-live="polite">
+      {error ? <div className="form-error" role="alert">{error}</div>
+        : !pairing ? <div className="muted">{t('Generando código…')}</div>
+        : <>
+          <div className="pairing-code-v" aria-label={t('Código de vinculación')}>{first}<span className="pairing-dash">-</span>{second}</div>
+          {expired
+            ? <div className="small muted">{t('El código venció.')}</div>
+            : <div className="pairing-wait small muted"><span className="pairing-dot" aria-hidden="true" />{t('Esperando que lo apruebes · vence en {0}:{1}', Math.floor(left / 60), pad2(left % 60))}</div>}
+        </>}
     </div>
-    {loading && <div className="muted" style={{ padding: 20 }}>{t('Generando código...')}</div>}
-    {error && <div style={{ color: 'var(--red)', margin: '10px 0' }}>{error}</div>}
-    {pairing && !error && <>
-      <div className="card" style={{ textAlign: 'center', background: 'var(--surface-2)', padding: 20, margin: '14px 0' }}>
-        <div style={{ fontSize: 13, color: 'var(--label-2)', marginBottom: 6 }}>{t('Código de vinculación')}</div>
-        <div style={{ fontSize: 32, fontWeight: 800, letterSpacing: '.18em', color: 'var(--acc)', fontFamily: 'monospace' }}>
-          {pairing.manualCode}
-        </div>
-        <div className="small muted" style={{ marginTop: 8 }}>
-          {t('Expira en 5 minutos · Esperando aprobación...')}
-        </div>
-      </div>
-    </>}
+    {(expired || error) && <Button variant="primary" icon="reset" onClick={() => setAttempt(n => n + 1)}>{t('Generar otro código')}</Button>}
+    <div style={{ height: 8 }} />
     <Button variant="ghost" className="dim" onClick={close}>{t('Cancelar')}</Button>
-  </>
+  </div>
+}
+
+// Opción del login: tarjeta con borde, ícono, título, una línea que explica y chevron.
+function LoginOption({ icon, title, subtitle, onClick, primary }) {
+  return <button type="button" className={'login-option' + (primary ? ' primary' : '')} onClick={onClick}>
+    <span className="login-option-i"><Icon name={icon} /></span>
+    <span className="login-option-m">
+      <span className="login-option-t">{title}</span>
+      <span className="login-option-s">{subtitle}</span>
+    </span>
+    <Icon name="chevronRight" className="login-option-chev" />
+  </button>
 }
 
 // Errores del código del gym en palabras del socio. Lo demás (red, verificación) va tal cual.
@@ -291,6 +314,11 @@ export default function Login() {
     <h1 style={{ fontSize: 34, fontWeight: 700, letterSpacing: '-.028em', margin: '-5px 0 4px' }}>lauyim</h1>
   </>
   const wrap = { display: 'flex', flexDirection: 'column', justifyContent: 'center', minHeight: '78vh', textAlign: 'center' }
+  // El aviso de passkeys y el link de privacidad quedan fijos al fondo de la pantalla.
+  const footer = <div className="login-footer">
+    <div className="dim small" style={{ lineHeight: 1.5 }}>{t('Passkeys use {0} — no passwords.', t(BIO))}<br />{t('Each profile keeps its own plan, workouts & body weight.')}</div>
+    <div className="dim small privacy-footer"><a className="privacy-link" href="#/privacidad">{t('Aviso de privacidad')}</a></div>
+  </div>
 
   // Demo build: no backend to sign in against — the only way in is the local guest profile.
   if (DEMO) return (
@@ -308,30 +336,30 @@ export default function Login() {
   )
 
   return (
-    <div className="narrow" style={wrap}>
-      {head}
-      <div className="muted" style={{ marginBottom: 34 }}>{t('Tus entrenamientos. Tus pesos. Tus perfiles.')}</div>
-      {loginNotice === 'relogin' && <div className="card" role="status" style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16, padding: '14px 16px', textAlign: 'left' }}>
-        <div style={{ color: 'var(--yellow)', display: 'flex', flex: '0 0 auto' }}><Icon name="lock" /></div>
-        <div className="small" style={{ lineHeight: 1.45 }}>{t('No pudimos verificar tu cuenta con esta sesión. Iniciá sesión de nuevo.')}</div>
-      </div>}
-      {!online && <div className="card" role="status" style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16, padding: '14px 16px', textAlign: 'left' }}>
-        <div style={{ color: 'var(--yellow)', display: 'flex', flex: '0 0 auto' }}><Icon name="wifiOff" /></div>
-        <div className="small" style={{ lineHeight: 1.45 }}>{t('Necesitás conexión para el primer ingreso.')}</div>
-      </div>}
-      {webauthnOK() ? <>
-        <Button variant="primary" icon="person" onClick={signIn}>{t('Ingresar con passkey')}</Button>
-        <div style={{ height: 10 }} />
-        <Button variant="tinted" icon="phone" onClick={() => useUI.getState().openSheet(c => <DevicePairingSheet close={c} />)}>{t('Continuar con codigo de sincronizacion')}</Button>
-        <div style={{ height: 10 }} />
-        <Button icon="sparkles" onClick={() => useUI.getState().openSheet((close, { setOnBack } = {}) => <RegisterSheet close={close} setOnBack={setOnBack} />)}>{t('Crear nuevo perfil')}</Button>
-        <div style={{ height: 6 }} />
-        <Button variant="ghost" onClick={() => openLinkSheet('')}>{t('Tengo un código del gym')}</Button>
-      </> :<div className="card small muted" style={{ textAlign: 'left' }}>
-        {t("This browser doesn't support passkeys, and this instance requires an account. Try a browser or device with passkey support.")}
-      </div>}
-      <div className="dim small" style={{ marginTop: 26, lineHeight: 1.5 }}>{t('Passkeys use {0} — no passwords.', t(BIO))}<br />{t('Each profile keeps its own plan, workouts & body weight.')}</div>
-      <div className="dim small privacy-footer"><a className="privacy-link" href="#/privacidad">{t('Aviso de privacidad')}</a></div>
+    <div className="narrow login-page">
+      <div className="login-main">
+        {head}
+        <div className="muted" style={{ marginBottom: 26 }}>{t('Tus entrenamientos. Tus pesos. Tus perfiles.')}</div>
+        {loginNotice === 'relogin' && <div className="card" role="status" style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16, padding: '14px 16px', textAlign: 'left' }}>
+          <div style={{ color: 'var(--yellow)', display: 'flex', flex: '0 0 auto' }}><Icon name="lock" /></div>
+          <div className="small" style={{ lineHeight: 1.45 }}>{t('No pudimos verificar tu cuenta con esta sesión. Iniciá sesión de nuevo.')}</div>
+        </div>}
+        {!online && <div className="card" role="status" style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16, padding: '14px 16px', textAlign: 'left' }}>
+          <div style={{ color: 'var(--yellow)', display: 'flex', flex: '0 0 auto' }}><Icon name="wifiOff" /></div>
+          <div className="small" style={{ lineHeight: 1.45 }}>{t('Necesitás conexión para el primer ingreso.')}</div>
+        </div>}
+        {webauthnOK() ? <div className="login-options">
+          <LoginOption primary icon="key" title={t('Ingresar con passkey')} subtitle={t('Con {0}', t(BIO))} onClick={signIn} />
+          <LoginOption icon="link" title={t('Usar mi cuenta de otro dispositivo')} subtitle={t('Te mostramos un código para aprobar desde donde ya usás lauyim.')}
+            onClick={() => useUI.getState().openSheet(c => <DevicePairingSheet close={c} />)} />
+          <LoginOption icon="sparkles" title={t('Crear nuevo perfil')} subtitle={t('Primera vez en la app.')}
+            onClick={() => useUI.getState().openSheet((close, { setOnBack } = {}) => <RegisterSheet close={close} setOnBack={setOnBack} />)} />
+          <LoginOption icon="clipboard" title={t('Tengo un código del gym')} subtitle={t('Te lo dio recepción para activar tu ficha.')} onClick={() => openLinkSheet('')} />
+        </div> : <div className="card small muted" style={{ textAlign: 'left' }}>
+          {t("This browser doesn't support passkeys, and this instance requires an account. Try a browser or device with passkey support.")}
+        </div>}
+      </div>
+      {footer}
     </div>
   )
 }

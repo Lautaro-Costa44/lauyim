@@ -22,9 +22,13 @@ vi.mock('../lib/api.js', async importOriginal => {
 const fail = (status, error) => Promise.reject(Object.assign(new Error(error), { status, data: { error } }))
 const OPTIONS = { cid: 'c1', options: { challenge: 'AAAA', user: { id: 'AAAA' } }, name: 'jperez', fullName: 'Juan Pérez' }
 let optionsReply, verifyReply
+let pairingStart = () => Promise.resolve({ pairingId: 'p1', manualCode: 'ABCD-EFGH', expiresAt: Date.now() + 5 * 60000 })
+let pairingPoll = () => Promise.resolve({ status: 'pending' })
 apiMock.mockImplementation((url, opts = {}) => {
   if (url === '/api/link/options') return optionsReply()
   if (url === '/api/link/verify') return verifyReply()
+  if (url === '/api/auth/device/start') return pairingStart()
+  if (url.startsWith('/api/auth/device/poll')) return pairingPoll()
   if (url === '/api/me') return Promise.resolve({ user: { id: 'f', name: 'jperez', admin: false }, billingEnabled: true, billing: { hasPlan: false, status: 'sin_plan', blocked: false } })
   return Promise.resolve({})
 })
@@ -40,7 +44,8 @@ const { formatLinkCodeInput, isCompleteLinkCode } = await import('../lib/link-co
 const tick = () => act(async () => { await new Promise(r => setTimeout(r, 20)) })
 const flush = async () => { for (let i = 0; i < 8; i++) await tick() }
 const text = () => document.body.textContent
-const button = label => [...document.querySelectorAll('button')].filter(b => b.textContent.trim() === label).at(-1)
+// Las opciones del login son tarjetas: se buscan por su título.
+const button = label => [...document.querySelectorAll('button')].filter(b => b.textContent.trim() === label || b.querySelector('.login-option-t')?.textContent === label).at(-1)
 const click = async el => { expect(el).toBeTruthy(); await act(async () => { el.click() }); await flush() }
 // El consentimiento (aviso + datos de salud) va antes de crear la passkey.
 const acceptConsent = async () => { await act(async () => { document.querySelector('.privacy-accept input').click() }); await flush() }
@@ -164,3 +169,37 @@ describe('login con código del gym', () => {
     expect(useStore.getState().user).toBeNull()
   })
 })
+
+describe('pantalla de login', () => {
+  it('cuatro opciones como tarjetas, con su explicación; passkey destacada; aviso y privacidad al fondo', async () => {
+    await mount()
+    const cards = [...document.querySelectorAll('.login-option')]
+    expect(cards.map(c => c.querySelector('.login-option-t').textContent)).toEqual(['Ingresar con passkey', 'Usar mi cuenta de otro dispositivo', 'Crear nuevo perfil', 'Tengo un código del gym'])
+    expect(cards.every(c => c.tagName === 'BUTTON' && c.querySelector('.login-option-s').textContent)).toBe(true)
+    expect(cards[0].classList.contains('primary')).toBe(true)
+    const page = document.querySelector('.login-page')
+    expect(page.lastElementChild.classList.contains('login-footer')).toBe(true)
+    expect(page.querySelector('.login-footer').textContent).toContain('Aviso de privacidad')
+    expect(text()).not.toContain('sincronizacion')
+  })
+
+  it('otro dispositivo: pasos para cualquier dispositivo, el código y la cuenta regresiva; vencido, se genera otro', async () => {
+    await mount()
+    await click(button('Usar mi cuenta de otro dispositivo'))
+    const sheet = document.querySelector('#modal-root .pairing')
+    expect(sheet.textContent).toContain('En el celular, la tablet o la computadora donde ya usás lauyim')
+    expect([...sheet.querySelectorAll('.pairing-steps li')].map(li => li.textContent)).toEqual(['Abrí Ajustes.', 'Tocá "Vincular otro dispositivo".', 'Ingresá este código.'])
+    expect(sheet.querySelector('.pairing-code-v').textContent).toBe('ABCD-EFGH')
+    expect(sheet.textContent).toMatch(/vence en [45]:\d\d/)
+    expect(sheet.textContent).not.toContain('celu ')
+    // El servidor dice que venció: se ofrece generar otro.
+    pairingPoll = () => Promise.reject(Object.assign(new Error('expired'), { status: 400, data: { status: 'expired', error: 'expired' } }))
+    await act(async () => { await new Promise(r => setTimeout(r, 2100)) }); await flush()
+    expect(document.querySelector('#modal-root .pairing').textContent).toContain('El código venció.')
+    pairingStart = () => Promise.resolve({ pairingId: 'p2', manualCode: 'WXYZ-2345', expiresAt: Date.now() + 5 * 60000 })
+    pairingPoll = () => Promise.resolve({ status: 'pending' })
+    await click(button('Generar otro código'))
+    expect(document.querySelector('#modal-root .pairing-code-v').textContent).toBe('WXYZ-2345')
+  })
+})
+

@@ -602,7 +602,7 @@ export default function Settings() {
         address bar and no about box, so without this there is no way to tell which build you
         are running, or whether an update actually installed. */}
     <div className="dim small" style={{ textAlign: 'center', marginTop: 4, lineHeight: 1.6 }}>
-      lauyim v{__APP_VERSION__}{build && <> · <span title={t('Build')}>{build}</span></>} · {t('free & open source (AGPL v3)')}<br />
+      lauyim v{__APP_VERSION__}{build && <> · <span title={t('Build')}>{build}</span></>} · {t('Licencia AGPL v3')}<br />
       <a href="https://github.com/Lautaro-Costa44/lauyim" target="_blank" rel="noopener">Código Fuente</a> · exercise data: hasaneyldrm/exercises-dataset (MIT)<br />
       exercise images and animations © <a href="https://gymvisual.com/" target="_blank" rel="noopener">Gym visual</a>
     </div>

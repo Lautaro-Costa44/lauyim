@@ -1816,3 +1816,36 @@ button.checkin-log-row:active{background:var(--surface-3)}
 .exsteps-in{overflow:hidden;min-height:0}
 .exsteps .steps-list{margin:8px 0 0;padding:12px 14px 12px 32px;background:var(--surface);border-radius:var(--r-card)}
 @media (prefers-reduced-motion:reduce){ .exsteps{transition:none} }
+
+/* ------------------------------------------------------------------ login -- */
+/* Opciones como tarjetas y el aviso de passkeys + privacidad fijos al fondo de la pantalla. */
+#app:has(.login-page){padding-bottom:calc(12px + var(--sab))}
+.login-page{display:flex;flex-direction:column;min-height:calc(var(--viewport-height, 100vh) - var(--sat) - 20px - var(--sab));text-align:center}
+.login-main{flex:1;display:flex;flex-direction:column;justify-content:center;padding-bottom:20px}
+.login-footer{padding-top:14px}
+.login-options{display:flex;flex-direction:column;gap:10px;text-align:left}
+.login-option{display:flex;align-items:center;gap:14px;width:100%;text-align:left;padding:14px 14px 14px 16px;min-height:68px;
+  background:var(--surface);border:1px solid var(--sep);border-radius:var(--r-card);color:var(--label);font:inherit;cursor:pointer;
+  transition:border-color var(--fast),background var(--fast),transform .08s ease}
+.login-option:hover{border-color:color-mix(in srgb,var(--acc) 55%,var(--sep));background:var(--surface-2)}
+.login-option:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+.login-option:active{transform:scale(.99);background:var(--surface-2)}
+.login-option.primary{border-color:var(--acc);background:color-mix(in srgb,var(--acc) 8%,var(--surface))}
+.login-option-i{flex:none;width:38px;height:38px;border-radius:11px;display:flex;align-items:center;justify-content:center;background:var(--surface-2);color:var(--acc)}
+.login-option.primary .login-option-i{background:var(--acc);color:var(--on-acc)}
+.login-option-i svg{width:20px;height:20px}
+.login-option-m{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.login-option-t{font-size:16px;font-weight:600;letter-spacing:-.01em}
+.login-option-s{font-size:13px;color:var(--label-2);line-height:1.35}
+.login-option-chev{flex:none;color:var(--label-3)}
+/* Vista "Usar tu cuenta de otro dispositivo". */
+.pairing p{margin:0 0 8px}
+.pairing-steps{margin:0 0 14px;padding-left:22px;color:var(--label-2);font-size:15px;line-height:1.6}
+.pairing-code{text-align:center;background:var(--surface-2);border-radius:var(--r-lg);padding:20px 14px;margin-bottom:14px}
+.pairing-code-v{font-size:34px;font-weight:800;letter-spacing:.16em;color:var(--acc);font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+.pairing-code.expired .pairing-code-v{color:var(--label-3);text-decoration:line-through}
+.pairing-dash{color:var(--label-3);margin:0 .05em}
+.pairing-wait{display:inline-flex;align-items:center;gap:7px;margin-top:8px}
+.pairing-dot{width:8px;height:8px;border-radius:50%;background:var(--acc);animation:pairpulse 1.4s ease-in-out infinite}
+@keyframes pairpulse{0%,100%{opacity:.35;transform:scale(.8)}50%{opacity:1;transform:scale(1)}}
+@media (prefers-reduced-motion:reduce){ .pairing-dot{animation:none} }

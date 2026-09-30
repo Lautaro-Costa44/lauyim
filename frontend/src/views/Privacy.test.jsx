@@ -22,7 +22,8 @@ const { setLang } = await import('../lib/i18n.js')
 const tick = () => act(async () => { await new Promise(r => setTimeout(r, 20)) })
 const flush = async () => { for (let i = 0; i < 8; i++) await tick() }
 const text = () => document.body.textContent
-const button = label => [...document.querySelectorAll('button')].filter(b => b.textContent.trim() === label).at(-1)
+// Las opciones del login son tarjetas: se buscan por su título.
+const button = label => [...document.querySelectorAll('button')].filter(b => b.textContent.trim() === label || b.querySelector('.login-option-t')?.textContent === label).at(-1)
 const click = async el => { expect(el).toBeTruthy(); await act(async () => { el.click() }); await flush() }
 
 let root, container
