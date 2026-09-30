@@ -200,7 +200,9 @@ test('últimos dígitos: una coincidencia, varias (nombre + inicial, nunca el DN
   assert.deepEqual(one.body.candidates.map(c => c.name), ['Ana G.']);
   const many = await lookup(token, '4444');
   assert.deepEqual(many.body.candidates.map(c => c.name), ['Carla U.', 'Carlos D.', 'Carmen T.']);
-  assert.ok(!JSON.stringify(many.body).match(/\d{4,}/));
+  // Solo nombre + inicial y el ticket (aleatorio: puede tener dígitos); nunca el DNI.
+  assert.ok(many.body.candidates.every(c => Object.keys(c).sort().join() === 'name,ticket' && !/\d/.test(c.name)));
+  assert.ok(!JSON.stringify(many.body).includes('004444'));
   assert.equal((await lookup(token, '5555')).body.status, 'too_many');
   assert.equal((await lookup(token, '1005555')).body.candidates.length, 1); // con más dígitos, uno
   await setSettings({ mode: 'full' });
@@ -309,4 +311,13 @@ test('una ficha que se une a una cuenta conserva su asistencia', async () => {
   db.closeDatabase();
   assert.ok(!merged.error, JSON.stringify(merged));
   assert.deepEqual(sql("SELECT user_id FROM attendance WHERE date = '2026-01-10'"), [{ user_id: 'cuenta' }]);
+});
+
+test('listado de usuarios: nombre y apellido y último día que vino (entreno o Ingreso Físico)', async () => {
+  const users = (await call('adm', 'GET', '/api/admin/users')).body.users;
+  const by = Object.fromEntries(users.map(u => [u.id, u]));
+  assert.equal(by.juan.fullName, 'Juan Pérez');
+  assert.equal(by.juan.lastSeen, today);                      // vino hoy (y además entrenó)
+  assert.equal(by.venc.lastSeen, today);                      // hoy por recepción; antes, hace 3 días
+  assert.equal(by.off.lastSeen, null);
 });

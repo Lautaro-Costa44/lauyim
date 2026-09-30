@@ -1737,6 +1737,11 @@ export function getAttendanceByDate(startDate, endDate) {
   `).all(startDate, endDate, startDate, endDate);
 }
 
+// Último Ingreso Físico de cada socio → Map(userId → 'YYYY-MM-DD').
+export function getLastAttendanceByUser() {
+  return new Map(getDatabase().prepare('SELECT user_id, MAX(date) AS date FROM attendance GROUP BY user_id').all().map(r => [r.user_id, r.date]));
+}
+
 // Denominador del gráfico de asistencia: cuentas activas con app, más las fichas con DNI (pueden
 // venir por Ingreso Físico).
 export function countAttendanceMembers() {

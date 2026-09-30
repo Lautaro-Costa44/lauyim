@@ -410,6 +410,60 @@ describe('admin tabs on a phone: the active one is centered', () => {
   })
 })
 
+describe('Usuarios: tabla en escritorio', () => {
+  const PEOPLE = [
+    { id: 'o', name: 'dueña', fullName: 'Olga Dueña', owner: true, admin: true, hasApp: true, lastSeen: '2026-09-20', billing: { status: 'sin_plan' } },
+    { id: 'j', name: 'Juani', fullName: 'Juan Fernández', hasApp: true, lastSeen: '2026-09-23', billing: { status: 'vencido' } },
+    { id: 'b', name: 'beto', fullName: null, hasApp: false, lastSeen: null, billing: { status: 'al_dia' } },
+    { id: 'z', name: 'zoe', fullName: 'Zoe Z', hasApp: true, lastSeen: '2026-09-24', billing: { status: 'bloqueado' } },
+  ]
+  const withPeople = async fn => {
+    const real = apiMock.getMockImplementation()
+    apiMock.mockImplementation((url, opts) => url === '/api/admin/users'
+      ? Promise.resolve({ users: PEOPLE.map(p => ({ workouts: 0, lastSync: null, ...p })), invite_only: false, audit_enabled: true, billing_enabled: billingOn, checkin_enabled: false })
+      : real(url, opts))
+    try { await fn() } finally { apiMock.mockImplementation(real) }
+  }
+  const rowNames = () => [...document.querySelectorAll('.utable .urow.item .uname')].map(el => el.textContent)
+  const head = label => [...document.querySelectorAll('.uhead')].find(b => b.textContent === label)
+
+  it('columnas Nombre / Cuota / Último ingreso; nombre [usuario]; dueño y admin junto al nombre', async () => {
+    desktop = true
+    await withPeople(async () => {
+      await mount('#/admin/usuarios', OWNER)
+      expect([...document.querySelectorAll('.uhead')].map(b => b.textContent)).toEqual(['Nombre', 'Cuota', 'Último ingreso'])
+      expect(rowNames()).toEqual(['beto', 'Juan Fernández', 'Olga Dueña', 'Zoe Z'])           // por nombre
+      const juan = [...document.querySelectorAll('.utable .urow.item')].find(r => r.textContent.includes('Juan Fernández'))
+      expect(juan.querySelector('.unick').textContent).toBe(' [Juani]')
+      expect(juan.textContent).toContain('Vencido')
+      const olga = [...document.querySelectorAll('.utable .urow.item')].find(r => r.textContent.includes('Olga'))
+      expect(olga.querySelector('.role-badge.owner').textContent).toBe('Dueño')
+      expect(olga.textContent).not.toContain('Sin plan')                                      // al staff no se le muestra cuota
+      // Ordenar por cuota: lo urgente primero; y por último ingreso, lo más reciente primero.
+      await act(async () => { head('Cuota').click() }); await flush()
+      expect(rowNames()).toEqual(['Zoe Z', 'Juan Fernández', 'beto', 'Olga Dueña'])
+      await act(async () => { head('Último ingreso').click() }); await flush()
+      expect(rowNames()).toEqual(['Zoe Z', 'Juan Fernández', 'Olga Dueña', 'beto'])
+      // Buscar también por nombre y apellido.
+      await act(async () => {
+        const input = document.querySelector('input[aria-label="Buscar por nombre o DNI"]')
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, 'fernández')
+        input.dispatchEvent(new Event('input', { bubbles: true }))
+      }); await flush()
+      expect(rowNames()).toEqual(['Juan Fernández'])
+    })
+  })
+
+  it('con cuotas apagado no hay columna Cuota', async () => {
+    desktop = true
+    billingOn = false
+    await withPeople(async () => {
+      await mount('#/admin/usuarios', OWNER)
+      expect([...document.querySelectorAll('.uhead')].map(b => b.textContent)).toEqual(['Nombre', 'Último ingreso'])
+    })
+  })
+})
+
 describe('Usuarios: member detail', () => {
   const clickAna = async () => {
     const item = [...document.querySelectorAll('.admin-users .item')].find(el => el.textContent.includes('ana'))

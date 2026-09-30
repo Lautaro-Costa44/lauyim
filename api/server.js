@@ -135,7 +135,7 @@ import {
   deleteHealthData,
   approveAccount,
   completeProfilePrompt,
-  countAttendanceMembers,
+  countAttendanceMembers, getLastAttendanceByUser,
 } from './database.js';
 import {
   MEMBER_FIELDS_SETTING, parseMemberFields, validateMemberFields, validateMemberProfile, validationErrorBody, normalizeUsername,
@@ -3135,7 +3135,10 @@ const routes = {
     const profileUserIds = getProfileUserIds();
     // "Datos incompletos": fichas con algún obligatorio vacío (típico de una importación).
     const fields = memberFieldsNow();
-    const incomplete = new Set(getAllMemberProfiles().filter(p => missingRequiredFields(p, fields).length).map(p => p.userId));
+    const profiles = getAllMemberProfiles();
+    const incomplete = new Set(profiles.filter(p => missingRequiredFields(p, fields).length).map(p => p.userId));
+    const fullNames = new Map(profiles.filter(p => p.fullName).map(p => [p.userId, p.fullName]));
+    const lastCheckin = getLastAttendanceByUser();
     // Nunca DNI ni celular acá: solo si existen (hasProfile). La ficha completa va por /profile.
     const users = dbUsers.map(u => {
       const S = readState(u.id) || {};
@@ -3148,6 +3151,10 @@ const routes = {
         pending: isAccountPending(u),
         workouts: workouts.length,
         lastWorkout: last ? last.d : null,
+        // Nombre y apellido de la ficha (la tabla muestra "Juan Fernández [Juani]") y el último día
+        // que vino: un entreno en la app o un Ingreso Físico, lo más reciente.
+        fullName: fullNames.get(u.id) || null,
+        lastSeen: [last?.d, lastCheckin.get(u.id)].filter(Boolean).sort().pop() || null,
         lastSync: S._ts || null,
         // Solo suscripciones a las que se puede enviar: una bloqueada por la allowlist no cuenta.
         hasPush: getSubscriptionsByUserId(u.id).some(sub => !pushEndpointError(sub.endpoint)),

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Navigate } from 'react-router-dom'
 import { useAdmin } from './context.js'
 import { UserDetail } from './shared.jsx'
+import { memberName, nickSuffix } from '../../lib/member-name.js'
 import { useStore } from '../../store/useStore.js'
 import { useUI } from '../../store/useUI.js'
 import { api } from '../../lib/api.js'
@@ -125,12 +126,8 @@ function DevicesCard({ devices, onRevoke }) {
   </div>
 }
 
-// "Juan Fernández [Juani]": nombre y apellido de la ficha y, entre corchetes, el nombre de usuario.
-// Sin nombre y apellido cargado, solo el usuario; si son iguales, una sola vez.
-export function checkinName({ fullName, nick }) {
-  if (!fullName) return nick || ''
-  return nick && nick.trim().toLowerCase() !== fullName.trim().toLowerCase() ? `${fullName} [${nick}]` : fullName
-}
+// "Juan Fernández [Juani]" (lib/member-name.js), también exportado con el nombre de antes.
+export const checkinName = memberName
 // Cuota de hoy, corta, para el registro: "Vence en 3 días", "Venció hace 2 días", "Prueba: 1 día".
 export function feeShort({ status, days }) {
   const d = n => t(n === 1 ? '{0} día' : '{0} días', n)
@@ -180,7 +177,7 @@ function CheckinLogCard({ date, today, checkins, loading, onDate, onRefresh, onO
         <span className="checkin-log-main">
           <span className="checkin-log-name">
             {c.fullName || c.nick}
-            {c.fullName && c.nick && c.nick.trim().toLowerCase() !== c.fullName.trim().toLowerCase() && <span className="checkin-log-nick"> [{c.nick}]</span>}
+            {nickSuffix(c) && <span className="checkin-log-nick"> [{nickSuffix(c)}]</span>}
           </span>
           {c.billing && feeShort(c.billing) && <span className={'checkin-log-fee st-' + c.billing.status} title={t('Cuota de hoy')}>{feeShort(c.billing)}</span>}
         </span>

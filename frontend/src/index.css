@@ -1762,3 +1762,40 @@ button.checkin-log-row:hover{background:var(--surface-2)}
 button.checkin-log-row:active{background:var(--surface-3)}
 .checkin-log-list>li+li>.checkin-log-row{border-top:.5px solid var(--sep)}
 @media (min-width:1000px){ .checkin-log-list>li+li>.checkin-log-row{border-top:0} .checkin-log-list>li>.checkin-log-row{border-bottom:.5px solid var(--sep)} }
+
+/* --------------------------------------------------- admin: usuarios --- */
+/* Nombre de un socio: nombre y apellido, el usuario en gris, rol y estados. */
+.admin-users .tt{display:flex;align-items:center;flex-wrap:wrap;gap:4px 6px;min-width:0}
+.admin-users .tt .tag{margin-left:0!important}
+.uname{font-weight:500;min-width:0;overflow:hidden;text-overflow:ellipsis}
+.unick{color:var(--label-2);margin-left:-3px}
+.ulive{font-size:9px;color:var(--green)}
+.uoff{color:var(--red)}
+.admin-users .item.off{opacity:.55}
+/* Dueño / admin: pastilla de acento con ícono, más chica que los estados. */
+.role-badge{display:inline-flex;align-items:center;gap:3px;padding:2px 7px 2px 5px;border-radius:99px;
+  font-size:11px;font-weight:600;letter-spacing:.01em;background:var(--acc-soft);color:var(--acc);white-space:nowrap}
+.role-badge svg{width:12px;height:12px}
+.role-badge.owner{background:color-mix(in srgb,var(--yellow) 18%,transparent);color:var(--yellow)}
+:root[data-theme="light"] .role-badge.owner{color:#a07800}
+/* Paginador compacto. */
+.upager{display:flex;align-items:center;justify-content:center;gap:10px;margin-top:10px}
+.upager .iconbtn:disabled{opacity:.35}
+/* Tabla de escritorio: filas de 44px, encabezados que ordenan. */
+.utable{display:flex;flex-direction:column;background:var(--surface);border-radius:var(--r-card);overflow:hidden}
+.utable .urow{display:grid;grid-template-columns:minmax(0,1fr) 108px 104px 28px;align-items:center;gap:10px;padding:0 14px;min-height:44px;background:none;border-radius:0}
+.utable.nobilling .urow{grid-template-columns:minmax(0,1fr) 104px 28px}
+.utable .urow+.urow{border-top:.5px solid var(--sep)}
+.utable .urow.item{cursor:pointer;transition:background var(--fast)}
+.utable .urow.item:hover{background:var(--surface-2)}
+.utable .urow.item:focus-visible{outline:2px solid var(--acc);outline-offset:-2px}
+.utable .urow.item.on{background:var(--acc-soft);box-shadow:inset 3px 0 0 var(--acc)}
+.utable .uheader{min-height:36px;background:var(--surface-2)}
+.uhead{display:inline-flex;align-items:center;gap:3px;background:none;border:0;padding:0;font:inherit;font-size:12px;font-weight:600;
+  color:var(--label-2);text-transform:uppercase;letter-spacing:.04em;cursor:pointer;justify-self:start}
+.uhead.on{color:var(--label)}
+.uhead svg{width:12px;height:12px}
+.ucell{min-width:0}
+.utable .tt{font-size:15px}
+.uicons{color:var(--label-3);display:flex;justify-content:flex-end}
+.uicons svg{width:15px;height:15px}
