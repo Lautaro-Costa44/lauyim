@@ -61,15 +61,16 @@ export function validateMemberFields(body, current = DEFAULT_MEMBER_FIELDS) {
   return { value: out };
 }
 
-// DNI: solo dígitos (se aceptan puntos, espacios y guiones como separadores), sin ceros a la
-// izquierda, 6 a 8 dígitos. → { dni (como se ingresó), dniNorm } o { error }.
+// DNI: solo dígitos (se aceptan puntos, espacios y guiones como separadores al ingresarlo o
+// importarlo), sin ceros a la izquierda, 6 a 8 dígitos. Se guarda solo numérico: dni = dniNorm
+// ("26.888.999" → "26888999"). → { dni, dniNorm } o { error }.
 export function normalizeDni(raw) {
   if (typeof raw !== 'string' && typeof raw !== 'number') return { error: 'DNI inválido' };
   const dni = String(raw).trim();
   if (!dni || dni.length > MAX_DNI_INPUT || !/^[\d.\s-]+$/.test(dni)) return { error: 'DNI inválido' };
   const dniNorm = dni.replace(/\D/g, '').replace(/^0+/, '');
   if (dniNorm.length < 6 || dniNorm.length > 8) return { error: 'El DNI debe tener entre 6 y 8 dígitos' };
-  return { value: { dni, dniNorm } };
+  return { value: { dni: dniNorm, dniNorm } };
 }
 
 // Últimos 3 dígitos, para auditoría: nunca el DNI completo fuera de la ficha.

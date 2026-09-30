@@ -92,6 +92,14 @@ test('migración de Ingreso Físico: una base existente arranca apagada y con la
   assert.equal(dbMod.getAdminSetting('ingreso_fisico_enabled'), 'true');
 });
 
+test('migración: los DNI guardados con puntos o espacios quedan solo numéricos', () => {
+  dbMod.initDatabase();
+  dbMod.createUser({ id: 'dni-puntos', name: 'Puntos', created: Date.now() });
+  dbMod.getDatabase().prepare("INSERT INTO member_profile (user_id, full_name, dni, dni_norm, created_at) VALUES (?, ?, ?, ?, ?)").run('dni-puntos', 'Con Puntos', '26.888.999', '26888999', new Date().toISOString());
+  dbMod.initDatabase();
+  assert.equal(dbMod.getMemberProfile('dni-puntos').dni, '26888999');
+});
+
 test.after(async () => {
   dbMod.closeDatabase();
   await rm(tmpDir, { recursive: true, force: true });

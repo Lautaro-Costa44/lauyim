@@ -234,6 +234,9 @@ test('el ingreso cuenta en el gráfico de 4 semanas (una vez aunque también hay
   assert.ok(section.body.checkins.every(c => c.source === 'physical' && c.nick && c.at));
   // Nombre y apellido de la ficha y el nombre de usuario, por separado (la UI arma "Juan Pérez [juan]").
   assert.deepEqual(section.body.checkins.filter(c => c.userId === 'juan').map(c => [c.fullName, c.nick]), [['Juan Pérez', 'juan']]);
+  // Con la cuota de hoy (días en gym_tz) para mostrar junto al nombre.
+  assert.deepEqual(section.body.checkins.find(c => c.userId === 'juan').billing, { status: 'por_vencer', days: 3 });
+  assert.deepEqual(section.body.checkins.find(c => c.userId === 'bloq').billing, { status: 'bloqueado', days: -40 });
 });
 
 test('registro de días anteriores: ?date= devuelve ese día; un día futuro o inválido → 400', async () => {

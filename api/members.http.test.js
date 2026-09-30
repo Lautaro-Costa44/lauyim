@@ -150,7 +150,7 @@ test('alta de ficha: usuario sin passkey, perfil normalizado, plan opcional', as
   assert.match(row.created_at, /^\d{4}-\d{2}-\d{2}T/);
   const [p] = sql('SELECT * FROM member_profile WHERE user_id = ?', ana.userId);
   assert.deepEqual([p.full_name, p.dni, p.dni_norm, p.phone, p.phone_norm, p.email],
-    ['Ana Pérez', '20.123.456', '20123456', '11 1234-5678', '+5491112345678', 'ana@mail.com']);
+    ['Ana Pérez', '20123456', '20123456', '11 1234-5678', '+5491112345678', 'ana@mail.com']);
 
   // Sin nombre de usuario: toma el nombre y apellido.
   const noName = await call('adm', 'POST', '/api/admin/members', { fullName: 'Beto Gómez', dni: '25111222', phone: '351 15 1234567' });
@@ -173,7 +173,7 @@ test('lookup por DNI', async () => {
 test('perfil: GET/PUT para fichas y cuentas con app; DNI de otra persona → 409', async () => {
   const got = await call('adm', 'GET', `/api/admin/users/${ana.userId}/profile`);
   assert.equal(got.status, 200);
-  assert.equal(got.body.profile.dni, '20.123.456');
+  assert.equal(got.body.profile.dni, '20123456');   // guardado sin puntos
   assert.equal(got.body.profile.phone, '11 1234-5678');
   assert.ok(got.body.fields.dni);
 

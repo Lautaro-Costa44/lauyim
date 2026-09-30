@@ -4,6 +4,7 @@ import { t } from '../lib/i18n.js'
 import { errorText } from '../lib/errors.js'
 import { passkeyAssertion } from '../lib/api.js'
 import { checkinApi, clearCheckinToken, getCheckinToken } from '../lib/checkin-device.js'
+import { getUpdater } from '../lib/update.js'
 import { StatusBadge } from './admin/billing/common.jsx'
 import { confirmSheet } from '../sheets.jsx'
 import Icon from '../components/Icon.jsx'
@@ -13,6 +14,7 @@ import { Button } from '../components/ui.jsx'
 // y el resultado. Funciona SOLO con el token del dispositivo (lib/checkin-device.js): no lee la
 // sesión ni los datos de nadie. Sin conexión no registra nada ni lo encola.
 export const RESULT_MS = 5000
+const IDLE_UPDATE_MS = 60 * 1000
 const MAX_DIGITS = 8
 
 const plural = (n, one, many) => t(n === 1 ? one : many, n)
@@ -64,6 +66,21 @@ export default function IngresoFisico() {
     timer.current = setTimeout(reset, RESULT_MS)
     return () => clearTimeout(timer.current)
   }, [result, reset])
+
+  // La pantalla de recepción queda abierta días enteros: nunca pasa por "abrir la app" ni por
+  // segundo plano. Cuando nadie la está usando (numpad vacío), busca y aplica actualizaciones.
+  const idle = !digits && !result && !candidates && !busy
+  const idleRef = useRef(idle)
+  idleRef.current = idle
+  useEffect(() => {
+    const iv = setInterval(async () => {
+      if (!idleRef.current) return
+      const updater = getUpdater()
+      await updater?.check()
+      if (idleRef.current) updater?.trySafeApply()
+    }, IDLE_UPDATE_MS)
+    return () => clearInterval(iv)
+  }, [])
 
   const minDigits = info?.mode === 'last' ? info.digits : 6
   const submitDigits = async () => {

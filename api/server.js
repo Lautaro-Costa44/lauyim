@@ -923,6 +923,23 @@ setInterval(() => { for (const [k, v] of challenges) if (v.exp < Date.now()) cha
 
 /* ---------- Ingreso Físico: helpers ---------- */
 const checkinSettingsNow = () => readCheckinSettings(getAdminSetting);
+// Registro de ingresos: cada fila con su cuota de hoy (sin cuotas encendido, o para el staff, sin).
+function withCheckinBilling(rows, today) {
+  if (!billingEnabledNow()) return rows;
+  const settings = billingSettingsNow();
+  return rows.map(row => {
+    const user = getUserById(row.userId);
+    return user && !isRealStaff(user) ? { ...row, billing: checkinBilling(row.userId, today, settings) } : row;
+  });
+}
+// Estado de cuota de HOY y días al vencimiento (o de vencida) en gym_tz; en prueba, días al fin de
+// la prueba. Lo usan la pantalla (resultado) y el registro de ingresos del admin.
+function checkinBilling(userId, today, settings) {
+  const billing = getMemberBilling(userId);
+  const status = billingStatus(billing, today, settings);
+  const until = status === 'prueba' ? billing.trialUntil : billing.dueDate;
+  return { status, days: isIsoDate(until) ? daysBetween(today, until) : null };
+}
 // Dispositivo de Ingreso Físico del header X-Checkin-Token, o responde y devuelve null:
 // 403 feature_disabled con el módulo apagado (salvo allowDisabled), 401 device_revoked sin un
 // token vigente. El cliente borra su token con cualquiera de los dos.
@@ -3166,7 +3183,7 @@ const routes = {
     json(res, 200, {
       settings, billingEnabled: billingEnabledNow(), today, date,
       devices: settings.enabled ? listDevices(getDatabase()) : [],
-      checkins: settings.enabled ? dayCheckins(getDatabase(), date) : []
+      checkins: settings.enabled ? withCheckinBilling(dayCheckins(getDatabase(), date), today) : []
     });
   },
 
@@ -3233,10 +3250,7 @@ const routes = {
     const result = { status: out.already ? 'already' : 'registered', fullName: out.fullName, nick: out.nick };
     // Estado de cuota: si el owner lo muestra y cuotas está encendido. Días en gym_tz.
     if (ctx.settings.showStatus && billingEnabledNow() && !isRealStaff(target)) {
-      const billing = getMemberBilling(out.userId);
-      const status = billingStatus(billing, today, settings);
-      const until = status === 'prueba' ? billing.trialUntil : billing.dueDate;
-      result.billing = { status, days: isIsoDate(until) ? daysBetween(today, until) : null };
+      result.billing = checkinBilling(out.userId, today, settings);
     }
     if (!out.already) audit(req, 'checkin.ok', { target, msg: `device=${ctx.device.name}` });
     json(res, 200, result);

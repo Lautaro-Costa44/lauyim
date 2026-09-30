@@ -130,6 +130,16 @@ export function checkinName({ fullName, nick }) {
   if (!fullName) return nick || ''
   return nick && nick.trim().toLowerCase() !== fullName.trim().toLowerCase() ? `${fullName} [${nick}]` : fullName
 }
+// Cuota de hoy, corta, para el registro: "Vence en 3 días", "Venció hace 2 días", "Prueba: 1 día".
+export function feeShort({ status, days }) {
+  const d = n => t(n === 1 ? '{0} día' : '{0} días', n)
+  if (status === 'sin_plan') return t('Sin plan')
+  if (days == null) return null
+  if (status === 'prueba') return days === 0 ? t('Prueba: termina hoy') : t('Prueba: {0}', d(days))
+  if (days > 0) return t('Vence en {0}', d(days))
+  if (days === 0) return t('Vence hoy')
+  return t('Venció hace {0}', d(-days))
+}
 const initials = ({ fullName, nick }) => (fullName || nick || '?').trim().split(/\s+/).slice(0, 2).map(w => w[0]).join('').toUpperCase()
 
 // Días como YYYY-MM-DD en UTC al mediodía: el calendario del gym, sin que el huso del navegador
@@ -166,9 +176,12 @@ function CheckinLogCard({ date, today, checkins, loading, onDate, onRefresh }) {
     {count ? <ol className="checkin-log-list">
       {checkins.map(c => <li key={c.userId + c.at} className="checkin-log-row" title={checkinName(c)}>
         <span className="checkin-log-avatar" aria-hidden="true">{initials(c)}</span>
-        <span className="checkin-log-name">
-          {c.fullName || c.nick}
-          {c.fullName && c.nick && c.nick.trim().toLowerCase() !== c.fullName.trim().toLowerCase() && <span className="checkin-log-nick"> [{c.nick}]</span>}
+        <span className="checkin-log-main">
+          <span className="checkin-log-name">
+            {c.fullName || c.nick}
+            {c.fullName && c.nick && c.nick.trim().toLowerCase() !== c.fullName.trim().toLowerCase() && <span className="checkin-log-nick"> [{c.nick}]</span>}
+          </span>
+          {c.billing && feeShort(c.billing) && <span className={'checkin-log-fee st-' + c.billing.status} title={t('Cuota de hoy')}>{feeShort(c.billing)}</span>}
         </span>
         <time className="checkin-log-time" dateTime={new Date(c.at).toISOString()}>{hhmm(c.at)}</time>
       </li>)}

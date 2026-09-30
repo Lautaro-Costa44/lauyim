@@ -6,8 +6,8 @@ import {
   formatLinkCode, canonicalLinkCode, LINK_CODE_ALPHABET, validationErrorBody, normalizeUsername
 } from './members.js';
 
-test('DNI: solo dígitos, sin ceros adelante, 6 a 8 dígitos; guarda lo ingresado', () => {
-  assert.deepEqual(normalizeDni('20.123.456').value, { dni: '20.123.456', dniNorm: '20123456' });
+test('DNI: solo dígitos, sin ceros adelante, 6 a 8 dígitos; se guarda solo numérico', () => {
+  assert.deepEqual(normalizeDni('20.123.456').value, { dni: '20123456', dniNorm: '20123456' });
   assert.equal(normalizeDni(' 020 123 456 ').value.dniNorm, '20123456');
   assert.equal(normalizeDni('0012345678').value.dniNorm, '12345678');
   assert.equal(normalizeDni(20123456).value.dniNorm, '20123456');
@@ -90,7 +90,7 @@ test('perfil: obligatorios según config, deshabilitados se ignoran', () => {
   const full = { fullName: '  Ana   Pérez ', dni: '20.123.456', phone: '11 1234-5678', email: 'ANA@mail.com' };
   const ok = validateMemberProfile(full, DEFAULT_MEMBER_FIELDS);
   assert.deepEqual(ok.value, {
-    fullName: 'Ana Pérez', dni: '20.123.456', dniNorm: '20123456',
+    fullName: 'Ana Pérez', dni: '20123456', dniNorm: '20123456',
     phone: '11 1234-5678', phoneNorm: '+5491112345678', email: 'ana@mail.com'
   });
   assert.equal(validateMemberProfile({ ...full, phone: '' }, DEFAULT_MEMBER_FIELDS).field, 'phone');

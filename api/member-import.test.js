@@ -108,7 +108,7 @@ test('alta: perfil normalizado, users.name con tope de 40, DNI con puntos', () =
   const m = out.write.members[0];
   assert.equal(m.profile.fullName, long);
   assert.equal(m.name, long.slice(0, 40).trim());
-  assert.deepEqual([m.profile.dni, m.profile.dniNorm, m.profile.email, m.profile.phoneNorm], ['20.123.456', '20123456', 'ana@mail.com', '+5491112345678']);
+  assert.deepEqual([m.profile.dni, m.profile.dniNorm, m.profile.email, m.profile.phoneNorm], ['20123456', '20123456', 'ana@mail.com', '+5491112345678']);
 });
 
 test('cuota: plan + vencimiento; plan + pago sin vencimiento; ambos manda el vencimiento', () => {

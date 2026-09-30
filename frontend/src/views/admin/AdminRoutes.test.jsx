@@ -37,7 +37,7 @@ const FIELDS = () => ({ full_name: { enabled: true, required: true }, dni: { ena
 apiMock.mockImplementation((url, opts) => {
   if (url === '/api/admin/users') return Promise.resolve({ users: [ANA, FICHA], invite_only: false, audit_enabled: auditOn, billing_enabled: billingOn, checkin_enabled: checkin.enabled })
   if (url.split('?')[0] === '/api/admin/checkin') return Promise.resolve({ settings: checkin, billingEnabled: billingOn, today: '2026-09-24', devices, date: new URL('http://x' + url).searchParams.get('date') || '2026-09-24', checkins: !checkin.enabled ? [] : (new URL('http://x' + url).searchParams.get('date') || '2026-09-24') === '2026-09-24'
-    ? [{ userId: 'a', fullName: 'Ana Pérez', nick: 'anita', source: 'physical', at: Date.UTC(2026, 8, 24, 12, 5) }, { userId: 'b', fullName: null, nick: 'beto', source: 'physical', at: Date.UTC(2026, 8, 24, 11, 0) }]
+    ? [{ userId: 'a', fullName: 'Ana Pérez', nick: 'anita', source: 'physical', at: Date.UTC(2026, 8, 24, 12, 5), billing: { status: 'por_vencer', days: 3 } }, { userId: 'b', fullName: null, nick: 'beto', source: 'physical', at: Date.UTC(2026, 8, 24, 11, 0) }]
     : [] })
   if (url === '/api/owner/checkin/settings') { checkin = { ...checkin, ...JSON.parse(opts.body) }; if (checkin.enabled === false) devices = []; return Promise.resolve({ settings: checkin }) }
   if (url.startsWith('/api/admin/checkin/devices/') && opts?.method === 'DELETE') { devices = devices.filter(d => '/api/admin/checkin/devices/' + d.id !== url); return Promise.resolve({ ok: true }) }
@@ -489,6 +489,8 @@ describe('Usuarios: member detail', () => {
       expect(text()).toContain('Registro de ingresos')
       expect(text()).toContain('Ana Pérez [anita]')
       expect(text()).toContain('2 ingresos')
+      // Cuota de hoy junto al nombre, con el color del estado; sin datos de cuota, nada.
+      expect([...document.querySelectorAll('.checkin-log-fee')].map(el => [el.textContent, el.className])).toEqual([['Vence en 3 días', 'checkin-log-fee st-por_vencer']])
       expect(document.querySelector('.checkin-log .tag')).toBeNull()   // sin la etiqueta de origen en cada fila
       expect([...document.querySelectorAll('.checkin-log-row')].map(r => r.getAttribute('title'))).toEqual(['Ana Pérez [anita]', 'beto'])
       // Días anteriores: se consultan con ?date= y se vuelve a hoy.

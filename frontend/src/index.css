@@ -1729,3 +1729,13 @@ input[type="search"]::-webkit-search-cancel-button{display:none;-webkit-appearan
 /* Saludo: nombre completo siempre visible, en varias líneas si hace falta; el usuario en gris. */
 .checkin-hello{max-width:100%;overflow-wrap:anywhere;word-break:normal;hyphens:auto;line-height:1.2}
 .checkin-hello-nick{color:var(--label-2);font-weight:600}
+.checkin-log-main{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}
+.checkin-log-main .checkin-log-name{flex:none}
+/* Cuota de hoy: texto chico con el color del estado (los mismos de Cuotas). */
+.checkin-log-fee{align-self:flex-start;font-size:12px;font-weight:600;padding:2px 7px;border-radius:6px;
+  background:var(--surface-2);color:var(--label-2)}
+.checkin-log-fee.st-al_dia{background:color-mix(in srgb,var(--success) 14%,transparent);color:var(--success)}
+.checkin-log-fee.st-por_vencer{background:color-mix(in srgb,var(--warning) 14%,transparent);color:var(--warning)}
+.checkin-log-fee.st-prueba{background:color-mix(in srgb,var(--purple) 14%,transparent);color:var(--purple)}
+.checkin-log-fee.st-vencido{background:color-mix(in srgb,var(--danger) 14%,transparent);color:var(--danger)}
+.checkin-log-fee.st-bloqueado{background:var(--danger);color:#fff}

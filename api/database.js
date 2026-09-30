@@ -211,6 +211,9 @@ export function initDatabase() {
   try { db.exec(`ALTER TABLE users ADD COLUMN health_consent TEXT;`); } catch {}
   try { db.exec(`ALTER TABLE users ADD COLUMN health_consent_at TEXT;`); } catch {}
   try { db.exec(`ALTER TABLE member_profile ADD COLUMN trial_used_at INTEGER;`); } catch {}
+  // DNI solo numérico: los que se guardaron con puntos o espacios (importaciones, altas viejas)
+  // pasan a su forma normalizada. Idempotente.
+  try { db.exec(`UPDATE member_profile SET dni = dni_norm WHERE dni_norm IS NOT NULL AND (dni IS NULL OR dni <> dni_norm);`); } catch {}
   backfillMemberTrials(db);
   db.exec(`CREATE TABLE IF NOT EXISTS sync_operations (
     user_id TEXT NOT NULL,
