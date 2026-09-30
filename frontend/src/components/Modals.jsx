@@ -6,10 +6,13 @@ function Sheet({ sheet }) {
   const closeSheet = useUI(s => s.closeSheet)
   const ref = useRef(null)
   const drag = useRef({ startY: null, delta: 0 })
+  // kind 'panel': bottom sheet en el celular; desde 700px, un panel centrado sobre la vista (sin
+  // arrastrar para cerrar: se cierra con la X, el fondo o Escape).
+  const floating = () => sheet.kind === 'panel' && !!window.matchMedia?.('(min-width: 700px)').matches
 
   const onTouchStart = e => {
     const el = ref.current
-    if (sheet.locked) {
+    if (sheet.locked || floating()) {
       drag.current = { startY: null, delta: 0 }
       return
     }
@@ -42,7 +45,7 @@ function Sheet({ sheet }) {
   // Mouse drag (desktop testing / trackpads): same swipe-to-dismiss behaviour.
   const onMouseDown = e => {
     if (e.button !== 0) return
-    if (sheet.locked) {
+    if (sheet.locked || floating()) {
       drag.current = { startY: null, delta: 0 }
       return
     }
@@ -94,9 +97,11 @@ function Sheet({ sheet }) {
   return (
     <div>
       <div className="mback" onClick={() => { if (!sheet.locked) close() }} />
-      <div className={'sheet' + (sheet.fullScreen ? ' fullscreen' : '')} ref={ref} onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}
-        onMouseDown={onMouseDown} onMouseMove={onMouseMove} onMouseUp={onMouseUp} onMouseLeave={onMouseUp}>
+      <div className={'sheet' + (sheet.fullScreen ? ' fullscreen' : '') + (sheet.kind === 'panel' ? ' panel' : '')} ref={ref} onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}
+        onMouseDown={onMouseDown} onMouseMove={onMouseMove} onMouseUp={onMouseUp} onMouseLeave={onMouseUp}
+        {...(sheet.kind === 'panel' ? { role: 'dialog', 'aria-modal': 'true' } : {})}>
         {!sheet.fullScreen && <div className="grab" />}
+        {sheet.kind === 'panel' && <button type="button" className="panel-close iconbtn" onClick={close} aria-label="Cerrar">×</button>}
         {sheet.render(close, { setOnBack })}
       </div>
     </div>

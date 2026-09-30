@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Navigate } from 'react-router-dom'
 import { useAdmin } from './context.js'
+import { UserDetail } from './shared.jsx'
 import { useStore } from '../../store/useStore.js'
 import { useUI } from '../../store/useUI.js'
 import { api } from '../../lib/api.js'
@@ -154,7 +155,7 @@ function dayLabel(date, today) {
 
 // Registro de ingresos: hoy por defecto (se refresca solo) y cualquier día anterior con las
 // flechas o eligiendo la fecha. Los ingresos se guardan sin vencimiento.
-function CheckinLogCard({ date, today, checkins, loading, onDate, onRefresh }) {
+function CheckinLogCard({ date, today, checkins, loading, onDate, onRefresh, onOpen }) {
   const isToday = date === today
   const count = checkins.length
   return <div className="card checkin-log">
@@ -174,7 +175,7 @@ function CheckinLogCard({ date, today, checkins, loading, onDate, onRefresh }) {
       <button className="iconbtn" onClick={() => onDate(shiftDay(date, 1))} disabled={isToday} aria-label={t('Día siguiente')}><Icon name="chevronRight" /></button>
     </div>
     {count ? <ol className="checkin-log-list">
-      {checkins.map(c => <li key={c.userId + c.at} className="checkin-log-row" title={checkinName(c)}>
+      {checkins.map(c => <li key={c.userId + c.at}><button type="button" className="checkin-log-row" title={checkinName(c)} onClick={() => onOpen(c.userId)}>
         <span className="checkin-log-avatar" aria-hidden="true">{initials(c)}</span>
         <span className="checkin-log-main">
           <span className="checkin-log-name">
@@ -184,7 +185,7 @@ function CheckinLogCard({ date, today, checkins, loading, onDate, onRefresh }) {
           {c.billing && feeShort(c.billing) && <span className={'checkin-log-fee st-' + c.billing.status} title={t('Cuota de hoy')}>{feeShort(c.billing)}</span>}
         </span>
         <time className="checkin-log-time" dateTime={new Date(c.at).toISOString()}>{hhmm(c.at)}</time>
-      </li>)}
+      </button></li>)}
     </ol> : <div className="checkin-log-empty">
       <Icon name="calendar" />
       <div>{loading ? t('Cargando…') : isToday ? t('Todavía no hay ingresos hoy.') : t('No hubo ingresos este día.')}</div>
@@ -196,7 +197,8 @@ function CheckinLogCard({ date, today, checkins, loading, onDate, onRefresh }) {
 export default function IngresoFisico() {
   const user = useStore(s => s.user)
   const toast = useUI(s => s.toast)
-  const { setCheckinEnabled } = useAdmin()
+  const { setCheckinEnabled, users, loadUsers, billingEnabled } = useAdmin()
+  const openSheet = useUI(s => s.openSheet)
   const owner = !!user?.owner
   const [data, setData] = useState(null)
   const [denied, setDenied] = useState(false)
@@ -226,6 +228,10 @@ export default function IngresoFisico() {
     .then(() => { toast(t('Dispositivo revocado')); load() })
     .catch(e => toast(errorText(e)))
 
+  // El mismo detalle que en Usuarios, como panel sobre la vista (bottom sheet en el celular).
+  const openUser = id => openSheet(close => <UserDetail id={id} billingEnabled={billingEnabled !== false} users={users}
+    openUser={other => { close(); openUser(other) }} onChanged={() => { loadUsers?.(); load() }} close={close} />, { kind: 'panel' })
+
   const { settings } = data
   return <div className="admin-cards">
     <EnableCard settings={settings} owner={owner} onSave={save} busy={busy} />
@@ -233,7 +239,7 @@ export default function IngresoFisico() {
       <IdentifyCard settings={settings} billingEnabled={data.billingEnabled} owner={owner} onSave={save} busy={busy} />
       <DevicesCard devices={data.devices} onRevoke={revoke} />
       <CheckinLogCard date={data.date || data.today} today={data.today} checkins={data.checkins} loading={loadingDay}
-        onDate={pickDay} onRefresh={() => load()} />
+        onDate={pickDay} onRefresh={() => load()} onOpen={openUser} />
     </>}
   </div>
 }

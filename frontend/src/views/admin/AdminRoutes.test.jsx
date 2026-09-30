@@ -501,6 +501,15 @@ describe('Usuarios: member detail', () => {
       expect(text()).toContain('No hubo ingresos este día.')
       await clickButton(document, 'Volver a hoy')
       expect(text()).toContain('Ana Pérez [anita]')
+      // Tocar un ingreso abre el detalle del socio (el de Usuarios) como panel.
+      await act(async () => { document.querySelector('.checkin-log-row[title="Ana Pérez [anita]"]').click() }); await flush()
+      const panel = document.querySelector('#modal-root .sheet.panel')
+      expect(panel).toBeTruthy()
+      expect(panel.getAttribute('role')).toBe('dialog')
+      expect(apiMock.mock.calls.some(([u]) => u === '/api/admin/user?id=a')).toBe(true)
+      expect(panel.textContent).toContain('ana')
+      await act(async () => { panel.querySelector('.panel-close').click() }); await flush()
+      expect(document.querySelector('#modal-root .sheet.panel')).toBeNull()
     })
 
     it('encendido: un admin no owner ve dispositivos e ingresos, sin cambiar la configuración, y puede revocar', async () => {
