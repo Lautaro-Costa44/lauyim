@@ -21,7 +21,9 @@ db.createUser({ id: 'adm', name: 'Admin', admin: true });
 const workout = (id, d, bw) => ({ id, d, start: 1, end: 2, name: 'Push', bw, entries: [] });
 for (const id of ['si', 'no']) {
   db.createUser({ id, name: id });
-  db.saveUserState(id, { unit: 'kg', routines: [], bodyweight: [{ d: '2026-09-01', w: 80, t: 1 }], workouts: [workout(id + '-1', '2026-09-01', 80), workout(id + '-2', '2026-09-02', 81)] });
+  db.saveUserState(id, { unit: 'kg', routines: [{ id: id + '-r1', name: 'Push', emoji: 'dumbbell', created: 1, ex: [] }], week: { 1: id + '-r1' }, dayPlan: { '2026-09-03': 'rest' },
+    customEx: [{ id: 'cx-remo', n: 'Remo en máquina', bp: 'back', eq: 'machine' }],
+    bodyweight: [{ d: '2026-09-01', w: 80, t: 1 }], workouts: [workout(id + '-1', '2026-09-01', 80), workout(id + '-2', '2026-09-02', 81)] });
 }
 db.setHealthConsent('si', true);
 db.setHealthConsent('no', false);
@@ -66,4 +68,12 @@ test('con consentimiento: el admin ve los pesajes y el bw de cada entreno', asyn
   const r = await get('adm', '/api/admin/user?id=si');
   assert.equal(r.body.bodyweight.length, 1);
   assert.deepEqual(r.body.workouts.map(w => w.bw), [81, 80]);
+});
+
+test('historial para el staff: plan semanal, el día del gym y los nombres de los ejercicios propios', async () => {
+  const r = await get('adm', '/api/admin/user?id=si');
+  assert.deepEqual(r.body.week, { 1: 'si-r1' });
+  assert.deepEqual(r.body.dayPlan, { '2026-09-03': 'rest' });
+  assert.match(r.body.today, /^\d{4}-\d{2}-\d{2}$/);
+  assert.equal(r.body.names['cx-remo'], 'Remo en máquina');
 });

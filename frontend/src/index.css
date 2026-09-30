@@ -1900,3 +1900,21 @@ button.wh-row{font:inherit;color:inherit;border:0;cursor:pointer}
   .wh-split{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.25fr);gap:20px;align-items:start}
   .wh-split-detail{position:sticky;top:24px;max-height:calc(100vh - 48px);overflow-y:auto;overscroll-behavior:contain}
 }
+
+/* Cumplimiento del plan semanal (detalle del socio para el staff). Ícono + color por estado. */
+.adh{background:var(--surface);border-radius:var(--r-card);padding:10px 12px;margin-bottom:12px}
+.adh-t{font-size:14px;font-weight:600;margin-bottom:8px}
+.adh-days{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
+.adh-d{display:flex;flex-direction:column;align-items:center;gap:4px}
+.adh-w{font-size:11px;font-weight:600;color:var(--label-3)}
+.adh-d.today .adh-w{color:var(--acc)}
+.adh-i{width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:var(--surface-2);color:var(--label-3)}
+.adh-i svg{width:15px;height:15px}
+.adh-d.done .adh-i{background:color-mix(in srgb,var(--success) 18%,transparent);color:var(--success)}
+.adh-d.done.extra .adh-i{box-shadow:inset 0 0 0 1.5px var(--success);background:transparent}
+.adh-d.missed .adh-i{background:color-mix(in srgb,var(--danger) 16%,transparent);color:var(--danger)}
+.adh-d.pending .adh-i{box-shadow:inset 0 0 0 1.5px var(--label-3);background:transparent;color:var(--label-2)}
+.adh-d.today .adh-i{outline:2px solid var(--acc);outline-offset:1px}
+/* En escritorio #app .list es de dos columnas; el historial (y su columna al lado del detalle)
+   se lee mejor en una. */
+@media (min-width:1000px){ #app .wh .list{display:flex;flex-direction:column} }

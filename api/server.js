@@ -3329,6 +3329,12 @@ const routes = {
       // Sin consentimiento de datos de salud, el admin tampoco ve el peso corporal.
       bodyweight: healthDeclined(u) ? [] : S.bodyweight || [],
       healthConsent: healthConsentOf(u),
+      // Historial para el staff: plan semanal (cumplimiento), el día de hoy del gym y los nombres de
+      // los ejercicios propios del socio (el panel no los tiene en su biblioteca).
+      week: S.week || {},
+      dayPlan: S.dayPlan || {},
+      today: billingToday(billingSettingsNow()),
+      names: Object.fromEntries((S.customEx || []).filter(ex => ex && ex.id).map(ex => [ex.id, ex.n || ex.name || ex.id])),
       // Tampoco el peso corporal anotado en cada entreno (bw).
       workouts: (S.workouts || []).slice().reverse().map(w => (healthDeclined(u) && w && 'bw' in w ? (({ bw, ...rest }) => rest)(w) : w))
     });

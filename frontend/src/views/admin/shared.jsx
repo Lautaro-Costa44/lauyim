@@ -2,8 +2,7 @@ import { useCallback, useEffect, useState, useRef } from 'react'
 import { useStore } from '../../store/useStore.js'
 import { useUI } from '../../store/useUI.js'
 import { api } from '../../lib/api.js'
-import { fmtDate, fmtVol, fmtDur, uid } from '../../lib/format.js'
-import { workoutVolume, setsDone } from '../../lib/history.js'
+import { fmtDate, uid } from '../../lib/format.js'
 import { confirmSheet, inputSheet } from '../../sheets.jsx'
 import { t } from '../../lib/i18n.js'
 import Icon from '../../components/Icon.jsx'
@@ -15,6 +14,9 @@ import { BillingSummaryCard } from './billing/common.jsx'
 import { FichaCard, NoAppBadge, PendingBadge, openMemberSheet } from './members/common.jsx'
 import { MAX_ROUTINE_GROUPS, canAddGroup, validateGroupName, syncActiveGroupInState, switchActiveGroup, addGroupToState, removeGroupFromState } from '../../lib/routineGroups.js'
 import { errorText } from '../../lib/errors.js'
+import WorkoutHistoryList from '../../components/workout/WorkoutHistoryList.jsx'
+import WorkoutDetailView from '../../components/workout/WorkoutDetailView.jsx'
+import { weekAdherence } from '../../lib/workout-history.js'
 
 // Shared by more than one admin section: UserDetail opens from Resumen ("Training now") and
 // from Usuarios (the list), and carries the whole "Administrar Nutrición/Rutina" sheet with it.
@@ -710,6 +712,29 @@ export function AdminManageSheet({ userId, userName, healthConsent = null, close
 // billingEnabled comes from the admin users poll; false hides the membership card (cuotas off).
 // users (the same poll) feeds the account picker of "Vincular". openUser shows another member
 // (Usuarios: the desktop panel or a sheet); without it, a sheet on top.
+// Cumplimiento del plan de la semana del gym: cada día con ícono y color (nunca solo color).
+const DAY_STATES = {
+  done: ['check', 'Entrenó'], missed: ['xmark', 'Planeado, no entrenó'], pending: ['dot', 'Planeado, pendiente'], rest: ['minus', 'Descanso'],
+}
+const WEEKDAYS = ['L', 'M', 'M', 'J', 'V', 'S', 'D']
+export function AdherenceStrip({ d }) {
+  if (!d.today) return null
+  const a = weekAdherence({ workouts: d.workouts, week: d.week, dayPlan: d.dayPlan }, d.today)
+  const extras = a.days.filter(x => x.extra).length
+  return <div className="adh" aria-label={t('Cumplimiento de la semana')}>
+    <div className="adh-t">{!a.hasPlan ? t('Sin plan semanal')
+      : t('Esta semana: {0} de {1} días planeados', a.done, a.planned) + (a.pending ? ' · ' + t('{0} pendiente' + (a.pending === 1 ? '' : 's'), a.pending) : '')
+        + (extras ? ' · ' + t(extras === 1 ? '+{0} día extra' : '+{0} días extra', extras) : '')}</div>
+    <ol className="adh-days">{a.days.map((x, i) => {
+      const [icon, label] = DAY_STATES[x.state]
+      return <li key={x.iso} className={'adh-d ' + x.state + (x.today ? ' today' : '') + (x.extra ? ' extra' : '')} title={`${x.iso} · ${t(label)}${x.extra ? ' · ' + t('no estaba planeado') : ''}`}>
+        <span className="adh-w">{WEEKDAYS[i]}</span>
+        <span className="adh-i" aria-label={t(label)}><Icon name={icon} /></span>
+      </li>
+    })}</ol>
+  </div>
+}
+
 export function UserDetail({ id, billingEnabled = true, users, openUser, onChanged, close }) {
   const [d, setD] = useState(null)
   const toast = useUI(s => s.toast)
@@ -735,6 +760,10 @@ export function UserDetail({ id, billingEnabled = true, users, openUser, onChang
       .then(() => { toast(admin ? t('User promoted to admin') : t('Admin role removed')); onChanged(); close() })
       .catch(e => toast(errorText(e)))
   }
+  // Historial del socio: el mismo detalle que ve él, en solo lectura y como panel (centrado en
+  // tablet y escritorio, hoja en el celular). Su unidad y sus nombres de ejercicios propios.
+  const historyData = { workouts: d.workouts, routines: d.routines, unit: d.unit, names: d.names || {} }
+  const openWorkout = w => openSheet(() => <WorkoutDetailView w={w} data={historyData} showBw={d.healthConsent !== 'declined'} note={w.note || null} />, { kind: 'panel' })
   // Ficha without a passkey: nothing to train or sync, so the training parts stay out.
   const hasApp = u.hasApp !== false
   // Desactivada o pendiente de aprobación. Quitar el rol de admin sigue permitido.
@@ -798,12 +827,8 @@ export function UserDetail({ id, billingEnabled = true, users, openUser, onChang
       onClick={() => confirmSheet({ title: t('Delete {0} permanently?', u.name), message: t('This permanently deletes the disabled account and all of its stored training data. This cannot be undone.'), confirmText: t('Delete permanently'), danger: true, onConfirm: deleteAccount })}>
       {t('Delete account permanently')}</button>}
     {hasApp && <h4 className="sec">{t('Workout history')}</h4>}
-    {!hasApp ? null : d.workouts.length ? <div className="list" style={{ gap: 0 }}>
-      {d.workouts.slice(0, 60).map(w => <div key={w.id} className="row between" style={{ padding: '9px 2px', borderBottom: '1px solid var(--sep)' }}>
-        <div><div className="small" style={{ fontWeight: 600 }}>{w.name}</div>
-          <div className="dim" style={{ fontSize: '.72rem' }}>{fmtDate(w.d, true)} · {fmtDur((w.end || w.start) - w.start)} · {setsDone(w)} {t('sets')}{w.prs?.length ? ' · ' + w.prs.length + ' PR' : ''}</div></div>
-        <span className="small muted">{fmtVol(w.vol ?? workoutVolume(w), d.unit)}</span>
-      </div>)}
-    </div> : <div className="empty small">{t('No workouts logged.')}</div>}
+    {hasApp && <AdherenceStrip d={d} />}
+    {!hasApp ? null : d.workouts.length ? <WorkoutHistoryList data={historyData} onOpen={openWorkout} />
+      : <div className="empty small">{t('No workouts logged.')}</div>}
   </>
 }

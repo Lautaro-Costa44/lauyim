@@ -483,6 +483,38 @@ describe('Usuarios: member detail', () => {
     expect(document.querySelector('.admin-users .item.on').textContent).toContain('ana')
   })
 
+  it('historial del socio: cumplimiento de la semana y tocar un entreno lo abre como panel, en solo lectura', async () => {
+    desktop = true
+    const real = apiMock.getMockImplementation()
+    const w = (id, d, extra = {}) => ({ id, d, start: Date.parse(d + 'T18:00:00Z'), end: Date.parse(d + 'T19:00:00Z'), name: 'Push', routineId: 'r1', vol: 900,
+      entries: [{ id: 'cx-remo', sets: [{ w: 40, r: 10, done: true }] }], ...extra })
+    apiMock.mockImplementation((url, opts) => url.startsWith('/api/admin/user?id=')
+      ? Promise.resolve({ user: { id: 'a', name: 'ana', created: '2026-01-01', hasApp: true }, bodyweight: [], routines: [{ id: 'r1', name: 'Push', emoji: 'dumbbell', count: 1 }], lastSync: Date.now(), unit: 'kg',
+        healthConsent: 'granted', today: '2026-09-24', week: { 1: 'r1', 3: 'r1', 5: 'r1' }, dayPlan: {}, names: { 'cx-remo': 'Remo en máquina' },
+        workouts: [w('w2', '2026-09-22', { note: 'Buen día', bw: 70 }), w('w1', '2026-09-15')] })
+      : real(url, opts))
+    try {
+      await mount('#/admin/usuarios', ADMIN)
+      await clickAna()
+      const panel = document.querySelector('.admin-user-panel')
+      // Semana del 21 al 27/09, hoy jueves 24: lunes planeado sin entrenar, martes extra, miércoles planeado sin entrenar, viernes pendiente.
+      expect(panel.querySelector('.adh-t').textContent).toBe('Esta semana: 0 de 3 días planeados · 1 pendiente · +1 día extra')
+      expect([...panel.querySelectorAll('.adh-d')].map(d => d.className.replace('adh-d ', ''))).toEqual(['missed', 'done extra', 'missed', 'rest today', 'pending', 'rest', 'rest'])
+      expect(panel.querySelectorAll('.adh-i svg').length).toBe(7)          // ícono en cada día, no solo color
+      expect(panel.querySelector('.wh-month-h').textContent).toContain('2 entrenos')
+      await act(async () => { panel.querySelector('.wh-row').click() }); await flush()
+      const sheet = document.querySelector('#modal-root .sheet.panel')
+      expect(sheet).toBeTruthy()
+      expect(sheet.textContent).toContain('Remo en máquina')                // ejercicio propio del socio, por su nombre
+      expect(sheet.textContent).toContain('Igual vs. 15 sept')               // misma serie que la vez anterior
+      expect(sheet.textContent).toContain('Buen día')
+      expect(sheet.textContent).toContain('Peso corporal')
+      expect(sheet.querySelector('textarea')).toBeNull()
+      expect(sheet.textContent).not.toContain('Repetir este entreno')
+      expect(sheet.textContent).not.toContain('Delete workout')
+    } finally { apiMock.mockImplementation(real) }
+  })
+
   it('on a phone, selecting a member opens UserDetail in a sheet', async () => {
     await mount('#/admin/usuarios', ADMIN)
     expect(document.querySelector('.admin-user-panel')).toBeNull()
