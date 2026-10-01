@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { brandingOf, validateBranding, validateAssets, pngSize, buildManifest, BRANDING_ASSETS } from './branding.js';
 import { fakePng } from './fake-png.js';
 
-const allAssets = () => Object.fromEntries(Object.entries(BRANDING_ASSETS).map(([name, side]) => [name, 'data:image/png;base64,' + fakePng(side).toString('base64')]));
+const allAssets = (opts) => Object.fromEntries(Object.entries(BRANDING_ASSETS).map(([name, side]) => [name, 'data:image/png;base64,' + fakePng(side, opts).toString('base64')]));
 
 test('brandingOf: valores por defecto y lo guardado', () => {
   assert.deepEqual(brandingOf(null), { appName: 'lauyim', shortName: '', tagline: '', color: null, lockColor: false, logo: null });
@@ -34,6 +34,13 @@ test('validateAssets: todos los íconos, PNG y del tamaño justo', () => {
   const notPng = allAssets(); notPng['logo.png'] = Buffer.from('<svg/>').toString('base64');
   assert.match(validateAssets(notPng).error, /no es un PNG/);
   assert.match(validateAssets({ ...allAssets(), 'otro.png': 'x' }).error, /desconocida/);
+});
+
+test('validateAssets: un logo tipo foto (el PNG más pesado posible de cada lado) entra', () => {
+  // Un 512 con degradado o foto pesa 500 a 800 KB; el límite viejo de 700 KB lo rechazaba.
+  const heavy = allAssets({ noise: true });
+  assert.ok(Buffer.from(heavy['logo.png'].split(',')[1], 'base64').length > 1024 * 1024);
+  assert.equal(validateAssets(heavy).error, undefined);
 });
 
 test('buildManifest: nombre, nombre corto e íconos propios o los de lauyim', () => {

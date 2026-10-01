@@ -36,7 +36,7 @@ async function call(uid, method, url, body) {
   const type = res.headers.get('content-type') || '';
   return { status: res.status, headers: res.headers, body: type.includes('json') ? await res.json() : Buffer.from(await res.arrayBuffer()) };
 }
-const assets = () => Object.fromEntries(Object.entries(BRANDING_ASSETS).map(([name, side]) => [name, fakePng(side).toString('base64')]));
+const assets = (opts) => Object.fromEntries(Object.entries(BRANDING_ASSETS).map(([name, side]) => [name, 'data:image/png;base64,' + fakePng(side, opts).toString('base64')]));
 
 before(async () => {
   server = spawn(process.execPath, [fileURLToPath(new URL('./server.js', import.meta.url))], {
@@ -97,6 +97,16 @@ test('con logo: config, manifest, íconos con caché larga y la passkey con el n
   const removed = await call('owner', 'PUT', '/api/owner/branding', { appName: 'Gym Centro 2', removeLogo: true });
   assert.equal(removed.body.branding.logo, null);
   assert.equal((await call(null, 'GET', '/api/branding/icon-192.png')).status, 302);
+});
+
+test('un logo tipo foto se guarda (los cinco íconos en el peor caso)', async () => {
+  const body = { appName: 'Gym Foto', assets: assets({ noise: true }) };
+  assert.ok(JSON.stringify(body).length > 4 * 1024 * 1024);
+  const put = await call('owner', 'PUT', '/api/owner/branding', body);
+  assert.equal(put.status, 200, JSON.stringify(put.body));
+  assert.ok(put.body.branding.logo);
+  const logo = await call(null, 'GET', `/api/branding/logo.png?v=${put.body.branding.logo}`);
+  assert.equal(logo.body.length, Buffer.from(body.assets['logo.png'].split(',')[1], 'base64').length);
 });
 
 test('volver a lauyim', async () => {

@@ -150,7 +150,7 @@ import { PRIVACY_GYM_NAME_SETTING, PRIVACY_CONTACT_SETTING, validatePrivacySetti
 import { sanitizeExerciseDef } from './custom-exercise.js';
 import { LEGAL_VERSION, legalAcceptedOf, legalOkOf, healthChoiceOf } from './legal.js';
 import { parseLicenseConfig, licenseState } from './license.js';
-import { BRANDING_SETTING, BRANDING_ASSETS, DEFAULT_ASSETS, DEFAULT_APP_NAME, brandingOf, validateBranding, validateAssets, buildManifest } from './branding.js';
+import { BRANDING_SETTING, BRANDING_ASSETS, DEFAULT_ASSETS, DEFAULT_APP_NAME, MAX_BRANDING_BODY, brandingOf, validateBranding, validateAssets, buildManifest } from './branding.js';
 import {
   APPROVAL_REQUIRED_SETTING, APPROVAL_MODE_SETTING, readApprovalSettings, validateApprovalSettings,
   effectiveMode, allowedStarts, needsProfilePrompt, anyFieldEnabled
@@ -1031,12 +1031,12 @@ function json(res, code, obj, extraHeaders) {
   res.writeHead(code, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', ...(extraHeaders || {}) });
   res.end(body);
 }
-function readBody(req) {
+function readBody(req, max = MAX_BODY) {
   return new Promise((resolve, reject) => {
     let size = 0; const chunks = [];
     req.on('data', d => {
       size += d.length;
-      if (size > MAX_BODY) { reject(new Error('body too large')); req.destroy(); return; }
+      if (size > max) { reject(new Error('body too large')); req.destroy(); return; }
       chunks.push(d);
     });
     req.on('end', () => {
@@ -3721,7 +3721,7 @@ const routes = {
   },
   'PUT /api/owner/branding': async (req, res) => {
     const owner = requireOwner(req, res); if (!owner) return;
-    const body = await readBody(req);
+    const body = await readBody(req, MAX_BRANDING_BODY);
     const checked = validateBranding(body);
     if (checked.error) return json(res, 400, { error: 'validation_error', message: checked.error, field: checked.field });
     let logo = brandingNow().logo;

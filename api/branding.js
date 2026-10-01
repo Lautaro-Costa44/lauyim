@@ -8,7 +8,10 @@ export const DEFAULT_APP_NAME = 'lauyim';
 export const MAX_APP_NAME = 30;
 export const MAX_SHORT_NAME = 12;
 export const MAX_TAGLINE = 80;
-export const MAX_ASSET_BYTES = 700 * 1024;
+// Un PNG de 512×512 con transparencia que no se comprime (foto, degradado) pesa hasta ~1 MB.
+export const MAX_ASSET_BYTES = 1200 * 1024;
+// Cuerpo del PUT con los cinco íconos en base64, en el peor caso (~4,4 MB, cerca del límite general de 5 MB).
+export const MAX_BRANDING_BODY = 8 * 1024 * 1024;
 
 // Archivos que se generan a partir del logo, con su lado exacto en píxeles.
 export const BRANDING_ASSETS = Object.freeze({
