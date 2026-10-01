@@ -31,19 +31,14 @@ afterEach(async () => { await act(async () => { root.unmount() }); container.rem
 
 describe('tema en Ajustes', () => {
   const themeButtons = () => [...container.querySelectorAll('button')].filter(b => ['Oscuro', 'Claro', 'Sistema'].includes(b.textContent.trim()))
-  it('bloqueado por el gym: se ve el del gym y no se puede cambiar', async () => {
-    useStore.setState({ S: { ...useStore.getState().S, theme: 'light' } })
+  it('bloqueado por el gym: la opción no aparece', async () => {
     await render({ appName: 'Gym', color: null, lockColor: false, theme: 'dark', lockTheme: true })
-    expect(themeButtons()).toHaveLength(3)
-    expect(themeButtons().every(b => b.disabled)).toBe(true)
-    expect(themeButtons().find(b => b.classList.contains('on')).textContent.trim()).toBe('Oscuro')
-    expect(container.textContent).toContain('El gimnasio eligió el tema')
+    expect(themeButtons()).toHaveLength(0)
   })
 
   it('libre: cada uno elige', async () => {
     await render({ appName: 'Gym', color: null, lockColor: false, theme: 'dark', lockTheme: false })
-    expect(themeButtons().some(b => b.disabled)).toBe(false)
-    expect(container.textContent).not.toContain('El gimnasio eligió el tema')
+    expect(themeButtons()).toHaveLength(3)
   })
 })
 

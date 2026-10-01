@@ -6,7 +6,7 @@ import { useStore, DEF, hasData, healthOff } from '../store/useStore.js'
 import { HealthConsentSheet } from './HealthConsent.jsx'
 import { useUI } from '../store/useUI.js'
 import { ACCENTS, todayISO, localTZ, DAYN, fmtDateDMY } from '../lib/format.js'
-import { resolveAccent, cachedBranding, themeFor } from '../lib/branding.js'
+import { resolveAccent, cachedBranding } from '../lib/branding.js'
 import { effortOf } from '../lib/history.js'
 import { POLICIES, POLICY_NAME, POLICY_DESC } from '../lib/progression.js'
 import Stepper from '../components/Stepper.jsx'
@@ -518,9 +518,9 @@ export default function Settings() {
     <EquipmentCard S={S} update={update} />
 
     {/* ---------- appearance ---------- */}
-    {/* Con el tema bloqueado (Personalización) se ve el del gym y no se cambia. */}
-    <Section title={t('Appearance')} footer={brand?.lockTheme ? t('El gimnasio eligió el tema') + ' · ' + t('synced with your profile') : t('synced with your profile')}>
-      <Row icon="moon" iconTint="var(--indigo)" title={t('Theme')}>
+    <Section title={t('Appearance')} footer={t('synced with your profile')}>
+      {/* Con el tema bloqueado (Personalización) no hay opción: toda la app usa el del gym. */}
+      {!brand?.lockTheme && <Row icon="moon" iconTint="var(--indigo)" title={t('Theme')}>
         <Segmented
           className="seg-inline"
           options={[
@@ -528,11 +528,10 @@ export default function Settings() {
             { value: 'light', icon: 'sun', label: t('Light') },
             { value: 'system', icon: 'gear', label: t('System') },
           ]}
-          value={themeFor(S.theme, brand)}
-          disabled={!!brand?.lockTheme}
+          value={S.theme || 'dark'}
           onChange={v => update(s => { s.theme = v })}
         />
-      </Row>
+      </Row>}
       {/* Purely how the muscle map is drawn — nothing else in the app reads this. */}
       <Row icon="figureStrength" iconTint="var(--teal)" title={t('Body diagram')}>
         <Segmented

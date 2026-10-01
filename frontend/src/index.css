@@ -550,10 +550,6 @@ input[type="search"]::-webkit-search-cancel-button{display:none;-webkit-appearan
 .seg button .icn{font-size:16px}
 .seg button:not(.on){color:var(--label-2);font-weight:400}
 .seg button:active{opacity:.5}
-/* bloqueado (p. ej. el tema que eligió el gym): se ve la opción, no se toca */
-.seg-off{opacity:.55}
-.seg-off button{cursor:not-allowed}
-.seg-off button:active{opacity:1}
 /* sitting in a list row: shrink to content instead of filling the row */
 .seg-inline{flex:none;min-width:132px}
 .seg-range{margin-bottom:10px}
