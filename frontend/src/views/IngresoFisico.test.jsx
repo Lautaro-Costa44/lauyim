@@ -126,7 +126,10 @@ describe('Ingreso Físico: pantalla', () => {
     expect(document.querySelector('.checkin-display').textContent).toBe('4')
     for (const d of '0111333') await keyboard(d)
     expect(document.querySelector('.checkin-display').textContent).toBe('40111333')
-  })
+    // 18 teclas con su flush (~160 ms cada una): ~3 s en el mejor caso. Con la suite completa en
+    // paralelo pasaba los 5 s por defecto, y el test cortado a la mitad seguía mandando teclas
+    // sobre los siguientes y los rompía en cascada.
+  }, 20000)
 
   it('mantiene la pantalla encendida (Wake Lock) mientras está abierta y la suelta al salir', async () => {
     const release = vi.fn(async () => {})
