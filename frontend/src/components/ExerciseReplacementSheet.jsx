@@ -8,7 +8,7 @@ import { NO_AUTOFILL } from '../lib/input-safety.js'
 import { t } from '../lib/i18n.js'
 import { obtenerAlternativas as obtenerAlternativasNormal, obtenerMasAlternativas as obtenerMasAlternativasNormal, buscarEnGrupoMuscular } from '../lib/generarRutina.js'
 import { musclesOf, MUSCLE_NAME } from '../lib/muscles.js'
-import Media from './Media.jsx'
+import { Thumb } from './Media.jsx'
 
 function ExerciseReplacementSheet({ exActual, poolSeguro, usadosEnSemana, onReemplazar, close, tipo = 'normal' }) {
   const [masAlts, setMasAlts] = useState([])
@@ -78,7 +78,7 @@ function ExerciseReplacementSheet({ exActual, poolSeguro, usadosEnSemana, onReem
             .slice(0, 2)
           return (
             <div key={alt.id} className="item" style={{ padding: '12px 16px', borderBottom: 'var(--hair) solid var(--sep)', display: 'flex', gap: 10, alignItems: 'flex-start' }}>
-              {alt.img && <Media alt={nombreAlt} src={alt.img} style={{ width: 50, height: 50, borderRadius: 8, objectFit: 'cover', flexShrink: 0 }} />}
+              <Thumb ex={alt} />
               <div className="grow" style={{ minWidth: 0 }}>
                 <div className="tt" style={{ fontWeight: 600, marginBottom: 4 }}>{nombreAlt}</div>
                 <div className="ss muted" style={{ fontSize: 12, marginBottom: 6 }}>

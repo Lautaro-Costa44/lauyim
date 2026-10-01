@@ -723,6 +723,17 @@ input[type="search"]::-webkit-search-cancel-button{display:none;-webkit-appearan
    at 180px you had to scroll a full screen between two exercises done back-to-back */
 .exmedia.compact img{height:120px}
 .exmedia.mini img{height:84px}
+/* Mapa muscular en el lugar del gif (ejercicios propios, o el catálogo con EXERCISE_GIFS=0): mismo
+   recuadro y mismas alturas. Arriba queda lugar para "Ver instrucciones"; en las versiones chicas
+   el cuerpo se corre a la derecha para no quedar debajo de los botones de la izquierda. */
+.exmedia.exmap{background:var(--surface-2);height:320px;padding:44px 12px 12px;display:flex}
+.exmedia.exmap .bodymap{flex:1;min-width:0;height:100%}
+.exmedia.exmap .bm-v{height:100%;max-height:100%}
+.exmedia.exmap .bm-ph{height:100%}
+.exmedia.exmap.compact{height:120px;padding:8px 12px}
+.exmedia.exmap.mini{height:84px;padding:6px 12px}
+.exmedia.exmap.compact .bodymap,.exmedia.exmap.mini .bodymap{justify-content:flex-end}
+.exmedia.exmap.compact .bm-v,.exmedia.exmap.mini .bm-v{flex:0 0 auto;width:auto}
 
 .sethead{
   display:flex;align-items:center;gap:8px;padding:0 0 6px;
@@ -1162,6 +1173,7 @@ input[type="search"]::-webkit-search-cancel-button{display:none;-webkit-appearan
   #timer.rest{flex-direction:row;align-items:center;gap:14px}
   #timer.rest .head{flex:1;min-width:0}
   .exmedia img{height:380px}
+  .exmedia.exmap:not(.compact):not(.mini){height:380px}
   .hm-wrap{display:flex;flex-direction:column;align-items:center}
   /* admin: fixed side menu instead of the app tab bar; the content next to it gets up to
      1200px, centered in the space the menu leaves. #app.admin-app is only set on /admin/*. */
@@ -1918,3 +1930,9 @@ button.wh-row{font:inherit;color:inherit;border:0;cursor:pointer}
 /* En escritorio #app .list es de dos columnas; el historial (y su columna al lado del detalle)
    se lee mejor en una. */
 @media (min-width:1000px){ #app .wh .list{display:flex;flex-direction:column} }
+
+/* Formulario de ejercicio propio: interruptores de mapa, instrucciones y compartir, y el editor de
+   instrucciones numeradas (components/NumberedSteps.jsx). */
+.custom-ex-opts{margin:14px 0 10px}
+.steps-input{line-height:1.55;resize:vertical;min-height:96px}
+.steps-hint{margin:4px 2px 0}

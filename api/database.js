@@ -8,7 +8,8 @@ import path from 'path';
 import fs from 'fs';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
-import { setRowValues, setFromRow, workoutMeta, validateWorkouts, decodeMeta } from './row-meta.js';
+import { setRowValues, setFromRow, workoutMeta, validateWorkouts, decodeMeta, encodeMeta } from './row-meta.js';
+import { CUSTOM_EXERCISE_COLUMNS } from './custom-exercise.js';
 
 const DATA = process.env.DATA_DIR || '/data';
 const dbPath = path.join(DATA, 'gym.db');
@@ -311,6 +312,8 @@ export function initDatabase() {
   // Ejercicios custom de presets: la copia que recibe un socio guarda de qué ejercicio salió
   // (origin_id) y el preset guarda la definición del original, por si su dueño lo borra.
   try { db.exec(`ALTER TABLE custom_exercises ADD COLUMN origin_id TEXT;`); } catch {}
+  // Campos sin columna propia (descripción, músculos elegidos, mapa muscular): ver row-meta.js.
+  try { db.exec(`ALTER TABLE custom_exercises ADD COLUMN meta TEXT;`); } catch {}
   db.exec(`CREATE INDEX IF NOT EXISTS idx_custom_exercises_user_origin ON custom_exercises(user_id, origin_id)`);
   db.exec(`CREATE TABLE IF NOT EXISTS preset_custom_exercises (id TEXT PRIMARY KEY, payload TEXT NOT NULL, updated_at INTEGER NOT NULL)`);
   backfillPresetCustomExercises(db);
@@ -1817,7 +1820,7 @@ function saveBodyweight(userId, bodyweight) {
 
 // Ejercicio custom tal como lo ve el cliente, a partir de una fila de custom_exercises.
 function customRowToDef(row) {
-  return {
+  return decodeMeta({
     id: row.id,
     n: row.n,
     tipo: row.tipo,
@@ -1831,7 +1834,7 @@ function customRowToDef(row) {
     st: safeJsonParse(row.st, []),
     created: row.created_at,
     custom: true
-  };
+  }, row.meta, `custom_exercises ${row.id}`);
 }
 
 // Id de la fila de la copia de un socio. custom_exercises.id es PRIMARY KEY de toda la tabla, así
@@ -1844,9 +1847,27 @@ export const customCopyId = (originId, userId) => `${originId}@${userId}`;
 // rutinas, sus grupos y su historial: nada de eso se reescribe.
 export function getCustomExercisesByUserId(userId) {
   const stmt = getDatabase().prepare('SELECT * FROM custom_exercises WHERE user_id = ?');
-  return stmt.all(userId).map(row => row.origin_id
+  // Un ejercicio compartido nunca se devuelve también como propio (una fila que quedó de antes de
+  // que se marcara la copia local del admin como compartida).
+  const shared = publicCustomExerciseIds();
+  return stmt.all(userId).filter(row => row.origin_id || !shared.has(row.id)).map(row => row.origin_id
     ? { ...customRowToDef(row), id: row.origin_id, origin: row.origin_id }
     : customRowToDef(row));
+}
+
+function publicCustomExerciseIds() {
+  return new Set(getDatabase().prepare('SELECT id FROM public_custom_exercises').all().map(r => r.id));
+}
+
+// Lo que no tiene columna propia va en meta. Una meta demasiado grande no frena el guardado del
+// resto del estado: el ejercicio se guarda sin esos campos.
+function customExerciseMeta(ex) {
+  try {
+    return encodeMeta(ex, CUSTOM_EXERCISE_COLUMNS, 'custom_exercise');
+  } catch (error) {
+    console.warn(`custom_exercises ${ex.id}: ${error.message}`);
+    return null;
+  }
 }
 
 export function getPublicCustomExercises() {
@@ -1860,8 +1881,8 @@ export function deletePublicCustomExercise(id) { getDatabase().prepare('DELETE F
 function insertCustomRow(db, rowId, userId, ex, originId) {
   const equipArr = Array.isArray(ex.equipamiento) ? ex.equipamiento : (ex.eq ? [ex.eq] : ['body weight']);
   db.prepare(`
-    INSERT OR REPLACE INTO custom_exercises (id, user_id, n, tipo, equipamiento, grupo_muscular, bp, eq, tg, mg, sm, st, created_at, origin_id)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT OR REPLACE INTO custom_exercises (id, user_id, n, tipo, equipamiento, grupo_muscular, bp, eq, tg, mg, sm, st, created_at, origin_id, meta)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     rowId,
     userId,
@@ -1876,7 +1897,8 @@ function insertCustomRow(db, rowId, userId, ex, originId) {
     JSON.stringify(ex.sm || []),
     JSON.stringify(ex.st || []),
     ex.created || Date.now(),
-    originId || null
+    originId || null,
+    customExerciseMeta(ex)
   );
 }
 
@@ -1888,8 +1910,11 @@ function saveCustomExercises(userId, customEx) {
   const db = getDatabase();
   db.prepare('DELETE FROM custom_exercises WHERE user_id = ? AND origin_id IS NULL').run(userId);
   const ownerOf = db.prepare('SELECT user_id FROM custom_exercises WHERE id = ?');
+  const shared = publicCustomExerciseIds();
   for (const ex of customEx || []) {
     if (!ex || typeof ex !== 'object' || ex.shared || !ex.id) continue;
+    // La copia local de un ejercicio que el admin compartió (un cliente viejo no la marcaba).
+    if (!ex.origin && shared.has(String(ex.id))) continue;
     const origin = ex.origin ? String(ex.origin) : null;
     const rowId = origin ? customCopyId(origin, userId) : String(ex.id);
     const owner = ownerOf.get(rowId)?.user_id;

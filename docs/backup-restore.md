@@ -195,3 +195,19 @@ los pagos de ese día.
 
 Si el servidor se perdió entero: instalar rclone en el nuevo, recrear `gdrive-backup:` y
 `gdrive-crypt:` con **las mismas contraseñas del gestor** (paso 1.2) y seguir desde acá.
+
+---
+
+## 5. Media de ejercicios (EXERCISE_GIFS)
+
+Los gifs e imágenes del catálogo (`./media/img`, `./media/gif`) no están en el backup: se bajan
+solos la primera vez (servicio `media` del compose). Si hay que dejar de mostrarlos, por ejemplo
+ante un reclamo del titular de los derechos:
+
+1. En el `.env` de cada instancia, `EXERCISE_GIFS=0`, y reiniciar la API
+   (`docker compose -p <proyecto> up -d api`). La app muestra el mapa muscular en lugar del gif y un
+   ícono en lugar de la miniatura. Los socios lo ven al abrir la app.
+2. Para retirarlos también del servidor: `rm -rf media/img/* media/gif/*` en cada instancia. El
+   servicio `media` los vuelve a bajar si las carpetas quedan vacías al levantar el stack, así que
+   hay que sacarlo del `docker-compose.yml` (y la dependencia `depends_on: media` del `web`).
+3. Las copias que los celulares ya tenían en caché dejan de mostrarse con el paso 1.

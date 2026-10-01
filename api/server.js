@@ -143,6 +143,7 @@ import {
 } from './members.js';
 import { parseImportBody, analyzeImport } from './member-import.js';
 import { PRIVACY_GYM_NAME_SETTING, PRIVACY_CONTACT_SETTING, validatePrivacySettings } from './privacy.js';
+import { sanitizeExerciseDef } from './custom-exercise.js';
 import {
   APPROVAL_REQUIRED_SETTING, APPROVAL_MODE_SETTING, readApprovalSettings, validateApprovalSettings,
   effectiveMode, allowedStarts, needsProfilePrompt, anyFieldEnabled
@@ -183,6 +184,8 @@ const ADMIN_UIDS = (process.env.ADMIN_UIDS || '').split(',').map(s => s.trim()).
 const NEW_USERS_ADMIN = /^(1|true|yes|on)$/i.test(process.env.NEW_USERS_ADMIN || '');
 if (process.env.DEMO_ADMIN_ALL_USERS) console.warn('DEMO_ADMIN_ALL_USERS ya no existe: usá NEW_USERS_ADMIN=1 (ver docs/runbook-actualizaciones.md).');
 const INVITE_ONLY = /^(1|true|yes|on)$/i.test(process.env.INVITE_ONLY || '');
+// Gifs e imágenes de los ejercicios del catálogo: encendidos salvo EXERCISE_GIFS=0.
+const EXERCISE_GIFS = !/^(0|false|no|off)$/i.test(process.env.EXERCISE_GIFS || '');
 // Guest mode ("Continue without account") keeps everything in the browser and never touches this
 // server — but on an instance meant for a known set of people, an entrance nobody can walk back
 // out of is still the wrong front door (#42). Default ON, so existing instances are unchanged;
@@ -2346,6 +2349,9 @@ const routes = {
       // Versión mínima de la app que el servidor acepta (x.y.z, de frontend/package.json). Un cliente
       // más viejo muestra el modal de actualización necesaria (frontend/src/lib/update.js).
       min_client_version: process.env.MIN_CLIENT_VERSION || null,
+      // EXERCISE_GIFS=0 apaga los gifs e imágenes del catálogo: la app muestra el mapa muscular en
+      // su lugar (ver docs/backup-restore.md → media de ejercicios).
+      exercise_gifs: EXERCISE_GIFS,
       instance_name: process.env.INSTANCE_NAME || req.headers['x-forwarded-host'] || req.headers['host'] || 'lauyim'
     });
   },
@@ -2876,7 +2882,13 @@ const routes = {
   },
 
   'GET /api/public-exercises': async (req, res) => json(res, 200, { exercises: getPublicCustomExercises() }),
-  'POST /api/admin/public-exercises': async (req, res) => { const admin = requireAdmin(req, res); if (!admin) return; const ex = await readBody(req); if (!ex.id || !ex.n) return json(res, 400, { error: 'validation_error' }); savePublicCustomExercise(ex); json(res, 200, { ok: true }); },
+  'POST /api/admin/public-exercises': async (req, res) => {
+    const admin = requireAdmin(req, res); if (!admin) return;
+    const checked = sanitizeExerciseDef(await readBody(req));
+    if (checked.error) return json(res, 400, { error: checked.error });
+    savePublicCustomExercise(checked.value);
+    json(res, 200, { ok: true });
+  },
   'POST /api/admin/public-exercises/delete': async (req, res) => { const admin = requireAdmin(req, res); if (!admin) return; deletePublicCustomExercise((await readBody(req)).id); json(res, 200, { ok: true }); },
 
   'PUT /api/data': async (req, res) => {

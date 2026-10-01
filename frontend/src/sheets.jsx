@@ -11,7 +11,9 @@ import { nav } from './lib/nav.js'
 import ProgramPicker from './components/ProgramPicker.jsx'
 import { api } from './lib/api.js'
 import WorkoutDetailView from './components/workout/WorkoutDetailView.jsx'
-import Media, { Thumb } from './components/Media.jsx'
+import Media, { Thumb, useExerciseGifs } from './components/Media.jsx'
+import NumberedSteps from './components/NumberedSteps.jsx'
+import { mediaKindFor } from './lib/exercise-media.js'
 import Stepper from './components/Stepper.jsx'
 import Icon from './components/Icon.jsx'
 import { Button, Slider, Switch, Segmented, SelectRow, Row, TextField, MultiSelectRow } from './components/ui.jsx'
@@ -358,8 +360,14 @@ function OneRM({ ex }) {
   </>
 }
 
+// Un ejercicio creado por un socio o por el staff se edita y se borra desde su detalle; uno
+// compartido con todo el gym, solo el staff (para el socio es parte del catálogo).
+const canEditCustom = (ex, isAdmin) => !!ex?.custom && (!ex.shared || isAdmin)
+
 function ExerciseDetail({ ex, close, noAdd = false }) {
   const st = useStore(s => s.S)
+  const isAdmin = useStore(s => !!s.user?.admin)
+  const hasMedia = mediaKindFor(ex, useExerciseGifs()) !== null
   const last = lastEntryFor(st, ex.id)
   const best = bestWeightFor(st, ex.id)
   return <>
@@ -374,13 +382,13 @@ function ExerciseDetail({ ex, close, noAdd = false }) {
     {ex.desc && <div className="exnote">{ex.desc}</div>}
     {best > 0 && <div className="small row" style={{ marginBottom: 6, gap: 5 }}><Icon name="trophy" style={{ fontSize: 14, color: 'var(--yellow)' }} />{t('Best:')} <b className="accent">{fmtNum(best)} {st.unit}</b>{last ? ` · ${t('last')} ${fmtDate(last.d)}: ${last.sets.map(s => setLabel(ex.id, s, last.target)).join(', ')}` : ''}</div>}
     {!noAdd && <Button variant="primary" icon="plus" style={{ margin: '10px 0 4px' }} onClick={() => addToRoutineSheet(ex)}>{t('Add to my plan')}</Button>}
-    {ex.custom && <div className="row" style={{ gap: 8, marginTop: 8 }}>
+    {canEditCustom(ex, isAdmin) && <div className="row" style={{ gap: 8, marginTop: 8 }}>
       <Button icon="pencil" style={{ flex: 1 }} onClick={() => { close(); customExSheet(ex) }}>{t('Edit')}</Button>
       <Button variant="danger" icon="trash" style={{ flex: 1 }} onClick={() => deleteCustomEx(ex, close)}>{t('Delete')}</Button>
     </div>}
     {!isCardio(ex) && !isStretch(ex) && !isBw(ex) && <OneRM ex={ex} />}
-    {/* Con gif, las instrucciones van en el botón sobre el gif; sin gif, acá al final. */}
-    {!ex.gif && instrFor(ex).length > 0 &&<><h4 className="sec">{t('How to')}{!INSTR_LANGS.includes(getLang()) && <span className="dim" style={{ textTransform: 'none', letterSpacing: 0 }}> · {t('instructions in English')}</span>}</h4><ol className="steps-list">{instrFor(ex).map((s, i) => <li key={i}>{s}</li>)}</ol></>}
+    {/* Con gif o mapa, las instrucciones van en el botón de arriba; sin nada arriba, acá al final. */}
+    {!hasMedia && instrFor(ex).length > 0 &&<><h4 className="sec">{t('How to')}{!INSTR_LANGS.includes(getLang()) && <span className="dim" style={{ textTransform: 'none', letterSpacing: 0 }}> · {t('instructions in English')}</span>}</h4><ol className="steps-list">{instrFor(ex).map((s, i) => <li key={i}>{s}</li>)}</ol></>}
   </>
 }
 export const exerciseDetailSheet = ex => ui().openSheet(close => <ExerciseDetail ex={ex} close={close} />)
@@ -421,9 +429,19 @@ export const addToRoutineSheet = ex => ui().openSheet(close => <AddToRoutine ex=
 
 /* ============================ custom exercises (issue #11) ============================ */
 // Name + body part is all it takes — the exercise then behaves like any built-in one
-// (planning, logging, PRs, stats), just without an animation.
+// (planning, logging, PRs, stats). En lugar del gif lleva el mapa muscular (se puede apagar) y,
+// si se cargan, instrucciones numeradas. El staff puede compartirlo con todo el gym: se guarda en
+// el servidor antes de cerrar, y la copia local queda marcada como compartida.
 function CustomExForm({ existing, prefill, onDone, close }) {
   const isAdmin = useStore(s => !!s.user?.admin)
+  const [showMap, setShowMap] = useState(existing ? existing.map !== false : true)
+  // Instrucciones: para un socio, apagadas por defecto; para el staff, encendidas.
+  const [withSteps, setWithSteps] = useState(existing ? (existing.st || []).length > 0 : isAdmin)
+  const [steps, setSteps] = useState(() => existing?.st ? [...existing.st] : [])
+  // Un compartido no vuelve a ser propio: para dejar de compartirlo se borra.
+  const alreadyShared = !!existing?.shared
+  const [share, setShare] = useState(existing ? alreadyShared : isAdmin)
+  const [busy, setBusy] = useState(false)
   const [n, setN] = useState(existing ? existing.n : (prefill || ''))
   const [tipo, setTipo] = useState(existing ? (existing.tipo || (existing.bp === 'cardio' ? 'cardio' : 'fuerza')) : 'fuerza')
   const [grupoMuscular, setGrupoMuscular] = useState(existing ? (existing.grupo_muscular || existing.tg || existing.bp || '') : '')
@@ -447,7 +465,8 @@ function CustomExForm({ existing, prefill, onDone, close }) {
   const toggleSecondary = value => setSecondaries(current => current.includes(value) ? current.filter(m => m !== value) : [...current, value])
   const toggleEquip = value => setEquipamiento(current => current.includes(value) ? current.filter(e => e !== value) : [...current, value])
 
-  const save = () => {
+  const save = async () => {
+    if (busy) return
     const name = n.trim()
     if (!name) { toast(t('Give it a name')); return }
     if (!tipo) { toast(t('Select exercise type')); return}
@@ -459,23 +478,31 @@ function CustomExForm({ existing, prefill, onDone, close }) {
     const prim = grupoMuscular ? [grupoMuscular] : []
     const sm = tipo === 'estiramiento' && !showSecondary ? [] : secondaries.filter(m => !prim.includes(m))
     const groups = [...prim, ...sm]
-    const equipArr = equipamiento.length ? equipamiento : (tipo === 'estiramiento' ? ['body weight'] : ['body weight'])
+    const equipArr = equipamiento.length ? equipamiento : ['body weight']
     const primaryEq = equipArr[0] || 'body weight'
     const bpVal = tipo === 'cardio' ? 'cardio' : (tipo === 'estiramiento' ? 'stretch' : (grupoMuscular || 'other'))
 
-    let id = existing && existing.id
-    if (existing) update(s => { const c = (s.customEx || []).find(x => x.id === id); if (c) {
-      c.n = name; c.tipo = tipo; c.equipamiento = equipArr; c.grupo_muscular = grupoMuscular; c.bp = bpVal; c.eq = primaryEq; c.desc = d; c.tg = grupoMuscular; c.sm = sm; c.muscleGroups = groups; c.primaries = prim; c.secondaries = sm
-    } })
-    if (existing?.shared) api('/api/admin/public-exercises', { method: 'POST', body: JSON.stringify({ ...existing, n: name, tipo, equipamiento: equipArr, grupo_muscular: grupoMuscular, bp: bpVal, eq: primaryEq, desc: d, tg: grupoMuscular, sm, muscleGroups: groups, primaries: prim, secondaries: sm, custom: true, shared: true }) }).catch(() => {})
-    else {
-      id = 'c' + uid()
-      const created = { id, n: name, tipo, equipamiento: equipArr, grupo_muscular: grupoMuscular, bp: bpVal, eq: primaryEq, desc: d, tg: grupoMuscular, sm, muscleGroups: groups, primaries: prim, secondaries: sm, custom: true }
-      const finish = () => { close(); toast(t('“{0}” created', name)); onDone && onDone(EXIDX[id]) }
-      const publish = () => { update(s => { (s.customEx = s.customEx || []).push(created) }); api('/api/admin/public-exercises', { method: 'POST', body: JSON.stringify(created) }).catch(() => {}); finish() }
-      if (isAdmin) return confirmSheet({ title: t('Compartir ejercicio'), message: t('¿Querés añadirlo para que lo vean todos los usuarios, actuales y futuros?'), confirmText: t('Compartir'), cancelText: t('No'), onConfirm: publish, onCancel: () => { update(s => { (s.customEx = s.customEx || []).push(created) }); finish() } })
-      update(s => { (s.customEx = s.customEx || []).push(created) })
+    const id = existing ? existing.id : 'c' + uid()
+    const def = {
+      ...(existing || {}), id, n: name, tipo, equipamiento: equipArr, grupo_muscular: grupoMuscular, bp: bpVal, eq: primaryEq,
+      desc: d, tg: grupoMuscular, sm, muscleGroups: groups, primaries: prim, secondaries: sm,
+      st: withSteps ? steps.filter(Boolean) : [], map: showMap, custom: true
     }
+    const shared = isAdmin && (share || alreadyShared)
+    if (shared) {
+      // Primero el servidor: si no llega, el ejercicio no queda a medias (compartido para el
+      // admin y para nadie más).
+      setBusy(true)
+      try { await api('/api/admin/public-exercises', { method: 'POST', body: JSON.stringify(def) }) }
+      catch (e) { setBusy(false); toast(errorText(e, t('No se pudo compartir el ejercicio. Probá de nuevo con conexión.'))); return }
+      def.shared = true
+    }
+    update(s => {
+      s.customEx = s.customEx || []
+      const i = s.customEx.findIndex(x => x.id === id)
+      if (i >= 0) s.customEx[i] = def
+      else s.customEx.push(def)
+    })
     close()
     toast(existing ? t('Saved') : t('“{0}” created', name))
     onDone && onDone(EXIDX[id])
@@ -592,8 +619,25 @@ function CustomExForm({ existing, prefill, onDone, close }) {
     
     <textarea {...NO_AUTOFILL} name="app-exercise-description" className="input" rows={3} maxLength={1000} placeholder={t('Description (optional) — setup, cues, anything you want to remember')}
       value={desc} onChange={e => setDesc(e.target.value)} />
+
+    <div className="sect-b custom-ex-opts">
+      <Row icon="target" iconTint="var(--acc)" title={t('Mapa muscular')}
+        subtitle={showMap ? t('Se muestra arriba del ejercicio, con los músculos que elegiste.') : t('Sin imagen arriba del ejercicio.')}>
+        <Switch checked={showMap} onChange={setShowMap} label={t('Mapa muscular')} />
+      </Row>
+      <Row icon="list" iconTint="var(--blue)" title={t('Instrucciones')}
+        subtitle={withSteps ? t('Paso a paso, numerado.') : t('Agregá cómo se hace, paso a paso.')}>
+        <Switch checked={withSteps} onChange={setWithSteps} label={t('Instrucciones')} />
+      </Row>
+      {isAdmin && <Row icon="person" iconTint="var(--indigo)" title={t('Visible para todos los socios')}
+        subtitle={alreadyShared ? t('Ya lo ven todos. Para dejar de compartirlo, borralo.') : share ? t('Lo ven todos los socios, actuales y futuros.') : t('Solo lo ves vos.')}>
+        <Switch checked={share || alreadyShared} disabled={alreadyShared} onChange={setShare} label={t('Visible para todos los socios')} />
+      </Row>}
+    </div>
+    {withSteps && <NumberedSteps value={steps} onChange={setSteps} />}
+
     <div style={{ height: 14 }} />
-    <Button variant="primary" onClick={save}>{existing ? t('Save') : t('Create exercise')}</Button>
+    <Button variant="primary" disabled={busy} onClick={save}>{busy ? t('Guardando…') : existing ? t('Save') : t('Create exercise')}</Button>
     {existing && <><div style={{ height: 8 }} /><Button variant="danger" icon="trash" onClick={() => { close(); deleteCustomEx(existing) }}>{t('Delete exercise')}</Button></>}
   </>
 }
@@ -605,7 +649,12 @@ export function deleteCustomEx(ex, afterDelete) {
     title: t('Delete “{0}”?', ex.n),
     message: t('It will be removed from your routines. Already-logged workouts keep their sets.'),
     confirmText: t('Delete'), danger: true,
-    onConfirm: () => {
+    onConfirm: async () => {
+      // Uno compartido se borra primero del servidor: si falla, queda como estaba para todos.
+      if (ex.shared) {
+        try { await api('/api/admin/public-exercises/delete', { method: 'POST', body: JSON.stringify({ id: ex.id }) }) }
+        catch (e) { toast(errorText(e, t('No se pudo borrar el ejercicio. Probá de nuevo con conexión.'))); return }
+      }
       update(s => {
         // Keep display and muscle metadata in history before the custom catalogue row disappears.
         const snapshot = exerciseMuscleSnapshot(ex)
@@ -615,7 +664,6 @@ export function deleteCustomEx(ex, afterDelete) {
           if (!e.muscleSnapshot || !Object.keys(e.muscleSnapshot).length) e.muscleSnapshot = snapshot
         }))
         s.customEx = (s.customEx || []).filter(x => x.id !== ex.id)
-        if (ex.shared) api('/api/admin/public-exercises/delete', { method: 'POST', body: JSON.stringify({ id: ex.id }) }).catch(() => {})
         s.routines.forEach(r => { r.ex = r.ex.filter(e => e.id !== ex.id); cleanupSg(r.ex) })
         delete s.exWeights[ex.id]
       })
@@ -762,6 +810,7 @@ function ProgressionFields({ ex, mode, c, setC, routine, unit }) {
 
 function ExConfig({ ex, existing, onSave, onDelete, close, routine, initial }) {
   const st = useStore(s => s.S)
+  const isAdmin = useStore(s => !!s.user?.admin)
   const cardio = isCardio(ex.id)
   const [c, setC] = useState(existing || initial || defaultConfig(ex.id))
   // Cardio keeps its own duration+speed form; the reps/time choice (issue #16) is offered for
@@ -960,7 +1009,7 @@ function ExConfig({ ex, existing, onSave, onDelete, close, routine, initial }) {
       placeholder={t('Note (optional) — loading cues, "bar only then +1 plate/side each set", anything worth remembering here')}
       value={c.note || ''} onChange={e => setC(x => ({ ...x, note: e.target.value }))} />
     <Button variant="primary" onClick={save}>{existing ? t('Save') : t('Add to routine')}</Button>
-    {ex.custom && <><div style={{ height: 8 }} /><Button icon="pencil" onClick={() => { close(); customExSheet(ex) }}>{t('Edit or delete this exercise')}</Button></>}
+    {canEditCustom(ex, isAdmin) && <><div style={{ height: 8 }} /><Button icon="pencil" onClick={() => { close(); customExSheet(ex) }}>{t('Edit or delete this exercise')}</Button></>}
     {onDelete && <><div style={{ height: 8 }} /><Button variant="danger" onClick={() => { close(); onDelete() }}>{t('Remove from routine')}</Button></>}
   </>
 }
