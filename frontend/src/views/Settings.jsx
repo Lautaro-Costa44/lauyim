@@ -6,6 +6,7 @@ import { useStore, DEF, hasData, healthOff } from '../store/useStore.js'
 import { HealthConsentSheet } from './HealthConsent.jsx'
 import { useUI } from '../store/useUI.js'
 import { ACCENTS, todayISO, localTZ, DAYN, fmtDateDMY } from '../lib/format.js'
+import { resolveAccent, cachedBranding } from '../lib/branding.js'
 import { effortOf } from '../lib/history.js'
 import { POLICIES, POLICY_NAME, POLICY_DESC } from '../lib/progression.js'
 import Stepper from '../components/Stepper.jsx'
@@ -68,7 +69,7 @@ function ClaimDeviceSheet({ close }) {
     </> : <>
       <div className="card" style={{ background: 'var(--surface-2)', padding: 16, margin: '12px 0', textAlign: 'center' }}>
         <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 6 }}>{t('¿Confirmás iniciar sesión?')}</div>
-        <div className="muted small">{t('Un nuevo dispositivo está solicitando acceso a tu perfil de lauyim.')}</div>
+        <div className="muted small">{t('Un nuevo dispositivo está solicitando acceso a tu perfil.')}</div>
       </div>
       <Button variant="primary" onClick={confirmPairing} disabled={loading}>{loading ? t('Aprobando...') : t('Aprobar e iniciar sesión')}</Button>
     </>}
@@ -90,11 +91,13 @@ import { LANGS, INSTR_LANGS, getLang, setLang, t } from '../lib/i18n.js'
 import { useBuildId } from '../lib/build-id.js'
 
 export default function Settings() {
+  const brand = useStore(s => s.config?.branding) ?? cachedBranding()
   const nav = useNavigate()
   const [online, setOnline] = useState(() => navigator.onLine !== false)
   const [pendingSync, setPendingSync] = useState(0)
   const build = useBuildId()
   const S = useStore(s => s.S)
+  const accentNow = resolveAccent(S.accent, brand)
   const noHealth = useStore(healthOff)
   const user = useStore(s => s.user)
   const [presetGroups, setPresetGroups] = useState([])
@@ -540,15 +543,19 @@ export default function Settings() {
           })}
         />
       </Row>
-      <div className="lrow" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 12, paddingTop: 13, paddingBottom: 14 }}>
+      {/* Con "solo el color del gym" (Personalización) no hay paleta. Con color del gym, va primero y
+          reemplaza al lime de fábrica (lib/branding.js → resolveAccent). */}
+      {!(brand?.color && brand.lockColor) && <div className="lrow" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 12, paddingTop: 13, paddingBottom: 14 }}>
         <span className="lrow-t">{t('Accent color')}</span>
         <div className="swatches">
-          {Object.entries(ACCENTS).map(([k, c]) => (
-            <button key={k} className={'swatch' + ((S.accent || 'lime') === k ? ' on' : '')}
+          {brand?.color && <button className={'swatch' + (accentNow.key === 'custom' ? ' on' : '')}
+            style={{ background: brand.color }} onClick={() => update(s => { s.accent = 'gym' })} aria-label={t('Color del gimnasio')} title={t('Color del gimnasio')} />}
+          {Object.entries(ACCENTS).filter(([k]) => !(brand?.color && k === 'lime')).map(([k, c]) => (
+            <button key={k} className={'swatch' + (accentNow.key === k ? ' on' : '')}
               style={{ background: c }} onClick={() => update(s => { s.accent = k })} aria-label={k} />
           ))}
         </div>
-      </div>
+      </div>}
     </Section>
 
     {/* ---------- data: fill it, bring things over, back it up, wipe it ---------- */}
@@ -588,7 +595,7 @@ export default function Settings() {
     <Section title={t('Tip')}>
       <Row icon="lightbulb" iconTint="var(--yellow)"
         title={IS_ANDROID ? t('In Chrome: ⋮ menu → Add to Home screen') : t('In Safari: Share → Add to Home Screen')}
-        subtitle={t('to install lauyim as a full-screen app.') + ' ' + (user ? t('Your data syncs with your profile — sign in anywhere to see it.') : t('Guest data stays on this device — export a backup now and then!'))} />
+        subtitle={t('to install it as a full-screen app.') + ' ' + (user ? t('Your data syncs with your profile — sign in anywhere to see it.') : t('Guest data stays on this device — export a backup now and then!'))} />
     </Section>
 
     {/* The version, at the bottom of Settings — which is where the support template has been
@@ -692,7 +699,7 @@ function PushCard({ S, update, toast }) {
           (S.reminder?.tz ? ' ' + t('Timezone: {0} (auto-detected, updates if you travel).', S.reminder.tz) : '')
         : null}
     >
-      <Row icon="bell" iconTint="var(--red)" title={t('Push notifications')} subtitle={t('Rest-timer alerts, even if lauyim is closed.')}>
+      <Row icon="bell" iconTint="var(--red)" title={t('Push notifications')} subtitle={t('Rest-timer alerts, even if the app is closed.')}>
         <Switch checked={on} disabled={busy} onChange={toggle} />
       </Row>
       {on && (

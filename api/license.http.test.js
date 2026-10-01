@@ -33,7 +33,7 @@ const cookie = uid => {
 };
 
 async function withServer(env, fn) {
-  const port = 47000 + Math.floor(Math.random() * 900);
+  const port = 41000 + Math.floor(Math.random() * 900);   // rango propio: no choca con los otros tests HTTP
   const server = spawn(process.execPath, [fileURLToPath(new URL('./server.js', import.meta.url))], {
     env: { ...process.env, DATA_DIR: dataDir, PORT: String(port), LICENSE_EXPIRES_AT: '', LICENSE_PAID_UNTIL: '', ...env },
     stdio: ['ignore', 'pipe', 'pipe']

@@ -184,9 +184,15 @@ describe('admin routes', () => {
     expect(text()).toContain('Deuda total')
   })
 
-  it('tab order: Resumen, Usuarios, Cuotas, Rutinas, Notificaciones, Acceso, Ingreso Físico, Logs', async () => {
+  it('tab order: Resumen, Usuarios, Cuotas, Rutinas, Notificaciones, Acceso, Personalización, Ingreso Físico, Logs', async () => {
     await mount('#/admin/resumen', OWNER)
-    expect(tabs()).toEqual(['Resumen*', 'Usuarios', 'Cuotas', 'Rutinas', 'Notificaciones', 'Acceso', 'Ingreso Físico', 'Logs', 'Volver a la app'])
+    expect(tabs()).toEqual(['Resumen*', 'Usuarios', 'Cuotas', 'Rutinas', 'Notificaciones', 'Acceso', 'Personalización', 'Ingreso Físico', 'Logs', 'Volver a la app'])
+  })
+
+  it('Personalización es solo del owner: un admin no la ve ni entra por el link', async () => {
+    await mount('#/admin/personalizacion', ADMIN)
+    expect(tabs()).not.toContain('Personalización')
+    expect(tabs()).toContain('Resumen*')
   })
 
   it('/admin/qr redirects to Acceso', async () => {
@@ -393,8 +399,8 @@ describe('admin tabs on a phone: the active one is centered', () => {
   })
 
   it('a direct link to the last tab jumps to it, later taps glide', async () => {
-    await mount('#/admin/logs', OWNER)        // Logs is tab 7 (the owner also sees Ingreso Físico)
-    expect(scrolls[0]).toEqual({ left: 600, behavior: 'auto' })
+    await mount('#/admin/logs', OWNER)        // Logs is tab 8 (the owner also sees Personalización and Ingreso Físico)
+    expect(scrolls[0]).toEqual({ left: 700, behavior: 'auto' })
     expect(scrolls.every(s => s.behavior === 'auto')).toBe(true)
     await go('#/admin/resumen')
     expect(scrolls.at(-1)).toEqual({ left: 0, behavior: 'smooth' })   // clamped at the start

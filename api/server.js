@@ -68,6 +68,9 @@ import {
   getWorkoutsByUserId,
   getAdminSetting,
   setAdminSetting,
+  getBrandingAsset,
+  saveBrandingAssets,
+  deleteBrandingAssets,
   getOrCreateQrAccessToken,
   getAttendanceByDate,
   getDatabase,
@@ -147,6 +150,7 @@ import { PRIVACY_GYM_NAME_SETTING, PRIVACY_CONTACT_SETTING, validatePrivacySetti
 import { sanitizeExerciseDef } from './custom-exercise.js';
 import { LEGAL_VERSION, legalAcceptedOf, legalOkOf, healthChoiceOf } from './legal.js';
 import { parseLicenseConfig, licenseState } from './license.js';
+import { BRANDING_SETTING, BRANDING_ASSETS, DEFAULT_ASSETS, DEFAULT_APP_NAME, brandingOf, validateBranding, validateAssets, buildManifest } from './branding.js';
 import {
   APPROVAL_REQUIRED_SETTING, APPROVAL_MODE_SETTING, readApprovalSettings, validateApprovalSettings,
   effectiveMode, allowedStarts, needsProfilePrompt, anyFieldEnabled
@@ -170,6 +174,10 @@ const DATA = process.env.DATA_DIR || '/data';
 const RP_ID = process.env.RP_ID || 'localhost';
 const ORIGIN = process.env.ORIGIN || 'http://localhost:8080';
 const RP_NAME = process.env.RP_NAME || 'lauyim';
+// Personalización (Admin → Personalización). El nombre de la app, si el owner lo cambió, es también
+// el que muestra el celular al crear la passkey.
+const brandingNow = () => brandingOf(getAdminSetting(BRANDING_SETTING));
+const rpNameNow = () => { const name = brandingNow().appName; return name !== DEFAULT_APP_NAME ? name : RP_NAME; };
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 let apiVersion = '2.0.0';
@@ -2385,7 +2393,9 @@ const routes = {
       // EXERCISE_GIFS=0 apaga los gifs e imágenes del catálogo: la app muestra el mapa muscular en
       // su lugar (ver docs/backup-restore.md → media de ejercicios).
       exercise_gifs: EXERCISE_GIFS,
-      instance_name: process.env.INSTANCE_NAME || req.headers['x-forwarded-host'] || req.headers['host'] || 'lauyim'
+      instance_name: process.env.INSTANCE_NAME || req.headers['x-forwarded-host'] || req.headers['host'] || 'lauyim',
+      // Nombre, frase, color y logo del gym: la app los aplica antes del login (public).
+      branding: brandingNow()
     });
   },
 
@@ -2508,7 +2518,7 @@ const routes = {
     }
     const uid = crypto.randomBytes(12).toString('base64url');
     const options = await generateRegistrationOptions({
-      rpName: RP_NAME, rpID: RP_ID,
+      rpName: rpNameNow(), rpID: RP_ID,
       userID: Buffer.from(uid), userName: name, userDisplayName: name,
       attestationType: 'none',
       authenticatorSelection: { residentKey: 'required', userVerification: 'preferred' },
@@ -2622,7 +2632,7 @@ const routes = {
     }
     const fullName = getMemberProfile(user.id)?.fullName ?? null;
     const options = await generateRegistrationOptions({
-      rpName: RP_NAME, rpID: RP_ID,
+      rpName: rpNameNow(), rpID: RP_ID,
       userID: Buffer.from(user.id), userName: user.name, userDisplayName: fullName || user.name,
       attestationType: 'none',
       authenticatorSelection: { residentKey: 'required', userVerification: 'preferred' },
@@ -2842,7 +2852,7 @@ const routes = {
     const userCreds = getCredentialsByUserId(user.id);
     const excludeCredentials = userCreds.map(c => ({ id: c.id, type: 'public-key' }));
     const options = await generateRegistrationOptions({
-      rpName: RP_NAME, rpID: RP_ID,
+      rpName: rpNameNow(), rpID: RP_ID,
       userID: Buffer.from(user.id), userName: user.name, userDisplayName: user.name,
       attestationType: 'none',
       authenticatorSelection: { residentKey: 'required', userVerification: 'preferred' },
@@ -3019,7 +3029,7 @@ const routes = {
   'POST /api/push/test': async (req, res) => {
     const user = readSession(req);
     if (!user) return json(res, 401, { error: 'No has iniciado sesión' });
-    await sendPush(user.id, testPush(readState(user.id)?.lang));
+    await sendPush(user.id, testPush(readState(user.id)?.lang, brandingNow().appName));
     json(res, 200, { ok: true });
   },
 
@@ -3696,9 +3706,45 @@ const routes = {
       auditDays: AUDIT_ON ? AUDIT_DAYS : null,
       // Versión de los términos y el aviso (fecha del texto): se muestra al pie de los dos.
       legalVersion: LEGAL_VERSION,
+      // Nombre de la app (Personalización): si no es lauyim, los dos textos aclaran quién la provee.
+      appName: brandingNow().appName,
       // Encargado del tratamiento (lauyim): opcional, por instancia.
       operator: { name: (process.env.OPERATOR_NAME || '').trim().slice(0, 80) || null, cuit: (process.env.OPERATOR_CUIT || '').trim().slice(0, 20) || null }
     });
+  },
+
+  // Personalización (solo el owner). PUT: los textos y el color; con `assets`, un logo nuevo (los
+  // íconos ya generados por el navegador, todos juntos); con `removeLogo`, vuelve al de lauyim.
+  'GET /api/owner/branding': async (req, res) => {
+    if (!requireOwner(req, res)) return;
+    json(res, 200, { branding: brandingNow() });
+  },
+  'PUT /api/owner/branding': async (req, res) => {
+    const owner = requireOwner(req, res); if (!owner) return;
+    const body = await readBody(req);
+    const checked = validateBranding(body);
+    if (checked.error) return json(res, 400, { error: 'validation_error', message: checked.error, field: checked.field });
+    let logo = brandingNow().logo;
+    if (body.assets) {
+      const assets = validateAssets(body.assets);
+      if (assets.error) return json(res, 400, { error: 'validation_error', message: assets.error, field: 'logo' });
+      saveBrandingAssets(assets.value);
+      logo = Date.now();
+    } else if (body.removeLogo === true) {
+      deleteBrandingAssets();
+      logo = null;
+    }
+    const branding = { ...checked.value, logo };
+    setAdminSetting(BRANDING_SETTING, JSON.stringify(branding));
+    audit(req, 'owner.branding.settings', { user: owner, msg: branding.appName });
+    json(res, 200, { branding: brandingOf(JSON.stringify(branding)) });
+  },
+  'POST /api/owner/branding/reset': async (req, res) => {
+    const owner = requireOwner(req, res); if (!owner) return;
+    deleteBrandingAssets();
+    setAdminSetting(BRANDING_SETTING, '{}');
+    audit(req, 'owner.branding.reset', { user: owner });
+    json(res, 200, { branding: brandingNow() });
   },
 
   'GET /api/owner/privacy': async (req, res) => {
@@ -4306,6 +4352,26 @@ http.createServer(async (req, res) => {
     return res.end();
   }
   const url = new URL(req.url, 'http://x');
+
+  // Personalización: manifest de la PWA e íconos del gym. Públicos (los pide el navegador al
+  // instalar) y antes del corte de licencia. Sin logo propio, cada ícono redirige al de lauyim.
+  if (req.method === 'GET' && url.pathname.startsWith('/api/branding/')) {
+    const name = url.pathname.slice('/api/branding/'.length);
+    if (name === 'manifest.webmanifest') {
+      res.writeHead(200, { 'Content-Type': 'application/manifest+json', 'Cache-Control': 'no-cache' });
+      return res.end(JSON.stringify(buildManifest(brandingNow())));
+    }
+    if (!Object.hasOwn(BRANDING_ASSETS, name)) return json(res, 404, { error: 'not_found' });
+    const data = getBrandingAsset(name);
+    if (!data) {
+      res.writeHead(302, { Location: DEFAULT_ASSETS[name], 'Cache-Control': 'no-cache' });
+      return res.end();
+    }
+    // Con ?v= (la versión del logo) no cambia nunca: caché larga. Sin versión, se revalida.
+    res.writeHead(200, { 'Content-Type': 'image/png', 'Content-Length': data.length,
+      'Cache-Control': url.searchParams.has('v') ? 'public, max-age=31536000, immutable' : 'no-cache' });
+    return res.end(data);
+  }
 
   if (req.method === 'GET' && url.pathname.startsWith('/api/share/plan/')) {
     if (!rateLimit(res, ipRateKey(req, 'GET /api/share/plan/:code'), RATE_LIMIT_SHARE_MAX)) return;

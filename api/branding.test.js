@@ -1,0 +1,47 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { brandingOf, validateBranding, validateAssets, pngSize, buildManifest, BRANDING_ASSETS } from './branding.js';
+import { fakePng } from './fake-png.js';
+
+const allAssets = () => Object.fromEntries(Object.entries(BRANDING_ASSETS).map(([name, side]) => [name, 'data:image/png;base64,' + fakePng(side).toString('base64')]));
+
+test('brandingOf: valores por defecto y lo guardado', () => {
+  assert.deepEqual(brandingOf(null), { appName: 'lauyim', shortName: '', tagline: '', color: null, lockColor: false, logo: null });
+  assert.equal(brandingOf('roto').appName, 'lauyim');
+  // Sin color no hay "solo el color del gym".
+  assert.equal(brandingOf(JSON.stringify({ lockColor: true })).lockColor, false);
+});
+
+test('validateBranding: limpia, pone límites y exige un nombre', () => {
+  assert.deepEqual(validateBranding({ appName: '  Gym  <Centro> ', shortName: 'Centro', tagline: 'Entrená mejor', color: '#FF8800', lockColor: true }).value,
+    { appName: 'Gym Centro', shortName: 'Centro', tagline: 'Entrená mejor', color: '#ff8800', lockColor: true });
+  assert.equal(validateBranding({ appName: '' }).field, 'appName');
+  assert.equal(validateBranding({ appName: 'x'.repeat(31) }).field, 'appName');
+  assert.equal(validateBranding({ appName: 'Gym', shortName: 'x'.repeat(13) }).field, 'shortName');
+  assert.equal(validateBranding({ appName: 'Gym', tagline: 'x'.repeat(81) }).field, 'tagline');
+  assert.equal(validateBranding({ appName: 'Gym', color: 'rojo' }).field, 'color');
+  assert.equal(validateBranding({ appName: 'Gym', lockColor: true }).value.lockColor, false);
+});
+
+test('validateAssets: todos los íconos, PNG y del tamaño justo', () => {
+  const ok = validateAssets(allAssets());
+  assert.ok(ok.value);
+  assert.deepEqual(pngSize(ok.value['icon-192.png']), { width: 192, height: 192 });
+  const missing = allAssets(); delete missing['apple-touch-icon.png'];
+  assert.match(validateAssets(missing).error, /apple-touch-icon/);
+  const wrong = allAssets(); wrong['icon-192.png'] = fakePng(180).toString('base64');
+  assert.match(validateAssets(wrong).error, /192×192/);
+  const notPng = allAssets(); notPng['logo.png'] = Buffer.from('<svg/>').toString('base64');
+  assert.match(validateAssets(notPng).error, /no es un PNG/);
+  assert.match(validateAssets({ ...allAssets(), 'otro.png': 'x' }).error, /desconocida/);
+});
+
+test('buildManifest: nombre, nombre corto e íconos propios o los de lauyim', () => {
+  const plain = buildManifest(brandingOf(null));
+  assert.equal(plain.name, 'lauyim');
+  assert.equal(plain.icons[0].src, '/icon-192.png');
+  const gym = buildManifest(brandingOf(JSON.stringify({ appName: 'Gimnasio Centro Norte', logo: 7 })));
+  assert.equal(gym.short_name, 'Gimnasio Cen');
+  assert.equal(gym.icons[2].purpose, 'maskable');
+  assert.equal(gym.icons[2].src, '/api/branding/icon-maskable-512.png?v=7');
+});

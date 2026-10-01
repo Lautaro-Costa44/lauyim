@@ -24,8 +24,9 @@ export function restTimerPush(lang) {
   return { title: copy.restTitle, body: copy.restBody, tag: 'rest-timer' };
 }
 
-export function testPush(lang) {
-  return { title: 'lauyim', body: copyFor(lang).testBody, tag: 'test' };
+// title: el nombre de la app de la instancia (Personalización).
+export function testPush(lang, title = 'lauyim') {
+  return { title, body: copyFor(lang).testBody, tag: 'test' };
 }
 
 export function dayReminderPush(lang, routine) {

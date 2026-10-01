@@ -207,6 +207,8 @@ export function initDatabase() {
   // aviso de privacidad; cuándo se le pidió (una sola vez) el formulario de datos.
   try { db.exec(`ALTER TABLE users ADD COLUMN approval_status TEXT;`); } catch {}
   try { db.exec(`ALTER TABLE users ADD COLUMN privacy_accepted_at TEXT;`); } catch {}
+  // Personalización: las imágenes del logo, en la base para que entren en el backup (branding.js).
+  db.exec(`CREATE TABLE IF NOT EXISTS branding_assets (name TEXT PRIMARY KEY, data BLOB NOT NULL, updated_at INTEGER NOT NULL)`);
   // Versión de los términos y el aviso de privacidad que aceptó la cuenta (legal.js).
   try { db.exec(`ALTER TABLE users ADD COLUMN legal_version TEXT;`); } catch {}
   try { db.exec(`ALTER TABLE users ADD COLUMN legal_accepted_at TEXT;`); } catch {}
@@ -1712,6 +1714,32 @@ function saveWorkouts(userId, workouts, validRoutineIds = null) {
 // ============================================================
 // Ajustes globales del panel Admin / asistencia
 // ============================================================
+
+// ---- personalización: imágenes del logo (branding.js) ----
+
+export function getBrandingAsset(name) {
+  const row = getDatabase().prepare('SELECT data FROM branding_assets WHERE name = ?').get(name);
+  return row ? Buffer.from(row.data) : null;
+}
+
+// Reemplaza todas las imágenes juntas: { name: Buffer }.
+export function saveBrandingAssets(assets) {
+  const db = getDatabase();
+  db.exec('BEGIN IMMEDIATE');
+  try {
+    db.prepare('DELETE FROM branding_assets').run();
+    const insert = db.prepare('INSERT INTO branding_assets (name, data, updated_at) VALUES (?, ?, ?)');
+    for (const [name, data] of Object.entries(assets)) insert.run(name, data, Date.now());
+    db.exec('COMMIT');
+  } catch (error) {
+    try { db.exec('ROLLBACK'); } catch {}
+    throw error;
+  }
+}
+
+export function deleteBrandingAssets() {
+  getDatabase().prepare('DELETE FROM branding_assets').run();
+}
 
 export function getAdminSetting(key, fallback = null) {
   const row = getDatabase().prepare('SELECT value FROM admin_settings WHERE key = ?').get(key);

@@ -46,6 +46,7 @@ export function PrivacyNotice({ info, onSupport }) {
     <Sect title={t('Quién es responsable de tus datos')}>
       <p>{t('El responsable de la base de datos es {0}, el gimnasio donde entrenás. Es quien decide qué datos se piden y para qué.', gym)}</p>
       <p>{t('{0} provee la app y la aloja por cuenta del gimnasio (encargado del tratamiento): usa los datos solo para que la app funcione y no los usa para fines propios.', operator)}</p>
+      {info.appName && info.appName !== 'lauyim' && <p>{t('{0} es la app del gimnasio, provista y alojada por lauyim.', info.appName)}</p>}
     </Sect>
 
     <Sect title={t('Qué datos se guardan')}>

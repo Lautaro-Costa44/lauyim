@@ -1,3 +1,4 @@
+import { useStore } from '../../../store/useStore.js'
 import { useEffect, useRef, useState } from 'react'
 import { useUI } from '../../../store/useUI.js'
 import { api } from '../../../lib/api.js'
@@ -342,7 +343,7 @@ export function LinkCodeSheet({ user, close, onLinked }) {
   const copy = () => navigator.clipboard?.writeText(data.link)
     .then(() => toast(t('Link copiado'))).catch(() => toast(t('No se pudo copiar el link')))
   const share = () => navigator.share
-    ? navigator.share({ title: 'lauyim', text: t('Tu código del gimnasio: {0}', data.code), url: data.link }).catch(() => {})
+    ? navigator.share({ title: (useStore.getState().config?.branding?.appName || 'lauyim'), text: t('Tu código del gimnasio: {0}', data.code), url: data.link }).catch(() => {})
     : copy()
   const revoke = () => confirmSheet({
     title: t('¿Revocar el código?'),

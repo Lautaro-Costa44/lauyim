@@ -16,6 +16,7 @@ const Cuotas = lazy(() => import('./Cuotas.jsx'))
 const Rutinas = lazy(() => import('./Rutinas.jsx'))
 const Notificaciones = lazy(() => import('./Notificaciones.jsx'))
 const Acceso = lazy(() => import('./Acceso.jsx'))
+const Personalizacion = lazy(() => import('./Personalizacion.jsx'))
 const Logs = lazy(() => import('./Logs.jsx'))
 const IngresoFisico = lazy(() => import('./IngresoFisico.jsx'))
 
@@ -91,6 +92,7 @@ export default function AdminLayout() {
     ['rutinas', t('Rutinas')],
     ['notificaciones', t('Notificaciones')],
     ['acceso', t('Acceso')],
+    user?.owner && ['personalizacion', t('Personalización')],
     (user?.owner || checkinEnabled) && ['ingreso-fisico', t('Ingreso Físico')],
     auditEnabled !== false && ['logs', t('Logs')],
   ].filter(Boolean)
@@ -120,6 +122,8 @@ export default function AdminLayout() {
             <Route path="rutinas" element={<Rutinas />} />
             <Route path="notificaciones" element={<Notificaciones />} />
             <Route path="acceso" element={<Acceso />} />
+            {/* Solo el owner: los demás vuelven a Resumen sin cargar el chunk. */}
+            <Route path="personalizacion" element={user?.owner ? <Personalizacion /> : <Navigate to="/admin/resumen" replace />} />
             <Route path="qr" element={<Navigate to="/admin/acceso" replace />} />
             <Route path="logs" element={<Logs />} />
             {/* Apagado: solo el owner (para encenderlo). Los demás van a Resumen sin cargar el chunk. */}

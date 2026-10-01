@@ -13,6 +13,9 @@ const RELEASE_MARKER = './__release'
 // release, so they live in their own cache, cache-first, and survive release changes. Capped so a
 // long-lived install cannot grow without bound.
 const MEDIA_CACHE = 'lauyim-media-v1'
+// Logo e íconos del gym (Personalización): con ?v= no cambian nunca, así que se guardan para que el
+// login y la pantalla de carga los muestren también sin conexión.
+const BRANDING_CACHE = 'lauyim-branding-v1'
 const MEDIA_MAX_ENTRIES = 400
 
 let currentName = null
@@ -152,7 +155,7 @@ self.addEventListener('activate', event => {
       const others = keys.filter(key => key.startsWith(CACHE_PREFIX) && key !== keep)
       let previous = null, previousAt = -1
       for (const key of others) { const at = await installedAt(key); if (at > previousAt) { previous = key; previousAt = at } }
-      await Promise.all(keys.filter(key => key !== keep && key !== previous && key !== MEDIA_CACHE).map(key => caches.delete(key)))
+      await Promise.all(keys.filter(key => key !== keep && key !== previous && key !== MEDIA_CACHE && key !== BRANDING_CACHE).map(key => caches.delete(key)))
     }
     await self.clients.claim()
   })())
@@ -185,6 +188,21 @@ self.addEventListener('notificationclick', e => {
 self.addEventListener('fetch', e => {
   const url = new URL(e.request.url)
   if (e.request.method !== 'GET' || url.origin !== location.origin) return
+
+  // Los íconos versionados del gym: del caché, o de la red y se guardan (el último logo).
+  if (url.pathname.startsWith('/api/branding/') && url.searchParams.has('v') && url.pathname.endsWith('.png')) {
+    e.respondWith(caches.open(BRANDING_CACHE).then(async cache => {
+      const hit = await cache.match(e.request)
+      if (hit) return hit
+      const response = await fetch(e.request)
+      if (response.ok && response.status === 200) {
+        for (const old of await cache.keys()) if (new URL(old.url).pathname === url.pathname) await cache.delete(old)
+        await cache.put(e.request, response.clone())
+      }
+      return response
+    }))
+    return
+  }
 
   // API is deliberately network-only: auth, sync, and server state must never
   // be served from a stale service-worker cache.

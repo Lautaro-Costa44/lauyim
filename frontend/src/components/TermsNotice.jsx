@@ -32,6 +32,7 @@ export function TermsNotice({ info, onSupport }) {
   return <div className="privacy-doc">
     <Sect title={t('Quién presta el servicio')}>
       <p>{t('{0} te da acceso a esta app para usar sus servicios: tu cuenta de socio, tus rutinas, tu cuota y tu asistencia. lauyim provee la app y la aloja por cuenta del gimnasio.', gym)}</p>
+      {info.appName && info.appName !== 'lauyim' && <p>{t('{0} es la app del gimnasio, provista y alojada por lauyim.', info.appName)}</p>}
       <p>{t('Al crear tu cuenta o seguir usándola aceptás estos términos y el aviso de privacidad. Si no estás de acuerdo, no uses la app y consultá en la recepción.')}</p>
     </Sect>
 

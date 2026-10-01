@@ -189,7 +189,7 @@ describe('pantalla de login', () => {
     await mount()
     await click(button('Usar mi cuenta de otro dispositivo'))
     const sheet = document.querySelector('#modal-root .pairing')
-    expect(sheet.textContent).toContain('En el celular, la tablet o la computadora donde ya usás lauyim')
+    expect(sheet.textContent).toContain('En el celular, la tablet o la computadora donde ya usás la app')
     expect([...sheet.querySelectorAll('.pairing-steps li')].map(li => li.textContent)).toEqual(['Abrí Ajustes.', 'Tocá "Vincular otro dispositivo".', 'Ingresá este código.'])
     expect(sheet.querySelector('.pairing-code-v').textContent).toBe('ABCD-EFGH')
     expect(sheet.textContent).toMatch(/vence en [45]:\d\d/)

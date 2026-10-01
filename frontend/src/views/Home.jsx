@@ -12,10 +12,12 @@ import { glyphOf } from '../lib/glyphs.js'
 import { startTourA } from '../lib/onboarding.js'
 import { api } from '../lib/api.js'
 import ProgramPicker, { programsOf } from '../components/ProgramPicker.jsx'
+import { cachedBranding } from '../lib/branding.js'
 
 
 // Home = what to do now + a quick glance. Deep charts & history live in Stats.
 export default function Home() {
+  const brand = useStore(s => s.config?.branding) ?? cachedBranding()
   const nav = useNavigate()
   const S = useStore(s => s.S)
   const user = useStore(s => s.user)
@@ -80,7 +82,7 @@ export default function Home() {
 
   return <div className="narrow">
     <div className="hdr">
-      <div><h1>{user ? t('Hi {0}', user.name) : 'lauyim'}</h1><div className="sub">{today.toLocaleDateString(dateLocale(), { weekday: 'long', day: 'numeric', month: 'long' })}</div></div>
+      <div><h1>{user ? t('Hi {0}', user.name) : (brand?.appName || 'lauyim')}</h1><div className="sub">{today.toLocaleDateString(dateLocale(), { weekday: 'long', day: 'numeric', month: 'long' })}</div></div>
       <button className="iconbtn" data-tour="settings-btn" onClick={() => nav('/settings')} aria-label={t('Settings')}><Icon name="gear" /></button>
     </div>
 

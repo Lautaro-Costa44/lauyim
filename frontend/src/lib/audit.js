@@ -86,7 +86,9 @@ const LABELS = {
   'auth.health.granted': 'Gave consent for health data',
   'auth.health.revoked': 'Withdrew consent for health data',
   'auth.health.deleted': 'Deleted their health data',
-  'auth.legal.accepted': 'Accepted the terms and privacy notice'
+  'auth.legal.accepted': 'Accepted the terms and privacy notice',
+  'owner.branding.settings': 'Changed the app personalization',
+  'owner.branding.reset': 'Reset the app personalization to lauyim'
 }
 
 const UNKNOWN_EVENT = 'Unknown activity'

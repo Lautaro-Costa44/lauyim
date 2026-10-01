@@ -4,6 +4,7 @@ import { useStore, billingExempt, healthOff } from './store/useStore.js'
 import { useUI } from './store/useUI.js'
 import { bindUI } from './components/ui.jsx'
 import { ACCENTS } from './lib/format.js'
+import { resolveAccent, customAccentVars, cachedBranding, applyBrandingToDocument, logoSrc } from './lib/branding.js'
 import { setLang, useLang } from './lib/i18n.js'
 import { setNav } from './lib/nav.js'
 import { useWakeLock } from './lib/wakelock.js'
@@ -59,10 +60,17 @@ const resolveTheme = theme => theme === 'light' || theme === 'dark'
 
 const SESSION_CHECK_MS = 5 * 60 * 1000
 
-function applyPrefs(theme, accent) {
+// branding: la personalización del gym (lib/branding.js). Su color se aplica como variables en
+// línea (data-accent="custom"); los de la paleta, por data-accent en index.css.
+function applyPrefs(theme, accent, branding) {
   const de = document.documentElement
   de.dataset.theme = resolveTheme(theme)
-  de.dataset.accent = ACCENTS[accent] ? accent : 'lime'
+  const resolved = resolveAccent(accent, branding)
+  const vars = resolved.key === 'custom' ? customAccentVars(resolved.color) : null
+  for (const name of ['--acc', '--acc-2', '--on-acc']) {
+    if (vars) de.style.setProperty(name, vars[name]); else de.style.removeProperty(name)
+  }
+  de.dataset.accent = vars ? 'custom' : ACCENTS[resolved.key] ? resolved.key : 'lime'
   const meta = document.querySelector('meta[name="theme-color"]')
   if (meta) meta.content = de.dataset.theme === 'light' ? '#f2f2f7' : '#000000'
 }
@@ -115,17 +123,19 @@ function Shell() {
     document.addEventListener('visibilitychange', onVisibility)
     return () => { clearInterval(timer); document.removeEventListener('visibilitychange', onVisibility) }
   }, [signedIn, verifySession])
-  useEffect(() => { applyPrefs(S.theme, S.accent) }, [S.theme, S.accent])
+  const branding = useStore(s => s.config?.branding) ?? cachedBranding()
+  useEffect(() => { applyPrefs(S.theme, S.accent, branding) }, [S.theme, S.accent, branding])
+  useEffect(() => { applyBrandingToDocument(branding) }, [branding])
   // 'system' needs to react live if the OS theme flips while the app is open, not just on
   // the next mount — a fixed 'dark'/'light' choice never re-fires this since matchMedia
   // isn't consulted for those.
   useEffect(() => {
     if (S.theme !== 'system' || !window.matchMedia) return
     const mql = window.matchMedia('(prefers-color-scheme: dark)')
-    const onChange = () => applyPrefs(S.theme, S.accent)
+    const onChange = () => applyPrefs(S.theme, S.accent, branding)
     mql.addEventListener('change', onChange)
     return () => mql.removeEventListener('change', onChange)
-  }, [S.theme, S.accent])
+  }, [S.theme, S.accent, branding])
   useEffect(() => { setLang(S.lang || 'es') }, [S.lang])
   useEffect(() => { document.documentElement.lang = S.lang === 'en' ? 'en' : 'es' }, [langV, S.lang])
   // every tab/route change starts at the top of the page
@@ -173,7 +183,7 @@ function Shell() {
   if (!ready) return (
     <div id="app">
       <div style={{ paddingTop: '44vh', display: 'flex', justifyContent: 'center' }}>
-        <img src="logo-perf.svg" alt="lauyim" style={{ width: 72, height: 72 }} />
+        <img src={logoSrc(branding)} alt={branding?.appName || 'lauyim'} style={{ width: 72, height: 72, objectFit: 'contain' }} />
       </div>
     </div>
   )

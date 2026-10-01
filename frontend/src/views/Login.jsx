@@ -9,6 +9,7 @@ import { useOnline } from '../lib/useOnline.js'
 import Icon from '../components/Icon.jsx'
 import { Button, useSheetBack } from '../components/ui.jsx'
 import { ConsentChecks, usePrivacyStep } from '../components/PrivacyNotice.jsx'
+import { cachedBranding, isCustomBrand, logoSrc } from '../lib/branding.js'
 import { ProfileFields, askedFields, profileBody } from '../components/ProfileFields.jsx'
 import { NO_AUTOFILL } from '../lib/input-safety.js'
 import { errorText, fieldErrors } from '../lib/errors.js'
@@ -171,7 +172,7 @@ function DevicePairingSheet({ close }) {
   const [first, second] = String(pairing?.manualCode || '').split('-')
   return <div className="pairing">
     <h3>{t('Usar tu cuenta de otro dispositivo')}</h3>
-    <p className="muted small">{t('En el celular, la tablet o la computadora donde ya usás lauyim:')}</p>
+    <p className="muted small">{t('En el celular, la tablet o la computadora donde ya usás la app:')}</p>
     <ol className="pairing-steps">
       <li>{t('Abrí Ajustes.')}</li>
       <li>{t('Tocá "Vincular otro dispositivo".')}</li>
@@ -282,6 +283,7 @@ const openLinkSheet = code => useUI.getState().openSheet((close, { setOnBack } =
 
 export default function Login() {
   const { setUser, pullState } = useStore()
+  const brand = useStore(s => s.config?.branding) ?? cachedBranding()
   const online = useOnline()
   const loginNotice = useStore(s => s.loginNotice)
   // ?link=CODE (fuera del hash, como ?qr=): abre el flujo con el código cargado y lo saca de la
@@ -310,21 +312,22 @@ export default function Login() {
   }
   const head = <>
     <div style={{ display: 'flex', justifyContent: 'center', paddingTop: 32 }}>
-      <img src="logo-perf.svg?v=3" alt="lauyim" style={{ width: 96, height: 96, objectFit: 'contain' }} />
+      <img src={logoSrc(brand)} alt={brand?.appName || 'lauyim'} style={{ width: 96, height: 96, objectFit: 'contain' }} />
     </div>
-    <h1 style={{ fontSize: 34, fontWeight: 700, letterSpacing: '-.028em', margin: '-5px 0 4px' }}>lauyim</h1>
+    <h1 style={{ fontSize: 34, fontWeight: 700, letterSpacing: '-.028em', margin: '-5px 0 4px' }}>{brand?.appName || 'lauyim'}</h1>
   </>
   // El aviso de passkeys y el link de privacidad quedan fijos al fondo de la pantalla.
   const footer = <div className="login-footer">
     <div className="dim small" style={{ lineHeight: 1.5 }}>{t('Passkeys use {0} — no passwords.', t(BIO))}<br />{t('Each profile keeps its own plan, workouts & body weight.')}</div>
     <div className="dim small privacy-footer"><a className="privacy-link" href="#/terminos">{t('Términos y condiciones')}</a> · <a className="privacy-link" href="#/privacidad">{t('Aviso de privacidad')}</a></div>
+    {isCustomBrand(brand) && <div className="dim small brand-credit">{t('con lauyim')}</div>}
   </div>
 
   return (
     <div className="narrow login-page">
       <div className="login-main">
         {head}
-        <div className="muted" style={{ marginBottom: 26 }}>{t('Tus entrenamientos. Tus pesos. Tus perfiles.')}</div>
+        <div className="muted" style={{ marginBottom: 26 }}>{brand?.tagline || t('Tus entrenamientos. Tus pesos. Tus perfiles.')}</div>
         {loginNotice === 'relogin' && <div className="card" role="status" style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16, padding: '14px 16px', textAlign: 'left' }}>
           <div style={{ color: 'var(--yellow)', display: 'flex', flex: '0 0 auto' }}><Icon name="lock" /></div>
           <div className="small" style={{ lineHeight: 1.45 }}>{t('No pudimos verificar tu cuenta con esta sesión. Iniciá sesión de nuevo.')}</div>
@@ -335,7 +338,7 @@ export default function Login() {
         </div>}
         {webauthnOK() ? <div className="login-options">
           <LoginOption primary icon="key" title={t('Ingresar con passkey')} subtitle={t('Con {0}', t(BIO))} onClick={signIn} />
-          <LoginOption icon="link" title={t('Usar mi cuenta de otro dispositivo')} subtitle={t('Te mostramos un código para aprobar desde donde ya usás lauyim.')}
+          <LoginOption icon="link" title={t('Usar mi cuenta de otro dispositivo')} subtitle={t('Te mostramos un código para aprobar desde donde ya usás la app.')}
             onClick={() => useUI.getState().openSheet(c => <DevicePairingSheet close={c} />)} />
           <LoginOption icon="sparkles" title={t('Crear nuevo perfil')} subtitle={t('Primera vez en la app.')}
             onClick={() => useUI.getState().openSheet((close, { setOnBack } = {}) => <RegisterSheet close={close} setOnBack={setOnBack} />)} />
