@@ -8,14 +8,13 @@ import { api } from '../../lib/api.js'
 import { t } from '../../lib/i18n.js'
 import { errorText } from '../../lib/errors.js'
 import { ACCENTS } from '../../lib/format.js'
-import { can } from '../../lib/permissions.js'
 import { Button, Switch, TextField } from '../../components/ui.jsx'
 import Icon from '../../components/Icon.jsx'
 import { confirmSheet } from '../../sheets.jsx'
 import { useAdmin } from './context.js'
+import { RoleTag, canAssign, peopleText } from './roles-common.jsx'
 
 const MAX_ROLE_NAME = 30
-export const peopleText = n => n === 0 ? t('Nadie') : n === 1 ? t('1 persona') : t('{0} personas', n)
 
 // Permisos con los que necesitan (activar) o sin los que dependen de él (apagar), según el catálogo.
 export function togglePermission(catalog, current, code, on) {
@@ -50,7 +49,7 @@ export default function Roles() {
 
   const changed = () => { load(); loadUsers() }
   // Solo roles con permisos que quien asigna también tiene (el servidor lo vuelve a controlar).
-  const assignable = role => isOwner || role.permissions.every(code => can(user, code))
+  const assignable = role => canAssign(user, role)
   const edit = role => openSheet(close => <RoleEditor role={role} catalog={data.catalog} roles={data.roles} close={close} onSaved={changed} />)
   const assign = role => openSheet(close => <AssignSheet role={role} users={users} close={close} onChanged={changed} />)
   const remove = role => confirmSheet({
@@ -196,10 +195,4 @@ function AssignSheet({ role, users, close, onChanged }) {
     </div>
     <Button style={{ width: '100%', marginTop: 12 }} onClick={close}>{t('Listo')}</Button>
   </div>
-}
-
-// Etiqueta de color con el nombre del rol (lista de usuarios, ficha, asignar).
-export function RoleTag({ role }) {
-  if (!role) return null
-  return <span className="tag nocap role-tag" style={{ '--role': role.color }}>{role.name}</span>
 }

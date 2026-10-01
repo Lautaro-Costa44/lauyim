@@ -129,6 +129,8 @@ test('lista de usuarios con su rol; a alguien con rol no se lo desactiva', async
   const users = (await call('owner', 'GET', '/api/admin/users')).body.users;
   assert.deepEqual(users.find(u => u.id === 'nutri').role, { id: 'nutrition', name: 'Nutricionista', color: '#30d158' });
   assert.equal(users.find(u => u.id === 'socio').role, null);
+  assert.equal(users.find(u => u.id === 'nutri').feeExempt, true);
+  assert.equal(users.find(u => u.id === 'socio').feeExempt, false);
   assert.equal((await call('owner', 'POST', '/api/admin/user/disable', { id: 'nutri', disabled: true })).body.error, 'staff_undisableable');
 });
 

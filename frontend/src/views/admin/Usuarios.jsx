@@ -25,6 +25,8 @@ const PAGE_PHONE = 10
 // Orden por cuota: lo que hay que atender primero arriba.
 const BILLING_URGENCY = ['bloqueado', 'vencido', 'por_vencer', 'prueba', 'al_dia', 'sin_plan']
 const staffOf = u => u.owner || u.admin
+// No paga cuota (owner o un rol exento): sin estado de cuota en la lista.
+const exemptOf = u => u.owner || (u.feeExempt ?? u.admin)
 const displayName = u => memberName({ fullName: u.fullName, nick: u.name })
 
 // Días entre dos fechas YYYY-MM-DD (calendario, sin husos).
@@ -42,12 +44,13 @@ export function seenLabel(date, today = localToday()) {
   return t('hace más de un año')
 }
 
-// Dueño / admin junto al nombre: pastilla chica de acento con su ícono (distinta de los estados
-// en gris: sin app, pendiente, off).
+// Dueño o rol junto al nombre: pastilla chica con su ícono, en el color del rol (distinta de los
+// estados en gris: sin app, pendiente, off).
 export function RoleBadge({ user }) {
   if (!staffOf(user)) return null
-  return <span className={'role-badge' + (user.owner ? ' owner' : '')}>
-    <Icon name={user.owner ? 'crown' : 'shield'} />{user.owner ? t('Dueño') : t('Admin')}
+  if (user.owner) return <span className="role-badge owner"><Icon name="crown" />{t('Dueño')}</span>
+  return <span className="role-badge" style={user.role ? { '--role': user.role.color } : undefined}>
+    <Icon name="shield" />{user.role ? user.role.name : t('Admin')}
   </span>
 }
 
@@ -130,7 +133,7 @@ export default function Usuarios() {
   const query = userSearch.trim().toLocaleLowerCase()
   const filteredUsers = (users || []).filter(u => matchesAppFilter(u, appFilter)
     && (u.name.toLocaleLowerCase().includes(query) || (u.fullName || '').toLocaleLowerCase().includes(query)))
-  const billingRank = u => staffOf(u) ? BILLING_URGENCY.length : Math.max(0, BILLING_URGENCY.indexOf(u.billing?.status))
+  const billingRank = u => exemptOf(u) ? BILLING_URGENCY.length : Math.max(0, BILLING_URGENCY.indexOf(u.billing?.status))
   const compare = {
     name: (a, b) => displayName(a).localeCompare(displayName(b), 'es', { sensitivity: 'base' }),
     billing: (a, b) => billingRank(a) - billingRank(b) || compare.name(a, b),
@@ -185,7 +188,7 @@ export default function Usuarios() {
         className={'item urow' + (selectedId === u.id ? ' on' : '') + (u.disabled ? ' off' : '')}
         onClick={() => openUser(u.id)} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openUser(u.id) } }}>
         <div className="ucell grow" role="cell"><NameCell u={u} /></div>
-        {showBilling && <div className="ucell" role="cell">{!staffOf(u) && u.billing?.status ? <StatusBadge status={u.billing.status} /> : <span className="dim">—</span>}</div>}
+        {showBilling && <div className="ucell" role="cell">{!exemptOf(u) && u.billing?.status ? <StatusBadge status={u.billing.status} /> : <span className="dim">—</span>}</div>}
         <div className="ucell dim small" role="cell" title={u.lastSeen || ''}>{u.live ? <span className="accent">{t('ahora')}</span> : seenLabel(u.lastSeen)}</div>
         <div className="ucell uicons" role="cell">{u.hasPush && <Icon name="bell" title="push enabled" />}</div>
       </div>)}
@@ -193,7 +196,7 @@ export default function Usuarios() {
       {visibleUsers.map(u => <div key={u.id} className={'item' + (u.disabled ? ' off' : '')} onClick={() => openUser(u.id)}>
         <div className="grow"><NameCell u={u} />
           <div className="ss">{u.hasApp === false ? t('Ficha cargada por el gimnasio') : u.live ? t('training now') + ' · ' + u.live.name : t('Último ingreso: {0}', seenLabel(u.lastSeen)) + ' · ' + t('synced') + ' ' + rel(u.lastSync)}</div></div>
-        {showBilling && !staffOf(u) && u.billing?.status && <StatusBadge status={u.billing.status} />}
+        {showBilling && !exemptOf(u) && u.billing?.status && <StatusBadge status={u.billing.status} />}
         {u.hasPush && <Icon name="bell" title="push enabled" style={{ fontSize: 15, color: 'var(--label-3)' }} />}<Icon name="chevronRight" className="chev" />
       </div>)}
     </div>}

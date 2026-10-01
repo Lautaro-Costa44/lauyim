@@ -15,6 +15,7 @@ const { setLang } = await import('../../lib/i18n.js')
 const { AdminContext } = await import('./context.js')
 const { default: Roles, togglePermission } = await import('./Roles.jsx')
 const { default: Modals } = await import('../../components/Modals.jsx')
+const { RolePickSheet } = await import('./roles-common.jsx')
 bindUI(useUI)
 
 const CATALOG = [
@@ -113,5 +114,20 @@ describe('Roles', () => {
     expect(document.body.textContent).toContain('1 persona queda sin rol.')
     await click(sheetButton('Eliminar'))
     expect(apiMock.mock.calls.some(([u]) => u === '/api/owner/roles/delete')).toBe(true)
+  })
+
+  it('Gestionar roles (ficha): Ninguno y los roles; los que superan a quien asigna, bloqueados', async () => {
+    useStore.setState({ user: { id: 'r', permissions: ['members.view', 'fees.view', 'roles.assign'] } })
+    container = document.createElement('div'); document.body.appendChild(container)
+    root = createRoot(container)
+    const onChanged = vi.fn()
+    await act(async () => { root.render(<RolePickSheet user={{ id: 'beto', name: 'beto', role: null }} close={() => {}} onChanged={onChanged} />) })
+    for (let i = 0; i < 4; i++) await tick()
+    const radios = () => [...container.querySelectorAll('[role="radio"]')]
+    expect(radios().map(r => r.querySelector('.lrow-t').textContent)).toEqual(['Ninguno', 'Recepción'])
+    expect(radios()[0].getAttribute('aria-checked')).toBe('true')
+    await click(radios()[1])
+    expect(JSON.parse(apiMock.mock.calls.find(([u]) => u === '/api/admin/users/role')[1].body)).toEqual({ userId: 'beto', roleId: 'reception' })
+    expect(onChanged).toHaveBeenCalled()
   })
 })

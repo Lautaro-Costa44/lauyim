@@ -17,6 +17,7 @@ const { default: Modals } = await import('../components/Modals.jsx')
 const { useUI } = await import('../store/useUI.js')
 const { bindUI } = await import('../components/ui.jsx')
 const { setLang } = await import('../lib/i18n.js')
+const { useStore } = await import('../store/useStore.js')
 
 // Mismo binding que hace App.jsx al arrancar: sin esto los controles compartidos no pueden
 // abrir sheets (Objetivo, confirmaciones).
@@ -94,6 +95,8 @@ async function type(input, value) {
 }
 
 beforeEach(async () => {
+  // Quien administra: el owner (todas las pestañas y las lesiones).
+  useStore.setState({ user: { id: 'o', name: 'o', admin: true, owner: true } })
   goals = { mode: 'automatic', objetivo: null, calories: null, caloriesBurn: null, protein: null, carbs: null, fat: null }
   suggestions = []
   limitarSugeridas = true

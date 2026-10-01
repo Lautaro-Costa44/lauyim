@@ -88,7 +88,7 @@ export const openImportSheet = (openSheet, props) => openLazySheet(() => import(
 
 // Card "Ficha" de UserDetail: los datos de identificación del socio y el botón para editarlos.
 // openSheet, openUser y onLink vienen de UserDetail (onLink abre "unir" con los dos elegidos).
-export function FichaCard({ user, users, openSheet, openUser, onLink }) {
+export function FichaCard({ user, users, openSheet, openUser, onLink, canEdit = true }) {
   const [data, setData] = useState(null)
   const [error, setError] = useState(null)
   const load = () => api(profileUrl(user.id)).then(d => { setData(d); setError(null) }).catch(e => setError(errorText(e)))
@@ -104,7 +104,7 @@ export function FichaCard({ user, users, openSheet, openUser, onLink }) {
         <h2 style={{ margin: 0 }}>{t('Ficha')}</h2>
         {data && profileIncomplete(profile, fields) && <IncompleteBadge style={{ marginLeft: 0 }} />}
       </div>
-      <Button size="sm" variant="tinted" icon="pencil" disabled={!data} onClick={edit}>{t('Editar')}</Button>
+      {canEdit && <Button size="sm" variant="tinted" icon="pencil" disabled={!data} onClick={edit}>{t('Editar')}</Button>}
     </div>
     {error ? <div className="form-error" role="alert">{error}</div>
       : !data ? <div className="dim small" style={{ marginTop: 6 }}>{t('Loading…')}</div>

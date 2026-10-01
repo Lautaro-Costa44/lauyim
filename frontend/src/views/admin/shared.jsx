@@ -17,6 +17,8 @@ import { errorText } from '../../lib/errors.js'
 import WorkoutHistoryList from '../../components/workout/WorkoutHistoryList.jsx'
 import WorkoutDetailView from '../../components/workout/WorkoutDetailView.jsx'
 import { weekAdherence } from '../../lib/workout-history.js'
+import { can } from '../../lib/permissions.js'
+import { RoleTag, RolePickSheet } from './roles-common.jsx'
 
 // Shared by more than one admin section: UserDetail opens from Resumen ("Training now") and
 // from Usuarios (the list), and carries the whole "Administrar Nutrición/Rutina" sheet with it.
@@ -511,6 +513,7 @@ function AdminLesionPicker({ current, close, onConfirm }) {
 // Los "grupos" reusan el mismo modelo y las mismas funciones puras que ya usa el socio
 // en Plan.jsx (frontend/src/lib/routineGroups.js) — nada de una entidad nueva.
 function AdminRoutineCard({ userId }) {
+  const seesHealth = useStore(s => can(s.user, 'health.view'))
   const toast = useUI(s => s.toast)
   const openSheet = useUI(s => s.openSheet)
   const [data, setData] = useState(null)
@@ -614,13 +617,13 @@ function AdminRoutineCard({ userId }) {
   const activeGroup = data.routineGroups.find(g => g.id === data.activeGroupId)
 
   return <>
-    {/* Lesiones: dato de salud. Sin consentimiento del socio, deshabilitado. */}
-    <Section title={bigSectionTitle(t('Lesiones'))} footer={<Button size="sm" icon="plus" disabled={data.healthConsent === 'declined'} onClick={openAddLesion}>{t('Agregar')}</Button>}>
+    {/* Lesiones: dato de salud. Sin "ver datos de salud", no está; sin consentimiento del socio, deshabilitado. */}
+    {seesHealth && <Section title={bigSectionTitle(t('Lesiones'))} footer={<Button size="sm" icon="plus" disabled={data.healthConsent === 'declined'} onClick={openAddLesion}>{t('Agregar')}</Button>}>
       {data.healthConsent === 'declined' ? <div className="empty no-health" style={{ marginBottom: 8 }}>{t('Sin consentimiento de datos de salud')}</div>
       : (data.lesiones || []).length ? data.lesiones.map(value => <Row key={value} title={LESIONES_OPTIONS.find(o => o.value === value)?.label || value}>
         <button className="iconbtn" aria-label={t('Remove')} style={{ color: 'var(--red)' }} onClick={() => removeLesion(value)}><Icon name="trash" /></button>
       </Row>) : <div className="empty" style={{ marginBottom: 8 }}>{t('Ninguna registrada')}</div>}
-    </Section>
+    </Section>}
 
     {!data.routineGroups.length
       ? <Section title={bigSectionTitle(t('Rutinas'))} footer={<Button size="sm" icon="plus" onClick={createGroupPrompt}>{t('Crear grupo')}</Button>}>
@@ -649,8 +652,8 @@ function AdminRoutineCard({ userId }) {
 // administración de un socio (metas, sugerencias, comidas globales) sin montar todo el panel.
 // healthConsent 'declined': el socio no dio consentimiento de datos de salud; nutrición y
 // lesiones quedan deshabilitadas (el servidor igual responde 409).
-export function AdminManageSheet({ userId, userName, healthConsent = null, close, setOnBack }) {
-  const [tab, setTab] = useState('nutrition')
+export function AdminManageSheet({ userId, userName, healthConsent = null, close, setOnBack, tabs = ['nutrition', 'routine'] }) {
+  const [tab, setTab] = useState(tabs[0])
   const [suggestionFlow, setSuggestionFlow] = useState(null)
   const suggestionFlowRef = useRef(suggestionFlow)
   suggestionFlowRef.current = suggestionFlow
@@ -699,7 +702,7 @@ export function AdminManageSheet({ userId, userName, healthConsent = null, close
           <div><h3 style={{ margin: 0 }}>{t('Administrar Nutrición/Rutina')}</h3><div className="t-sub" style={{ color: 'var(--label)', marginTop: 2 }}>{userName}</div></div>
           <button type="button" className="iconbtn" onClick={close} aria-label={t('Close')}><Icon name="xmark" /></button>
         </div>
-        <Segmented options={[{ value: 'nutrition', label: t('Nutrición') }, { value: 'routine', label: t('Rutina') }]} value={tab} onChange={setTab} />
+        {tabs.length > 1 && <Segmented options={[{ value: 'nutrition', label: t('Nutrición') }, { value: 'routine', label: t('Rutina') }]} value={tab} onChange={setTab} />}
         {tab === 'nutrition' && healthConsent === 'declined' ? <div className="card no-health"><div className="empty">{t('Sin consentimiento de datos de salud')}</div>
           <div className="small muted">{t('El socio no dio su consentimiento para el tratamiento de datos de salud: nutrición y lesiones quedan deshabilitadas hasta que lo dé desde Ajustes.')}</div></div>
         : tab === 'nutrition' ? <AdminNutritionCard userId={userId} openSuggestion={openSuggestion} editSuggestion={editSuggestion} picker={picker.open} /> : <AdminRoutineCard userId={userId} />}
@@ -755,11 +758,12 @@ export function UserDetail({ id, billingEnabled = true, users, openUser, onChang
       .then(() => { toast(t('Account permanently deleted')); onChanged(); close() })
       .catch(e => toast(errorText(e)))
   }
-  const setAdmin = admin => {
-    api('/api/owner/user/admin', { method: 'POST', body: JSON.stringify({ id: u.id, admin }) })
-      .then(() => { toast(admin ? t('User promoted to admin') : t('Admin role removed')); onChanged(); close() })
-      .catch(e => toast(errorText(e)))
-  }
+  // Cada bloque de la ficha según el rol de quien mira (el servidor lo vuelve a controlar).
+  const allowed = code => can(currentUser, code)
+  const manageTabs = [allowed('nutrition.manage') && 'nutrition', allowed('training.manage') && 'routine'].filter(Boolean)
+  const manageLabel = manageTabs.length > 1 ? t('Administrar Nutrición/Rutina') : manageTabs[0] === 'nutrition' ? t('Administrar nutrición') : t('Administrar rutina')
+  const seesHealth = d.healthConsent !== 'declined' && allowed('health.view')
+  const manageRoles = () => openSheet(c => <RolePickSheet user={u} close={c} onChanged={() => { setReloadKey(k => k + 1); onChanged() }} />)
   // Historial del socio: el mismo detalle que ve él, en solo lectura y como panel (centrado en
   // tablet y escritorio, hoja en el celular). Su unidad y sus nombres de ejercicios propios.
   const historyData = { workouts: d.workouts, routines: d.routines, unit: d.unit, names: d.names || {} }
@@ -778,48 +782,48 @@ export function UserDetail({ id, billingEnabled = true, users, openUser, onChang
     <div className="row" style={{ gap: 6, flexWrap: 'wrap', margin: '8px 0 12px' }}>
       {!hasApp && <NoAppBadge style={{ marginLeft: 0 }} />}
       {u.pending && <PendingBadge style={{ marginLeft: 0 }} />}
-      {(u.owner || u.admin) && <span className="tag acc">{u.owner ? t('owner') : t('admin')}</span>}
+      {u.owner ? <span className="tag acc">{t('owner')}</span> : u.role ? <RoleTag role={u.role} /> : u.admin && <span className="tag acc">{t('admin')}</span>}
       {u.disabled && <span className="tag" style={{ color: 'var(--red)' }}>{t('disabled')}</span>}
       {u.invitedBy && <span className="tag">{t('invite')} {u.invitedBy}</span>}
       <span className="tag">{t('joined')} {typeof u.created === 'string' && u.created ? fmtDate(u.created.slice(0, 10)) : '—'}</span>
     </div>
     {hasApp && <div className="tiles" style={{ textAlign: 'left' }}>
       <div className="tile"><div className="l">{t('Workouts')}</div><div className="v" style={{ fontSize: '1.1rem' }}>{d.workouts.length}</div></div>
-      <div className="tile"><div className="l">{t('Weigh-ins')}</div><div className="v" style={{ fontSize: '1.1rem' }} title={d.healthConsent === 'declined' ? t('Sin consentimiento de datos de salud') : undefined}>{d.healthConsent === 'declined' ? '—' : d.bodyweight.length}</div></div>
+      <div className="tile"><div className="l">{t('Weigh-ins')}</div><div className="v" style={{ fontSize: '1.1rem' }} title={d.healthConsent === 'declined' ? t('Sin consentimiento de datos de salud') : undefined}>{seesHealth ? d.bodyweight.length : '—'}</div></div>
       <div className="tile"><div className="l">{t('Routines')}</div><div className="v" style={{ fontSize: '1.1rem' }}>{d.routines.length}</div></div>
       <div className="tile"><div className="l">{t('Last sync')}</div><div className="v" style={{ fontSize: '.95rem' }}>{rel(d.lastSync)}</div></div>
     </div>}
     {u.pending && !u.disabled && <div className="card member-pending-card">
       <div className="row" style={{ gap: 8, alignItems: 'center' }}><PendingBadge style={{ marginLeft: 0 }} /><h2 style={{ margin: 0 }}>{t('Cuenta pendiente')}</h2></div>
       <div className="small muted" style={{ margin: '6px 0 10px' }}>{t('Se registró con la aprobación del staff activada. Verificá quién es, completá sus datos y habilitala.')}</div>
-      <Button variant="primary" onClick={() => openMemberSheet(openSheet, 'ApproveSheet', {
+      {allowed('members.approve') && <><Button variant="primary" onClick={() => openMemberSheet(openSheet, 'ApproveSheet', {
         user: u, billingEnabled: billingEnabled !== false,
         onApproved: () => { setReloadKey(k => k + 1); onChanged() },
         onOpenExisting: showUser, onLink: merge
       })}>{t('Revisar y habilitar')}</Button>
-      <Button variant="ghost" style={{ color: 'var(--red)' }} onClick={() => openMemberSheet(openSheet, 'RejectSheet', { user: u, onRejected: () => { onChanged(); close() } })}>{t('Rechazar')}</Button>
+      <Button variant="ghost" style={{ color: 'var(--red)' }} onClick={() => openMemberSheet(openSheet, 'RejectSheet', { user: u, onRejected: () => { onChanged(); close() } })}>{t('Rechazar')}</Button></>}
     </div>}
-    {!hasApp && <div className="member-noapp">
+    {!hasApp && allowed('members.edit') && <div className="member-noapp">
       <div className="small muted">{t('Este socio todavía no usa la app. Dale un código para que cree su acceso, o unilo a su cuenta si ya tiene una.')}</div>
       <Button variant="primary" onClick={() => openMemberSheet(openSheet, 'LinkCodeSheet', { user: u, onLinked: () => { setReloadKey(k => k + 1); onChanged() } })}>{t('Generar código de vinculación')}</Button>
       <Button variant="tinted" onClick={() => merge({ fichaId: u.id, fichaName: u.name })}>{t('Vincular con cuenta existente')}</Button>
     </div>}
     {/* keyed en reloadKey: cargan sus datos una vez por socio, así que al aprobar (o vincular un
         código) se vuelven a montar y muestran la ficha y la cuota nuevas sin cambiar de socio. */}
-    <FichaCard key={'ficha-' + reloadKey} user={{ ...u, hasApp }} users={users} openSheet={openSheet} openUser={showUser} onLink={merge} />
-    {billingEnabled !== false && <BillingSummaryCard key={'cuota-' + reloadKey} userId={u.id} userName={u.name} openSheet={openSheet} onChanged={onChanged} />}
+    <FichaCard key={'ficha-' + reloadKey} user={{ ...u, hasApp }} users={users} openSheet={openSheet} openUser={showUser} onLink={merge} canEdit={allowed('members.edit')} />
+    {billingEnabled !== false && allowed('fees.view') && <BillingSummaryCard key={'cuota-' + reloadKey} userId={u.id} userName={u.name} openSheet={openSheet} onChanged={onChanged} />}
     {hasApp && d.healthConsent === 'declined' && <div className="small muted no-health-note">{t('Sin consentimiento de datos de salud: nutrición, lesiones y peso corporal no se muestran.')}</div>}
     {/* Cuenta no activa (desactivada o sin aprobar): ni rol de admin ni administrar nutrición o
         rutina hasta que se active. La API rechaza igual (409 account_not_active). */}
-    {hasApp && inactive && <div className="small muted account-inactive-note" role="note">{t('Activá la cuenta para darle rol de admin o administrarle nutrición y rutina.')}</div>}
-    {hasApp && <Button variant="tinted" style={{ width: '100%', margin: '4px 0 4px' }} disabled={inactive}
-      onClick={() => openSheet((c, { setOnBack }) => <AdminManageSheet userId={u.id} userName={u.name} healthConsent={d.healthConsent ?? null} close={c} setOnBack={setOnBack} />, { locked: true, fullScreen: true, backGesture: true })}>
-      {t('Administrar Nutrición/Rutina')}
+    {hasApp && inactive && <div className="small muted account-inactive-note" role="note">{t('Activá la cuenta para darle un rol o administrarle nutrición y rutina.')}</div>}
+    {hasApp && manageTabs.length > 0 && <Button variant="tinted" style={{ width: '100%', margin: '4px 0 4px' }} disabled={inactive}
+      onClick={() => openSheet((c, { setOnBack }) => <AdminManageSheet userId={u.id} userName={u.name} healthConsent={d.healthConsent ?? null} tabs={manageTabs} close={c} setOnBack={setOnBack} />, { locked: true, fullScreen: true, backGesture: true })}>
+      {manageLabel}
     </Button>}
-    {hasApp && currentUser?.owner && !u.owner && <button className="btn primary" style={{ margin: '12px 0 4px' }} disabled={inactive && !u.admin}
-      onClick={() => confirmSheet({ title: u.admin ? t('Remove admin from {0}?', u.name) : t('Make {0} an admin?', u.name), message: u.admin ? t('They will keep access to normal administrative tools only if promoted again.') : t('This gives the user access to the admin dashboard and administrative tools.'), confirmText: u.admin ? t('Remove admin') : t('Make admin'), danger: false, onConfirm: () => setAdmin(!u.admin) })}>
-      {u.admin ? t('Remove admin role') : t('Make admin')}</button>}
-    {!u.admin && !u.owner && <button className={'btn ' + (u.disabled ? 'primary' : 'danger')} style={{ margin: '8px 0 4px' }}
+    {/* Un rol por persona; "Ninguno" es un socio más. Con la cuenta no activa solo se puede quitar. */}
+    {hasApp && !u.owner && allowed('roles.assign') && <button className="btn primary" style={{ margin: '12px 0 4px' }} disabled={inactive && !u.role}
+      onClick={manageRoles}>{t('Gestionar roles')}</button>}
+    {allowed('members.edit') && !u.admin && !u.owner && <button className={'btn ' + (u.disabled ? 'primary' : 'danger')} style={{ margin: '8px 0 4px' }}
       onClick={() => u.disabled ? setDisabled(false)
         : confirmSheet({ title: t('Disable {0}?', u.name), message: t('They are signed out everywhere and can no longer sync or log in until re-enabled.'), confirmText: t('Disable'), danger: true, onConfirm: () => setDisabled(true) })}>
       {u.disabled ? t('Enable account') : t('Disable account')}</button>}

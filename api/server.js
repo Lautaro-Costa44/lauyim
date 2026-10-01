@@ -3253,7 +3253,7 @@ const routes = {
       const last = workouts[workouts.length - 1];
       return {
         id: u.id, name: u.name, created: isoTimestamp(u.created_at),
-        disabled: !!u.disabled, admin: isStaff(u), owner: !!u.owner, role: roleView(u), invitedBy: u.invited_by || null,
+        disabled: !!u.disabled, admin: isStaff(u), owner: !!u.owner, role: roleView(u), feeExempt: isFeeExempt(u), invitedBy: u.invited_by || null,
         hasApp: appUserIds.has(u.id), hasProfile: profileUserIds.has(u.id), profileIncomplete: incomplete.has(u.id),
         pending: isAccountPending(u),
         workouts: workouts.length,

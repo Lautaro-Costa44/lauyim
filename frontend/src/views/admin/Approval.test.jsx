@@ -257,15 +257,15 @@ describe('pendientes', () => {
     expect(posts('/approve').filter(b => !b.dry_run)[0].start).toEqual({ type: 'none' })
   })
 
-  it('cuenta no activa: sin rol de admin ni Administrar Nutrición/Rutina, con aviso', async () => {
+  it('cuenta no activa: sin rol ni Administrar Nutrición/Rutina, con aviso', async () => {
     await openPepe()
-    const note = 'Activá la cuenta para darle rol de admin o administrarle nutrición y rutina.'
+    const note = 'Activá la cuenta para darle un rol o administrarle nutrición y rutina.'
     expect(text()).toContain(note)
     expect(button('Administrar Nutrición/Rutina').disabled).toBe(true)
-    expect(button('Hacer administrador').disabled).toBe(true)
+    expect(button('Gestionar roles').disabled).toBe(true)
     // Click en un control deshabilitado: no abre nada ni llama a la API.
-    await click(button('Hacer administrador'))
-    expect(apiMock.mock.calls.some(([u]) => u === '/api/owner/user/admin')).toBe(false)
+    await click(button('Gestionar roles'))
+    expect(apiMock.mock.calls.some(([u]) => u === '/api/admin/roles')).toBe(false)
     await act(async () => { root.unmount() }); container.remove()
     // Una cuenta desactivada (no pendiente) igual.
     users = [ANA, { ...ANA, id: 'd', name: 'desactivado', disabled: true }]
@@ -280,7 +280,7 @@ describe('pendientes', () => {
     await click([...document.querySelectorAll('.admin-users .item')].find(el => el.textContent.includes('ana')))
     expect(text()).not.toContain(note)
     expect(button('Administrar Nutrición/Rutina').disabled).toBe(false)
-    expect(button('Hacer administrador').disabled).toBe(false)
+    expect(button('Gestionar roles').disabled).toBe(false)
   })
 
   it('rechazar pide el motivo', async () => {
