@@ -74,7 +74,9 @@ export function registerCustom(list) {
     if (builtIn) EXIDX[id] = builtIn
   })
   customIds = (list || []).map(e => e.id)
-  ;(list || []).forEach(e => { EXIDX[e.id] = e })
+  // Con dos entradas del mismo id (la copia propia que un cliente viejo guardaba de un ejercicio
+  // que el admin compartió), gana la compartida: es la que existe para todos.
+  ;(list || []).forEach(e => { if (e.shared || !EXIDX[e.id]?.shared) EXIDX[e.id] = e })
 }
 // Full searchable catalogue — customs first so your own exercises are easy to find.
 export const allExercises = st => [...(st.customEx || []), ...CATALOGUE]

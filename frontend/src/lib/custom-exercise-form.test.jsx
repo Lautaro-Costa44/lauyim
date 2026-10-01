@@ -94,3 +94,52 @@ describe('formulario de ejercicio propio', () => {
     expect(button(host, 'Edit')).toBeDefined()
   })
 })
+
+describe('ejercicio compartido duplicado en el estado local (copia propia de antes del arreglo)', () => {
+  beforeEach(() => {
+    globalThis.IS_REACT_ACT_ENVIRONMENT = true
+    apiMock.api.mockReset()
+    useUI.setState({ sheets: [] })
+    document.body.innerHTML = ''
+  })
+  afterEach(() => { act(() => { mounted.splice(0).forEach(r => r.unmount()) }) })
+
+  it('sin conexión, borrarlo avisa y no lo saca (antes se borraba y volvía al reconectar)', async () => {
+    const shared = { id: 'cdup', n: 'Hip thrust', bp: 'upper legs', tg: 'upper legs', eq: 'barbell', custom: true, shared: true, st: [] }
+    const personal = { ...shared, shared: undefined }
+    useStore.setState({ user: { id: 'a1', name: 'admin', admin: true } })
+    useStore.getState().update(s => { s.customEx = [shared, personal]; s.routines = []; s.workouts = [] })
+    const { EXIDX } = await import('./exercises.js')
+    expect(EXIDX.cdup.shared).toBe(true)
+    exerciseDetailSheet(EXIDX.cdup)
+    const host = renderTopSheet()
+    apiMock.api.mockRejectedValueOnce(Object.assign(new Error('x'), { code: 'network_error' }))
+    act(() => button(host, 'Delete').click())
+    const confirm = renderTopSheet()
+    await act(async () => { confirm.querySelector('.confirm-dialog .btn.danger').click() })
+    expect(useStore.getState().S.customEx.filter(e => e.id === 'cdup').length).toBeGreaterThan(0)
+  })
+})
+
+describe('equipamiento', () => {
+  beforeEach(() => {
+    globalThis.IS_REACT_ACT_ENVIRONMENT = true
+    useUI.setState({ sheets: [] })
+    useStore.setState({ user: { id: 'u1', name: 'ana', admin: false } })
+    document.body.innerHTML = ''
+  })
+  afterEach(() => { act(() => { mounted.splice(0).forEach(r => r.unmount()) }) })
+
+  it('se elige uno solo: elegir otro reemplaza al anterior', () => {
+    customExSheet(null)
+    const host = renderTopSheet()
+    const chip = label => [...host.querySelectorAll('.chip')].find(c => c.textContent.trim() === label)
+    const on = () => ['Mancuernas', 'Barra', 'Máquina/Polea', 'Calistenia/Peso corporal', 'Cinta/Bici']
+      .filter(l => chip(l)?.classList.contains('on'))
+    expect(on()).toEqual(['Calistenia/Peso corporal'])
+    act(() => chip('Máquina/Polea').click())
+    expect(on()).toEqual(['Máquina/Polea'])
+    act(() => chip('Barra').click())
+    expect(on()).toEqual(['Barra'])
+  })
+})

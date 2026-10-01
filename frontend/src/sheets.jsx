@@ -445,10 +445,11 @@ function CustomExForm({ existing, prefill, onDone, close }) {
   const [n, setN] = useState(existing ? existing.n : (prefill || ''))
   const [tipo, setTipo] = useState(existing ? (existing.tipo || (existing.bp === 'cardio' ? 'cardio' : 'fuerza')) : 'fuerza')
   const [grupoMuscular, setGrupoMuscular] = useState(existing ? (existing.grupo_muscular || existing.tg || existing.bp || '') : '')
+  // Un solo equipamiento por ejercicio (los de antes podían tener varios: queda el primero).
   const [equipamiento, setEquipamiento] = useState(() => {
-    if (existing && Array.isArray(existing.equipamiento)) return [...existing.equipamiento]
+    if (existing && Array.isArray(existing.equipamiento) && existing.equipamiento.length) return [existing.equipamiento[0]]
     if (existing && existing.eq) return [existing.eq]
-    return tipo === 'estiramiento' ? ['body weight'] : ['body weight']
+    return ['body weight']
   })
   const [desc, setDesc] = useState(existing ? (existing.desc || '') : '')
   const [secondaries, setSecondaries] = useState(() => {
@@ -463,7 +464,7 @@ function CustomExForm({ existing, prefill, onDone, close }) {
   const [showEquipMore, setShowEquipMore] = useState(false)
 
   const toggleSecondary = value => setSecondaries(current => current.includes(value) ? current.filter(m => m !== value) : [...current, value])
-  const toggleEquip = value => setEquipamiento(current => current.includes(value) ? current.filter(e => e !== value) : [...current, value])
+  const pickEquip = value => setEquipamiento([value])
 
   const save = async () => {
     if (busy) return
@@ -500,8 +501,12 @@ function CustomExForm({ existing, prefill, onDone, close }) {
     update(s => {
       s.customEx = s.customEx || []
       const i = s.customEx.findIndex(x => x.id === id)
-      if (i >= 0) s.customEx[i] = def
-      else s.customEx.push(def)
+      if (i < 0) s.customEx.push(def)
+      else {
+        s.customEx[i] = def
+        // Sin la copia propia vieja de un compartido: queda una sola entrada por id.
+        s.customEx = s.customEx.filter((x, j) => x.id !== id || j === i)
+      }
     })
     close()
     toast(existing ? t('Saved') : t('“{0}” created', name))
@@ -583,7 +588,7 @@ function CustomExForm({ existing, prefill, onDone, close }) {
       </div>
     )}
 
-    <div style={{ margin: '12px 0 6px', fontWeight: 600, fontSize: 13 }}>{t('Equipamiento necesario')} <span className="muted">({t('opcional')})</span></div>
+    <div style={{ margin: '12px 0 6px', fontWeight: 600, fontSize: 13 }}>{t('Equipamiento necesario')}</div>
     {tipo === 'estiramiento' ? (
       <div style={{ marginBottom: 12 }}>
         <div className="chips" style={{ marginBottom: 6, flexWrap: 'wrap' }}>
@@ -598,7 +603,7 @@ function CustomExForm({ existing, prefill, onDone, close }) {
         ) : (
           <div className="chips" style={{ marginTop: 6, flexWrap: 'wrap' }}>
             {equipOptions.map(eqOpt => (
-              <button key={eqOpt.id} type="button" className={'chip' + (equipamiento.includes(eqOpt.id) ? ' on' : '')} onClick={() => toggleEquip(eqOpt.id)}>
+              <button key={eqOpt.id} type="button" className={'chip' + (equipamiento.includes(eqOpt.id) ? ' on' : '')} onClick={() => pickEquip(eqOpt.id)}>
                 {eqOpt.label}
               </button>
             ))}
@@ -608,7 +613,7 @@ function CustomExForm({ existing, prefill, onDone, close }) {
     ) : (
       <div className="chips" style={{ marginBottom: 12, flexWrap: 'wrap' }}>
         {equipOptions.map(eqOpt => (
-          <button key={eqOpt.id} type="button" className={'chip' + (equipamiento.includes(eqOpt.id) ? ' on' : '')} onClick={() => toggleEquip(eqOpt.id)}>
+          <button key={eqOpt.id} type="button" className={'chip' + (equipamiento.includes(eqOpt.id) ? ' on' : '')} onClick={() => pickEquip(eqOpt.id)}>
             {eqOpt.label}
           </button>
         ))}
@@ -651,7 +656,8 @@ export function deleteCustomEx(ex, afterDelete) {
     confirmText: t('Delete'), danger: true,
     onConfirm: async () => {
       // Uno compartido se borra primero del servidor: si falla, queda como estaba para todos.
-      if (ex.shared) {
+      // Compartido si cualquier entrada con ese id lo está (puede haber una copia propia vieja).
+      if (ex.shared || (S().customEx || []).some(x => x.id === ex.id && x.shared)) {
         try { await api('/api/admin/public-exercises/delete', { method: 'POST', body: JSON.stringify({ id: ex.id }) }) }
         catch (e) { toast(errorText(e, t('No se pudo borrar el ejercicio. Probá de nuevo con conexión.'))); return }
       }
