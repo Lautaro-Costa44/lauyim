@@ -2351,7 +2351,7 @@ export function getMemberBilling(userId) {
 // de usuarios del admin).
 export function getAllMemberBilling() {
   return getDatabase().prepare(`
-    SELECT u.id AS user_id, u.name, u.disabled, u.admin, u.owner, u.approval_status, ${BILLING_SELECT},
+    SELECT u.id AS user_id, u.name, u.disabled, u.admin, u.owner, u.role_id, u.approval_status, ${BILLING_SELECT},
       EXISTS (SELECT 1 FROM credentials c WHERE c.user_id = u.id) AS has_app
     FROM users u
     LEFT JOIN member_billing mb ON mb.user_id = u.id
@@ -2363,6 +2363,7 @@ export function getAllMemberBilling() {
     disabled: !!row.disabled,
     admin: row.admin === 1,
     owner: row.owner === 1,
+    roleId: row.role_id || null,
     // Cuenta sin aprobar (pendiente, o rechazada = pendiente + desactivada): fuera de Cuotas.
     pending: row.approval_status === 'pending',
     hasApp: row.has_app === 1
@@ -2820,7 +2821,7 @@ function mergePlan(db, fichaId, targetId, keepBilling) {
   if (!target) return { error: 'target_not_found' };
   if (countCredentials(fichaId) > 0) return { error: 'ficha_has_app' };
   if (countCredentials(targetId) < 1) return { error: 'target_without_app' };
-  if (target.admin === 1 || target.owner === 1) return { error: 'target_is_staff' };
+  if (target.role_id || target.owner === 1) return { error: 'target_is_staff' };
 
   const billingRow = id => db.prepare(`
     SELECT mb.plan_id, mb.due_date, mb.trial_until, p.name AS plan_name

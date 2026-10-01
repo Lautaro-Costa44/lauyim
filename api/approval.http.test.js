@@ -202,7 +202,7 @@ test('con aprobación: registro con solo el nombre; queda pendiente y sin entren
   assert.equal((await call('adm', 'GET', '/api/admin/approval')).body.pendingCount, 1);
   // Pendiente: no se le da rol de admin ni se le administra nutrición, rutina o lesiones (API).
   const notActive = r => [r.status, r.body.error];
-  assert.deepEqual(notActive(await call('owner', 'POST', '/api/owner/user/admin', { id: pendingId, admin: true })), [409, 'account_not_active']);
+  assert.deepEqual(notActive(await call('owner', 'POST', '/api/admin/users/role', { userId: pendingId, roleId: 'admin' })), [409, 'account_not_active']);
   assert.deepEqual(notActive(await call('adm', 'PUT', `/api/admin/users/${pendingId}/routines`, { routines: [], week: {}, dayPlan: {} })), [409, 'account_not_active']);
   assert.deepEqual(notActive(await call('adm', 'PUT', `/api/admin/users/${pendingId}/nutrition/goals`, { mode: 'automatic' })), [409, 'account_not_active']);
   assert.deepEqual(notActive(await call('adm', 'PUT', `/api/admin/users/${pendingId}/injuries`, { lesiones: [] })), [409, 'account_not_active']);
@@ -256,8 +256,8 @@ test('aprobar: modo primer pago exige el pago; DNI de una ficha → 409 para vin
   assert.equal((await call('adm', 'POST', url, { profile: PROFILE })).body.error, 'not_pending');
   // Ya habilitada: el rol y la administración vuelven a estar disponibles.
   assert.equal((await call('adm', 'PUT', `/api/admin/users/${pendingId}/injuries`, { lesiones: [] })).status, 200);
-  assert.equal((await call('owner', 'POST', '/api/owner/user/admin', { id: pendingId, admin: true })).status, 200);
-  assert.equal((await call('owner', 'POST', '/api/owner/user/admin', { id: pendingId, admin: false })).status, 200);
+  assert.equal((await call('owner', 'POST', '/api/admin/users/role', { userId: pendingId, roleId: 'admin' })).status, 200);
+  assert.equal((await call('owner', 'POST', '/api/admin/users/role', { userId: pendingId, roleId: null })).status, 200);
   assert.equal(sql('SELECT COUNT(*) n FROM payments WHERE user_id = ?', pendingId)[0].n, 1);
   const log = auditLog();
   assert.ok(log.includes('admin.member.approve'));
@@ -290,8 +290,8 @@ test('rechazar: desactiva con motivo en Logs y sale de pendientes', async () => 
   assert.equal((await call(r.cookie, 'GET', '/api/me')).status, 401);
   assert.ok(auditLog().includes('Motivo: No es socio'));
   // Rechazada (desactivada): tampoco se le da rol de admin; quitar el rol a una cuenta no activa sí se puede.
-  assert.deepEqual([(await call('owner', 'POST', '/api/owner/user/admin', { id, admin: true })).body.error], ['account_not_active']);
-  assert.equal((await call('owner', 'POST', '/api/owner/user/admin', { id, admin: false })).status, 200);
+  assert.deepEqual([(await call('owner', 'POST', '/api/admin/users/role', { userId: id, roleId: 'admin' })).body.error], ['account_not_active']);
+  assert.equal((await call('owner', 'POST', '/api/admin/users/role', { userId: id, roleId: null })).status, 200);
   assert.equal((await call('adm', 'PUT', `/api/admin/users/${id}/routines`, { routines: [], week: {}, dayPlan: {} })).status, 409);
   // Rechazada: tampoco en Cuotas (ni en la lista ni en el resumen), ni en la vista previa de activar.
   const billing = await call('adm', 'GET', '/api/admin/billing');

@@ -140,6 +140,7 @@ import {
   approveAccount,
   completeProfilePrompt,
   countAttendanceMembers, getLastAttendanceByUser,
+  getRoles, saveRole, deleteRole, setUserRole,
 } from './database.js';
 import {
   MEMBER_FIELDS_SETTING, parseMemberFields, validateMemberFields, validateMemberProfile, validationErrorBody, normalizeUsername,
@@ -150,6 +151,7 @@ import { PRIVACY_GYM_NAME_SETTING, PRIVACY_CONTACT_SETTING, validatePrivacySetti
 import { sanitizeExerciseDef } from './custom-exercise.js';
 import { LEGAL_VERSION, legalAcceptedOf, legalOkOf, healthChoiceOf } from './legal.js';
 import { parseLicenseConfig, licenseState } from './license.js';
+import { ROUTE_PERMISSIONS, PERMISSIONS, ADMIN_ROLE_ID, permissionsOf, isSubset, validateRole } from './permissions.js';
 import { BRANDING_SETTING, BRANDING_ASSETS, DEFAULT_ASSETS, DEFAULT_APP_NAME, MAX_BRANDING_BODY, brandingOf, validateBranding, validateAssets, buildManifest } from './branding.js';
 import {
   APPROVAL_REQUIRED_SETTING, APPROVAL_MODE_SETTING, readApprovalSettings, validateApprovalSettings,
@@ -330,12 +332,23 @@ if (!fs.existsSync(secretFile)) fs.writeFileSync(secretFile, crypto.randomBytes(
 const SECRET = fs.readFileSync(secretFile, 'utf8').trim();
 
 // Funciones auxiliares para compatibilidad
-const isAdmin = user => !!user && (user.admin === 1 || user.admin === true || ADMIN_UIDS.includes(user.id));
 const isOwner = user => !!user && (user.owner === 1 || user.owner === true);
-// Staff (admin en la base, ADMIN_UIDS u owner): cuotas solo
-// exceptúa a estos. Así la demo (todos admins para ver el panel) igual muestra bloqueos y el
-// resumen de Cuotas con socios.
-const isRealStaff = user => !!user && (user.admin === 1 || user.admin === true || ADMIN_UIDS.includes(user.id) || isOwner(user));
+// Roles del staff (permissions.js): el owner y ADMIN_UIDS (demo) pueden todo; los demás, lo que
+// diga su rol. Los roles se cachean: cambian solo por /api/owner/roles/* (que limpian el caché).
+let rolesCache = null;
+const rolesById = () => rolesCache || (rolesCache = new Map(getRoles().map(r => [r.id, r])));
+const forgetRoles = () => { rolesCache = null; };
+const roleOf = user => (user?.role_id && rolesById().get(user.role_id)) || null;
+const permsOf = user => !user ? [] : permissionsOf({ owner: isOwner(user), envAdmin: ADMIN_UIDS.includes(user.id), role: roleOf(user) });
+const can = (user, code) => permsOf(user).includes(code);
+// Del staff: entra al panel (owner, ADMIN_UIDS o un rol con algún permiso).
+const isStaff = user => permsOf(user).length > 0;
+// No paga cuota: owner, ADMIN_UIDS o un rol "exento de cuota". Así una profe que entrena y paga
+// sigue en Cuotas.
+const isFeeExempt = user => !!user && (isOwner(user) || ADMIN_UIDS.includes(user.id) || !!roleOf(user)?.feeExempt);
+const roleView = user => { const r = roleOf(user); return r ? { id: r.id, name: r.name, color: r.color } : null; };
+// El usuario de la sesión para el cliente (login y /api/me). admin = del staff (clientes viejos).
+const sessionUserView = user => ({ id: user.id, name: user.name, admin: isStaff(user), owner: !!user.owner, role: roleView(user), permissions: permsOf(user) });
 function readState(uid) {
   return getUserState(uid);
 }
@@ -636,10 +649,13 @@ function accountEndReason(user) {
 // credencial válida nunca se le dice el estado de una cuenta. Sin cookie de sesión.
 const accountEnded = (res, user) => json(res, 403, { error: accountEndReason(user) || 'account_disabled' });
 
+// Rutas /api/admin: el permiso que pide la ruta (permissions.js → ROUTE_PERMISSIONS, por la clave
+// que guarda el dispatcher). Una ruta sin permiso en el catálogo, solo el owner.
 function requireAdmin(req, res) {
   const user = readSession(req);
   if (!user) { json(res, 401, { error: 'No has iniciado sesión' }); return null; }
-  if (!isAdmin(user)) { audit(req, 'admin.denied', { ok: false, user }); json(res, 403, { error: 'No autorizado' }); return null; }
+  const perm = ROUTE_PERMISSIONS[req.routeKey];
+  if (!isOwner(user) && !(perm && can(user, perm))) { audit(req, 'admin.denied', { ok: false, user }); json(res, 403, { error: 'No autorizado' }); return null; }
   return user;
 }
 
@@ -763,7 +779,7 @@ function checkPayment(body, current, settings) {
 // rechazan las rutas de MEMBERSHIP_GATED. Admins y owner nunca quedan bloqueados, y nadie
 // queda bloqueado con cuotas apagado.
 function isMembershipBlocked(user) {
-  if (!user || isRealStaff(user) || !billingEnabledNow()) return false;
+  if (!user || isFeeExempt(user) || !billingEnabledNow()) return false;
   const settings = billingSettingsNow();
   return billingStatus(getMemberBilling(user.id), billingToday(settings), settings) === 'bloqueado';
 }
@@ -777,7 +793,7 @@ const healthAwareSave = (user, saveOpts) => (uid, st) =>
 // 'pending' hasta que el staff la habilita. Mismo mecanismo que el bloqueo por cuota (conserva la
 // sesión, se le rechazan las rutas de MEMBERSHIP_GATED), otro motivo. Staff nunca.
 const approvalNow = () => readApprovalSettings(getAdminSetting);
-const isAccountPending = user => !!user && user.approval_status === 'pending' && !isRealStaff(user);
+const isAccountPending = user => !!user && user.approval_status === 'pending' && !isStaff(user);
 // Cuenta no activa: desactivada, o sin aprobar (pendiente; una rechazada es pendiente + desactivada).
 // No se le da rol de admin ni se le administra nutrición, rutinas o lesiones hasta que se active.
 const isInactiveAccount = user => !!user && (!!user.disabled || isAccountPending(user));
@@ -976,7 +992,7 @@ function withCheckinBilling(rows, today) {
   const settings = billingSettingsNow();
   return rows.map(row => {
     const user = getUserById(row.userId);
-    return user && !isRealStaff(user) ? { ...row, billing: checkinBilling(row.userId, today, settings) } : row;
+    return user && !isFeeExempt(user) ? { ...row, billing: checkinBilling(row.userId, today, settings) } : row;
   });
 }
 // Estado de cuota de HOY y días al vencimiento (o de vencida) en gym_tz; en prueba, días al fin de
@@ -2048,7 +2064,8 @@ const routes = {
       dayPlan: getDayPlanByUserId(userId),
       routineGroups,
       activeGroupId,
-      lesiones: healthDeclined(getUserById(userId)) ? [] : getLesiones(userId),
+      // Lesiones: no sin el consentimiento del socio ni sin "ver datos de salud".
+      lesiones: healthDeclined(getUserById(userId)) || !can(admin, 'health.view') ? [] : getLesiones(userId),
       healthConsent: healthConsentOf(getUserById(userId)),
       unit: prefs.unit || 'kg',
       body: prefs.body || 'male'
@@ -2440,7 +2457,7 @@ const routes = {
     const counts = { bloqueado: 0, vencido: 0, por_vencer: 0 };
     // Las cuentas sin aprobar no están en Cuotas: tampoco cuentan acá.
     for (const b of getAllMemberBilling().filter(b => !b.pending)) {
-      if (b.disabled || isRealStaff({ id: b.userId, admin: b.admin, owner: b.owner })) continue;
+      if (b.disabled || isFeeExempt({ id: b.userId, owner: b.owner, role_id: b.roleId })) continue;
       const status = billingStatus(b, today, settings);
       if (status in counts) counts[status]++;
     }
@@ -2451,8 +2468,9 @@ const routes = {
     const user = readSession(req);
     // 401 con el motivo: el cliente distingue una sesión vencida de una cuenta dada de baja.
     if (!user) return json(res, 401, { error: 'No has iniciado sesión', reason: sessionEndReason(req) });
-    // staff: admin u owner. El frontend lo usa para el bloqueo por cuota.
-    const me = { id: user.id, name: user.name, admin: isAdmin(user), owner: !!user.owner, staff: isRealStaff(user) };
+    // staff: no paga cuota (el frontend lo usa para el bloqueo por cuota). role y permissions: qué
+    // ve en el panel de admin.
+    const me = { ...sessionUserView(user), staff: isFeeExempt(user) };
     // Pendiente de aprobación / formulario de datos de una sola vez (socios que ya existían).
     const fields = memberFieldsNow();
     const account = {
@@ -2462,9 +2480,9 @@ const routes = {
       legal: { version: LEGAL_VERSION, accepted: legalAcceptedOf(user) },
       // Abono de lauyim por vencer o vencido: solo lo ve el staff (el atraso del gym no es asunto
       // de los socios hasta que el servicio se suspende).
-      license: isRealStaff(user) ? licenseNow() : null,
+      license: isStaff(user) ? licenseNow() : null,
       pending: isAccountPending(user),
-      profilePrompt: needsProfilePrompt(user, { admin: isAdmin(user), approvalRequired: approvalNow().required, fields, profile: getMemberProfile(user.id) })
+      profilePrompt: needsProfilePrompt(user, { admin: isStaff(user), approvalRequired: approvalNow().required, fields, profile: getMemberProfile(user.id) })
         ? { fields } : null
     };
     // Con cuotas apagado el socio no ve estado de cuota: billing null y sin bloqueo.
@@ -2478,7 +2496,7 @@ const routes = {
       billingEnabled: true,
       billing: {
         hasPlan: billing.planId != null, status, dueDate: billing.dueDate, planName: billing.planName,
-        blocked: status === 'bloqueado' && !isRealStaff(user), trialUntil: billing.trialUntil, trialEnded: isTrialEnded(billing, status)
+        blocked: status === 'bloqueado' && !isFeeExempt(user), trialUntil: billing.trialUntil, trialEnded: isTrialEnded(billing, status)
       }
     });
   },
@@ -2600,7 +2618,7 @@ const routes = {
     // saveDb(); // Eliminado: SQLite persiste automáticamente
     const created = getUserById(user.id);
     audit(req, 'auth.register.ok', { user: created, msg: [invite ? invite.code : null, isAccountPending(created) ? 'pendiente' : null].filter(Boolean).join(' · ') || null });
-    json(res, 200, { user: { id: created.id, name: created.name, admin: isAdmin(created), owner: !!created.owner }, pending: isAccountPending(created) }, { 'Set-Cookie': sessionCookie(created) });
+    json(res, 200, { user: sessionUserView(created), pending: isAccountPending(created) }, { 'Set-Cookie': sessionCookie(created) });
   },
 
   /* ---------- vinculación ficha → passkey (código de un solo uso) ---------- */
@@ -2696,7 +2714,7 @@ const routes = {
     if (body.legalAccepted === true) setLegalAccepted(out.user.id, LEGAL_VERSION);
     const user = getUserById(out.user.id);
     audit(req, 'auth.link.ok', { user });
-    json(res, 200, { user: { id: user.id, name: user.name, admin: isAdmin(user), owner: !!user.owner } }, { 'Set-Cookie': sessionCookie(user) });
+    json(res, 200, { user: sessionUserView(user) }, { 'Set-Cookie': sessionCookie(user) });
   },
 
   'POST /api/login/options': async (req, res) => {
@@ -2758,7 +2776,7 @@ const routes = {
       return accountEnded(res, user);
     }
     audit(req, 'auth.login.ok', { user });
-    json(res, 200, { user: { id: user.id, name: user.name, admin: isAdmin(user), owner: !!user.owner } }, { 'Set-Cookie': sessionCookie(user) });
+    json(res, 200, { user: sessionUserView(user) }, { 'Set-Cookie': sessionCookie(user) });
   },
 
   /* ---------- Device Pairing Flow ---------- */
@@ -2840,7 +2858,7 @@ const routes = {
         return user ? accountEnded(res, user) : json(res, 403, { error: 'account_deleted' });
       }
       audit(req, 'auth.device.login', { user });
-      return json(res, 200, { status: 'approved', user: { id: user.id, name: user.name, admin: isAdmin(user), owner: !!user.owner } }, { 'Set-Cookie': sessionCookie(user) });
+      return json(res, 200, { status: 'approved', user: sessionUserView(user) }, { 'Set-Cookie': sessionCookie(user) });
     }
     json(res, 400, { status: 'expired', error: 'pairing_expired' });
   },
@@ -3232,7 +3250,7 @@ const routes = {
       const last = workouts[workouts.length - 1];
       return {
         id: u.id, name: u.name, created: isoTimestamp(u.created_at),
-        disabled: !!u.disabled, admin: isAdmin(u), owner: !!u.owner, invitedBy: u.invited_by || null,
+        disabled: !!u.disabled, admin: isStaff(u), owner: !!u.owner, role: roleView(u), invitedBy: u.invited_by || null,
         hasApp: appUserIds.has(u.id), hasProfile: profileUserIds.has(u.id), profileIncomplete: incomplete.has(u.id),
         pending: isAccountPending(u),
         workouts: workouts.length,
@@ -3342,7 +3360,7 @@ const routes = {
     // Saludo con nombre y apellido y el usuario (la pantalla arma "Juan Fernández [Juani]").
     const result = { status: out.already ? 'already' : 'registered', fullName: out.fullName, nick: out.nick };
     // Estado de cuota: si el owner lo muestra y cuotas está encendido. Días en gym_tz.
-    if (ctx.settings.showStatus && billingEnabledNow() && !isRealStaff(target)) {
+    if (ctx.settings.showStatus && billingEnabledNow() && !isFeeExempt(target)) {
       result.billing = checkinBilling(out.userId, today, settings);
     }
     if (!out.already) audit(req, 'checkin.ok', { target, msg: `device=${ctx.device.name}` });
@@ -3379,7 +3397,7 @@ const routes = {
     if (!verification.verified) return json(res, 400, { error: 'passkey_verify_failed' });
     updateCredentialCounter(cred.id, verification.authenticationInfo.newCounter);
     const user = getUserById(cred.user_id || cred.userId);
-    if (!user || user.disabled || !isAdmin(user)) {
+    if (!user || user.disabled || !(isOwner(user) || can(user, 'checkin.operate'))) {
       audit(req, 'checkin.exit.denied', { ok: false, user, msg: `device=${ctx.device.name}` });
       return json(res, 403, { error: 'forbidden' });
     }
@@ -3399,21 +3417,22 @@ const routes = {
   },
 
   'GET /api/admin/user': async (req, res) => {
-    if (!requireAdmin(req, res)) return;
+    const viewer = requireAdmin(req, res); if (!viewer) return;
     const id = new URL(req.url, 'http://x').searchParams.get('id');
     const u = getUserById(id);
     if (!u) return json(res, 404, { error: 'El usuario no existe' });
     const S = readState(u.id) || {};
+    // Peso corporal: no sin el consentimiento del socio ni sin "ver datos de salud".
+    const hideHealth = healthDeclined(u) || !can(viewer, 'health.view');
     json(res, 200, {
       user: {
-        id: u.id, name: u.name, created: isoTimestamp(u.created_at), disabled: !!u.disabled, admin: isAdmin(u), owner: !!u.owner, invitedBy: u.invited_by || null,
+        id: u.id, name: u.name, created: isoTimestamp(u.created_at), disabled: !!u.disabled, admin: isStaff(u), owner: !!u.owner, role: roleView(u), invitedBy: u.invited_by || null,
         hasApp: countCredentials(u.id) > 0, hasProfile: !!getMemberProfile(u.id), pending: isAccountPending(u)
       },
       unit: S.unit || 'kg',
       lastSync: S._ts || null,
       routines: (S.routines || []).map(r => ({ id: r.id, name: r.name, emoji: r.emoji, count: (r.ex || []).length })),
-      // Sin consentimiento de datos de salud, el admin tampoco ve el peso corporal.
-      bodyweight: healthDeclined(u) ? [] : S.bodyweight || [],
+      bodyweight: hideHealth ? [] : S.bodyweight || [],
       healthConsent: healthConsentOf(u),
       // Historial para el staff: plan semanal (cumplimiento), el día de hoy del gym y los nombres de
       // los ejercicios propios del socio (el panel no los tiene en su biblioteca).
@@ -3422,7 +3441,7 @@ const routes = {
       today: billingToday(billingSettingsNow()),
       names: Object.fromEntries((S.customEx || []).filter(ex => ex && ex.id).map(ex => [ex.id, ex.n || ex.name || ex.id])),
       // Tampoco el peso corporal anotado en cada entreno (bw).
-      workouts: (S.workouts || []).slice().reverse().map(w => (healthDeclined(u) && w && 'bw' in w ? (({ bw, ...rest }) => rest)(w) : w))
+      workouts: (S.workouts || []).slice().reverse().map(w => (hideHealth && w && 'bw' in w ? (({ bw, ...rest }) => rest)(w) : w))
     });
   },
 
@@ -3431,7 +3450,8 @@ const routes = {
     const body = await readBody(req);
     const u = getUserById(body.id);
     if (!u) return json(res, 404, { error: 'El usuario no existe' });
-    if (isAdmin(u)) return json(res, 400, { error: 'admin_undisableable' });
+    // Del staff: primero se le quita el rol (el owner no se desactiva nunca).
+    if (isStaff(u)) return json(res, 400, { error: 'staff_undisableable' });
     const newDisabled = !!body.disabled;
     updateUser(u.id, { disabled: newDisabled });
     // Desactivada: sin avisos (se borran sus suscripciones y la alarma de descanso agendada).
@@ -3441,20 +3461,60 @@ const routes = {
     json(res, 200, { ok: true, id: u.id, disabled: newDisabled });
   },
 
-  'POST /api/owner/user/admin': async (req, res) => {
-    const owner = requireOwner(req, res); if (!owner) return;
+  /* ---------- roles del staff (permissions.js) ---------- */
+  // Los roles con cuántas personas tiene cada uno, y el catálogo de permisos para el editor.
+  'GET /api/admin/roles': async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    json(res, 200, { roles: getRoles(), catalog: PERMISSIONS });
+  },
+
+  // Dar o quitar un rol ({ userId, roleId | null }): solo roles cuyos permisos tenga también quien
+  // asigna, y lo mismo para quitar el que tenía. Al owner no; a una cuenta no activa, solo quitar.
+  'POST /api/admin/users/role': async (req, res) => {
+    const actor = requireAdmin(req, res); if (!actor) return;
     const body = await readBody(req);
-    const id = String(body.id || '').trim();
-    if (!id) return json(res, 400, { error: 'validation_error' });
-    const u = getUserById(id);
+    const u = getUserById(String(body.userId || ''));
     if (!u) return json(res, 404, { error: 'El usuario no existe' });
     if (isOwner(u)) return json(res, 400, { error: 'owner_role_locked' });
-    const admin = !!body.admin;
-    // Dar el rol a una cuenta no activa, no; quitarlo, siempre.
-    if (admin && isInactiveAccount(u)) return json(res, 409, ACCOUNT_NOT_ACTIVE);
-    updateUser(u.id, { admin });
-    audit(req, admin ? 'owner.user.promote' : 'owner.user.demote', { user: owner, target: u });
-    json(res, 200, { ok: true, id: u.id, admin });
+    const next = body.roleId ? rolesById().get(String(body.roleId)) : null;
+    if (body.roleId && !next) return json(res, 404, { error: 'role_not_found' });
+    const held = permsOf(actor);
+    const current = roleOf(u);
+    if ((next && !isSubset(next.permissions, held)) || (current && !isSubset(current.permissions, held))) {
+      return json(res, 403, { error: 'role_too_high' });
+    }
+    if (next && isInactiveAccount(u)) return json(res, 409, ACCOUNT_NOT_ACTIVE);
+    setUserRole(u.id, next ? next.id : null);
+    audit(req, 'admin.user.role', { user: actor, target: u, summary: `${current?.name || 'Ninguno'} → ${next?.name || 'Ninguno'}` });
+    json(res, 200, { ok: true, id: u.id, role: next ? { id: next.id, name: next.name, color: next.color } : null });
+  },
+
+  // Crear (sin id) o editar un rol. Administrador no cambia de nombre.
+  'POST /api/owner/roles/save': async (req, res) => {
+    const owner = requireOwner(req, res); if (!owner) return;
+    const body = await readBody(req);
+    const id = body.id ? String(body.id) : null;
+    const current = id ? rolesById().get(id) : null;
+    if (id && !current) return json(res, 404, { error: 'role_not_found' });
+    const others = getRoles().filter(r => r.id !== id).map(r => r.name);
+    const checked = validateRole(current?.builtin ? { ...body, name: current.name } : body, { existingNames: others });
+    if (checked.error) return json(res, 400, { error: 'validation_error', message: checked.error, field: checked.field });
+    const role = saveRole({ id, ...checked.value });
+    forgetRoles();
+    audit(req, 'owner.role.save', { user: owner, summary: `${role.name}: ${role.permissions.join(', ') || 'sin permisos'}` });
+    json(res, 200, { role });
+  },
+
+  // Borrar un rol (no el de fábrica): sus personas quedan sin rol.
+  'POST /api/owner/roles/delete': async (req, res) => {
+    const owner = requireOwner(req, res); if (!owner) return;
+    const body = await readBody(req);
+    const role = rolesById().get(String(body.id || ''));
+    if (!role) return json(res, 404, { error: 'role_not_found' });
+    if (role.builtin || !deleteRole(role.id)) return json(res, 400, { error: 'role_locked' });
+    forgetRoles();
+    audit(req, 'owner.role.delete', { user: owner, summary: role.name });
+    json(res, 200, { ok: true });
   },
 
   'POST /api/owner/user/delete': async (req, res) => {
@@ -3487,7 +3547,7 @@ const routes = {
     // Cuentas sin aprobar (pendientes o rechazadas): no son socios todavía, no van en Cuotas.
     const members = getAllMemberBilling().filter(b => !b.pending).map(b => {
       const view = billingView(b, today, settings);
-      return { id: b.userId, name: b.name, disabled: b.disabled, admin: isRealStaff({ id: b.userId, admin: b.admin, owner: b.owner }), hasApp: b.hasApp, planId: view.planId, planName: view.planName, dueDate: view.dueDate, trialUntil: view.trialUntil, status: view.status, debt: view.debt };
+      return { id: b.userId, name: b.name, disabled: b.disabled, admin: isFeeExempt({ id: b.userId, owner: b.owner, role_id: b.roleId }), hasApp: b.hasApp, planId: view.planId, planName: view.planName, dueDate: view.dueDate, trialUntil: view.trialUntil, status: view.status, debt: view.debt };
     });
     // El resumen cuenta socios activos y no admins: un desactivado no es deuda por cobrar ni un
     // cupo, y admins/owner no quedan bloqueados por cuota. Siguen en members con admin: true.
@@ -3673,7 +3733,7 @@ const routes = {
     const billing = billingView(getMemberBilling(userId), billingToday(settings), settings);
     const back = backToTrial ? `vuelve a la prueba (hasta ${backToTrial})` : `vuelve a vencer ${backTo}`;
     audit(req, 'admin.billing.payment_void', { user: admin, target, summary: `$${payment.amount} · ${back}${reason ? ' · ' + reason : ''}` });
-    if (billing.status === 'bloqueado' && !isRealStaff(target)) audit(req, 'admin.billing.blocked', { user: admin, target, summary: backToTrial ? `Prueba terminada el ${backToTrial}` : `Venció ${backTo}` });
+    if (billing.status === 'bloqueado' && !isFeeExempt(target)) audit(req, 'admin.billing.blocked', { user: admin, target, summary: backToTrial ? `Prueba terminada el ${backToTrial}` : `Venció ${backTo}` });
     json(res, 200, { billing, payment: getPaymentById(paymentId) });
   },
 
@@ -3853,7 +3913,7 @@ const routes = {
     }
     if (!approved) return json(res, 409, { error: 'not_pending', message: 'La cuenta ya no está pendiente' });
     // Las pendientes son siempre registros abiertos (una ficha nunca queda pendiente).
-    if (NEW_USERS_ADMIN) updateUser(userId, { admin: true });
+    if (NEW_USERS_ADMIN) setUserRole(userId, ADMIN_ROLE_ID);
     const how = type === 'payment' ? 'con primer pago' : type === 'trial' ? 'con prueba' : 'sin pago';
     audit(req, 'admin.member.approve', { user: admin, target, summary: [`Habilitada ${how}`, profile.dniNorm ? `DNI ${maskDni(profile.dniNorm)}` : null].filter(Boolean).join(' · ') });
     if (payment) audit(req, 'admin.billing.payment', { user: admin, target, summary: `$${payment.amount} · ${payment.method} · ${payment.plan.name} · vence ${payment.period.dueDate}` });
@@ -3919,7 +3979,7 @@ const routes = {
     if (!user) return json(res, 401, { error: 'No has iniciado sesión' });
     const fields = memberFieldsNow();
     const current = getMemberProfile(user.id);
-    if (!needsProfilePrompt(user, { admin: isAdmin(user), approvalRequired: approvalNow().required, fields, profile: current })) {
+    if (!needsProfilePrompt(user, { admin: isStaff(user), approvalRequired: approvalNow().required, fields, profile: current })) {
       return json(res, 409, { error: 'profile_locked', message: 'Tus datos los actualiza el gimnasio en recepción' });
     }
     const body = await readBody(req);
@@ -4088,7 +4148,7 @@ const routes = {
     const profiles = new Map(getAllMemberProfiles().map(p => [p.userId, p]));
     const billing = new Map(getAllMemberBilling().map(b => [b.userId, b]));
     const appUserIds = getAppUserIds();
-    const members = getAllUsers().filter(u => !isRealStaff(u)).map(u => {
+    const members = getAllUsers().filter(u => !isFeeExempt(u)).map(u => {
       const b = billing.get(u.id);
       return {
         name: u.name, created: isoTimestamp(u.created_at), disabled: !!u.disabled, pending: isAccountPending(u), hasApp: appUserIds.has(u.id),
@@ -4332,11 +4392,12 @@ const routes = {
     });
   },
 
-  'POST /api/admin/audit/clear': async (req, res) => {
-    const admin = requireAdmin(req, res); if (!admin) return;
+  // Borrar el registro no se delega: solo el owner.
+  'POST /api/owner/audit/clear': async (req, res) => {
+    const owner = requireOwner(req, res); if (!owner) return;
     try { fs.unlinkSync(auditFile); } catch { /* nothing logged yet */ }
     auditCount = 0;
-    audit(req, 'admin.audit.clear', { user: admin });
+    audit(req, 'owner.audit.clear', { user: owner });
     json(res, 200, { ok: true });
   }
 };
@@ -4474,13 +4535,14 @@ http.createServer(async (req, res) => {
   // sesión de admin (a los demás les responde el handler, como siempre).
   if (/ \/api\/admin\/users\/:userId\/(nutrition|injuries)/.test(routeKey)) {
     const sessionUser = readSession(req);
-    if (sessionUser && isAdmin(sessionUser) && healthDeclined(getUserById(userIdFromPath(req)))) {
+    if (sessionUser && isStaff(sessionUser) && healthDeclined(getUserById(userIdFromPath(req)))) {
       return json(res, 409, { error: 'no_health_consent', message: 'Sin consentimiento de datos de salud' });
     }
   }
 
   const handler = routes[routeKey];
   if (!handler) return json(res, 404, { error: 'not_found' });
+  req.routeKey = routeKey;   // requireAdmin pide el permiso de esta ruta
   if (!csrfOk(req, routeKey)) {
     console.warn('refused cross-origin', routeKey, 'origin=' + req.headers.origin, 'expected=' + ORIGIN);
     return json(res, 403, { error: 'cross_origin' });

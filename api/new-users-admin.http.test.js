@@ -108,7 +108,7 @@ test('quien se registra queda admin en la base (entra al panel) y el owner se lo
   const me = await call(pro.cookie, 'GET', '/api/me');
   assert.deepEqual([me.body.user.admin, me.body.user.staff], [true, true]);
   assert.equal((await call(pro.cookie, 'GET', '/api/admin/users')).status, 200);
-  assert.equal((await call('owner', 'POST', '/api/owner/user/admin', { id: pro.id, admin: false })).status, 200);
+  assert.equal((await call('owner', 'POST', '/api/admin/users/role', { userId: pro.id, roleId: null })).status, 200);
   const after = await call(pro.cookie, 'GET', '/api/me');
   assert.deepEqual([after.body.user.admin, after.body.user.staff], [false, false]);
   assert.equal((await call(pro.cookie, 'GET', '/api/admin/users')).status, 403);
