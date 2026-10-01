@@ -39,6 +39,14 @@ test('/api re-resuelve la IP del backend: si el contenedor api se recrea, nginx 
   assert.ok(!directives.some(d => d.startsWith('proxy_pass http://')));
 });
 
+test('/api acepta cuerpos de hasta 8 MB (el logo con sus íconos): nginx corta en 1 MB por defecto', () => {
+  // Con el default, una foto como logo (~1,4 MB en base64) daba 413 antes de llegar a la API.
+  // El tope real de cada ruta lo pone la API (MAX_BODY, MAX_BRANDING_BODY).
+  const at = rendered.indexOf('location ^~ /api/ {');
+  const block = rendered.slice(at, rendered.indexOf('}', at));
+  assert.match(block, /client_max_body_size 8m;/);
+});
+
 test('/privacidad y /privacidad/: redirect relativo a la ruta hash del aviso', () => {
   const at = rendered.indexOf('location ~ ^/privacidad/?$ {');
   assert.ok(at > 0);

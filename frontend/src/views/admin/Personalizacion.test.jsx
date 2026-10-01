@@ -9,6 +9,7 @@ const apiMock = vi.hoisted(() => vi.fn())
 vi.mock('../../lib/api.js', async importOriginal => ({ ...(await importOriginal()), api: apiMock }))
 
 const { useStore } = await import('../../store/useStore.js')
+const { useUI } = await import('../../store/useUI.js')
 const { setLang } = await import('../../lib/i18n.js')
 const { default: Personalizacion } = await import('./Personalizacion.jsx')
 
@@ -55,6 +56,23 @@ describe('Personalización', () => {
     const [, opts] = apiMock.mock.calls.find(([u, o]) => u === '/api/owner/branding' && o?.method === 'PUT')
     expect(JSON.parse(opts.body)).toEqual({ appName: 'Gym Centro', shortName: '', tagline: '', color: '#ff9f0a', lockColor: true })
     expect(useStore.getState().config.branding).toMatchObject({ appName: 'Gym Centro', color: '#ff9f0a', lockColor: true })
+  })
+
+  it('guardar espera la subida (el logo pesa MB) y un 413 dice que la imagen es muy pesada', async () => {
+    await mount(<Personalizacion />)
+    await type(container.querySelector('input[name="app-brand-name"]'), 'Gym Centro')
+    await act(async () => { button('Guardar').click() })
+    await tick()
+    const [, opts] = apiMock.mock.calls.find(([u, o]) => u === '/api/owner/branding' && o?.method === 'PUT')
+    // El default de api() corta a los 8 s: con 1 a 5 MB por datos móviles no alcanza.
+    expect(opts.timeoutMs).toBeGreaterThanOrEqual(60000)
+    apiMock.mockImplementation((url, o) => o?.method === 'PUT'
+      ? Promise.reject(Object.assign(new Error('HTTP 413'), { status: 413, data: {} }))
+      : Promise.resolve({ branding: FACTORY }))
+    await type(container.querySelector('input[name="app-brand-name"]'), 'Gym Otro')
+    await act(async () => { button('Guardar').click() })
+    await tick()
+    expect(useUI.getState().toastMsg).toMatch(/demasiado pesada/)
   })
 
   it('la vista previa muestra el nombre bajo el ícono, cortado, y el login con la frase', async () => {

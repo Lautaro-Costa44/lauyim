@@ -67,13 +67,14 @@ export default function Personalizacion() {
     setBusy(true)
     try {
       const body = { ...draft, ...(logo.kind === 'new' ? { assets: logo.icons } : {}), ...(logo.kind === 'none' && saved.logo ? { removeLogo: true } : {}) }
-      const { branding } = await api('/api/owner/branding', { method: 'PUT', body: JSON.stringify(body) })
+      // Con logo nuevo el cuerpo pesa de 1 a 5 MB: el corte de 8 s de api() no alcanza en datos móviles.
+      const { branding } = await api('/api/owner/branding', { method: 'PUT', body: JSON.stringify(body), timeoutMs: 120000 })
       applyLive(branding)
       setSaved(branding); setDraft(draftOf(branding)); setLogo({ kind: 'saved' })
       toast(t('Personalización guardada'))
     } catch (e) {
       if (e?.data?.field) setErrors({ [e.data.field]: e.data.message })
-      toast(errorText(e, t('No se pudo guardar')))
+      toast(e?.status === 413 ? t('La imagen es demasiado pesada. Probá con otra más chica.') : errorText(e, t('No se pudo guardar')))
     }
     setBusy(false)
   }
