@@ -68,24 +68,28 @@ El proyecto está licenciado bajo [AGPL-3.0](https://www.gnu.org/licenses/agpl-3
 
 ### 1. Clonar el repositorio
 ```bash
-git clone [https://github.com/Lautaro-Costa44/lauyim.git](https://github.com/Lautaro-Costa44/lauyim.git)
+git clone https://github.com/Lautaro-Costa44/lauyim.git
 cd lauyim
 ```
 
 ### 2. Configurar el entorno
 
-Copiar `.env.example` a `.env` y ajustar las variables necesarias para la instancia.
+Copiar el compose de ejemplo y `.env.example`, y completar las variables de la instancia. Cada
+variable está explicada en `.env.example`; las obligatorias están al principio.
 
 ```bash
+cp docker-compose.example.yml docker-compose.yml
 cp .env.example .env
 ```
+
+`docker-compose.yml` y `.env` no se versionan: cada instancia los ajusta a su servidor.
 
 La API utiliza Node.js 22. La versión está fijada en `.nvmrc` y los Dockerfiles utilizan imágenes basadas en `node:22-alpine`.
 
 ### 3. Levantar los servicios
 
 ```bash
-docker compose up --build -d
+docker compose -p lauyim up --build -d
 ```
 
 La composición inicia la descarga de los medios de ejercicios cuando todavía no están presentes, construye la API y el frontend y sirve la aplicación mediante Nginx. Por defecto, el frontend queda publicado en el puerto `8080` y la API escucha internamente en el puerto `3000`.
@@ -103,13 +107,15 @@ Los datos persistentes de la instancia se almacenan en `./data` y se montan en e
 Para detener la instancia:
 
 ```bash
-docker compose down
+docker compose -p lauyim down
 ```
 
 Para consultar los logs:
 
 ```bash
-docker compose logs -f
+docker compose -p lauyim logs -f
 ```
 
 Para publicar la instancia mediante Cloudflare Tunnels, configurar `cloudflared` según el entorno y asegurarse de que el proxy preserve la configuración de origen prevista por la instancia.
+
+La primera cuenta que se registra en una instancia nueva queda como owner (dueño del gym).

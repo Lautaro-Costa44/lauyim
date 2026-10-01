@@ -1,0 +1,88 @@
+# Una instancia de lauyim (un gym): API + web + descarga única de las imágenes de ejercicios.
+#
+# Uso: copiar a docker-compose.yml (que no se versiona: cada instancia puede ajustarlo) y
+# completar .env a partir de .env.example. Instalación: README.md.
+#
+#   cp docker-compose.example.yml docker-compose.yml
+#   cp .env.example .env
+#   docker compose -p <proyecto> up -d --build
+#
+# Logs: cada contenedor guarda como máximo 3 archivos de 10 MB (también se puede fijar para todo el
+# servidor en /etc/docker/daemon.json: docs/monitoreo.md).
+#
+# Sin "name:" a propósito: el nombre del proyecto sale de -p o, si no, de la carpeta. Dos gyms en el
+# mismo servidor nunca comparten contenedores por olvidarse el -p.
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  # Una sola vez: baja las imágenes y animaciones de los ejercicios a ./media (se saltea si ya
+  # están). ~140 MB, de github.com/hasaneyldrm/exercises-dataset. Los metadatos y las
+  # instrucciones son MIT; las imágenes y animaciones son de terceros y se usan bajo las
+  # condiciones de ese dataset. Ver NOTICE.md. Con EXERCISE_GIFS=0 la app no las muestra.
+  media:
+    image: alpine/git
+    volumes:
+      - ./media/img:/out/img
+      - ./media/gif:/out/gif
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        if [ -z "$$(ls -A /out/img 2>/dev/null)" ]; then
+          echo "Bajando las imágenes de los ejercicios (~140 MB, una sola vez)..."
+          echo "  Origen: github.com/hasaneyldrm/exercises-dataset (ver NOTICE.md)"
+          git clone --depth 1 https://github.com/hasaneyldrm/exercises-dataset /tmp/ds
+          cp /tmp/ds/images/*.jpg /out/img/ && cp /tmp/ds/videos/*.gif /out/gif/
+          echo "Listo: $$(ls /out/img | wc -l) imágenes."
+        else
+          echo "Las imágenes de los ejercicios ya están: no se bajan de nuevo."
+        fi
+    restart: "no"
+
+  # Passkeys, datos de los socios y administración del gym (Node, sin framework).
+  api:
+    image: lauyim-api:local
+    build: ./api
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      # El puerto de la API. El web reenvía /api a este mismo valor: se cambia en .env y los dos
+      # lo siguen.
+      - PORT=${PORT:-3000}
+      - DATA_DIR=/data
+    volumes:
+      - ./data:/data          # base, passkeys, secreto de sesión: lo respalda scripts/backup.sh
+    logging: *logging
+
+  # Construye el frontend (multi-stage) y lo sirve con nginx, que además reenvía /api a la API y
+  # sirve las imágenes de ./media. Un solo origen: lo necesitan las passkeys.
+  web:
+    image: lauyim-web:local
+    build:
+      context: .
+      dockerfile: web/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      media:
+        condition: service_completed_successfully
+      api:
+        condition: service_started
+    # Solo en 127.0.0.1 por defecto: cloudflared corre en el host y entra por acá. Publicarlo en
+    # todas las interfaces dejaría llegar al web sin pasar por Cloudflare. WEB_BIND=0.0.0.0 lo
+    # abre a la red (por ejemplo, para probar desde otra máquina de la LAN).
+    ports:
+      - "${WEB_BIND:-127.0.0.1}:${WEB_PORT:-8080}:${NGINX_PORT:-80}"
+    # nginx arma su configuración al arrancar a partir de estas variables
+    # (web/nginx.conf.template).
+    environment:
+      - NGINX_PORT=${NGINX_PORT:-80}
+      - BACKEND=${BACKEND:-api}
+      - PORT=${PORT:-3000}
+    volumes:
+      - ./media/img:/usr/share/nginx/html/img:ro
+      - ./media/gif:/usr/share/nginx/html/gif:ro
+    logging: *logging
