@@ -7,6 +7,7 @@ import { DatabaseSync } from 'node:sqlite';
 import path from 'path';
 import fs from 'fs';
 import crypto from 'node:crypto';
+import { migrateClasses } from './classes-db.js';
 import { fileURLToPath } from 'node:url';
 import { setRowValues, setFromRow, workoutMeta, validateWorkouts, decodeMeta, encodeMeta } from './row-meta.js';
 import { CUSTOM_EXERCISE_COLUMNS } from './custom-exercise.js';
@@ -263,6 +264,7 @@ export function initDatabase() {
     throw error;
   }
   migrateRoles(db);
+  migrateClasses(db);
 
   // Migración defensiva: asegurar que existan todas las columnas de la encuesta en bases de datos existentes
   const columnsToAdd = [
