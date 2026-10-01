@@ -197,6 +197,8 @@ export const useStore = create((set, get) => {
     if (me && 'pending' in me) setAccountPending(me.pending)
     set({ profilePrompt: me?.profilePrompt || null })
     if (me && 'healthConsent' in me) get().setHealthConsent(me.healthConsent, { ask: me.healthConsent === null })
+    // Términos y aviso: sin la versión vigente aceptada, la pantalla de una sola vez los pide.
+    if (me?.legal) set({ legalVersion: me.legal.version, legalAsk: !me.legal.accepted })
   }
 
   const scheduleSync = (delay = 2000) => {
@@ -252,7 +254,7 @@ export const useStore = create((set, get) => {
     writeEnded(reason)   // después del borrado: localStorage.clear() se lo llevaría
     set({
       user: null, membershipBlocked: false, accountPending: false, billing: null, billingEnabled: true,
-      profilePrompt: null, healthConsent: null, healthAsk: false, accountEnded: reason
+      profilePrompt: null, healthConsent: null, healthAsk: false, legalAsk: false, accountEnded: reason
     })
     persist(clone(DEF), false)
   }
@@ -316,6 +318,10 @@ export const useStore = create((set, get) => {
     profilePrompt: null,
     healthConsent: readHealth(),
     healthAsk: false,       // cuenta de antes sin respuesta: se le pregunta una vez al entrar
+    // Términos y aviso de privacidad: versión vigente (de /api/me) y si hay que pedir aceptarla.
+    legalVersion: null,
+    legalAsk: false,
+    setLegalAccepted() { set({ legalAsk: false }) },
     setHealthConsent(value, { ask = false } = {}) {
       const v = value === 'granted' || value === 'declined' ? value : null
       try { v ? localStorage.setItem(HEALTH_KEY, v) : localStorage.removeItem(HEALTH_KEY) } catch { /* storage off */ }
@@ -376,7 +382,7 @@ export const useStore = create((set, get) => {
       // ninguna) en este dispositivo no los hereda hasta que su propio /api/me diga lo suyo.
       if (!u || u.id !== get().user?.id) {
         try { localStorage.removeItem(BLOCK_KEY); localStorage.removeItem(BILLING_KEY); localStorage.removeItem(BILLING_OFF_KEY); localStorage.removeItem(PENDING_KEY); localStorage.removeItem(HEALTH_KEY) } catch { /* storage off */ }
-        set({ membershipBlocked: false, billing: null, billingEnabled: true, accountPending: false, profilePrompt: null, healthConsent: null, healthAsk: false })
+        set({ membershipBlocked: false, billing: null, billingEnabled: true, accountPending: false, profilePrompt: null, healthConsent: null, healthAsk: false, legalAsk: false })
       }
       if (u) { localStorage.setItem('gym_user', JSON.stringify(u)); localStorage.removeItem('gym_guest') }
       else localStorage.removeItem('gym_user')

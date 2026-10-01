@@ -8,7 +8,7 @@ import { useState, useRef, useEffect } from 'react'
 import { useOnline } from '../lib/useOnline.js'
 import Icon from '../components/Icon.jsx'
 import { Button, useSheetBack } from '../components/ui.jsx'
-import { ConsentCheck, usePrivacyStep } from '../components/PrivacyNotice.jsx'
+import { ConsentChecks, usePrivacyStep } from '../components/PrivacyNotice.jsx'
 import { ProfileFields, askedFields, profileBody } from '../components/ProfileFields.jsx'
 import { NO_AUTOFILL } from '../lib/input-safety.js'
 import { errorText, fieldErrors } from '../lib/errors.js'
@@ -26,7 +26,8 @@ export function RegisterSheet({ close, setOnBack }) {
   const [qrToken, setQrToken] = useState(null)
   const [qrChecked, setQrChecked] = useState(false)
   const [values, setValues] = useState({})
-  const [accepted, setAccepted] = useState(false)
+  const [legalOk, setLegalOk] = useState(false)
+  const [healthOk, setHealthOk] = useState(false)
   const [errors, setErrors] = useState({})
   const [busy, setBusy] = useState(false)
   const inviteOnly = !!config?.invite_only
@@ -58,8 +59,8 @@ export function RegisterSheet({ close, setOnBack }) {
     setBusy(true); setErrors({})
     try {
       const { pending, ...u } = await passkeyRegister(n, code.trim(), qrToken,
-        { healthConsent: accepted, ...(needsData ? { profile: profileBody(fields, values), privacyAccepted: accepted } : {}) })
-      setUser(u); useStore.getState().setHealthConsent('granted'); close()
+        { legalAccepted: legalOk, healthConsent: healthOk, ...(needsData ? { profile: profileBody(fields, values), privacyAccepted: legalOk } : {}) })
+      setUser(u); useStore.getState().setHealthConsent(healthOk ? 'granted' : 'declined'); useStore.getState().setLegalAccepted(); close()
       // Con la aprobación del staff: pantalla de pendiente; los datos locales quedan en el
       // dispositivo y se sincronizan cuando la habiliten.
       if (pending) {
@@ -79,9 +80,9 @@ export function RegisterSheet({ close, setOnBack }) {
       else useUI.getState().toast(errorText(e, t('Registration failed')))
     }
   }
-  // El check (aviso + datos de salud) va siempre, con o sin aprobación del staff.
-  // Los datos se revisan al tocar el botón (errores en cada campo); sin el check no se puede seguir.
-  const incomplete = !accepted
+  // Los términos y el aviso van siempre, con o sin aprobación del staff; los datos de salud son
+  // opcionales. Los datos se revisan al tocar el botón (errores en cada campo).
+  const incomplete = !legalOk
   return <>
     {privacy.view}
     <div hidden={privacy.isOpen} ref={formRef}>
@@ -101,11 +102,11 @@ export function RegisterSheet({ close, setOnBack }) {
     </>}
     {needsData && <>
       <div style={{ height: 14 }} />
-      <ProfileFields fields={fields} values={values} errors={errors} accept={false} onPrivacy={privacy.open}
+      <ProfileFields fields={fields} values={values} errors={errors} accept={false} step={privacy}
         onChange={(prop, value) => { setValues(v => ({ ...v, [prop]: value })); setErrors(er => ({ ...er, [prop === 'fullName' ? 'full_name' : prop]: null })) }} />
     </>}
     <div style={{ height: 14 }} />
-    <ConsentCheck checked={accepted} onChange={setAccepted} onPrivacy={privacy.open} />
+    <ConsentChecks legal={legalOk} onLegal={setLegalOk} health={healthOk} onHealth={setHealthOk} step={privacy} />
     <div style={{ height: 12 }} />
     <Button variant="primary" disabled={busy || incomplete} onClick={go}>{t('Create passkey')}</Button>
     </div>
@@ -218,7 +219,8 @@ const passkeyCancelled = e => e?.name === 'NotAllowedError' || e?.name === 'Abor
 // sin error. Al terminar sigue el boot normal: /api/me (cuota) y los datos del socio.
 function LinkSheet({ close, setOnBack, initialCode = '' }) {
   const [code, setCode] = useState(() => formatLinkCodeInput(initialCode))
-  const [accepted, setAccepted] = useState(false)
+  const [legalOk, setLegalOk] = useState(false)
+  const [healthOk, setHealthOk] = useState(false)
   const privacy = usePrivacyStep()
   useSheetBack(setOnBack, () => privacy.isOpen ? privacy.close() : close())
   const [found, setFound] = useState(null)         // respuesta de /api/link/options
@@ -233,10 +235,11 @@ function LinkSheet({ close, setOnBack, initialCode = '' }) {
   const confirm = async () => {
     setBusy(true); setError(null)
     try {
-      const u = await linkPasskey(found, { healthConsent: accepted })
+      const u = await linkPasskey(found, { legalAccepted: legalOk, healthConsent: healthOk })
       const store = useStore.getState()
       store.setUser(u)
-      store.setHealthConsent('granted')
+      store.setHealthConsent(healthOk ? 'granted' : 'declined')
+      store.setLegalAccepted()
       close()
       useUI.getState().toast(t('Welcome, {0}', u.name))
       // Igual que al abrir la app: estado de cuota (y el cartel si está bloqueado) y sus datos.
@@ -252,10 +255,10 @@ function LinkSheet({ close, setOnBack, initialCode = '' }) {
     <h3>{t('Tu acceso a la app')}</h3>
     <div className="muted" style={{ margin: '4px 0 16px', lineHeight: 1.5 }}>{t('Vas a crear tu acceso como {0}', found.fullName || found.name)}</div>
     <div className="muted small" style={{ marginBottom: 16 }}>{t('Confirmá con {0}. La passkey queda guardada en tu dispositivo, sin contraseña.', t(BIO))}</div>
-    <ConsentCheck checked={accepted} onChange={setAccepted} onPrivacy={privacy.open} />
+    <ConsentChecks legal={legalOk} onLegal={setLegalOk} health={healthOk} onHealth={setHealthOk} step={privacy} />
     <div style={{ height: 12 }} />
     {error && <div className="form-error" role="alert" style={{ marginBottom: 10 }}>{error}</div>}
-    <Button variant="primary" disabled={busy || !accepted} onClick={confirm}>{t('Confirmar')}</Button>
+    <Button variant="primary" disabled={busy || !legalOk} onClick={confirm}>{t('Confirmar')}</Button>
     <div style={{ height: 8 }} />
     <Button variant="ghost" className="dim" onClick={close}>{t('Cancelar')}</Button>
     </div>
@@ -314,7 +317,7 @@ export default function Login() {
   // El aviso de passkeys y el link de privacidad quedan fijos al fondo de la pantalla.
   const footer = <div className="login-footer">
     <div className="dim small" style={{ lineHeight: 1.5 }}>{t('Passkeys use {0} — no passwords.', t(BIO))}<br />{t('Each profile keeps its own plan, workouts & body weight.')}</div>
-    <div className="dim small privacy-footer"><a className="privacy-link" href="#/privacidad">{t('Aviso de privacidad')}</a></div>
+    <div className="dim small privacy-footer"><a className="privacy-link" href="#/terminos">{t('Términos y condiciones')}</a> · <a className="privacy-link" href="#/privacidad">{t('Aviso de privacidad')}</a></div>
   </div>
 
   return (

@@ -10,8 +10,13 @@ const apiMock = vi.hoisted(() => vi.fn())
 vi.mock('../lib/api.js', async importOriginal => ({ ...(await importOriginal()), api: apiMock }))
 vi.mock('../lib/onboarding.js', () => ({ startTourA: vi.fn(), esperarElemento: vi.fn() }))
 
-let consent
+let consent, legalSent
 apiMock.mockImplementation((url, opts = {}) => {
+  if (url === '/api/me/legal') {
+    legalSent = JSON.parse(opts.body).version
+    if (legalSent !== '2026-10-01') return Promise.reject(Object.assign(new Error('x'), { status: 409, data: { error: 'legal_version_changed', version: '2026-10-01' } }))
+    return Promise.resolve({ legal: { version: legalSent, accepted: true } })
+  }
   if (url === '/api/me/health-consent') { consent = JSON.parse(opts.body).granted ? 'granted' : 'declined'; return Promise.resolve({ healthConsent: consent }) }
   if (url === '/api/me/health-data/delete') return Promise.resolve({ ok: true })
   if (url === '/api/data') return Promise.resolve({ state: null })
@@ -38,7 +43,7 @@ async function mount(hash, state = {}, S = {}) {
   window.history.replaceState(null, '', '/' + hash)
   useStore.setState({
     boot: () => {}, ready: true, licenseExpired: false, membershipBlocked: false, accountPending: false, profilePrompt: null,
-    user: { id: 'u1', name: 'juan', admin: false }, healthAsk: false, healthConsent: 'granted',
+    user: { id: 'u1', name: 'juan', admin: false }, healthAsk: false, healthConsent: 'granted', legalAsk: false, legalVersion: '2026-10-01',
     S: { ...JSON.parse(JSON.stringify(DEF)), onboardingCompletado: true, ...S }, ...state
   })
   container = document.createElement('div')
@@ -53,6 +58,7 @@ beforeEach(async () => {
   globalThis.IS_REACT_ACT_ENVIRONMENT = true
   apiMock.mockClear()
   consent = null
+  legalSent = null
   localStorage.clear()
   useUI.setState({ sheets: [] })
 })
@@ -64,12 +70,16 @@ afterEach(async () => {
 })
 
 describe('consentimiento de datos de salud', () => {
-  it('cuenta de antes: se pregunta una vez; "No acepto" oculta Nutrición y el peso corporal', async () => {
+  it('cuenta de antes: se pregunta una vez; sin consentimiento se ocultan Nutrición y el peso corporal', async () => {
     await mount('#/home', { healthAsk: true, healthConsent: null })
     expect(text()).toContain('Tus datos de salud')
     expect(text()).toContain('peso, edad, género, lesiones y nutrición')
+    expect(text()).toContain('opcional')
     expect(document.querySelector('#tabbar')).toBeNull()
-    await click(button('No acepto'))
+    // Solo falta la salud (los términos ya están aceptados): sin "Salir", se sigue sin darla.
+    expect(button('Salir')).toBeUndefined()
+    await click(button('Continuar'))
+    expect(legalSent).toBeNull()
     expect(consent).toBe('declined')
     expect(localStorage.getItem('gym_health_consent')).toBe('declined')
     expect(text()).not.toContain('Tus datos de salud')
@@ -116,5 +126,42 @@ describe('consentimiento de datos de salud', () => {
     await flush()
     expect(text()).toContain('Sin consentimiento de datos de salud')
     expect(apiMock.mock.calls.some(([u]) => u.includes('/nutrition'))).toBe(false)
+  })
+
+  it('términos sin aceptar: obligatorios, con los dos textos a mano; salud opcional en la misma pantalla', async () => {
+    await mount('#/home', { legalAsk: true, healthAsk: true, healthConsent: null })
+    expect(text()).toContain('Antes de seguir')
+    expect(document.querySelector('#tabbar')).toBeNull()
+    expect(button('Continuar').disabled).toBe(true)
+    // Los textos se abren adentro de la pantalla y se vuelve sin perder nada.
+    await click(button('términos y condiciones'))
+    expect(text()).toContain('Salud y entrenamiento')
+    await click(button('Volver'))
+    expect(document.querySelector('.consent-accept input').checked).toBe(false)   // el link no marca el check
+    await act(async () => { document.querySelector('.consent-accept input').click() })
+    await act(async () => { document.querySelector('[role="switch"][aria-label="Datos de salud"]').click() })
+    await click(button('Continuar'))
+    expect(legalSent).toBe('2026-10-01')
+    expect(consent).toBe('granted')
+    expect(useStore.getState().legalAsk).toBe(false)
+    expect(text()).not.toContain('Antes de seguir')
+    expect(tabs().join()).toContain('Nutrición')
+  })
+
+  it('si los textos cambiaron mientras los leía, pide revisarlos de nuevo', async () => {
+    await mount('#/home', { legalAsk: true, legalVersion: '2026-01-01' })
+    await act(async () => { document.querySelector('.consent-accept input').click() })
+    await click(button('Continuar'))
+    expect(text()).toContain('Los textos se actualizaron recién')
+    expect(useStore.getState().legalVersion).toBe('2026-10-01')
+    expect(button('Continuar').disabled).toBe(true)
+  })
+
+  it('"Salir" cierra la sesión sin aceptar', async () => {
+    const signOut = vi.fn()
+    await mount('#/home', { legalAsk: true, signOut })
+    await click(button('Salir'))
+    expect(signOut).toHaveBeenCalled()
+    expect(legalSent).toBeNull()
   })
 })

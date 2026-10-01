@@ -52,6 +52,10 @@ server {
         absolute_redirect off;
         return 302 "/#/privacidad";
     }
+    location ~ ^/terminos/?$ {
+        absolute_redirect off;
+        return 302 "/#/terminos";
+    }
 
     # SPA fallback
     location ^~ /assets/ {

@@ -85,7 +85,8 @@ const LABELS = {
   'auth.profile.self': 'Filled in their member details',
   'auth.health.granted': 'Gave consent for health data',
   'auth.health.revoked': 'Withdrew consent for health data',
-  'auth.health.deleted': 'Deleted their health data'
+  'auth.health.deleted': 'Deleted their health data',
+  'auth.legal.accepted': 'Accepted the terms and privacy notice'
 }
 
 const UNKNOWN_EVENT = 'Unknown activity'

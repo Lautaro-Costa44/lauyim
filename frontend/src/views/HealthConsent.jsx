@@ -3,7 +3,6 @@ import { useStore } from '../store/useStore.js'
 import { useUI } from '../store/useUI.js'
 import { api } from '../lib/api.js'
 import { t } from '../lib/i18n.js'
-import Icon from '../components/Icon.jsx'
 import { Button } from '../components/ui.jsx'
 import { HEALTH_DATA_LABEL, PrivacyLink, usePrivacyStep } from '../components/PrivacyNotice.jsx'
 import { errorText } from '../lib/errors.js'
@@ -17,31 +16,8 @@ export const setHealthConsentRemote = async granted => {
   return d.healthConsent
 }
 
-// Cuentas de antes (healthConsent null): se pregunta una vez, al entrar. Hay que elegir.
-export default function HealthConsentOnce() {
-  const toast = useUI(s => s.toast)
-  const [busy, setBusy] = useState(false)
-  const privacy = usePrivacyStep()
-  const answer = async granted => {
-    setBusy(true)
-    try { await setHealthConsentRemote(granted) }
-    catch (e) { toast(errorText(e, t('No hay conexión. Probá de nuevo en un momento.'))); setBusy(false) }
-  }
-  return <div className="narrow health-consent">
-    {privacy.view}
-    <div hidden={privacy.isOpen}>
-      <div className="notif-step-icon"><Icon name="heart" size={32} /></div>
-      <h1 className="privacy-title">{t('Tus datos de salud')}</h1>
-      <p className="muted">{t('Para adaptar tu entrenamiento, la app guarda datos de salud: {0}. La ley los considera datos sensibles y necesitamos tu consentimiento expreso.', t(HEALTH_DATA_LABEL))}</p>
-      <p className="muted">{t('Si no aceptás, podés seguir entrenando: rutinas, programas, entrenamientos e historial funcionan igual, y se ocultan Nutrición, el peso corporal y las lesiones. Lo podés cambiar cuando quieras en Ajustes → Datos de salud.')}</p>
-      <p className="small"><PrivacyLink onClick={privacy.open}>{t('Leer el aviso de privacidad')}</PrivacyLink></p>
-      <div className="notif-step-actions" style={{ margin: '18px auto 0' }}>
-        <Button variant="primary" disabled={busy} onClick={() => answer(true)}>{t('Acepto')}</Button>
-        <Button variant="ghost" className="dim" disabled={busy} onClick={() => answer(false)}>{t('No acepto')}</Button>
-      </div>
-    </div>
-  </div>
-}
+// La pregunta de una sola vez (cuentas sin respuesta) está en ConsentOnce.jsx, junto con los
+// términos y el aviso de privacidad.
 
 // Ajustes → Datos de salud: ver el estado, darlo o retirarlo y, sin consentimiento, borrar lo
 // que ya se cargó (irreversible: lo decide el socio).

@@ -10,6 +10,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { addDays, gymToday } from './billing.js';
+import { LEGAL_VERSION } from './legal.js';
 
 
 const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lauyim-health-http-'));
@@ -119,13 +120,42 @@ const PROFILE = { fullName: 'Juan Nuevo', dni: '40.123.456', phone: '11 2345-678
 
 const noData = { profile: PROFILE, privacyAccepted: true };
 
-test('registro: sin el consentimiento de salud no se puede', async () => {
+test('registro: sin aceptar los términos y el aviso no se puede; la salud es opcional', async () => {
   const r = await call(null, 'POST', '/api/register/options', { name: 'sin', ...noData, profile: { ...PROFILE, dni: '41111111' } });
   assert.equal(r.status, 400);
-  assert.equal(r.body.error, 'health_consent_required');
-  const ok = await register('con', { ...noData, profile: { ...PROFILE, dni: '41111112' } });
+  assert.equal(r.body.error, 'legal_required');
+  // Acepta los términos y el aviso, no la salud: la cuenta se crea sin consentimiento de salud.
+  const sinSalud = await register('sinsalud', { ...noData, profile: { ...PROFILE, dni: '41111113' }, legalAccepted: true, healthConsent: false });
+  assert.equal(sinSalud.status, 200, JSON.stringify(sinSalud.body));
+  const me = (await call(sinSalud.cookie, 'GET', '/api/me')).body;
+  assert.equal(me.healthConsent, 'declined');
+  assert.deepEqual(me.legal, { version: LEGAL_VERSION, accepted: true });
+  const ok = await register('con', { ...noData, profile: { ...PROFILE, dni: '41111112' }, legalAccepted: true, healthConsent: true });
   assert.equal(ok.status, 200);
   assert.equal((await call(ok.cookie, 'GET', '/api/me')).body.healthConsent, 'granted');
+});
+
+test('registro desde una versión vieja de la app (un solo check): entra, y los términos se le piden después', async () => {
+  const old = await register('viejo', { ...noData, profile: { ...PROFILE, dni: '41111114' } });
+  assert.equal(old.status, 200, JSON.stringify(old.body));
+  const me = (await call(old.cookie, 'GET', '/api/me')).body;
+  assert.equal(me.healthConsent, 'granted');
+  assert.equal(me.legal.accepted, false);
+});
+
+test('aceptación de los términos: solo la versión vigente, una vez, con auditoría', async () => {
+  assert.deepEqual((await call('old', 'GET', '/api/me')).body.legal, { version: LEGAL_VERSION, accepted: false });
+  const stale = await call('old', 'POST', '/api/me/legal', { version: '2000-01-01' });
+  assert.equal(stale.status, 409);
+  assert.equal(stale.body.error, 'legal_version_changed');
+  assert.equal((await call('old', 'POST', '/api/me/legal', { version: LEGAL_VERSION })).status, 200);
+  assert.deepEqual((await call('old', 'GET', '/api/me')).body.legal, { version: LEGAL_VERSION, accepted: true });
+  const [row] = sql("SELECT legal_version, legal_accepted_at FROM users WHERE id = 'old'");
+  assert.equal(row.legal_version, LEGAL_VERSION);
+  assert.ok(row.legal_accepted_at);
+  assert.ok(auditLog().includes('auth.legal.accepted'));
+  assert.equal((await call(null, 'POST', '/api/me/legal', { version: LEGAL_VERSION })).status, 401);
+  assert.equal((await call(null, 'GET', '/api/privacy')).body.legalVersion, LEGAL_VERSION);
 });
 
 test('vinculación con código: exige el mismo consentimiento, sin gastar el código', async () => {
@@ -134,12 +164,14 @@ test('vinculación con código: exige el mismo consentimiento, sin gastar el có
   const opts = await call(null, 'POST', '/api/link/options', { code: gen.body.code });
   const credential = fakeRegistration(opts.body.options.challenge);
   const denied = await call(null, 'POST', '/api/link/verify', { cid: opts.body.cid, credential });
-  assert.equal(denied.body.error, 'health_consent_required');
+  assert.equal(denied.body.error, 'legal_required');
   assert.equal(sql('SELECT failed_attempts FROM link_codes WHERE user_id = ?', 'ficha')[0].failed_attempts, 0);
   const opts2 = await call(null, 'POST', '/api/link/options', { code: gen.body.code });
-  const ok = await call(null, 'POST', '/api/link/verify', { cid: opts2.body.cid, credential: fakeRegistration(opts2.body.options.challenge), healthConsent: true });
+  const ok = await call(null, 'POST', '/api/link/verify', { cid: opts2.body.cid, credential: fakeRegistration(opts2.body.options.challenge), legalAccepted: true, healthConsent: false });
   assert.equal(ok.status, 200, JSON.stringify(ok.body));
-  assert.equal(sql("SELECT health_consent FROM users WHERE id = 'ficha'")[0].health_consent, 'granted');
+  const [row] = sql("SELECT health_consent, legal_version FROM users WHERE id = 'ficha'");
+  assert.equal(row.health_consent, 'declined');
+  assert.equal(row.legal_version, LEGAL_VERSION);
 });
 
 test('cuentas de antes: healthConsent null (se les pregunta una vez)', async () => {

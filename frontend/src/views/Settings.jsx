@@ -257,6 +257,7 @@ export default function Settings() {
         <Row icon="heart" iconTint="var(--pink)" title={t('Datos de salud')} value={noHealth ? t('Sin consentimiento') : t('Consentimiento dado')} accessory="chevron"
           onClick={() => useUI.getState().openSheet(close => <HealthConsentSheet close={close} />)} />
         <Row icon="lock" iconTint="var(--grey)" title={t('Aviso de privacidad')} subtitle={t('Qué datos guarda el gimnasio y cómo pedir que los corrijan o borren')} accessory="chevron" onClick={() => nav('/privacidad')} />
+        <Row icon="clipboard" iconTint="var(--grey)" title={t('Términos y condiciones')} subtitle={t('Las reglas de uso de la app')} accessory="chevron" onClick={() => nav('/terminos')} />
         <Row icon="signOut" iconTint="var(--red)" title={t('Sign out')} danger onClick={() => confirmSheet({ title: t('Sign out?'), message: t('Your data is synced to your profile first, then cleared from this device.'), confirmText: t('Sign out'), danger: true, onConfirm: () => { signOut(); nav('/home') } })} />
         <Row icon="shield" iconTint="var(--red)" title={t('Sign out everywhere')} subtitle={t('Ends this profile’s sessions on all your devices.')} danger onClick={signOutEverywhere} />
       </> : webauthnOK() ? <>

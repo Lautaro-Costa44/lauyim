@@ -12,9 +12,9 @@ vi.mock('../lib/api.js', async importOriginal => {
   return {
     ...real, api: apiMock, webauthnOK: () => true,
     linkOptions: code => apiMock('/api/link/options', { method: 'POST', body: JSON.stringify({ code }) }),
-    linkPasskey: async ({ cid }, { healthConsent } = {}) => {
+    linkPasskey: async ({ cid }, { legalAccepted, healthConsent } = {}) => {
       await navigator.credentials.create({})
-      return (await apiMock('/api/link/verify', { method: 'POST', body: JSON.stringify({ cid, healthConsent }) })).user
+      return (await apiMock('/api/link/verify', { method: 'POST', body: JSON.stringify({ cid, legalAccepted, healthConsent }) })).user
     }
   }
 })
@@ -126,11 +126,13 @@ describe('login con código del gym', () => {
     expect(text()).toContain('Vas a crear tu acceso como Juan Pérez')
     expect(create).not.toHaveBeenCalled()
     expect(button('Confirmar').disabled).toBe(true)
-    expect(document.querySelector('.privacy-accept').textContent).toContain('datos de salud')
+    expect(document.querySelectorAll('.privacy-accept')[1].textContent).toContain('datos de salud')
     await acceptConsent()
+    await act(async () => { document.querySelectorAll('.privacy-accept input')[1].click() })
     await click(button('Confirmar'))
     expect(create).toHaveBeenCalledTimes(1)
-    expect(JSON.parse(apiMock.mock.calls.find(([u]) => u === '/api/link/verify')[1].body).healthConsent).toBe(true)
+    const sent = JSON.parse(apiMock.mock.calls.find(([u]) => u === '/api/link/verify')[1].body)
+    expect([sent.legalAccepted, sent.healthConsent]).toEqual([true, true])
     expect(useStore.getState().healthConsent).toBe('granted')
     expect(useStore.getState().user.id).toBe('f')
     expect(apiMock.mock.calls.some(([u]) => u === '/api/me')).toBe(true)     // boot normal: cuota

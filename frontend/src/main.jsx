@@ -8,10 +8,12 @@ import { useUI } from './store/useUI.js'
 import { countSync } from './lib/sync-queue.js'
 import { api } from './lib/api.js'
 
-// URL pública del aviso de privacidad sin hash (/privacidad): el router usa #/privacidad.
-// Nginx y el Service Worker ya redirigen; esto cubre cualquier otro servidor.
-if (/\/privacidad\/?$/.test(location.pathname) && !location.hash) {
-  history.replaceState(null, '', location.pathname.replace(/privacidad\/?$/, '') + location.search + '#/privacidad')
+// URLs públicas del aviso de privacidad y de los términos sin hash (/privacidad, /terminos): el
+// router usa #/privacidad y #/terminos. Nginx y el Service Worker ya redirigen; esto cubre
+// cualquier otro servidor.
+const legalPath = location.pathname.match(/\/(privacidad|terminos)\/?$/)
+if (legalPath && !location.hash) {
+  history.replaceState(null, '', location.pathname.slice(0, legalPath.index + 1) + location.search + '#/' + legalPath[1])
 }
 
 createRoot(document.getElementById('root')).render(

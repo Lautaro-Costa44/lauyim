@@ -42,7 +42,8 @@ const Privacy = lazy(() => import('./views/Privacy.jsx'))
 const IngresoFisicoScreen = lazy(() => import('./views/IngresoFisico.jsx'))
 const ProfileOnce = lazy(() => import('./views/ProfileOnce.jsx'))
 const NotificationsStep = lazy(() => import('./views/NotificationsStep.jsx'))
-const HealthConsentOnce = lazy(() => import('./views/HealthConsent.jsx'))
+const ConsentOnce = lazy(() => import('./views/ConsentOnce.jsx'))
+const Terms = lazy(() => import('./views/Terms.jsx'))
 
 bindUI(useUI)   // lets the shared controls open sheets without importing the store at module scope
 
@@ -77,6 +78,7 @@ function Shell() {
   const verifySession = useStore(s => s.verifySession)
   const profilePrompt = useStore(s => s.profilePrompt)
   const healthAsk = useStore(s => s.healthAsk)
+  const legalAsk = useStore(s => s.legalAsk)
   const noHealth = useStore(healthOff)
   const isGuest = useStore(s => s.isGuest())
   const langV = useLang()   // re-renders the whole shell when the language (pack) changes
@@ -142,11 +144,14 @@ function Shell() {
   const blocked = !licenseExpired && (membershipBlocked || accountPending) && !!user && !billingExempt(user)
   // Socios que ya existían sin datos: el formulario, una sola vez, antes de todo lo demás.
   const askProfile = !licenseExpired && !blocked && !!user && !user.admin && !!profilePrompt
-  // Cuentas de antes: el consentimiento de datos de salud, una vez (también staff: también entrena).
-  const askHealth = !licenseExpired && !blocked && !askProfile && !!user && healthAsk
+  // Una pantalla, una vez: los términos y el aviso (versión vigente sin aceptar) y el consentimiento
+  // de datos de salud (cuentas sin respuesta). También staff: también usa la app.
+  const askHealth = !licenseExpired && !blocked && !askProfile && !!user && (healthAsk || legalAsk)
   const isAdminPath = loc.pathname === '/admin' || loc.pathname.startsWith('/admin/')
-  // El aviso de privacidad es público: se ve sin sesión, con la licencia vencida o bloqueado.
-  const isPrivacy = loc.pathname === '/privacidad'
+  // El aviso de privacidad y los términos son públicos: se ven sin sesión, con la licencia vencida
+  // o bloqueado.
+  const isTerms = loc.pathname === '/terminos'
+  const isPrivacy = loc.pathname === '/privacidad' || isTerms
   // Pantalla de Ingreso Físico: por su ruta, o siempre que este navegador sea un dispositivo de
   // recepción sin sesión. Va antes que todo lo demás y no depende de ningún usuario.
   const isCheckin = loc.pathname === CHECKIN_ROUTE || (!user && !!getCheckinToken())
@@ -182,11 +187,11 @@ function Shell() {
           {isCheckin ? (loc.pathname === CHECKIN_ROUTE
               ? <Suspense fallback={<div className="page-loading" aria-busy="true" />}><IngresoFisicoScreen /></Suspense>
               : <Navigate to={CHECKIN_ROUTE} replace />)
-            : isPrivacy ? <Suspense fallback={<div className="page-loading" aria-busy="true" />}><Privacy /></Suspense>
+            : isPrivacy ? <Suspense fallback={<div className="page-loading" aria-busy="true" />}>{isTerms ? <Terms /> : <Privacy />}</Suspense>
             : accountEnded ? <AccountEnded />
             : licenseExpired ? <LicenseExpired /> : !authed ? <Login /> : blocked ? <MembershipBlocked />
             : askProfile ? <Suspense fallback={<div className="page-loading" aria-busy="true" />}><ProfileOnce /></Suspense>
-            : askHealth ? <Suspense fallback={<div className="page-loading" aria-busy="true" />}><HealthConsentOnce /></Suspense>
+            : askHealth ? <Suspense fallback={<div className="page-loading" aria-busy="true" />}><ConsentOnce /></Suspense>
             : askNotif ? <Suspense fallback={<div className="page-loading" aria-busy="true" />}>
               <NotificationsStep kind={notif.kind} onDone={notifDone} /></Suspense> : (
             <Suspense fallback={<div className="page-loading" aria-busy="true" />}> 

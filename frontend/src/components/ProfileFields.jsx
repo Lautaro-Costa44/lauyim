@@ -1,6 +1,6 @@
 import { t } from '../lib/i18n.js'
 import { NO_AUTOFILL } from '../lib/input-safety.js'
-import { PrivacyLink } from './PrivacyNotice.jsx'
+import { LegalAcceptCheck } from './PrivacyNotice.jsx'
 
 // Datos del socio que pide el gym (config de campos de Acceso), para el registro y el formulario
 // de una sola vez. El staff usa su propio formulario (admin/members/MemberSheets.jsx).
@@ -27,8 +27,9 @@ export function profileBody(fields, values) {
 export const missingRequired = (fields, values) =>
   askedFields(fields).filter(f => fields[f.key].required && !String(values[f.prop] || '').trim())
 
-// accept={false}: sin el check del aviso (el registro usa ConsentCheck, que suma los datos de salud).
-export function ProfileFields({ fields, values, onChange, errors = {}, accepted, onAccept, onPrivacy, accept = true }) {
+// accept={false}: sin el check de los términos y el aviso (el registro usa ConsentChecks, que
+// suma los datos de salud). `step`: usePrivacyStep, para abrir los dos textos.
+export function ProfileFields({ fields, values, onChange, errors = {}, accepted, onAccept, step, accept = true }) {
   const shown = askedFields(fields)
   return <div className="profile-fields">
     {shown.map(f => <label key={f.key} className="member-field">
@@ -39,9 +40,6 @@ export function ProfileFields({ fields, values, onChange, errors = {}, accepted,
       {errors[f.key] && <span className="form-error" role="alert">{errors[f.key]}</span>}
     </label>)}
     {shown.some(f => fields[f.key].required) && <div className="dim small">{t('* Obligatorio')}</div>}
-    {accept && <label className="privacy-accept">
-      <input type="checkbox" checked={!!accepted} onChange={e => onAccept(e.target.checked)} />
-      <span>{t('Acepto el')} <PrivacyLink onClick={onPrivacy}>{t('aviso de privacidad')}</PrivacyLink></span>
-    </label>}
+    {accept && <LegalAcceptCheck checked={accepted} onChange={onAccept} step={step} />}
   </div>
 }

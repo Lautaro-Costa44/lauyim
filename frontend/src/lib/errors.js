@@ -52,6 +52,8 @@ export const ERROR_TEXTS = {
   link_unavailable: 'Esta ficha ya no se puede vincular. Consultá en recepción.',
   privacy_required: 'Tenés que aceptar el aviso de privacidad.',
   health_consent_required: 'Tenés que aceptar el tratamiento de tus datos de salud.',
+  legal_required: 'Tenés que aceptar los términos y condiciones y el aviso de privacidad.',
+  legal_version_changed: 'Los términos se actualizaron recién. Revisalos y volvé a aceptar.',
   health_consent_active: 'El consentimiento de datos de salud sigue activo.',
   no_health_consent: 'Sin consentimiento de datos de salud.',
   // staff y usuarios

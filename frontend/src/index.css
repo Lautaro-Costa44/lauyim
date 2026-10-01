@@ -1625,6 +1625,7 @@ input[type="search"]::-webkit-search-cancel-button{display:none;-webkit-appearan
 .profile-fields .input{width:100%}
 .privacy-accept{display:flex;align-items:flex-start;gap:10px;font-size:14px;line-height:1.4;color:var(--label);cursor:pointer;margin-top:4px}
 .privacy-accept input{width:20px;height:20px;margin:0;flex:none;accent-color:var(--acc)}
+.privacy-accept label{cursor:pointer}
 .profile-once{padding:24px 0 calc(40px + var(--sab))}
 /* Aprobación de cuentas (spec 12.3) */
 .tag.member-pending{background:color-mix(in srgb,var(--warning) 18%,transparent);color:var(--warning)}
@@ -1936,3 +1937,27 @@ button.wh-row{font:inherit;color:inherit;border:0;cursor:pointer}
 .custom-ex-opts{margin:14px 0 10px}
 .steps-input{line-height:1.55;resize:vertical;min-height:96px}
 .steps-hint{margin:4px 2px 0}
+
+/* Términos y aviso + datos de salud: los dos checks del registro y la vinculación
+   (ConsentChecks) y la pantalla de una sola vez (views/ConsentOnce.jsx). */
+.consent-checks{display:flex;flex-direction:column;gap:12px;text-align:left}
+.consent-health{padding:10px 12px;border-radius:10px;background:var(--surface-2)}
+.consent-once{padding:32px 0 calc(40px + var(--sab));max-width:520px;margin:0 auto}
+.consent-once .notif-step-icon{margin:0 auto 14px}
+.consent-once .privacy-title{text-align:center}
+.consent-lead{text-align:center;margin:6px auto 18px;line-height:1.5}
+.consent-card{background:var(--surface);border:1px solid var(--sep);border-radius:var(--r-card);padding:16px;margin-bottom:12px}
+.consent-card h2{font-size:17px;font-weight:600;margin:0 0 10px;letter-spacing:-.01em}
+.consent-card p{margin:6px 0;line-height:1.5}
+.consent-card-h{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:6px}
+.consent-card-h h2{margin:0}
+.consent-optional{font-size:13px;font-weight:500}
+.consent-points{margin:0 0 12px;padding-left:20px;line-height:1.5;color:var(--label-2)}
+.consent-points li{margin:4px 0}
+.consent-accept{padding-top:12px;border-top:var(--hair) solid var(--sep)}
+.consent-health-state{display:flex;gap:8px;align-items:flex-start;font-size:14px;padding:10px 12px;border-radius:10px;background:var(--surface-2)}
+.consent-health-state svg{flex:none;width:16px;height:16px;margin-top:2px}
+.consent-health-state.on{color:var(--acc)}
+.consent-actions{display:flex;flex-direction:column;gap:8px;margin-top:16px;text-align:center}
+.consent-actions p{margin:4px 0 0}
+.privacy-version{margin-top:18px}

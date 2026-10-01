@@ -102,7 +102,8 @@ function credToJSON(cred) {
   }
   return out
 }
-// extra: { profile, privacyAccepted } cuando el registro pide datos (sin aprobación del staff).
+// extra: { legalAccepted, healthConsent } siempre; { profile, privacyAccepted } cuando el registro
+// pide datos (sin aprobación del staff).
 export async function passkeyRegister(name, code, qr, extra = {}) {
   const { cid, options } = await api('/api/register/options', { method: 'POST', body: JSON.stringify({ name, code: code || '', qr: qr || '', ...extra }) })
   const cred = await navigator.credentials.create({ publicKey: toCreationOptions(options) })
@@ -117,10 +118,10 @@ export async function passkeyRegister(name, code, qr, extra = {}) {
 export async function linkOptions(code) {
   return api('/api/link/options', { method: 'POST', body: JSON.stringify({ code }) })
 }
-// healthConsent: el mismo consentimiento de datos de salud que el registro (el servidor lo exige).
-export async function linkPasskey({ cid, options }, { healthConsent = false } = {}) {
+// legalAccepted (términos y aviso, obligatorio) y healthConsent (opcional): lo mismo que el registro.
+export async function linkPasskey({ cid, options }, { legalAccepted = false, healthConsent = false } = {}) {
   const cred = await navigator.credentials.create({ publicKey: toCreationOptions(structuredClone(options)) })
-  const res = await api('/api/link/verify', { method: 'POST', body: JSON.stringify({ cid, credential: credToJSON(cred), healthConsent }) })
+  const res = await api('/api/link/verify', { method: 'POST', body: JSON.stringify({ cid, credential: credToJSON(cred), legalAccepted, healthConsent }) })
   return res.user
 }
 export async function passkeyLogin() {

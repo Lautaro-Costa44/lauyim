@@ -132,6 +132,7 @@ import {
   importMembers,
   writeRegistrationProfile,
   setHealthConsent,
+  setLegalAccepted,
   deleteHealthData,
   approveAccount,
   completeProfilePrompt,
@@ -144,6 +145,7 @@ import {
 import { parseImportBody, analyzeImport } from './member-import.js';
 import { PRIVACY_GYM_NAME_SETTING, PRIVACY_CONTACT_SETTING, validatePrivacySettings } from './privacy.js';
 import { sanitizeExerciseDef } from './custom-exercise.js';
+import { LEGAL_VERSION, legalAcceptedOf, legalOkOf, healthChoiceOf } from './legal.js';
 import {
   APPROVAL_REQUIRED_SETTING, APPROVAL_MODE_SETTING, readApprovalSettings, validateApprovalSettings,
   effectiveMode, allowedStarts, needsProfilePrompt, anyFieldEnabled
@@ -2417,6 +2419,8 @@ const routes = {
     const account = {
       // Consentimiento de datos de salud: null = cuenta de antes, se le pregunta una vez.
       healthConsent: healthConsentOf(user),
+      // Términos y aviso: sin la versión vigente aceptada, la app los pide una vez al entrar.
+      legal: { version: LEGAL_VERSION, accepted: legalAcceptedOf(user) },
       pending: isAccountPending(user),
       profilePrompt: needsProfilePrompt(user, { admin: isAdmin(user), approvalRequired: approvalNow().required, fields, profile: getMemberProfile(user.id) })
         ? { fields } : null
@@ -2455,7 +2459,8 @@ const routes = {
     // Con aprobación: solo nombre + passkey, la cuenta queda pendiente. Sin aprobación y con
     // campos pedidos: los datos (con los obligatorios) y la aceptación del aviso de privacidad.
     // Un DNI que ya está en el gym frena el registro: nunca se vincula solo.
-    // Consentimiento expreso de datos de salud (Ley 25.326, art. 7): siempre, con o sin aprobación.
+    // Términos y aviso de privacidad: siempre, con o sin aprobación. El consentimiento de datos de
+    // salud (Ley 25.326, art. 7) es opcional: sin él la cuenta se crea sin datos de salud.
     const approval = approvalNow().required;
     let profile = null;
     const fields = memberFieldsNow();
@@ -2463,9 +2468,9 @@ const routes = {
     // Nombre de usuario y datos juntos: el formulario marca todos los campos con error a la vez.
     const checked = askProfile ? validateMemberProfile(body.profile || {}, fields) : {};
     if (username.error || checked.error) return json(res, 400, validationErrorBody(checked, username.error ? { username: username.error } : {}));
-    if (body.healthConsent !== true) return json(res, 400, { error: 'health_consent_required', message: 'Tenés que aceptar el tratamiento de tus datos de salud' });
+    if (!legalOkOf(body)) return json(res, 400, { error: 'legal_required', message: 'Tenés que aceptar los términos y condiciones y el aviso de privacidad' });
     if (askProfile) {
-      if (body.privacyAccepted !== true) return json(res, 400, { error: 'privacy_required', message: 'Tenés que aceptar el aviso de privacidad' });
+      if (body.privacyAccepted !== true && body.legalAccepted !== true) return json(res, 400, { error: 'privacy_required', message: 'Tenés que aceptar el aviso de privacidad' });
       if (checked.value.dniNorm && findMemberByDni(checked.value.dniNorm)) return json(res, 409, { error: 'dni_exists', message: DNI_EXISTS_MESSAGE });
       profile = checked.value;
     }
@@ -2477,7 +2482,7 @@ const routes = {
       authenticatorSelection: { residentKey: 'required', userVerification: 'preferred' },
       excludeCredentials: []
     });
-    const cid = putChallenge({ challenge: options.challenge, name, uid, code, qr: qrValid ? qr : null, pending: approval, profile, healthConsent: true });
+    const cid = putChallenge({ challenge: options.challenge, name, uid, code, qr: qrValid ? qr : null, pending: approval, profile, healthConsent: healthChoiceOf(body), legalAccepted: body.legalAccepted === true });
     json(res, 200, { cid, options });
   },
 
@@ -2520,7 +2525,7 @@ const routes = {
         return json(res, 403, { error: 'invite_invalid' });
       }
     }
-    const user = { id: c.uid, name: c.name, created: new Date().toISOString(), pending: !!c.pending, privacyAcceptedAt: c.profile ? new Date().toISOString() : null, healthConsent: !!c.healthConsent };
+    const user = { id: c.uid, name: c.name, created: new Date().toISOString(), pending: !!c.pending, privacyAcceptedAt: c.profile || c.legalAccepted ? new Date().toISOString() : null, healthConsent: c.healthConsent, legalVersion: c.legalAccepted ? LEGAL_VERSION : null };
     // NEW_USERS_ADMIN: admin desde el registro; una cuenta pendiente de aprobación, recién al habilitarla
     // (un admin nunca queda pendiente: saltearía la aprobación).
     if (NEW_USERS_ADMIN && !c.pending) user.admin = true;
@@ -2603,8 +2608,8 @@ const routes = {
       return json(res, 400, { error: 'challenge_expired' });
     }
     const ficha = getUserById(c.link.userId);
-    // Mismo consentimiento que el registro. No es un fallo del código: no suma intentos.
-    if (body.healthConsent !== true) return json(res, 400, { error: 'health_consent_required', message: 'Tenés que aceptar el tratamiento de tus datos de salud' });
+    // Misma aceptación que el registro. No es un fallo del código: no suma intentos.
+    if (!legalOkOf(body)) return json(res, 400, { error: 'legal_required', message: 'Tenés que aceptar los términos y condiciones y el aviso de privacidad' });
     // Fallo atribuible al código: suma un intento y al quinto lo revoca.
     const fail = (status, error, msg) => {
       const revoked = recordLinkCodeFailure(c.link.id);
@@ -2645,7 +2650,8 @@ const routes = {
       audit(req, 'auth.link.fail', { ok: false, user: ficha, uid: c.link.userId, msg: out.error });
       return json(res, out.error === 'link-invalid' ? 400 : 409, { error: out.error === 'link-invalid' ? 'link_invalid' : 'link_unavailable' });
     }
-    setHealthConsent(out.user.id, true);
+    setHealthConsent(out.user.id, body.healthConsent === true);
+    if (body.legalAccepted === true) setLegalAccepted(out.user.id, LEGAL_VERSION);
     const user = getUserById(out.user.id);
     audit(req, 'auth.link.ok', { user });
     json(res, 200, { user: { id: user.id, name: user.name, admin: isAdmin(user), owner: !!user.owner } }, { 'Set-Cookie': sessionCookie(user) });
@@ -3656,6 +3662,8 @@ const routes = {
       fields: Object.keys(fields).filter(k => fields[k].enabled),
       billingEnabled: billingEnabledNow(),
       auditDays: AUDIT_ON ? AUDIT_DAYS : null,
+      // Versión de los términos y el aviso (fecha del texto): se muestra al pie de los dos.
+      legalVersion: LEGAL_VERSION,
       // Encargado del tratamiento (lauyim): opcional, por instancia.
       operator: { name: (process.env.OPERATOR_NAME || '').trim().slice(0, 80) || null, cuit: (process.env.OPERATOR_CUIT || '').trim().slice(0, 20) || null }
     });
@@ -3793,6 +3801,18 @@ const routes = {
 
   // Consentimiento de datos de salud: darlo o retirarlo (Ajustes, o la pregunta de una sola vez a
   // las cuentas de antes). Retirarlo no borra nada: eso es "Borrar mis datos de salud".
+  // Aceptación de los términos y el aviso de privacidad (la pantalla de una sola vez). Solo la
+  // versión vigente: si cambió mientras el socio los leía, que vea los nuevos.
+  'POST /api/me/legal': async (req, res) => {
+    const user = readSession(req);
+    if (!user) return json(res, 401, { error: 'No has iniciado sesión' });
+    const body = await readBody(req);
+    if (body.version !== LEGAL_VERSION) return json(res, 409, { error: 'legal_version_changed', version: LEGAL_VERSION });
+    setLegalAccepted(user.id, LEGAL_VERSION);
+    audit(req, 'auth.legal.accepted', { user, msg: LEGAL_VERSION });
+    json(res, 200, { legal: { version: LEGAL_VERSION, accepted: true } });
+  },
+
   'POST /api/me/health-consent': async (req, res) => {
     const user = readSession(req);
     if (!user) return json(res, 401, { error: 'No has iniciado sesión' });
@@ -3831,11 +3851,12 @@ const routes = {
     }
     const checked = validateMemberProfile(body.profile || {}, fields, { current });
     if (checked.error) return json(res, 400, validationErrorBody(checked));
-    if (body.privacyAccepted !== true) return json(res, 400, { error: 'privacy_required', message: 'Tenés que aceptar el aviso de privacidad' });
+    if (body.privacyAccepted !== true && body.legalAccepted !== true) return json(res, 400, { error: 'privacy_required', message: 'Tenés que aceptar el aviso de privacidad' });
     const profile = checked.value;
     if (profile.dniNorm && findMemberByDni(profile.dniNorm, user.id)) return json(res, 409, { error: 'dni_exists', message: DNI_EXISTS_MESSAGE });
     try {
       completeProfilePrompt(user.id, { profile, privacyAcceptedAt: new Date().toISOString() });
+      if (body.legalAccepted === true) setLegalAccepted(user.id, LEGAL_VERSION);
     } catch (error) {
       if (isDniUniqueError(error)) return json(res, 409, { error: 'dni_exists', message: DNI_EXISTS_MESSAGE });
       throw error;

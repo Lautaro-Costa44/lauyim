@@ -207,6 +207,9 @@ export function initDatabase() {
   // aviso de privacidad; cuándo se le pidió (una sola vez) el formulario de datos.
   try { db.exec(`ALTER TABLE users ADD COLUMN approval_status TEXT;`); } catch {}
   try { db.exec(`ALTER TABLE users ADD COLUMN privacy_accepted_at TEXT;`); } catch {}
+  // Versión de los términos y el aviso de privacidad que aceptó la cuenta (legal.js).
+  try { db.exec(`ALTER TABLE users ADD COLUMN legal_version TEXT;`); } catch {}
+  try { db.exec(`ALTER TABLE users ADD COLUMN legal_accepted_at TEXT;`); } catch {}
   try { db.exec(`ALTER TABLE users ADD COLUMN profile_prompted_at TEXT;`); } catch {}
   // Consentimiento de datos de salud (health.js): 'granted' | 'declined' | NULL (no se preguntó).
   try { db.exec(`ALTER TABLE users ADD COLUMN health_consent TEXT;`); } catch {}
@@ -419,12 +422,16 @@ export function createUser(user) {
   // Pendiente de aprobación: nunca la primera cuenta (owner) ni una ficha.
   const pending = user.pending && !owner && !user.member ? 'pending' : null;
   const stmt = getDatabase().prepare(`
-    INSERT INTO users (id, name, admin, owner, disabled, created_at, invited_by, approval_status, privacy_accepted_at, health_consent, health_consent_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO users (id, name, admin, owner, disabled, created_at, invited_by, approval_status, privacy_accepted_at, health_consent, health_consent_at, legal_version, legal_accepted_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
+  // healthConsent: true → dado, false → no lo dio (check opcional sin marcar), sin dato → se le
+  // pregunta una vez al entrar.
+  const health = user.healthConsent === true ? 'granted' : user.healthConsent === false ? 'declined' : null;
+  const now = new Date().toISOString();
   stmt.run(user.id, user.name, admin, owner, user.disabled ? 1 : 0,
-    isoTimestamp(user.created) || new Date().toISOString(), user.invitedBy || null, pending, user.privacyAcceptedAt || null,
-    user.healthConsent ? 'granted' : null, user.healthConsent ? new Date().toISOString() : null);
+    isoTimestamp(user.created) || now, user.invitedBy || null, pending, user.privacyAcceptedAt || null,
+    health, health ? now : null, user.legalVersion || null, user.legalVersion ? now : null);
 }
 
 export function updateUser(id, updates) {
@@ -2545,6 +2552,11 @@ export function completeProfilePrompt(userId, { profile = null, privacyAcceptedA
 }
 
 // Dar o retirar el consentimiento de datos de salud.
+export function setLegalAccepted(userId, version) {
+  getDatabase().prepare('UPDATE users SET legal_version = ?, legal_accepted_at = ? WHERE id = ?')
+    .run(version, new Date().toISOString(), userId);
+}
+
 export function setHealthConsent(userId, granted) {
   getDatabase().prepare('UPDATE users SET health_consent = ?, health_consent_at = ? WHERE id = ?')
     .run(granted ? 'granted' : 'declined', new Date().toISOString(), userId);

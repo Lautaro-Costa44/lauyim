@@ -29,14 +29,14 @@ export default function ProfileOnce() {
   const save = () => {
     const local = profileErrors(values, fields)
     if (Object.keys(local).length) return showErrors(local)
-    send({ profile: profileBody(fields, values), privacyAccepted: true })
+    send({ profile: profileBody(fields, values), privacyAccepted: true, legalAccepted: true })
   }
 
   const send = async body => {
     setBusy(true); setErrors({})
     try {
       await api('/api/me/profile', { method: 'POST', body: JSON.stringify(body) })
-      if (!body.skip) toast(t('¡Gracias! Tus datos quedaron guardados.'))
+      if (!body.skip) { toast(t('¡Gracias! Tus datos quedaron guardados.')); useStore.getState().setLegalAccepted() }
       dismiss()
     } catch (e) {
       setBusy(false)
@@ -53,7 +53,7 @@ export default function ProfileOnce() {
     <div hidden={privacy.isOpen} ref={formRef}>
       <h1 className="privacy-title">{t('Completá tus datos')}</h1>
       <p className="muted" style={{ margin: '4px 0 18px', lineHeight: 1.5 }}>{t('El gimnasio te pide estos datos una sola vez, para identificarte como socio. Después, si hay que cambiarlos, se hace en recepción.')}</p>
-      <ProfileFields fields={fields} values={values} errors={errors} accepted={accepted} onAccept={setAccepted} onPrivacy={privacy.open}
+      <ProfileFields fields={fields} values={values} errors={errors} accepted={accepted} onAccept={setAccepted} step={privacy}
         onChange={(prop, value) => { setValues(v => ({ ...v, [prop]: value })); setErrors(er => ({ ...er, [prop === 'fullName' ? 'full_name' : prop]: null })) }} />
       {errors.general && <div className="form-error" role="alert">{errors.general}</div>}
       <div style={{ height: 14 }} />

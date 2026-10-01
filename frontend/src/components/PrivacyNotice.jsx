@@ -1,12 +1,13 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useId, useState } from 'react'
 import { api } from '../lib/api.js'
 import { t } from '../lib/i18n.js'
 import { Button } from './ui.jsx'
+import { TermsNotice, LegalVersion } from './TermsNotice.jsx'
 
 // Aviso de privacidad (Ley 25.326). El responsable es el gym (nombre y contacto los configura el
 // owner en Acceso); lauyim es el encargado. La lista de datos sale de la config real de la
-// instancia (/api/privacy): campos de la ficha pedidos, cuotas activas y auditoría.
-// BORRADOR: el texto todavía no pasó por una revisión legal.
+// instancia (/api/privacy): campos de la ficha pedidos, cuotas activas y auditoría. Comparte la
+// versión con los términos y condiciones (api/legal.js): al cambiar este texto, subir LEGAL_VERSION.
 
 let cached = null
 export function usePrivacyInfo() {
@@ -76,13 +77,14 @@ export function PrivacyNotice({ info, onSupport }) {
         <li>{t('El staff del gimnasio (dueño, recepción, entrenadores y nutricionistas), solo para atenderte.')}</li>
         <li>{t('lauyim, solo para soporte y mantenimiento técnico.')}</li>
         <li>{t('Las copias de seguridad se guardan cifradas en un servicio de almacenamiento en la nube, que no puede leerlas.')}</li>
-        <li>{t('Cloudflare, que conecta la app con el servidor, ve el tráfico cifrado en tránsito.')}</li>
+        <li>{t('Cloudflare, que conecta la app con el servidor: el cifrado de la conexión termina en su red, así que puede ver el tráfico para entregarlo. No lo usa para otros fines.')}</li>
+        <li>{t('Si mandás un reporte de problemas técnicos, Brevo (servicio de correo de la Unión Europea) se lo entrega a lauyim con tu nombre de usuario, el mail que escribas y tu mensaje.')}</li>
         <li>{t('Si activás las notificaciones, el servicio de avisos de tu navegador (Google, Apple, Mozilla o Microsoft) recibe el texto de cada aviso para entregártelo.')}</li>
       </ul>
     </Sect>
 
     <Sect title={t('Transferencia internacional')}>
-      <p>{t('Algunos de estos servicios (el almacenamiento de las copias de seguridad, Cloudflare y los servicios de avisos de los navegadores) usan servidores fuera de Argentina. Las copias viajan y se guardan cifradas.')}</p>
+      <p>{t('Algunos de estos servicios (el almacenamiento de las copias de seguridad, Cloudflare, los servicios de avisos de los navegadores y Brevo) usan servidores fuera de Argentina, principalmente en Estados Unidos y en la Unión Europea. Reciben solo lo indispensable y las copias de seguridad viajan y se guardan cifradas.')}</p>
     </Sect>
 
     <Sect title={t('Cuánto tiempo se guardan')}>
@@ -104,40 +106,68 @@ export function PrivacyNotice({ info, onSupport }) {
         : t('Para ejercer tus derechos o hacer una consulta, acercate a la recepción del gimnasio.')}</p>
       {onSupport && <div className="privacy-support"><Button size="sm" icon="wrench" onClick={onSupport}>{t('Problemas técnicos con la app')}</Button></div>}
     </Sect>
+    <LegalVersion info={info} />
   </div>
 }
 
-// Paso interno de un sheet (registro, alta de ficha, importación): el formulario queda oculto
-// con `hidden` y conserva lo cargado. Mismo contrato que usePickerStep.
+// Paso interno de un sheet o de una pantalla (registro, vinculación, alta de ficha, importación,
+// aceptación de una sola vez): el aviso de privacidad (`open`) o los términos (`openTerms`), con
+// el formulario oculto con `hidden` para que conserve lo cargado. Mismo contrato que usePickerStep.
 export function usePrivacyStep() {
-  const [open, setOpen] = useState(false)
+  const [doc, setDoc] = useState(null)
   return {
-    open: () => setOpen(true),
-    close: () => setOpen(false),
-    isOpen: open,
-    view: open ? <PrivacyStepView onBack={() => setOpen(false)} /> : null
+    open: () => setDoc('privacy'),
+    openTerms: () => setDoc('terms'),
+    close: () => setDoc(null),
+    isOpen: !!doc,
+    view: doc ? <LegalStepView doc={doc} onBack={() => setDoc(null)} /> : null
   }
 }
 
-function PrivacyStepView({ onBack }) {
+function LegalStepView({ doc, onBack }) {
   const info = usePrivacyInfo()
   return <div className="picker-step">
     <Button size="sm" icon="chevronLeft" onClick={onBack}>{t('Volver')}</Button>
-    <h3 style={{ margin: '12px 0 10px' }}>{t('Aviso de privacidad')}</h3>
-    <PrivacyNotice info={info} />
+    <h3 style={{ margin: '12px 0 10px' }}>{doc === 'terms' ? t('Términos y condiciones') : t('Aviso de privacidad')}</h3>
+    {doc === 'terms' ? <TermsNotice info={info} /> : <PrivacyNotice info={info} />}
   </div>
 }
 
+// Dentro del texto de un check (un <label>): el clic abre el texto y nunca marca ni desmarca el
+// check.
 export function PrivacyLink({ onClick, children }) {
-  return <button type="button" className="linkbtn privacy-link" onClick={onClick}>{children || t('Aviso de privacidad')}</button>
+  return <button type="button" className="linkbtn privacy-link" onClick={e => { e.preventDefault(); e.stopPropagation(); onClick() }}>{children || t('Aviso de privacidad')}</button>
 }
 
-// Consentimiento expreso (Ley 25.326, art. 7): el aviso de privacidad y los datos de salud en un
-// solo check, nombrados uno por uno. Registro y vinculación con código del gym.
 export const HEALTH_DATA_LABEL = 'peso, edad, género, lesiones y nutrición'
-export function ConsentCheck({ checked, onChange, onPrivacy }) {
-  return <label className="privacy-accept">
-    <input type="checkbox" checked={!!checked} onChange={e => onChange(e.target.checked)} />
-    <span>{t('Acepto el')} <PrivacyLink onClick={onPrivacy}>{t('aviso de privacidad')}</PrivacyLink> {t('y el tratamiento de mis datos de salud ({0}) para adaptar mi entrenamiento.', t(HEALTH_DATA_LABEL))}</span>
-  </label>
+
+// Check "Acepto los términos y condiciones y el aviso de privacidad", con los dos textos como
+// links. Los links quedan fuera del <label>: tocarlos abre el texto y nunca marca el check (un
+// botón dentro de un label lo marca en algunos navegadores). El check se nombra con la frase entera.
+export function LegalAcceptCheck({ checked, onChange, step, className = '' }) {
+  const id = useId()
+  return <div className={'privacy-accept ' + className}>
+    <input id={id + 'c'} type="checkbox" checked={!!checked} onChange={e => onChange(e.target.checked)} aria-labelledby={id + 't'} />
+    <span id={id + 't'}>
+      <label htmlFor={id + 'c'}>{t('Acepto los')}</label> <PrivacyLink onClick={step.openTerms}>{t('términos y condiciones')}</PrivacyLink>{' '}
+      <label htmlFor={id + 'c'}>{t('y el')}</label> <PrivacyLink onClick={step.open}>{t('aviso de privacidad')}</PrivacyLink>.
+    </span>
+  </div>
+}
+
+// Registro y vinculación con código del gym: dos decisiones separadas. Los términos y el aviso
+// son obligatorios; los datos de salud (Ley 25.326, art. 7: sensibles), un consentimiento
+// expreso y opcional. Sin él la cuenta se crea igual, sin Nutrición ni peso corporal, y se puede
+// dar más tarde en Ajustes → Datos de salud.
+export function ConsentChecks({ legal, onLegal, health, onHealth, step }) {
+  return <div className="consent-checks">
+    <LegalAcceptCheck checked={legal} onChange={onLegal} step={step} />
+    <label className="privacy-accept consent-health">
+      <input type="checkbox" checked={!!health} onChange={e => onHealth(e.target.checked)} />
+      <span>
+        <b>{t('Datos de salud')}</b> <span className="dim">{t('(opcional)')}</span><br />
+        {t('Acepto que se guarden mis datos de salud ({0}) para adaptar mi entrenamiento. Lo puedo cambiar cuando quiera en Ajustes.', t(HEALTH_DATA_LABEL))}
+      </span>
+    </label>
+  </div>
 }
