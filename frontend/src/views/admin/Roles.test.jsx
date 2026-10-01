@@ -99,7 +99,9 @@ describe('Roles', () => {
     await mount({ id: 'o', owner: true })
     await click(document.querySelector('[aria-label="Asignar Recepción"]'))
     const rows = () => [...document.querySelectorAll('.role-assign-list .lrow')]
-    expect(rows().map(r => r.querySelector('.lrow-t').textContent)).toEqual(['Ana Pérez', 'beto'])
+    // Como en Usuarios: nombre y apellido de la ficha y, en gris y entre corchetes, el usuario.
+    expect(rows().map(r => r.querySelector('.lrow-t').textContent)).toEqual(['Ana Pérez [ana]', 'beto'])
+    expect(rows()[0].querySelector('.unick').textContent).toBe(' [ana]')
     expect(rows()[0].getAttribute('aria-pressed')).toBe('true')
     await click(rows()[1])
     expect(JSON.parse(apiMock.mock.calls.find(([u]) => u === '/api/admin/users/role')[1].body)).toEqual({ userId: 'beto', roleId: 'reception' })

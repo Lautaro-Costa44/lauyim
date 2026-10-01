@@ -13,6 +13,7 @@ import Icon from '../../components/Icon.jsx'
 import { confirmSheet } from '../../sheets.jsx'
 import { useAdmin } from './context.js'
 import { RoleTag, canAssign, peopleText } from './roles-common.jsx'
+import { nickSuffix } from '../../lib/member-name.js'
 
 const MAX_ROLE_NAME = 30
 
@@ -188,7 +189,8 @@ function AssignSheet({ role, users, close, onChanged }) {
       {shown.map(u => {
         const has = u.role?.id === role.id
         return <button key={u.id} type="button" className={'lrow tap' + (has ? ' on' : '')} disabled={busy === u.id} aria-pressed={has} onClick={() => toggle(u)}>
-          <span className="lrow-m"><span className="lrow-t">{u.fullName || u.name}</span>
+          {/* Como en Usuarios: "Juan Fernández [Juani]", el usuario en gris (una vez si son iguales). */}
+          <span className="lrow-m"><span className="lrow-t">{u.fullName || u.name}{nickSuffix({ fullName: u.fullName, nick: u.name }) && <span className="unick"> [{u.name}]</span>}</span>
             {u.role && !has && <span className="lrow-s"><RoleTag role={u.role} /></span>}</span>
           {has && <Icon name="check" className="lrow-k" />}
         </button>
