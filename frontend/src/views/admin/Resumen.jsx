@@ -1,6 +1,8 @@
 import { useNavigate } from 'react-router-dom'
 import { useAdmin } from './context.js'
 import { useUI } from '../../store/useUI.js'
+import { useStore } from '../../store/useStore.js'
+import { can } from '../../lib/permissions.js'
 import { api } from '../../lib/api.js'
 import { t } from '../../lib/i18n.js'
 import Icon from '../../components/Icon.jsx'
@@ -58,6 +60,8 @@ export default function Resumen() {
   const toast = useUI(s => s.toast)
   const openSheet = useUI(s => s.openSheet)
   const { users: allUsers, attendance, billingEnabled, loadUsers, loadAttendance, refresh } = useAdmin()
+  // Sin "ver socios" (un rol de estadísticas): solo la asistencia.
+  const seesMembers = useStore(s => can(s.user, 'members.view'))
 
   const openUser = id => openSheet(close => <UserDetail id={id} billingEnabled={billingEnabled} users={allUsers} onChanged={loadUsers} close={close} />)
   // Counters and tiles count app users only: a member record without a passkey (ficha) does not
@@ -76,21 +80,21 @@ export default function Resumen() {
     <div className="hdr">
       <button className="iconbtn" onClick={() => nav('/settings')} aria-label={t('Back')}><Icon name="chevronLeft" /></button>
       <div style={{ flex: 1, marginLeft: 8 }}><h1 style={{ margin: 0 }}>{t('Admin')}</h1>
-        <div className="sub">{users ? users.length + ' ' + t('users') + ' · ' + activeCount + ' ' + t('active this week') : t('Loading…')}</div></div>
+        {seesMembers && <div className="sub">{users ? users.length + ' ' + t('users') + ' · ' + activeCount + ' ' + t('active this week') : t('Loading…')}</div>}</div>
       <button className="iconbtn" onClick={refresh} aria-label={t('Refresh')}>↻</button>
     </div>
 
-    {pendingCount > 0 && <button type="button" className="card admin-pending-banner" onClick={() => nav('/admin/usuarios?filtro=pendientes')}>
+    {seesMembers && pendingCount > 0 && <button type="button" className="card admin-pending-banner" onClick={() => nav('/admin/usuarios?filtro=pendientes')}>
       <span className="admin-pending-n">{pendingCount}</span>
       <span className="grow">{t(pendingCount === 1 ? 'cuenta pendiente de aprobación' : 'cuentas pendientes de aprobación')}</span>
       <span className="admin-pending-go">{t('Revisar')}</span><Icon name="chevronRight" className="chev" />
     </button>}
-    <div className="tiles" style={{ marginBottom: 12 }}>
+    {seesMembers && <div className="tiles" style={{ marginBottom: 12 }}>
       <div className="tile"><div className="l">{t('Users')}</div><div className="v">{users ? users.length : '—'}</div></div>
       <div className="tile"><div className="l">{t('Training now')}</div><div className="v" style={{ color: liveUsers.length ? 'var(--acc)' : undefined }}>{users ? liveUsers.length : '—'}</div></div>
       <div className="tile"><div className="l">{t('Active 7d')}</div><div className="v">{users ? activeCount : '—'}</div></div>
       <div className="tile"><div className="l">{t('Disabled')}</div><div className="v">{users ? disabledCount : '—'}</div></div>
-    </div>
+    </div>}
 
     <div className="admin-split">
     {liveUsers.length > 0 && <div className="card" style={{ borderColor: 'var(--acc)' }}>

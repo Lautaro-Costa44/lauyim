@@ -65,8 +65,10 @@ test('/api/me: rol, permisos, staff y exento', async () => {
   assert.ok(recep.user.permissions.includes('fees.manage'));
   assert.ok(!recep.user.permissions.includes('nutrition.manage'));
   assert.equal(recep.user.admin, true);
+  assert.deepEqual(Object.keys(recep.panel).sort(), ['auditEnabled', 'billingEnabled', 'checkinEnabled']);
   const socio = (await call('socio', 'GET', '/api/me')).body;
   assert.deepEqual([socio.user.role, socio.user.permissions, socio.user.admin], [null, [], false]);
+  assert.equal(socio.panel, null);
   const owner = (await call('owner', 'GET', '/api/me')).body;
   assert.ok(owner.user.permissions.includes('roles.assign'));
 });

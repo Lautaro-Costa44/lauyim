@@ -139,6 +139,20 @@ describe('admin routes', () => {
     expect(window.location.hash).toBe('#/admin/resumen')
   })
 
+  it('con rol: solo sus secciones, entra a la primera y un link a otra la devuelve ahí', async () => {
+    const NUTRI = { id: 'n', name: 'n', admin: true, owner: false, role: { id: 'nutrition', name: 'Nutricionista', color: '#30d158' }, permissions: ['members.view', 'nutrition.manage', 'health.view'] }
+    await mount('#/admin', NUTRI)
+    expect(window.location.hash).toBe('#/admin/usuarios')
+    expect(tabs()).toEqual(['Usuarios*', 'Volver a la app'])
+    await go('#/admin/cuotas')
+    expect(window.location.hash).toBe('#/admin/usuarios')
+    // No pide lo que no puede ver.
+    const asked = apiMock.mock.calls.map(([url]) => url)
+    expect(asked).not.toContain('/api/admin/presets')
+    expect(asked).not.toContain('/api/admin/attendance-heatmap')
+    expect(asked).not.toContain('/api/admin/invites')
+  })
+
   it('offline: every section shows the connection notice instead of a spinner, and recovers online', async () => {
     Object.defineProperty(navigator, 'onLine', { configurable: true, value: false })
     try {
@@ -184,9 +198,9 @@ describe('admin routes', () => {
     expect(text()).toContain('Deuda total')
   })
 
-  it('tab order: Resumen, Usuarios, Cuotas, Rutinas, Notificaciones, Acceso, Personalización, Ingreso Físico, Logs', async () => {
+  it('tab order: Resumen, Usuarios, Cuotas, Rutinas, Notificaciones, Acceso, Roles, Personalización, Ingreso Físico, Logs', async () => {
     await mount('#/admin/resumen', OWNER)
-    expect(tabs()).toEqual(['Resumen*', 'Usuarios', 'Cuotas', 'Rutinas', 'Notificaciones', 'Acceso', 'Personalización', 'Ingreso Físico', 'Logs', 'Volver a la app'])
+    expect(tabs()).toEqual(['Resumen*', 'Usuarios', 'Cuotas', 'Rutinas', 'Notificaciones', 'Acceso', 'Roles', 'Personalización', 'Ingreso Físico', 'Logs', 'Volver a la app'])
   })
 
   it('Personalización es solo del owner: un admin no la ve ni entra por el link', async () => {
@@ -399,8 +413,8 @@ describe('admin tabs on a phone: the active one is centered', () => {
   })
 
   it('a direct link to the last tab jumps to it, later taps glide', async () => {
-    await mount('#/admin/logs', OWNER)        // Logs is tab 8 (the owner also sees Personalización and Ingreso Físico)
-    expect(scrolls[0]).toEqual({ left: 700, behavior: 'auto' })
+    await mount('#/admin/logs', OWNER)        // Logs is tab 9 (the owner also sees Roles, Personalización and Ingreso Físico)
+    expect(scrolls[0]).toEqual({ left: 800, behavior: 'auto' })
     expect(scrolls.every(s => s.behavior === 'auto')).toBe(true)
     await go('#/admin/resumen')
     expect(scrolls.at(-1)).toEqual({ left: 0, behavior: 'smooth' })   // clamped at the start

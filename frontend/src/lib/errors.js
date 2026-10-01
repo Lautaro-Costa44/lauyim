@@ -58,6 +58,10 @@ export const ERROR_TEXTS = {
   no_health_consent: 'Sin consentimiento de datos de salud.',
   // staff y usuarios
   admin_undisableable: 'No se puede desactivar a un administrador.',
+  staff_undisableable: 'Tiene un rol del staff: quitale el rol antes de desactivarlo.',
+  role_too_high: 'Ese rol tiene permisos que vos no tenés.',
+  role_not_found: 'El rol ya no existe.',
+  role_locked: 'El rol Administrador no se puede eliminar.',
   owner_role_locked: 'No se puede cambiar el rol del dueño.',
   owner_undeletable: 'No se puede eliminar la cuenta del dueño.',
   delete_requires_disabled: 'Solo se pueden eliminar cuentas desactivadas.',

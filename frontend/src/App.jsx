@@ -26,6 +26,7 @@ import UpdateGate from './components/UpdateGate.jsx'
 import { getUpdater } from './lib/update.js'
 import { CHECKIN_ROUTE, getCheckinToken } from './lib/checkin-device.js'
 import { clearIosReoffer, markIosReoffer, markNotifStepDone, notifStepFor } from './lib/notif-step.js'
+import { isStaffUser } from './lib/permissions.js'
 // Keep every authenticated screen out of the initial payload. The service worker
 // caches each chunk after first use, so repeat visits remain instant without
 // forcing a large first download on mobile connections.
@@ -225,7 +226,7 @@ function Shell() {
               <Route path="/import" element={<ImportPlan />} />
               <Route path="/onboarding/encuesta" element={<SurveyWizard />} />
               {/* The admin sections are routed inside AdminLayout (views/admin/AdminLayout.jsx). */}
-              <Route path="/admin/*" element={user?.admin ? <AdminLayout /> : <Navigate to="/home" replace />} />
+              <Route path="/admin/*" element={isStaffUser(user) ? <AdminLayout /> : <Navigate to="/home" replace />} />
               <Route path="*" element={<Navigate to="/home" replace />} />
             </Routes>
             </Suspense>

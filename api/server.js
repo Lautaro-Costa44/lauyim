@@ -2481,6 +2481,9 @@ const routes = {
       // Abono de lauyim por vencer o vencido: solo lo ve el staff (el atraso del gym no es asunto
       // de los socios hasta que el servicio se suspende).
       license: isStaff(user) ? licenseNow() : null,
+      // Qué secciones del panel existen (cuotas, ingreso físico, registro): las ve todo el staff,
+      // también quien no puede listar socios (ahí venían hasta ahora).
+      panel: isStaff(user) ? { billingEnabled: billingEnabledNow(), checkinEnabled: checkinSettingsNow().enabled, auditEnabled: AUDIT_ON } : null,
       pending: isAccountPending(user),
       profilePrompt: needsProfilePrompt(user, { admin: isStaff(user), approvalRequired: approvalNow().required, fields, profile: getMemberProfile(user.id) })
         ? { fields } : null

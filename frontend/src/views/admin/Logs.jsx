@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Navigate } from 'react-router-dom'
 import { useAdmin } from './context.js'
 import { useUI } from '../../store/useUI.js'
+import { useStore } from '../../store/useStore.js'
 import { api } from '../../lib/api.js'
 import { fmtNum } from '../../lib/format.js'
 import { auditCat, auditLine, fmtWhen } from '../../lib/audit.js'
@@ -16,6 +17,7 @@ import { errorText } from '../../lib/errors.js'
 // last twenty events. Paging follows Library.jsx's house style — "Show more", not page numbers.
 function AuditCard({ tick }) {
   const toast = useUI(s => s.toast)
+  const isOwner = useStore(s => !!s.user?.owner)
   const [meta, setMeta] = useState(null)      // last response minus the rows: total, retention, …
   const [rows, setRows] = useState([])
   const [cat, setCat] = useState('')
@@ -32,7 +34,7 @@ function AuditCard({ tick }) {
     title: t('Clear the activity log?'),
     message: t('Every recorded event is deleted. The clear itself is logged, so the gap stays visible.'),
     confirmText: t('Clear'), danger: true,
-    onConfirm: () => api('/api/admin/audit/clear', { method: 'POST', body: '{}' })
+    onConfirm: () => api('/api/owner/audit/clear', { method: 'POST', body: '{}' })
       .then(() => { toast(t('Activity log cleared')); pick(cat) }).catch(e => toast(errorText(e)))
   })
 
@@ -40,8 +42,9 @@ function AuditCard({ tick }) {
 
   return <div className="card audit-log">
     <div className="row between"><h2 style={{ margin: 0 }}>{t('Activity log')}</h2>
-      <button className="iconbtn" style={{ width: 32, height: 30, borderRadius: 8, fontSize: 15, color: 'var(--red)' }}
-        onClick={clear} aria-label="clear log"><Icon name="trash" /></button></div>
+      {/* Borrarlo no se delega: solo el owner. */}
+      {isOwner && <button className="iconbtn" style={{ width: 32, height: 30, borderRadius: 8, fontSize: 15, color: 'var(--red)' }}
+        onClick={clear} aria-label="clear log"><Icon name="trash" /></button>}</div>
     <div className="small muted" style={{ margin: '6px 0 10px' }}>
       {meta ? fmtNum(meta.total) + ' ' + t('events')
         + (meta.retention.days ? ' · ' + t('last {0} days', meta.retention.days) : '') : t('Loading…')}</div>

@@ -30,6 +30,7 @@ import { buildCompletedWorkout } from './lib/finish-workout.js'
 import { isWarmupRow } from './lib/workout-model.js'
 import { applyPlannedDays } from './lib/routineGroups.js'
 import { errorText } from './lib/errors.js'
+import { can } from './lib/permissions.js'
 
 const S = () => useStore.getState().S
 const update = (...a) => useStore.getState().update(...a)
@@ -367,7 +368,7 @@ const canEditCustom = (ex, isAdmin) => !!ex?.custom && (!ex.shared || isAdmin)
 
 function ExerciseDetail({ ex, close, noAdd = false }) {
   const st = useStore(s => s.S)
-  const isAdmin = useStore(s => !!s.user?.admin)
+  const isAdmin = useStore(s => can(s.user, 'exercises.share'))   // compartir y editar los del gym
   const hasMedia = mediaKindFor(ex, useExerciseGifs()) !== null
   const last = lastEntryFor(st, ex.id)
   const best = bestWeightFor(st, ex.id)
@@ -434,7 +435,7 @@ export const addToRoutineSheet = ex => ui().openSheet(close => <AddToRoutine ex=
 // si se cargan, instrucciones numeradas. El staff puede compartirlo con todo el gym: se guarda en
 // el servidor antes de cerrar, y la copia local queda marcada como compartida.
 function CustomExForm({ existing, prefill, onDone, close }) {
-  const isAdmin = useStore(s => !!s.user?.admin)
+  const isAdmin = useStore(s => can(s.user, 'exercises.share'))   // compartir y editar los del gym
   const [showMap, setShowMap] = useState(existing ? existing.map !== false : true)
   // Instrucciones: para un socio, apagadas por defecto; para el staff, encendidas.
   const [withSteps, setWithSteps] = useState(existing ? (existing.st || []).length > 0 : isAdmin)
@@ -829,7 +830,7 @@ function ProgressionFields({ ex, mode, c, setC, routine, unit }) {
 
 function ExConfig({ ex, existing, onSave, onDelete, close, routine, initial }) {
   const st = useStore(s => s.S)
-  const isAdmin = useStore(s => !!s.user?.admin)
+  const isAdmin = useStore(s => can(s.user, 'exercises.share'))   // compartir y editar los del gym
   const cardio = isCardio(ex.id)
   const [c, setC] = useState(existing || initial || defaultConfig(ex.id))
   // Cardio keeps its own duration+speed form; the reps/time choice (issue #16) is offered for

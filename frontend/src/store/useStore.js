@@ -266,7 +266,8 @@ export const useStore = create((set, get) => {
   const verifySession = () => {
     if (!get().user || verifying) return verifying || Promise.resolve()
     verifying = api('/api/me')
-      .then(() => {})
+      // El rol y los permisos al día: un cambio del owner llega sin volver a entrar.
+      .then(me => { if (me?.user?.id === get().user?.id && JSON.stringify(me.user) !== JSON.stringify(get().user)) get().setUser(me.user) })
       .catch(e => { if (e?.status === 401) return endSession(e.data?.reason || 'session_expired') })
       .finally(() => { verifying = null })
     return verifying

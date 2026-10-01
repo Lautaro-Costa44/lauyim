@@ -11,6 +11,7 @@ import { AdminContext } from './context.js'
 // once instead of keeping the previous screen while another chunk loads. The rest are lazy.
 import Resumen from './Resumen.jsx'
 import { errorText } from '../../lib/errors.js'
+import { can, isStaffUser, visibleSections } from '../../lib/permissions.js'
 const Usuarios = lazy(() => import('./Usuarios.jsx'))
 const Cuotas = lazy(() => import('./Cuotas.jsx'))
 const Rutinas = lazy(() => import('./Rutinas.jsx'))
@@ -19,14 +20,17 @@ const Acceso = lazy(() => import('./Acceso.jsx'))
 const Personalizacion = lazy(() => import('./Personalizacion.jsx'))
 const Logs = lazy(() => import('./Logs.jsx'))
 const IngresoFisico = lazy(() => import('./IngresoFisico.jsx'))
+const Roles = lazy(() => import('./Roles.jsx'))
 
-// Admin-only operator dashboard (owner passkey + admin flag; guarded again server-side).
+// Panel del staff: cada sección y cada carga según los permisos del rol (lib/permissions.js; el
+// servidor vuelve a controlar cada pedido).
 // The layout owns every admin fetch — including the 15 s poll — and hands the data to the
 // sections through the outlet context, so switching sections never re-requests or re-polls.
 
 export default function AdminLayout() {
   const loc = useLocation()
   const user = useStore(s => s.user)
+  const setUser = useStore(s => s.setUser)
   const toast = useUI(s => s.toast)
   const online = useOnline()
   // navigator.onLine puede decir "conectado" sin salida real (modo avión en algunos iOS/Android):
@@ -50,14 +54,23 @@ export default function AdminLayout() {
   // Sin respuesta del servidor no es un error de la sección: es la falta de conexión (un aviso,
   // no un toast por cada pedido y cada vuelta del poll).
   const loadFailed = (e, fallback) => { if (!e?.status) setUnreachable(true); else toast(errorText(e, fallback)) }
-  const loadUsers = () => api('/api/admin/users').then(d => { setUnreachable(false); setUsers(d.users); setInviteOnly(d.invite_only); setAuditEnabled(d.audit_enabled !== false); setBillingEnabled(d.billing_enabled !== false); setCheckinEnabled(d.checkin_enabled === true) }).catch(e => loadFailed(e, t('Failed to load')))
-  const loadInvites = () => api('/api/admin/invites').then(d => setInvites(d.invites)).catch(() => {})
-  const loadPresets = () => api('/api/admin/presets').then(d => { setPresets(d.presets); setPrograms(d.programs || []) }).catch(e => loadFailed(e, t('Failed to load presets')))
-  const loadAttendance = () => api('/api/admin/attendance-heatmap').then(setAttendance).catch(e => loadFailed(e, t('Failed to load attendance')))
+  const loadUsers = () => !can(user, 'members.view') ? Promise.resolve() : api('/api/admin/users').then(d => { setUnreachable(false); setUsers(d.users); setInviteOnly(d.invite_only); setAuditEnabled(d.audit_enabled !== false); setBillingEnabled(d.billing_enabled !== false); setCheckinEnabled(d.checkin_enabled === true) }).catch(e => loadFailed(e, t('Failed to load')))
+  const loadInvites = () => !can(user, 'members.edit') ? Promise.resolve() : api('/api/admin/invites').then(d => setInvites(d.invites)).catch(() => {})
+  const loadPresets = () => !can(user, 'training.manage') ? Promise.resolve() : api('/api/admin/presets').then(d => { setPresets(d.presets); setPrograms(d.programs || []) }).catch(e => loadFailed(e, t('Failed to load presets')))
+  const loadAttendance = () => !can(user, 'stats.view') ? Promise.resolve() : api('/api/admin/attendance-heatmap').then(setAttendance).catch(e => loadFailed(e, t('Failed to load attendance')))
   const loadQrAccess = () => { if (user?.owner) api('/api/owner/qr').then(setQrAccess).catch(e => loadFailed(e, t('Failed to load QR access'))) }
   const refresh = () => { loadUsers(); loadInvites(); loadPresets(); loadAttendance(); loadQrAccess(); setTick(n => n + 1) }
+  // Al entrar: el rol y los permisos al día (el owner pudo cambiarlos) y qué funciones del gym
+  // están encendidas (también para quien no lista socios, que es donde venían).
+  useEffect(() => {
+    api('/api/me').then(me => {
+      if (me?.user && JSON.stringify(me.user) !== JSON.stringify(user)) setUser(me.user)
+      if (me?.panel) { setBillingEnabled(me.panel.billingEnabled !== false); setCheckinEnabled(me.panel.checkinEnabled === true); setAuditEnabled(me.panel.auditEnabled !== false) }
+    }).catch(() => {})
+  }, [])
   // poll every 15s so the "training now" section stays live without a manual refresh
-  useEffect(() => { if (!user?.admin) return; loadUsers(); loadInvites(); loadPresets(); loadAttendance(); loadQrAccess(); const iv = setInterval(() => { loadUsers(); loadAttendance() }, 15000); return () => clearInterval(iv) }, [user?.owner])
+  const permKey = (user?.permissions || []).join(',')
+  useEffect(() => { if (!isStaffUser(user)) return; loadUsers(); loadInvites(); loadPresets(); loadAttendance(); loadQrAccess(); const iv = setInterval(() => { loadUsers(); loadAttendance() }, 15000); return () => clearInterval(iv) }, [user?.owner, permKey])
 
   // Phone tabs scroll sideways inside their own strip: center the active one, also when the
   // page is opened from a direct link to a section further right. Only the strip scrolls
@@ -83,19 +96,13 @@ export default function AdminLayout() {
     return () => { alive = false }
   }, [])
 
-  if (!user?.admin) return null
+  if (!isStaffUser(user)) return null
 
-  const sections = [
-    ['resumen', t('Resumen')],
-    ['usuarios', t('Usuarios')],
-    billingEnabled !== false && ['cuotas', t('Cuotas')],
-    ['rutinas', t('Rutinas')],
-    ['notificaciones', t('Notificaciones')],
-    ['acceso', t('Acceso')],
-    user?.owner && ['personalizacion', t('Personalización')],
-    (user?.owner || checkinEnabled) && ['ingreso-fisico', t('Ingreso Físico')],
-    auditEnabled !== false && ['logs', t('Logs')],
-  ].filter(Boolean)
+  const sections = visibleSections(user, { billingEnabled, checkinEnabled, auditEnabled }).map(s => [s.path, t(s.label)])
+  const visible = new Set(sections.map(([path]) => path))
+  const home = sections[0]?.[0] || 'resumen'
+  // Una sección que esta persona no ve: a la primera que sí (sin cargar el chunk).
+  const only = (path, element) => visible.has(path) ? element : <Navigate to={'/admin/' + home} replace />
   const ctx = { users, inviteOnly, invites, presets, programs, attendance, qrAccess, setQrAccess, tick, auditEnabled, billingEnabled, setBillingEnabled, checkinEnabled, setCheckinEnabled, loadUsers, loadInvites, loadPresets, loadAttendance, refresh }
 
   return <div className="admin-shell">
@@ -112,24 +119,22 @@ export default function AdminLayout() {
       </div> : <AdminContext.Provider value={ctx}>
         <Suspense fallback={<div className="page-loading" aria-busy="true" />}>
           <Routes>
-            <Route index element={<Navigate to="/admin/resumen" replace />} />
-            <Route path="resumen" element={<Resumen />} />
-            <Route path="usuarios" element={<Usuarios />} />
+            <Route index element={<Navigate to={'/admin/' + home} replace />} />
+            <Route path="resumen" element={only('resumen', <Resumen />)} />
+            <Route path="usuarios" element={only('usuarios', <Usuarios />)} />
             {/* Cuotas off: straight to Resumen, without loading the Cuotas chunk. Until the first
                 users poll answers, a placeholder (not the chunk) holds the spot. */}
-            <Route path="cuotas" element={billingEnabled === false ? <Navigate to="/admin/resumen" replace />
-              : billingEnabled == null ? <div className="page-loading" aria-busy="true" /> : <Cuotas />} />
-            <Route path="rutinas" element={<Rutinas />} />
-            <Route path="notificaciones" element={<Notificaciones />} />
-            <Route path="acceso" element={<Acceso />} />
-            {/* Solo el owner: los demás vuelven a Resumen sin cargar el chunk. */}
-            <Route path="personalizacion" element={user?.owner ? <Personalizacion /> : <Navigate to="/admin/resumen" replace />} />
+            <Route path="cuotas" element={only('cuotas', billingEnabled == null ? <div className="page-loading" aria-busy="true" /> : <Cuotas />)} />
+            <Route path="rutinas" element={only('rutinas', <Rutinas />)} />
+            <Route path="notificaciones" element={only('notificaciones', <Notificaciones />)} />
+            <Route path="acceso" element={only('acceso', <Acceso />)} />
+            <Route path="roles" element={only('roles', <Roles />)} />
+            <Route path="personalizacion" element={only('personalizacion', <Personalizacion />)} />
             <Route path="qr" element={<Navigate to="/admin/acceso" replace />} />
-            <Route path="logs" element={<Logs />} />
-            {/* Apagado: solo el owner (para encenderlo). Los demás van a Resumen sin cargar el chunk. */}
-            <Route path="ingreso-fisico" element={!user?.owner && checkinEnabled === false ? <Navigate to="/admin/resumen" replace />
-              : !user?.owner && checkinEnabled == null ? <div className="page-loading" aria-busy="true" /> : <IngresoFisico />} />
-            <Route path="*" element={<Navigate to="/admin/resumen" replace />} />
+            <Route path="logs" element={only('logs', <Logs />)} />
+            {/* Apagado: solo el owner (para encenderlo). */}
+            <Route path="ingreso-fisico" element={only('ingreso-fisico', !user?.owner && checkinEnabled == null ? <div className="page-loading" aria-busy="true" /> : <IngresoFisico />)} />
+            <Route path="*" element={<Navigate to={'/admin/' + home} replace />} />
           </Routes>
         </Suspense>
       </AdminContext.Provider>}
