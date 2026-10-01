@@ -4,7 +4,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
-const tmpDir = await mkdtemp(path.join(os.tmpdir(), 'opengym-db-'));
+const tmpDir = await mkdtemp(path.join(os.tmpdir(), 'lauyim-db-'));
 process.env.DATA_DIR = tmpDir;
 
 const dbMod = await import('./database.js');

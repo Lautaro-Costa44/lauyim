@@ -1,5 +1,5 @@
 /**
- * Capa de acceso a datos SQLite para openGym
+ * Capa de acceso a datos SQLite para lauyim
  * Reemplaza las operaciones que antes usaban db.json + state-<uid>.json
  */
 

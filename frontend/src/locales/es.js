@@ -872,7 +872,6 @@ export default {
   'Código no válido o expirado': 'Código no válido o expirado',
   '¡Dispositivo vinculado con éxito!': '¡Dispositivo vinculado con éxito!',
   'Error al confirmar vinculación': 'Error al confirmar vinculación',
-  'Demo data reset': 'Datos de demo restablecidos',
   '¡Nueva passkey agregada con éxito!': '¡Nueva passkey agregada con éxito!',
   'Error al agregar passkey': 'Error al agregar passkey',
   'Hubo un error al generar tu rutina. Intentá de nuevo.': 'Hubo un error al generar tu rutina. Intentá de nuevo.',

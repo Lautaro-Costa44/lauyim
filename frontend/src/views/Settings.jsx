@@ -79,7 +79,6 @@ function ClaimDeviceSheet({ close }) {
 import { pushSupported, enablePush, disablePush, sendTestPush } from '../lib/push.js'
 import { wakeLockSupported } from '../lib/wakelock.js'
 import { errorText } from '../lib/errors.js'
-import { DEMO, REPO } from '../lib/demo.js'
 import { confirmSheet, importFromApp, equipmentProfileSheet } from '../sheets.jsx'
 import { routinesFromPresets, presetSourceFor, addPresetCustomExercises } from '../lib/starter.js'
 import { programsOf, fetchProgramToApply, programUnavailableMessage } from '../components/ProgramPicker.jsx'
@@ -171,7 +170,7 @@ export default function Settings() {
     </>
   })
   const config = useStore(s => s.config)
-  const { update, replaceState, setUser, pullState, pushState, signOut, signOutAll, resetDemo } = useStore()
+  const { update, replaceState, setUser, pullState, pushState, signOut, signOutAll } = useStore()
   const toast = useUI(s => s.toast)
   const fileRef = useRef(null)
   const importRef = useRef(null)
@@ -242,14 +241,8 @@ export default function Settings() {
     </div>}
 
     {/* ---------- account ---------- */}
-    <Section title={DEMO ? t('Demo') : t('Account')}>
-      {DEMO ? <>
-        <Row icon="sparkles" iconTint="var(--acc)" title={t('You’re in the demo')} subtitle={t('Example data, stored only in this browser — change anything you like.')} />
-        <Row icon="reset" iconTint="var(--blue)" title={t('Reset demo data')} accessory="chevron"
-          onClick={() => confirmSheet({ title: t('Reset demo data?'), message: t('Puts the example plan, workouts and weigh-ins back the way they started.'), confirmText: t('Reset'), onConfirm: () => { resetDemo(); nav('/home'); toast(t('Demo data reset')) } })} />
-        <Row icon="rocket" iconTint="var(--indigo)" title={t('Self-host lauyim')} subtitle={t('Passkey sign-in, sync across your devices, your own data.')} accessory="chevron"
-          onClick={() => window.open(REPO, '_blank', 'noopener')} />
-      </> : user ? <>
+    <Section title={t('Account')}>
+      {user ? <>
         <Row icon="personCircle" iconTint="var(--grey)" title={user.name} subtitle={t('Signed in with passkey — data syncs to this profile.')} />
         {user.admin && <Row icon="wrench" iconTint="var(--indigo)" title={t('Admin dashboard')} accessory="chevron" onClick={() => nav('/admin')} />}
         <Row icon="link" iconTint="var(--blue)" title={t('Vincular otro dispositivo')} subtitle={t('Iniciar sesión en otro dispositivo ingresando su código')} accessory="chevron" onClick={() => useUI.getState().openSheet(c => <ClaimDeviceSheet close={c} />)} />
@@ -273,7 +266,7 @@ export default function Settings() {
         <Row icon="lock" iconTint="var(--grey)" title={t('Passkeys not supported in this browser.')} />
       )}
     </Section>
-    {!user && !DEMO && <p className="sect-f" style={{ marginTop: -18, marginBottom: 22 }}>{t('Guest mode — data lives only in this browser.')}</p>}
+    {!user && <p className="sect-f" style={{ marginTop: -18, marginBottom: 22 }}>{t('Guest mode — data lives only in this browser.')}</p>}
 
     {/* ---------- general ---------- */}
     <Section title={t('General')} footer={t('Nota: Cambiar las unidades no transforma los números. La edad y la altura se usan para estimar el gasto calórico en Progreso.')}>
@@ -521,7 +514,7 @@ export default function Settings() {
     <EquipmentCard S={S} update={update} />
 
     {/* ---------- appearance ---------- */}
-    <Section title={t('Appearance')} footer={DEMO ? undefined : t('synced with your profile')}>
+    <Section title={t('Appearance')} footer={t('synced with your profile')}>
       <Row icon="moon" iconTint="var(--indigo)" title={t('Theme')}>
         <Segmented
           className="seg-inline"

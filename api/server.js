@@ -1,4 +1,4 @@
-/* opengym-api — passkey (WebAuthn) auth + per-user state storage for openGym
+/* lauyim-api — passkey (WebAuthn) auth + per-user state storage for lauyim
    SQLite storage via node:sqlite, signed session cookies.                  */
 import http from 'node:http';
 import crypto from 'node:crypto';
@@ -165,7 +165,7 @@ const PORT = +(process.env.PORT || 3000);
 const DATA = process.env.DATA_DIR || '/data';
 const RP_ID = process.env.RP_ID || 'localhost';
 const ORIGIN = process.env.ORIGIN || 'http://localhost:8080';
-const RP_NAME = process.env.RP_NAME || 'openGym';
+const RP_NAME = process.env.RP_NAME || 'lauyim';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 let apiVersion = '2.0.0';

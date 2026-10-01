@@ -2,7 +2,6 @@ import { create } from 'zustand'
 import { api } from '../lib/api.js'
 import { localTZ, workoutTime } from '../lib/format.js'
 import { registerCustom } from '../lib/exercises.js'
-import { DEMO, DEMO_SEEDED } from '../lib/demo.js'
 import { guestAllowed } from '../lib/guest.js'
 import { deviceSubscription, isAccountEnded, wipeDeviceData } from '../lib/session-end.js'
 import { enqueueSync, takeSyncBatch, removeSync, deferSync, countSync, diffState, applySyncMappings } from '../lib/sync-queue.js'
@@ -538,14 +537,6 @@ export const useStore = create((set, get) => {
       clearLocalSession()
     },
 
-    // Demo build only: drop the seeded example profile back in (Settings → "Reset demo data").
-    // Dynamic import so the generator never ships in a self-hosted bundle.
-    async resetDemo() {
-      const { buildDemoState } = await import('../lib/demoSeed.js')
-      localStorage.removeItem('gym_dirty')
-      persist(Object.assign(clone(DEF), buildDemoState()), false)
-    },
-
     // Routine groups management
     getRoutineGroups: () => {
       const S = get().S
@@ -595,16 +586,6 @@ export const useStore = create((set, get) => {
         window.addEventListener('gym:license_expired', () => {
           set({ licenseExpired: true })
         })
-      }
-      // Demo build (GitHub Pages): no backend at all — seed once, stay in guest mode.
-      if (DEMO) {
-        if (!localStorage.getItem(DEMO_SEEDED)) {
-          localStorage.setItem(DEMO_SEEDED, '1')
-          await get().resetDemo()
-        }
-        get().setGuest(true)
-        set({ ready: true })
-        return
       }
       // Guests never authenticate, so an instance that turned guest mode off has no request to
       // refuse — the only way the switch reaches someone already inside is here, on their next

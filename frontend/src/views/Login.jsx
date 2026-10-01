@@ -4,7 +4,6 @@ import { webauthnOK, passkeyLogin, passkeyRegister, linkOptions, linkPasskey, BI
 import { formatLinkCodeInput, isCompleteLinkCode } from '../lib/link-code.js'
 import { hasData } from '../store/useStore.js'
 import { t } from '../lib/i18n.js'
-import { DEMO, REPO } from '../lib/demo.js'
 import { useState, useRef, useEffect } from 'react'
 import { useOnline } from '../lib/useOnline.js'
 import Icon from '../components/Icon.jsx'
@@ -279,13 +278,12 @@ function LinkSheet({ close, setOnBack, initialCode = '' }) {
 const openLinkSheet = code => useUI.getState().openSheet((close, { setOnBack } = {}) => <LinkSheet close={close} setOnBack={setOnBack} initialCode={code} />)
 
 export default function Login() {
-  const { setUser, pullState, setGuest } = useStore()
+  const { setUser, pullState } = useStore()
   const online = useOnline()
   const loginNotice = useStore(s => s.loginNotice)
   // ?link=CODE (fuera del hash, como ?qr=): abre el flujo con el código cargado y lo saca de la
   // URL en el acto, para que no quede en el historial ni se reabra al recargar.
   useEffect(() => {
-    if (DEMO) return
     const params = new URLSearchParams(window.location.search)
     const code = params.get('link')
     if (!code) return
@@ -313,27 +311,11 @@ export default function Login() {
     </div>
     <h1 style={{ fontSize: 34, fontWeight: 700, letterSpacing: '-.028em', margin: '-5px 0 4px' }}>lauyim</h1>
   </>
-  const wrap = { display: 'flex', flexDirection: 'column', justifyContent: 'center', minHeight: '78vh', textAlign: 'center' }
   // El aviso de passkeys y el link de privacidad quedan fijos al fondo de la pantalla.
   const footer = <div className="login-footer">
     <div className="dim small" style={{ lineHeight: 1.5 }}>{t('Passkeys use {0} — no passwords.', t(BIO))}<br />{t('Each profile keeps its own plan, workouts & body weight.')}</div>
     <div className="dim small privacy-footer"><a className="privacy-link" href="#/privacidad">{t('Aviso de privacidad')}</a></div>
   </div>
-
-  // Demo build: no backend to sign in against — the only way in is the local guest profile.
-  if (DEMO) return (
-    <div className="narrow" style={wrap}>
-      {head}
-      <div className="muted" style={{ marginBottom: 30 }}>{t('Live demo — everything stays in this browser.')}</div>
-      <Button variant="primary" icon="sparkles" onClick={() => setGuest(true)}>{t('Start the demo')}</Button>
-      <div className="card small muted" style={{ textAlign: 'left', marginTop: 16 }}>
-        {t('This demo runs entirely in your browser on example data — nothing is sent anywhere. Passkey sign-in and sync across your devices come with the lauyim server, which you get by self-hosting it.')}
-      </div>
-      <div className="dim small" style={{ marginTop: 22, lineHeight: 1.6 }}>
-        <a href={REPO} target="_blank" rel="noopener">{t('Self-host it in a minute →')}</a>
-      </div>
-    </div>
-  )
 
   return (
     <div className="narrow login-page">

@@ -9,7 +9,7 @@ services:
       DATA_DIR: /data
       RP_ID: localhost
       ORIGIN: http://localhost:3099
-      RP_NAME: openGym restore test
+      RP_NAME: lauyim restore test
       INVITE_ONLY: "false"
       ALLOW_GUEST: "true"
     volumes:
