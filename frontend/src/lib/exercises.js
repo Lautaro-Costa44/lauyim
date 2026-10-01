@@ -79,7 +79,16 @@ export function registerCustom(list) {
   ;(list || []).forEach(e => { if (e.shared || !EXIDX[e.id]?.shared) EXIDX[e.id] = e })
 }
 // Full searchable catalogue — customs first so your own exercises are easy to find.
-export const allExercises = st => [...(st.customEx || []), ...CATALOGUE]
+// Una sola entrada por id: si un estado viejo trae un compartido y su copia, va el compartido.
+export const allExercises = st => [...uniqueCustom(st.customEx), ...CATALOGUE]
+function uniqueCustom(list) {
+  const byId = new Map()
+  for (const e of list || []) {
+    const prev = byId.get(e.id)
+    if (!prev || (e.shared && !prev.shared)) byId.set(e.id, e)
+  }
+  return [...byId.values()]
+}
 
 function searchableText(value) {
   if (Array.isArray(value)) return value.map(searchableText).join(' ')

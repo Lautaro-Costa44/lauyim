@@ -438,7 +438,7 @@ function CustomExForm({ existing, prefill, onDone, close }) {
   // Instrucciones: para un socio, apagadas por defecto; para el staff, encendidas.
   const [withSteps, setWithSteps] = useState(existing ? (existing.st || []).length > 0 : isAdmin)
   const [steps, setSteps] = useState(() => existing?.st ? [...existing.st] : [])
-  // Un compartido no vuelve a ser propio: para dejar de compartirlo se borra.
+  // Dejar de compartir uno compartido: los socios que lo usan se quedan con su copia (servidor).
   const alreadyShared = !!existing?.shared
   const [share, setShare] = useState(existing ? alreadyShared : isAdmin)
   const [busy, setBusy] = useState(false)
@@ -489,15 +489,24 @@ function CustomExForm({ existing, prefill, onDone, close }) {
       desc: d, tg: grupoMuscular, sm, muscleGroups: groups, primaries: prim, secondaries: sm,
       st: withSteps ? steps.filter(Boolean) : [], map: showMap, custom: true
     }
-    const shared = isAdmin && (share || alreadyShared)
-    if (shared) {
-      // Primero el servidor: si no llega, el ejercicio no queda a medias (compartido para el
-      // admin y para nadie más).
+    const shared = isAdmin && share
+    const unshare = isAdmin && alreadyShared && !share
+    // Primero el servidor: si no llega, el ejercicio no queda a medias (compartido para el admin y
+    // para nadie más, o al revés).
+    if (shared || unshare) {
       setBusy(true)
-      try { await api('/api/admin/public-exercises', { method: 'POST', body: JSON.stringify(def) }) }
-      catch (e) { setBusy(false); toast(errorText(e, t('No se pudo compartir el ejercicio. Probá de nuevo con conexión.'))); return }
-      def.shared = true
+      try {
+        await api(unshare ? '/api/admin/public-exercises/unshare' : '/api/admin/public-exercises', { method: 'POST', body: JSON.stringify(unshare ? { id } : def) })
+        // Al dejar de compartirlo, el servidor guardó el original como propio del admin; los
+        // cambios de este mismo guardado llegan con el sync normal.
+      } catch (e) {
+        setBusy(false)
+        toast(errorText(e, unshare ? t('No se pudo dejar de compartir el ejercicio. Probá de nuevo con conexión.') : t('No se pudo compartir el ejercicio. Probá de nuevo con conexión.')))
+        return
+      }
     }
+    if (shared) def.shared = true
+    else delete def.shared
     update(s => {
       s.customEx = s.customEx || []
       const i = s.customEx.findIndex(x => x.id === id)
@@ -635,8 +644,9 @@ function CustomExForm({ existing, prefill, onDone, close }) {
         <Switch checked={withSteps} onChange={setWithSteps} label={t('Instrucciones')} />
       </Row>
       {isAdmin && <Row icon="person" iconTint="var(--indigo)" title={t('Visible para todos los socios')}
-        subtitle={alreadyShared ? t('Ya lo ven todos. Para dejar de compartirlo, borralo.') : share ? t('Lo ven todos los socios, actuales y futuros.') : t('Solo lo ves vos.')}>
-        <Switch checked={share || alreadyShared} disabled={alreadyShared} onChange={setShare} label={t('Visible para todos los socios')} />
+        subtitle={alreadyShared && !share ? t('Deja de verse en el catálogo de los socios. Quien lo usa en sus rutinas o su historial se queda con su copia.')
+          : share ? t('Lo ven todos los socios, actuales y futuros.') : t('Solo lo ves vos.')}>
+        <Switch checked={share} onChange={setShare} label={t('Visible para todos los socios')} />
       </Row>}
     </div>
     {withSteps && <NumberedSteps value={steps} onChange={setSteps} />}
@@ -650,14 +660,16 @@ export const customExSheet = (existing, onDone, prefill) => ui().openSheet(close
 
 export function deleteCustomEx(ex, afterDelete) {
   if (S().active?.entries.some(e => e.id === ex.id)) { toast(t('Finish your current workout first')); return }
+  // Compartido si cualquier entrada con ese id lo está (puede haber una copia propia vieja).
+  const shared = ex.shared || (S().customEx || []).some(x => x.id === ex.id && x.shared)
   confirmSheet({
     title: t('Delete “{0}”?', ex.n),
-    message: t('It will be removed from your routines. Already-logged workouts keep their sets.'),
+    message: t('It will be removed from your routines. Already-logged workouts keep their sets.')
+      + (shared ? ' ' + t('Deja de verse para los socios; quien lo usa en sus rutinas o su historial se queda con su copia.') : ''),
     confirmText: t('Delete'), danger: true,
     onConfirm: async () => {
       // Uno compartido se borra primero del servidor: si falla, queda como estaba para todos.
-      // Compartido si cualquier entrada con ese id lo está (puede haber una copia propia vieja).
-      if (ex.shared || (S().customEx || []).some(x => x.id === ex.id && x.shared)) {
+      if (shared) {
         try { await api('/api/admin/public-exercises/delete', { method: 'POST', body: JSON.stringify({ id: ex.id }) }) }
         catch (e) { toast(errorText(e, t('No se pudo borrar el ejercicio. Probá de nuevo con conexión.'))); return }
       }

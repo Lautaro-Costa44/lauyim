@@ -20,6 +20,8 @@ db.initDatabase();
 db.createUser({ id: 'staff', name: 'Admin', admin: true, created: Date.now() });
 db.createUser({ id: 'ana', name: 'Ana', created: Date.now() });
 db.saveUserState('ana', { customEx: [], routines: [] });
+db.createUser({ id: 'beto', name: 'Beto', created: Date.now() });
+db.saveUserState('beto', { customEx: [], routines: [], workouts: [{ id: 'wb1', d: '2026-09-20', start: 1, end: 2, name: 'Core', entries: [{ id: 'cpub4', sets: [{ w: 10, r: 10, done: true }] }] }] });
 db.closeDatabase();
 
 const PORT = 49500 + Math.floor(Math.random() * 400);
@@ -74,4 +76,18 @@ test('el staff comparte un ejercicio: se guardan solo los campos conocidos y lo 
 test('un ejercicio compartido sin nombre se rechaza, y un socio no puede compartir', async () => {
   assert.equal((await call('staff', 'POST', '/api/admin/public-exercises', { id: 'cpub2', n: '  ' })).status, 400);
   assert.equal((await call('ana', 'POST', '/api/admin/public-exercises', { id: 'cpub3', n: 'Plancha' })).status, 403);
+});
+
+test('dejar de compartir: el socio que lo usaba se queda con su copia y el admin con el original', async () => {
+  const ex = { id: 'cpub4', n: 'Press Pallof', tipo: 'fuerza', bp: 'waist', tg: 'abs', st: ['Pará firme.'], map: true };
+  assert.equal((await call('staff', 'POST', '/api/admin/public-exercises', ex)).status, 200);
+  assert.equal((await call('ana', 'POST', '/api/admin/public-exercises/unshare', { id: 'cpub4' })).status, 403);
+  const res = await call('staff', 'POST', '/api/admin/public-exercises/unshare', { id: 'cpub4' });
+  assert.equal(res.status, 200);
+  assert.equal(res.body.copies, 1);
+  const beto = (await call('beto', 'GET', '/api/data')).body.state.customEx.filter(e => e.id === 'cpub4');
+  assert.equal(beto.length, 1);
+  assert.equal(beto[0].origin, 'cpub4');
+  assert.equal((await call('ana', 'GET', '/api/data')).body.state.customEx.some(e => e.id === 'cpub4'), false);
+  assert.equal((await call('staff', 'POST', '/api/admin/public-exercises/unshare', { id: 'cpub4' })).status, 404);
 });

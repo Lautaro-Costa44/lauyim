@@ -46,7 +46,7 @@ import {
   getPresetById,
   getPresetWithExercises,
   getPresetGroups,
-  getPublicCustomExercises, savePublicCustomExercise, deletePublicCustomExercise,
+  getPublicCustomExercises, savePublicCustomExercise, retirePublicCustomExercise,
   createPreset,
   updatePreset,
   deletePreset,
@@ -2889,7 +2889,23 @@ const routes = {
     savePublicCustomExercise(checked.value);
     json(res, 200, { ok: true });
   },
-  'POST /api/admin/public-exercises/delete': async (req, res) => { const admin = requireAdmin(req, res); if (!admin) return; deletePublicCustomExercise((await readBody(req)).id); json(res, 200, { ok: true }); },
+  // Borrar o dejar de compartir un ejercicio compartido: los socios que lo usan se quedan con su
+  // copia (retirePublicCustomExercise). Dejar de compartir le deja al admin el original como propio.
+  'POST /api/admin/public-exercises/delete': async (req, res) => {
+    const admin = requireAdmin(req, res); if (!admin) return;
+    const { id } = await readBody(req);
+    if (typeof id !== 'string' || !id) return json(res, 400, { error: 'validation_error' });
+    const copies = retirePublicCustomExercise(id, { actorId: admin.id });
+    json(res, 200, { ok: true, copies: copies ?? 0 });
+  },
+  'POST /api/admin/public-exercises/unshare': async (req, res) => {
+    const admin = requireAdmin(req, res); if (!admin) return;
+    const { id } = await readBody(req);
+    if (typeof id !== 'string' || !id) return json(res, 400, { error: 'validation_error' });
+    const copies = retirePublicCustomExercise(id, { actorId: admin.id, keepForActor: true });
+    if (copies === null) return json(res, 404, { error: 'not_found' });
+    json(res, 200, { ok: true, copies });
+  },
 
   'PUT /api/data': async (req, res) => {
     const user = readSession(req);

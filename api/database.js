@@ -1847,10 +1847,11 @@ export const customCopyId = (originId, userId) => `${originId}@${userId}`;
 // rutinas, sus grupos y su historial: nada de eso se reescribe.
 export function getCustomExercisesByUserId(userId) {
   const stmt = getDatabase().prepare('SELECT * FROM custom_exercises WHERE user_id = ?');
-  // Un ejercicio compartido nunca se devuelve también como propio (una fila que quedó de antes de
-  // que se marcara la copia local del admin como compartida).
+  // Un ejercicio compartido nunca se devuelve también como propio: ni la fila que quedó de antes de
+  // que se marcara la copia local del admin como compartida, ni la copia que recibe quien lo usa en
+  // una rutina (la guarda por si deja de ser compartido; mientras lo sea, va la compartida).
   const shared = publicCustomExerciseIds();
-  return stmt.all(userId).filter(row => row.origin_id || !shared.has(row.id)).map(row => row.origin_id
+  return stmt.all(userId).filter(row => !shared.has(row.origin_id || row.id)).map(row => row.origin_id
     ? { ...customRowToDef(row), id: row.origin_id, origin: row.origin_id }
     : customRowToDef(row));
 }
@@ -1876,7 +1877,6 @@ export function getPublicCustomExercises() {
 export function savePublicCustomExercise(ex) {
   getDatabase().prepare('INSERT OR REPLACE INTO public_custom_exercises (id, payload, updated_at) VALUES (?, ?, ?)').run(ex.id, JSON.stringify(ex), Date.now());
 }
-export function deletePublicCustomExercise(id) { getDatabase().prepare('DELETE FROM public_custom_exercises WHERE id = ?').run(id); }
 
 function insertCustomRow(db, rowId, userId, ex, originId) {
   const equipArr = Array.isArray(ex.equipamiento) ? ex.equipamiento : (ex.eq ? [ex.eq] : ['body weight']);
@@ -1977,6 +1977,60 @@ export function ensurePresetCustomCopies(userId, exerciseIds) {
     created++;
   }
   return created;
+}
+
+/**
+ * Un ejercicio compartido deja de serlo: el staff lo borra o lo deja de compartir. Nadie que lo
+ * use se queda con "Unknown exercise": cada socio con el ejercicio en sus rutinas (sueltas o de un
+ * grupo) o en su historial recibe su copia, con el mismo mecanismo que los presets (origin_id), y
+ * los presets que lo usan guardan su definición. Quien lo retira (actorId) no recibe copia: si lo
+ * borra, es lo que quiere; si lo deja de compartir (keepForActor), se queda con el original como
+ * ejercicio propio. Transaccional. Devuelve cuántas copias dio, o null si no estaba compartido.
+ */
+export function retirePublicCustomExercise(id, { actorId = null, keepForActor = false } = {}) {
+  const db = getDatabase();
+  const row = db.prepare('SELECT payload FROM public_custom_exercises WHERE id = ?').get(String(id));
+  if (!row) return null;
+  const def = { ...safeJsonParse(row.payload, {}), id: String(id) };
+  delete def.shared;
+
+  const users = new Set();
+  for (const r of db.prepare('SELECT DISTINCT r.user_id AS userId FROM routine_exercises re JOIN routines r ON r.id = re.routine_id WHERE re.exercise_id = ?').all(def.id)) users.add(r.userId);
+  for (const r of db.prepare('SELECT DISTINCT w.user_id AS userId FROM workout_entries we JOIN workouts w ON w.id = we.workout_id WHERE we.exercise_id = ?').all(def.id)) users.add(r.userId);
+  for (const r of db.prepare('SELECT user_id, routine_groups FROM user_state WHERE routine_groups IS NOT NULL').all()) {
+    if (routineExerciseIds({ routineGroups: safeJsonParse(r.routine_groups, []) }).includes(def.id)) users.add(r.user_id);
+  }
+  if (actorId) users.delete(actorId);
+
+  const own = db.prepare('SELECT 1 FROM custom_exercises WHERE user_id = ? AND (id = ? OR origin_id = ?)');
+  const ownerOf = db.prepare('SELECT user_id FROM custom_exercises WHERE id = ?');
+  const usedByPreset = db.prepare('SELECT 1 FROM preset_exercises WHERE exercise_id = ? LIMIT 1');
+  let copies = 0;
+  db.exec('BEGIN IMMEDIATE');
+  try {
+    if (usedByPreset.get(def.id)) {
+      db.prepare('INSERT OR REPLACE INTO preset_custom_exercises (id, payload, updated_at) VALUES (?, ?, ?)')
+        .run(def.id, JSON.stringify({ ...def, created: undefined }), Date.now());
+    }
+    for (const userId of users) {
+      if (own.get(userId, def.id, def.id)) continue;
+      insertCustomRow(db, customCopyId(def.id, userId), userId, { ...def, created: Date.now() }, def.id);
+      copies++;
+    }
+    // La copia que el guardado del estado le dio a quien lo retira (si lo tenía en una rutina): si
+    // lo borra, reaparecería; si lo deja de compartir, se queda con el original y sobraría.
+    if (actorId) db.prepare('DELETE FROM custom_exercises WHERE user_id = ? AND origin_id = ?').run(actorId, def.id);
+    if (actorId && keepForActor) {
+      const owner = ownerOf.get(def.id)?.user_id;
+      if (!owner || owner === actorId) insertCustomRow(db, def.id, actorId, { ...def, created: Date.now() }, null);
+    }
+    db.prepare('DELETE FROM public_custom_exercises WHERE id = ?').run(def.id);
+    db.exec('COMMIT');
+  } catch (error) {
+    try { db.exec('ROLLBACK'); } catch {}
+    throw error;
+  }
+  return copies;
 }
 
 // Ids de ejercicio que usan las rutinas de un estado: las sueltas y las de cada grupo.

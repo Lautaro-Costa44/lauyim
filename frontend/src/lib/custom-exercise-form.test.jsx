@@ -143,3 +143,39 @@ describe('equipamiento', () => {
     expect(on()).toEqual(['Barra'])
   })
 })
+
+describe('dejar de compartir', () => {
+  beforeEach(() => {
+    globalThis.IS_REACT_ACT_ENVIRONMENT = true
+    apiMock.api.mockReset()
+    useUI.setState({ sheets: [] })
+    document.body.innerHTML = ''
+  })
+  afterEach(() => { act(() => { mounted.splice(0).forEach(r => r.unmount()) }) })
+
+  it('el admin apaga "Visible para todos": pide al servidor dejar de compartirlo y queda como propio', async () => {
+    const shared = { id: 'cuns', n: 'Press Pallof', tipo: 'fuerza', grupo_muscular: 'waist', bp: 'waist', tg: 'waist', eq: 'body weight', equipamiento: ['body weight'], custom: true, shared: true, st: [] }
+    useStore.setState({ user: { id: 'a1', name: 'admin', admin: true } })
+    useStore.getState().update(s => { s.customEx = [shared]; s.routines = []; s.workouts = [] })
+    customExSheet(shared)
+    const host = renderTopSheet()
+    const sw = switchFor(host, 'Visible para todos los socios')
+    expect(sw.getAttribute('aria-checked')).toBe('true')
+    expect(sw.disabled).toBe(false)
+    act(() => sw.click())
+    apiMock.api.mockResolvedValueOnce({ ok: true, copies: 2 })
+    await act(async () => { [...host.querySelectorAll('button')].find(b => ['Save', 'Guardar'].includes(b.textContent.trim())).click() })
+    expect(apiMock.api).toHaveBeenLastCalledWith('/api/admin/public-exercises/unshare', expect.objectContaining({ body: JSON.stringify({ id: 'cuns' }) }))
+    const [saved] = useStore.getState().S.customEx
+    expect(saved.shared).toBeUndefined()
+    expect(saved.id).toBe('cuns')
+  })
+
+  it('el buscador muestra una sola entrada si el estado trae el compartido y su copia', async () => {
+    const { allExercises } = await import('./exercises.js')
+    const list = allExercises({ customEx: [{ id: 'cx', n: 'A', origin: 'cx', custom: true }, { id: 'cx', n: 'A', custom: true, shared: true }] })
+    const mine = list.filter(e => e.id === 'cx')
+    expect(mine).toHaveLength(1)
+    expect(mine[0].shared).toBe(true)
+  })
+})
