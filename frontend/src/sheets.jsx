@@ -12,6 +12,7 @@ import ProgramPicker from './components/ProgramPicker.jsx'
 import { api } from './lib/api.js'
 import WorkoutDetailView from './components/workout/WorkoutDetailView.jsx'
 import Media, { Thumb, useExerciseGifs } from './components/Media.jsx'
+import QrCanvas from './components/QrCanvas.jsx'
 import NumberedSteps from './components/NumberedSteps.jsx'
 import { mediaKindFor } from './lib/exercise-media.js'
 import Stepper from './components/Stepper.jsx'
@@ -1126,9 +1127,9 @@ function PlanTools({ close }) {
   </>
 }
 
-function QrShare({ code, close }) {
+// El QR se dibuja en el dispositivo (QrCanvas): el código del plan no pasa por ningún servicio externo.
+export function QrShare({ code, close }) {
   const qrUrl = `${window.location.origin}/#/import?code=${code}`
-  const imgUrl = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(qrUrl)}`
   const [copied, setCopied] = useState(false)
 
   const copyLink = () => {
@@ -1141,7 +1142,9 @@ function QrShare({ code, close }) {
     <h3>{t('Compartir por QR')}</h3>
     <div className="muted small" style={{ marginBottom: 14 }}>{t('Escaneá este código QR o compartí el enlace. Expira en 10 minutos.')}</div>
     <div style={{ textAlign: 'center', marginBottom: 16 }}>
-      <img src={imgUrl} alt="QR Code" style={{ width: 200, height: 200, borderRadius: 12, background: '#fff', padding: 10, border: '1px solid var(--sep)' }} />
+      <div style={{ display: 'inline-block', borderRadius: 12, background: '#fff', padding: 10, border: '1px solid var(--sep)', lineHeight: 0 }}>
+        <QrCanvas value={qrUrl} size={200} ariaLabel={t('QR del plan compartido')} />
+      </div>
     </div>
     <div style={{ marginBottom: 14, wordBreak: 'break-all', fontSize: '0.85rem' }} className="muted">
       {qrUrl}

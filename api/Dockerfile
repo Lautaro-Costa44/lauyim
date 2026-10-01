@@ -13,15 +13,22 @@ LABEL maintainer="Lauyyii" \
     org.opencontainers.image.revision=$VCS_REF \
     org.opencontainers.image.created=$BUILD_DATE
 
+# su-exec: el entrypoint baja de root al usuario node antes de arrancar la API.
+RUN apk add --no-cache su-exec
+
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev && npm cache clean --force
 COPY . .
+# El código queda de root y solo de lectura para node: la API no puede modificarse a sí misma.
+COPY lauyim-entrypoint.sh /usr/local/bin/lauyim-entrypoint.sh
+RUN chmod 755 /usr/local/bin/lauyim-entrypoint.sh
 
 ENV NODE_ENV=production
 ENV PORT=3000
 
 EXPOSE 3000
+ENTRYPOINT ["/usr/local/bin/lauyim-entrypoint.sh"]
 CMD ["node", "server.js"]
 
 HEALTHCHECK --interval=5m \
