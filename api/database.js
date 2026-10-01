@@ -10,6 +10,7 @@ import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { setRowValues, setFromRow, workoutMeta, validateWorkouts, decodeMeta, encodeMeta } from './row-meta.js';
 import { CUSTOM_EXERCISE_COLUMNS } from './custom-exercise.js';
+import { DEFAULT_ROLES, ADMIN_ROLE_ID, withDependencies } from './permissions.js';
 
 const DATA = process.env.DATA_DIR || '/data';
 const dbPath = path.join(DATA, 'gym.db');
@@ -261,6 +262,7 @@ export function initDatabase() {
     console.error('Failed to enforce users.owner uniqueness:', error);
     throw error;
   }
+  migrateRoles(db);
 
   // Migración defensiva: asegurar que existan todas las columnas de la encuesta en bases de datos existentes
   const columnsToAdd = [
@@ -423,9 +425,11 @@ export function createUser(user) {
   if (owner) db.prepare('UPDATE users SET owner = 0 WHERE owner = 1').run();
   // Pendiente de aprobación: nunca la primera cuenta (owner) ni una ficha.
   const pending = user.pending && !owner && !user.member ? 'pending' : null;
+  // admin (altas viejas, demo, tests): el rol Administrador. El owner no lleva rol.
+  const roleId = admin && !owner ? ADMIN_ROLE_ID : null;
   const stmt = getDatabase().prepare(`
-    INSERT INTO users (id, name, admin, owner, disabled, created_at, invited_by, approval_status, privacy_accepted_at, health_consent, health_consent_at, legal_version, legal_accepted_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO users (id, name, admin, owner, disabled, created_at, invited_by, approval_status, privacy_accepted_at, health_consent, health_consent_at, legal_version, legal_accepted_at, role_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
   // healthConsent: true → dado, false → no lo dio (check opcional sin marcar), sin dato → se le
   // pregunta una vez al entrar.
@@ -433,7 +437,98 @@ export function createUser(user) {
   const now = new Date().toISOString();
   stmt.run(user.id, user.name, admin, owner, user.disabled ? 1 : 0,
     isoTimestamp(user.created) || now, user.invitedBy || null, pending, user.privacyAcceptedAt || null,
-    health, health ? now : null, user.legalVersion || null, user.legalVersion ? now : null);
+    health, health ? now : null, user.legalVersion || null, user.legalVersion ? now : null, roleId);
+}
+
+// ============================================================
+// Roles del staff (permissions.js)
+// ============================================================
+
+// Tabla, columna, roles de fábrica (una sola vez: borrar uno de ejemplo no lo recrea) y los admins
+// de antes de los roles (admin = 1, sin owner) pasan a Administrador. La columna admin queda sin
+// uso, para poder volver atrás.
+function migrateRoles(db) {
+  db.exec(`CREATE TABLE IF NOT EXISTS roles (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    color TEXT NOT NULL,
+    permissions TEXT NOT NULL DEFAULT '[]',
+    fee_exempt INTEGER NOT NULL DEFAULT 1,
+    builtin INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL
+  );`);
+  try { db.exec(`ALTER TABLE users ADD COLUMN role_id TEXT;`); } catch {}
+  const seeded = db.prepare("SELECT value FROM admin_settings WHERE key = 'roles_seeded'").get();
+  if (!seeded) {
+    const insert = db.prepare('INSERT OR IGNORE INTO roles (id, name, color, permissions, fee_exempt, builtin, created_at) VALUES (?, ?, ?, ?, 1, ?, ?)');
+    const now = new Date().toISOString();
+    for (const r of DEFAULT_ROLES) insert.run(r.id, r.name, r.color, JSON.stringify(r.permissions), r.builtin ? 1 : 0, now);
+    db.prepare("INSERT INTO admin_settings (key, value, updated_at) VALUES ('roles_seeded', 'true', ?)").run(Date.now());
+  }
+  db.prepare('UPDATE users SET role_id = ? WHERE admin = 1 AND owner = 0 AND role_id IS NULL').run(ADMIN_ROLE_ID);
+}
+
+const roleFromRow = (row, members = 0) => row && ({
+  id: row.id, name: row.name, color: row.color, permissions: withDependencies(JSON.parse(row.permissions || '[]')),
+  feeExempt: !!row.fee_exempt, builtin: !!row.builtin, members
+});
+
+// Todos los roles, Administrador primero y después por orden de creación, con cuántas personas
+// tiene cada uno.
+export function getRoles() {
+  const rows = getDatabase().prepare(`
+    SELECT r.*, (SELECT COUNT(*) FROM users u WHERE u.role_id = r.id) AS members
+    FROM roles r ORDER BY r.builtin DESC, r.created_at, r.rowid`).all();
+  return rows.map(r => roleFromRow(r, Number(r.members)));
+}
+
+export function getRole(id) {
+  if (!id) return null;
+  const row = getDatabase().prepare(`
+    SELECT r.*, (SELECT COUNT(*) FROM users u WHERE u.role_id = r.id) AS members FROM roles r WHERE r.id = ?`).get(id);
+  return row ? roleFromRow(row, Number(row.members)) : null;
+}
+
+// Crea (sin id) o edita: { id?, name, color, permissions, feeExempt } ya validado
+// (permissions.js → validateRole). Devuelve el rol, o null si el id no existe. El nombre del de
+// fábrica no cambia.
+export function saveRole({ id, name, color, permissions, feeExempt = true }) {
+  const db = getDatabase();
+  const perms = JSON.stringify(withDependencies(permissions));
+  if (id) {
+    const current = db.prepare('SELECT * FROM roles WHERE id = ?').get(id);
+    if (!current) return null;
+    db.prepare('UPDATE roles SET name = ?, color = ?, permissions = ?, fee_exempt = ? WHERE id = ?')
+      .run(current.builtin ? current.name : name, color, perms, feeExempt ? 1 : 0, id);
+    return getRole(id);
+  }
+  const newId = 'r-' + crypto.randomBytes(5).toString('hex');
+  db.prepare('INSERT INTO roles (id, name, color, permissions, fee_exempt, builtin, created_at) VALUES (?, ?, ?, ?, ?, 0, ?)')
+    .run(newId, name, color, perms, feeExempt ? 1 : 0, new Date().toISOString());
+  return getRole(newId);
+}
+
+// Borra un rol que no es de fábrica; sus personas quedan sin rol. → true si lo borró.
+export function deleteRole(id) {
+  const db = getDatabase();
+  const row = db.prepare('SELECT builtin FROM roles WHERE id = ?').get(id);
+  if (!row || row.builtin) return false;
+  db.exec('BEGIN IMMEDIATE');
+  try {
+    db.prepare('UPDATE users SET role_id = NULL, admin = 0 WHERE role_id = ?').run(id);
+    db.prepare('DELETE FROM roles WHERE id = ?').run(id);
+    db.exec('COMMIT');
+  } catch (error) {
+    try { db.exec('ROLLBACK'); } catch {}
+    throw error;
+  }
+  return true;
+}
+
+// admin = 0: la columna vieja deja de contar, así la migración no le devuelve Administrador al
+// reiniciar a alguien a quien se lo quitaron.
+export function setUserRole(userId, roleId) {
+  getDatabase().prepare('UPDATE users SET role_id = ?, admin = 0 WHERE id = ? AND owner = 0').run(roleId || null, userId);
 }
 
 export function updateUser(id, updates) {
