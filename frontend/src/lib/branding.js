@@ -1,5 +1,5 @@
 // Personalización de la instancia (Admin → Personalización, api/branding.js): nombre, frase del
-// login, color del gym y logo. Llega en /api/config (public) y se aplica antes del login; sin
+// login, color del gym, tema y logo. Llega en /api/config (public) y se aplica antes del login; sin
 // conexión se usa la última config guardada.
 
 export const DEFAULT_APP_NAME = 'lauyim'
@@ -45,6 +45,9 @@ export function resolveAccent(accent, branding) {
   if (!accent || accent === 'gym') return { key: 'lime' }
   return { key: accent }
 }
+
+// Tema que ve el usuario: con el tema bloqueado por el gym, el del gym; si no, el suyo.
+export const themeFor = (theme, branding) => branding?.lockTheme ? (branding.theme || 'dark') : (theme || 'dark')
 
 // Variables CSS del acento del gym (las de la paleta están en index.css por data-accent).
 export const customAccentVars = color => ({

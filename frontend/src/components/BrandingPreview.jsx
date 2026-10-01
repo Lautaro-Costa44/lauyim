@@ -20,7 +20,8 @@ const OTHER_APPS = [['#4285f4', 'Fotos'], ['#34a853', 'Maps'], ['#ea4335', 'Gmai
 
 export default function BrandingPreview({ draft, icons, onClose }) {
   const [tab, setTab] = useState('android')
-  const [theme, setTheme] = useState('dark')
+  // Arranca en el tema elegido en Personalización ("sistema": el del dispositivo).
+  const [theme, setTheme] = useState(() => draft.theme === 'light' || (draft.theme === 'system' && window.matchMedia?.('(prefers-color-scheme: light)').matches) ? 'light' : 'dark')
   useEffect(() => {
     const onKey = e => { if (e.key === 'Escape') onClose() }
     window.addEventListener('keydown', onKey)

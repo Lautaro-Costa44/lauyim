@@ -1,5 +1,6 @@
 // Personalización de la instancia (Admin → Personalización, solo el owner): nombre de la app, nombre
-// bajo el ícono, frase del login, color del gym (y si es el único) y el logo con sus íconos. Los
+// bajo el ícono, frase del login, color del gym (y si es el único), tema (y si es el único) y el
+// logo con sus íconos. Los
 // íconos los genera el navegador del owner (frontend/src/lib/branding-image.js) y el servidor solo
 // valida que sean PNG del tamaño justo. Todo vive en la base, así entra en el backup.
 
@@ -8,6 +9,9 @@ export const DEFAULT_APP_NAME = 'lauyim';
 export const MAX_APP_NAME = 30;
 export const MAX_SHORT_NAME = 12;
 export const MAX_TAGLINE = 80;
+// Temas de la app. De entrada el tema está bloqueado en oscuro: nadie lo cambia en Ajustes.
+export const THEMES = ['dark', 'light', 'system'];
+const MANIFEST_BG = { dark: '#0c0e12', light: '#f2f2f7' };
 // Un PNG de 512×512 con transparencia que no se comprime (foto, degradado) pesa hasta ~1 MB.
 export const MAX_ASSET_BYTES = 1200 * 1024;
 // Cuerpo del PUT con los cinco íconos en base64, en el peor caso (~4,4 MB, cerca del límite general de 5 MB).
@@ -43,6 +47,8 @@ export function brandingOf(stored) {
     tagline: saved.tagline || '',
     color: saved.color || null,
     lockColor: !!(saved.color && saved.lockColor),
+    theme: THEMES.includes(saved.theme) ? saved.theme : 'dark',
+    lockTheme: saved.lockTheme !== false,
     logo: saved.logo || null            // versión de los íconos (para ?v=), o null sin logo propio
   };
 }
@@ -62,7 +68,9 @@ export function validateBranding(body) {
     if (typeof body.color !== 'string' || !/^#[0-9a-f]{6}$/i.test(body.color)) return { error: 'El color tiene que ser un código #RRGGBB', field: 'color' };
     color = body.color.toLowerCase();
   }
-  return { value: { appName, shortName, tagline, color, lockColor: !!(color && body.lockColor === true) } };
+  const theme = body.theme ?? 'dark';
+  if (!THEMES.includes(theme)) return { error: 'El tema tiene que ser oscuro, claro o sistema', field: 'theme' };
+  return { value: { appName, shortName, tagline, color, lockColor: !!(color && body.lockColor === true), theme, lockTheme: body.lockTheme !== false } };
 }
 
 const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
@@ -109,8 +117,9 @@ export function buildManifest(branding) {
     scope: '/',
     display: 'standalone',
     orientation: 'portrait',
-    background_color: '#0c0e12',
-    theme_color: '#0c0e12',
+    // Fondo de la pantalla de carga de Android: claro solo si todos usan el tema claro.
+    background_color: branding.lockTheme && branding.theme === 'light' ? MANIFEST_BG.light : MANIFEST_BG.dark,
+    theme_color: branding.lockTheme && branding.theme === 'light' ? MANIFEST_BG.light : MANIFEST_BG.dark,
     icons: [
       { src: assetUrl(branding, 'icon-192.png'), sizes: '192x192', type: 'image/png', purpose: 'any' },
       { src: assetUrl(branding, 'icon-512.png'), sizes: '512x512', type: 'image/png', purpose: 'any' },

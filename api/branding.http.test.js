@@ -80,7 +80,7 @@ test('con logo: config, manifest, íconos con caché larga y la passkey con el n
   const put = await call('owner', 'PUT', '/api/owner/branding', { appName: 'Gym Centro', shortName: 'Centro', tagline: 'Entrená mejor', color: '#FF8800', lockColor: true, assets: assets() });
   assert.equal(put.status, 200, JSON.stringify(put.body));
   const { branding } = (await call(null, 'GET', '/api/config')).body;
-  assert.deepEqual({ ...branding, logo: !!branding.logo }, { appName: 'Gym Centro', shortName: 'Centro', tagline: 'Entrená mejor', color: '#ff8800', lockColor: true, logo: true });
+  assert.deepEqual({ ...branding, logo: !!branding.logo }, { appName: 'Gym Centro', shortName: 'Centro', tagline: 'Entrená mejor', color: '#ff8800', lockColor: true, theme: 'dark', lockTheme: true, logo: true });
   const manifest = (await call(null, 'GET', '/api/branding/manifest.webmanifest')).body;
   assert.equal(manifest.short_name, 'Centro');
   assert.equal(manifest.icons[0].src, `/api/branding/icon-192.png?v=${branding.logo}`);

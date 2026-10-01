@@ -4,7 +4,7 @@ import { useStore, billingExempt, healthOff } from './store/useStore.js'
 import { useUI } from './store/useUI.js'
 import { bindUI } from './components/ui.jsx'
 import { ACCENTS } from './lib/format.js'
-import { resolveAccent, customAccentVars, cachedBranding, applyBrandingToDocument, logoSrc } from './lib/branding.js'
+import { resolveAccent, customAccentVars, cachedBranding, applyBrandingToDocument, logoSrc, themeFor } from './lib/branding.js'
 import { setLang, useLang } from './lib/i18n.js'
 import { setNav } from './lib/nav.js'
 import { useWakeLock } from './lib/wakelock.js'
@@ -124,18 +124,19 @@ function Shell() {
     return () => { clearInterval(timer); document.removeEventListener('visibilitychange', onVisibility) }
   }, [signedIn, verifySession])
   const branding = useStore(s => s.config?.branding) ?? cachedBranding()
-  useEffect(() => { applyPrefs(S.theme, S.accent, branding) }, [S.theme, S.accent, branding])
+  const theme = themeFor(S.theme, branding)   // el del gym si lo bloqueó (Personalización)
+  useEffect(() => { applyPrefs(theme, S.accent, branding) }, [theme, S.accent, branding])
   useEffect(() => { applyBrandingToDocument(branding) }, [branding])
   // 'system' needs to react live if the OS theme flips while the app is open, not just on
   // the next mount — a fixed 'dark'/'light' choice never re-fires this since matchMedia
   // isn't consulted for those.
   useEffect(() => {
-    if (S.theme !== 'system' || !window.matchMedia) return
+    if (theme !== 'system' || !window.matchMedia) return
     const mql = window.matchMedia('(prefers-color-scheme: dark)')
-    const onChange = () => applyPrefs(S.theme, S.accent, branding)
+    const onChange = () => applyPrefs(theme, S.accent, branding)
     mql.addEventListener('change', onChange)
     return () => mql.removeEventListener('change', onChange)
-  }, [S.theme, S.accent, branding])
+  }, [theme, S.accent, branding])
   useEffect(() => { setLang(S.lang || 'es') }, [S.lang])
   useEffect(() => { document.documentElement.lang = S.lang === 'en' ? 'en' : 'es' }, [langV, S.lang])
   // every tab/route change starts at the top of the page

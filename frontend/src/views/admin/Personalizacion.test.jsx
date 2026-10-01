@@ -13,7 +13,7 @@ const { useUI } = await import('../../store/useUI.js')
 const { setLang } = await import('../../lib/i18n.js')
 const { default: Personalizacion } = await import('./Personalizacion.jsx')
 
-const FACTORY = { appName: 'lauyim', shortName: '', tagline: '', color: null, lockColor: false, logo: null }
+const FACTORY = { appName: 'lauyim', shortName: '', tagline: '', color: null, lockColor: false, theme: 'dark', lockTheme: true, logo: null }
 let root, container
 const tick = () => act(async () => { await new Promise(r => setTimeout(r, 10)) })
 const mount = async el => {
@@ -54,7 +54,7 @@ describe('Personalización', () => {
     await act(async () => { button('Guardar').click() })
     await tick()
     const [, opts] = apiMock.mock.calls.find(([u, o]) => u === '/api/owner/branding' && o?.method === 'PUT')
-    expect(JSON.parse(opts.body)).toEqual({ appName: 'Gym Centro', shortName: '', tagline: '', color: '#ff9f0a', lockColor: true })
+    expect(JSON.parse(opts.body)).toEqual({ appName: 'Gym Centro', shortName: '', tagline: '', color: '#ff9f0a', lockColor: true, theme: 'dark', lockTheme: true })
     expect(useStore.getState().config.branding).toMatchObject({ appName: 'Gym Centro', color: '#ff9f0a', lockColor: true })
   })
 
@@ -73,6 +73,21 @@ describe('Personalización', () => {
     await act(async () => { button('Guardar').click() })
     await tick()
     expect(useUI.getState().toastMsg).toMatch(/demasiado pesada/)
+  })
+
+  it('tema: oscuro y bloqueado de entrada; se elige claro o sistema y se puede liberar', async () => {
+    await mount(<Personalizacion />)
+    const card = [...container.querySelectorAll('.card')].find(c => c.querySelector('h3')?.textContent === 'Tema')
+    const pick = label => [...card.querySelectorAll('button')].find(b => b.textContent.trim() === label)
+    const lock = () => card.querySelector('[role="switch"]')
+    expect(pick('Oscuro').classList.contains('on')).toBe(true)
+    expect(lock().getAttribute('aria-checked')).toBe('true')
+    await act(async () => { pick('Claro').click() })
+    await act(async () => { lock().click() })
+    await act(async () => { button('Guardar').click() })
+    await tick()
+    const [, opts] = apiMock.mock.calls.find(([u, o]) => u === '/api/owner/branding' && o?.method === 'PUT')
+    expect(JSON.parse(opts.body)).toMatchObject({ theme: 'light', lockTheme: false })
   })
 
   it('la vista previa muestra el nombre bajo el ícono, cortado, y el login con la frase', async () => {

@@ -29,6 +29,24 @@ const swatches = () => [...container.querySelectorAll('.swatches .swatch')].map(
 beforeEach(async () => { await setLang('es'); globalThis.IS_REACT_ACT_ENVIRONMENT = true })
 afterEach(async () => { await act(async () => { root.unmount() }); container.remove(); useStore.setState({ config: null }) })
 
+describe('tema en Ajustes', () => {
+  const themeButtons = () => [...container.querySelectorAll('button')].filter(b => ['Oscuro', 'Claro', 'Sistema'].includes(b.textContent.trim()))
+  it('bloqueado por el gym: se ve el del gym y no se puede cambiar', async () => {
+    useStore.setState({ S: { ...useStore.getState().S, theme: 'light' } })
+    await render({ appName: 'Gym', color: null, lockColor: false, theme: 'dark', lockTheme: true })
+    expect(themeButtons()).toHaveLength(3)
+    expect(themeButtons().every(b => b.disabled)).toBe(true)
+    expect(themeButtons().find(b => b.classList.contains('on')).textContent.trim()).toBe('Oscuro')
+    expect(container.textContent).toContain('El gimnasio eligió el tema')
+  })
+
+  it('libre: cada uno elige', async () => {
+    await render({ appName: 'Gym', color: null, lockColor: false, theme: 'dark', lockTheme: false })
+    expect(themeButtons().some(b => b.disabled)).toBe(false)
+    expect(container.textContent).not.toContain('El gimnasio eligió el tema')
+  })
+})
+
 describe('paleta de colores en Ajustes', () => {
   it('sin color del gym: la paleta de siempre, con lime', async () => {
     await render({ appName: 'lauyim', color: null, lockColor: false })

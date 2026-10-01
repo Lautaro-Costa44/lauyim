@@ -7,7 +7,7 @@ import { errorText } from '../../lib/errors.js'
 import { ACCENTS } from '../../lib/format.js'
 import { contrastWarnings, shortNameFor, DEFAULT_APP_NAME, MAX_SHORT_NAME } from '../../lib/branding.js'
 import { checkLogoFile, loadImage, analyzeImage, defaultIconBackground, renderIcons } from '../../lib/branding-image.js'
-import { Button, Switch, TextField } from '../../components/ui.jsx'
+import { Button, Segmented, Switch, TextField } from '../../components/ui.jsx'
 import Icon from '../../components/Icon.jsx'
 import BrandingPreview from '../../components/BrandingPreview.jsx'
 import { confirmSheet } from '../../sheets.jsx'
@@ -17,7 +17,12 @@ import { confirmSheet } from '../../sheets.jsx'
 const DEFAULT_TAGLINE = 'Tus entrenamientos. Tus pesos. Tus perfiles.'
 const ICON_FILES = ['logo.png', 'icon-192.png', 'icon-512.png', 'icon-maskable-512.png', 'apple-touch-icon.png']
 const FACTORY_ICONS = { 'logo.png': 'logo-perf.svg?v=3', 'icon-192.png': 'icon-192.png?v=3', 'icon-512.png': 'icon-512.png?v=3', 'icon-maskable-512.png': 'icon-512.png?v=3', 'apple-touch-icon.png': 'icon-180.png?v=3' }
-const draftOf = b => ({ appName: b.appName, shortName: b.shortName || '', tagline: b.tagline || '', color: b.color, lockColor: !!b.lockColor })
+const draftOf = b => ({ appName: b.appName, shortName: b.shortName || '', tagline: b.tagline || '', color: b.color, lockColor: !!b.lockColor, theme: b.theme || 'dark', lockTheme: b.lockTheme !== false })
+const THEME_OPTIONS = [
+  { value: 'dark', icon: 'moon', label: 'Oscuro' },
+  { value: 'light', icon: 'sun', label: 'Claro' },
+  { value: 'system', icon: 'gear', label: 'Sistema' },
+]
 
 export default function Personalizacion() {
   const toast = useUI(s => s.toast)
@@ -183,10 +188,24 @@ export default function Personalizacion() {
       </div>
     </div>
 
+    <div className="card">
+      <h3 className="branding-h">{t('Tema')}</h3>
+      <Segmented options={THEME_OPTIONS.map(o => ({ ...o, label: t(o.label) }))} value={draft.theme} onChange={v => set({ theme: v })} />
+      <div className="branding-lock">
+        <div>
+          <div>{t('Usar solo este tema')}</div>
+          <div className="small dim">{draft.lockTheme
+            ? t('Nadie puede cambiar el tema en Ajustes: toda la app se ve así.')
+            : t('Cada usuario puede elegir otro tema en Ajustes; este es el de entrada.')}</div>
+        </div>
+        <Switch checked={draft.lockTheme} onChange={v => set({ lockTheme: v })} label={t('Usar solo este tema')} />
+      </div>
+    </div>
+
     <div className="small dim branding-note">{t('El ícono y el nombre de la app instalada: Android los actualiza solo en unos días; en iPhone, quien ya la instaló tiene que volver a instalarla. Conviene definirlos antes de que los socios la instalen.')}</div>
 
     <div className="card branding-reset">
-      <div className="small dim">{t('Volver a como viene lauyim: sin nombre, frase, logo ni color propios.')}</div>
+      <div className="small dim">{t('Volver a como viene lauyim: sin nombre, frase, logo ni color propios, y con el tema oscuro para todos.')}</div>
       <Button size="sm" variant="ghost" className="dim" disabled={busy} onClick={reset}>{t('Volver a lauyim')}</Button>
     </div>
 

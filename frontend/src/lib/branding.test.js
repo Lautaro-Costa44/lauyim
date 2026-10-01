@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { contrastRatio, onAccentFor, darken, resolveAccent, contrastWarnings, isCustomBrand, shortNameFor } from './branding.js'
+import { contrastRatio, onAccentFor, darken, resolveAccent, contrastWarnings, isCustomBrand, shortNameFor, themeFor } from './branding.js'
 
 describe('colores', () => {
   it('contraste WCAG y texto sobre el acento', () => {
@@ -35,6 +35,17 @@ describe('qué acento ve cada usuario', () => {
   })
   it('con "solo el color del gym", todos lo ven', () => {
     expect(resolveAccent('violet', { ...brand, lockColor: true })).toEqual({ key: 'custom', color: '#ff8800' })
+  })
+})
+
+describe('tema', () => {
+  it('con el tema bloqueado manda el del gym; si no, el que eligió cada uno', () => {
+    expect(themeFor('light', { theme: 'dark', lockTheme: true })).toBe('dark')
+    expect(themeFor('dark', { theme: 'system', lockTheme: true })).toBe('system')
+    expect(themeFor('light', { theme: 'dark', lockTheme: false })).toBe('light')
+    expect(themeFor(undefined, { theme: 'light', lockTheme: false })).toBe('dark')
+    // Sin config todavía (primer arranque sin conexión): la del usuario.
+    expect(themeFor('light', null)).toBe('light')
   })
 })
 

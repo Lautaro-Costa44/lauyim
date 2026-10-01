@@ -6,7 +6,10 @@ import { fakePng } from './fake-png.js';
 const allAssets = (opts) => Object.fromEntries(Object.entries(BRANDING_ASSETS).map(([name, side]) => [name, 'data:image/png;base64,' + fakePng(side, opts).toString('base64')]));
 
 test('brandingOf: valores por defecto y lo guardado', () => {
-  assert.deepEqual(brandingOf(null), { appName: 'lauyim', shortName: '', tagline: '', color: null, lockColor: false, logo: null });
+  // De entrada, el tema está bloqueado en oscuro para todos.
+  assert.deepEqual(brandingOf(null), { appName: 'lauyim', shortName: '', tagline: '', color: null, lockColor: false, theme: 'dark', lockTheme: true, logo: null });
+  assert.deepEqual(brandingOf(JSON.stringify({ theme: 'light', lockTheme: false })), { ...brandingOf(null), theme: 'light', lockTheme: false });
+  assert.equal(brandingOf(JSON.stringify({ theme: 'rosa' })).theme, 'dark');
   assert.equal(brandingOf('roto').appName, 'lauyim');
   // Sin color no hay "solo el color del gym".
   assert.equal(brandingOf(JSON.stringify({ lockColor: true })).lockColor, false);
@@ -14,13 +17,19 @@ test('brandingOf: valores por defecto y lo guardado', () => {
 
 test('validateBranding: limpia, pone límites y exige un nombre', () => {
   assert.deepEqual(validateBranding({ appName: '  Gym  <Centro> ', shortName: 'Centro', tagline: 'Entrená mejor', color: '#FF8800', lockColor: true }).value,
-    { appName: 'Gym Centro', shortName: 'Centro', tagline: 'Entrená mejor', color: '#ff8800', lockColor: true });
+    { appName: 'Gym Centro', shortName: 'Centro', tagline: 'Entrená mejor', color: '#ff8800', lockColor: true, theme: 'dark', lockTheme: true });
   assert.equal(validateBranding({ appName: '' }).field, 'appName');
   assert.equal(validateBranding({ appName: 'x'.repeat(31) }).field, 'appName');
   assert.equal(validateBranding({ appName: 'Gym', shortName: 'x'.repeat(13) }).field, 'shortName');
   assert.equal(validateBranding({ appName: 'Gym', tagline: 'x'.repeat(81) }).field, 'tagline');
   assert.equal(validateBranding({ appName: 'Gym', color: 'rojo' }).field, 'color');
   assert.equal(validateBranding({ appName: 'Gym', lockColor: true }).value.lockColor, false);
+});
+
+test('validateBranding: tema oscuro, claro o sistema; bloqueado salvo que se apague', () => {
+  assert.deepEqual(validateBranding({ appName: 'Gym', theme: 'system', lockTheme: false }).value, { appName: 'Gym', shortName: '', tagline: '', color: null, lockColor: false, theme: 'system', lockTheme: false });
+  assert.equal(validateBranding({ appName: 'Gym', theme: 'light' }).value.lockTheme, true);
+  assert.equal(validateBranding({ appName: 'Gym', theme: 'rosa' }).field, 'theme');
 });
 
 test('validateAssets: todos los íconos, PNG y del tamaño justo', () => {
@@ -51,4 +60,8 @@ test('buildManifest: nombre, nombre corto e íconos propios o los de lauyim', ()
   assert.equal(gym.short_name, 'Gimnasio Cen');
   assert.equal(gym.icons[2].purpose, 'maskable');
   assert.equal(gym.icons[2].src, '/api/branding/icon-maskable-512.png?v=7');
+  // La pantalla de carga de Android usa background_color: clara solo con el tema claro bloqueado.
+  assert.equal(plain.background_color, '#0c0e12');
+  assert.equal(buildManifest(brandingOf(JSON.stringify({ theme: 'light' }))).background_color, '#f2f2f7');
+  assert.equal(buildManifest(brandingOf(JSON.stringify({ theme: 'light', lockTheme: false }))).background_color, '#0c0e12');
 });
