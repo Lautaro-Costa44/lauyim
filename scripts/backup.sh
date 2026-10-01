@@ -9,6 +9,9 @@
 #   BACKUP_RETENTION_DAYS    días que se conservan en el remote (default 7)
 #   BACKUP_LOG_FILE          log (default: backup.log junto a este script)
 #   BACKUP_ALLOW_UNENCRYPTED 1 = permitir un remote que no es crypt (no recomendado: hay DNIs y secretos)
+#   BACKUP_PING_URL          opcional. URL de un check de healthchecks.io (https://hc-ping.com/<uuid>):
+#                            avisa el inicio y el código de salida, con el log de la corrida. Si el
+#                            backup falla o no corre, healthchecks manda la alerta. Ver docs/monitoreo.md.
 #
 # Uso:  backup.sh           hace el backup
 #       backup.sh --check   solo valida la configuración (rclone, remote, contenedores)
@@ -17,7 +20,7 @@
 #                    2 configuración inválida · 3 falló rclone (subida o rotación)
 #
 # Cron (crontab -e del usuario que corre docker):
-#   0 2 * * * BACKUP_REMOTE=gdrive-crypt:lauyim /home/lauyyii/hub/scripts/backup.sh
+#   0 2 * * * BACKUP_REMOTE=gdrive-crypt:lauyim BACKUP_PING_URL=https://hc-ping.com/<uuid> /home/lauyyii/hub/scripts/backup.sh
 set -u -o pipefail
 umask 077
 
@@ -25,6 +28,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LOG_FILE="${BACKUP_LOG_FILE:-${SCRIPT_DIR}/backup.log}"
 REMOTE="${BACKUP_REMOTE:-}"
 RETENTION_DAYS="${BACKUP_RETENTION_DAYS:-7}"
+PING_URL="${BACKUP_PING_URL:-}"
 read -r -a INSTANCES <<< "${BACKUP_INSTANCES:-prod|lauyim-api-1 dev|lauyim-dev-api-1}"
 TIMESTAMP="$(date '+%Y-%m-%d_%H-%M-%S')"
 DATA_FILES=(vapid.json secret audit.log)
@@ -39,6 +43,22 @@ log() {
 error() {
   log "ERROR: $*"
   printf 'backup.sh: ERROR: %s\n' "$*" >&2
+}
+
+# Aviso a healthchecks.io (si BACKUP_PING_URL está): ping start | ping <código> "<cuerpo>". Nunca hace
+# fallar el backup: sin internet o con el servicio caído, solo queda anotado. La URL no se escribe
+# en el log (con ella cualquiera puede marcar el check como OK).
+ping() {
+  [[ -z "$PING_URL" ]] && return 0
+  if ! curl -fsS -m 10 --retry 3 -o /dev/null --data-raw "${2:-}" "${PING_URL%/}/$1" 2> /dev/null; then
+    log "AVISO: no se pudo avisar a healthchecks (${1}); el backup sigue."
+  fi
+}
+
+# Termina avisando el código y las líneas del log de esta corrida.
+finish() {
+  ping "$1" "$(tail -n "+$((LOG_START + 1))" "$LOG_FILE" 2> /dev/null)"
+  exit "$1"
 }
 
 # remote_path "gdrive-crypt:lauyim" prod -> gdrive-crypt:lauyim/prod ("gdrive-crypt:" -> gdrive-crypt:prod)
@@ -68,6 +88,14 @@ check_config() {
   fi
   if ! command -v docker > /dev/null 2>&1; then
     error "docker no está instalado."
+    return 1
+  fi
+  if [[ -n "$PING_URL" && "$PING_URL" != https://* ]]; then
+    error "BACKUP_PING_URL tiene que ser una URL https:// (ej. https://hc-ping.com/<uuid>)."
+    return 1
+  fi
+  if [[ -n "$PING_URL" ]] && ! command -v curl > /dev/null 2>&1; then
+    error "BACKUP_PING_URL está configurada pero curl no está instalado."
     return 1
   fi
   local name="${REMOTE%%:*}" remotes type
@@ -152,16 +180,20 @@ if [[ "${1:-}" == --check ]]; then
     fi
   done
   echo "ok: remote ${REMOTE}, retención ${RETENTION_DAYS} días"
+  [[ -n "$PING_URL" ]] && echo "ok: avisos a healthchecks configurados (--check no manda ningún ping)"
   exit 0
 elif [[ $# -gt 0 ]]; then
   echo "uso: $0 [--check]" >&2
   exit "$EXIT_CONFIG"
 fi
 
+LOG_START=0
+[[ -f "$LOG_FILE" ]] && LOG_START="$(wc -l < "$LOG_FILE")"
 log "===== Backup iniciado (${TIMESTAMP}) ====="
-check_config || { log "===== Backup abortado (configuración) ====="; exit "$EXIT_CONFIG"; }
+ping start
+check_config || { log "===== Backup abortado (configuración) ====="; finish "$EXIT_CONFIG"; }
 
-WORK="$(mktemp -d "${TMPDIR:-/tmp}/lauyim-backup.XXXXXX")" || { error "mktemp falló."; exit "$EXIT_DUMP"; }
+WORK="$(mktemp -d "${TMPDIR:-/tmp}/lauyim-backup.XXXXXX")" || { error "mktemp falló."; finish "$EXIT_DUMP"; }
 trap 'rm -rf "$WORK"' EXIT
 
 status=0
@@ -208,4 +240,4 @@ for entry in "${INSTANCES[@]}"; do
 done
 
 log "===== Backup terminado (código ${status}) ====="
-exit "$status"
+finish "$status"

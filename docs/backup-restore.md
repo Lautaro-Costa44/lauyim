@@ -91,9 +91,10 @@ Recién con el paso 1 terminado y probado (1.3):
    BACKUP_REMOTE=gdrive-crypt:lauyim ~/hub/scripts/backup.sh; echo "código $?"
    rclone ls gdrive-crypt:lauyim
    ```
-4. Cron (`crontab -e`), reemplazando la línea vieja:
+4. Cron (`crontab -e`), reemplazando la línea vieja (`BACKUP_PING_URL` es el aviso a
+   healthchecks.io si el backup falla o no corre: ver `docs/monitoreo.md`):
    ```
-   0 2 * * * BACKUP_REMOTE=gdrive-crypt:lauyim /home/lauyyii/hub/scripts/backup.sh
+   0 2 * * * BACKUP_REMOTE=gdrive-crypt:lauyim BACKUP_PING_URL=https://hc-ping.com/<uuid> /home/lauyyii/hub/scripts/backup.sh
    ```
 
 | Variable | Default | Qué hace |
@@ -103,6 +104,7 @@ Recién con el paso 1 terminado y probado (1.3):
 | `BACKUP_RETENTION_DAYS` | `7` | se borran del remote los paquetes de más días, solo después de una subida buena |
 | `BACKUP_LOG_FILE` | `backup.log` junto al script | log |
 | `BACKUP_ALLOW_UNENCRYPTED` | — | `1` permite un remote que no es crypt (no usar con datos reales) |
+| `BACKUP_PING_URL` | — | URL de un check de healthchecks.io: avisa inicio y código de salida con el log de la corrida (`docs/monitoreo.md`) |
 
 Códigos de salida: `0` ok · `1` falló el dump de alguna instancia (contenedor caído, integridad,
 archivo faltante) · `2` configuración (falta la variable, rclone, el remote, o no es crypt) ·
@@ -152,7 +154,7 @@ Sin esas variables se usan las de producción.
 Verificar:
 
 ```bash
-curl -s http://localhost:3099/api/health          # {"ok":true,"users":N} con N ≈ socios de producción
+curl -s http://localhost:3099/api/health          # {"ok":true}: la API arrancó y la base abre
 docker compose -f docker-compose.restore-test.yml -p restore-test logs api | tail    # sin errores de base
 docker compose -f docker-compose.restore-test.yml -p restore-test exec api node -e "
   const {DatabaseSync}=require('node:sqlite');const d=new DatabaseSync('/data/gym.db',{readOnly:true});

@@ -91,3 +91,9 @@ test('dejar de compartir: el socio que lo usaba se queda con su copia y el admin
   assert.equal((await call('ana', 'GET', '/api/data')).body.state.customEx.some(e => e.id === 'cpub4'), false);
   assert.equal((await call('staff', 'POST', '/api/admin/public-exercises/unshare', { id: 'cpub4' })).status, 404);
 });
+
+test('/api/health: responde ok sin revelar cuántos socios hay (lo consultan monitores públicos)', async () => {
+  const { status, body } = await call(null, 'GET', '/api/health');
+  assert.equal(status, 200);
+  assert.deepEqual(body, { ok: true });
+});

@@ -1518,7 +1518,9 @@ if (AUDIT_ON) {
 
 /* ---------- routes ---------- */
 const routes = {
-  'GET /api/health': async (req, res) => json(res, 200, { ok: true, users: countAppUsers() }),
+  // Para los monitores de uptime, que la consultan desde afuera: confirma que la base abre (si no,
+  // el handler tira y responde 500) sin decir nada de la instancia.
+  'GET /api/health': async (req, res) => { countAppUsers(); json(res, 200, { ok: true }); },
 
   'GET /api/alimentos/buscar': async (req, res) => {
     const query = normalizarTexto(new URL(req.url, 'http://x').searchParams.get('q')).slice(0, 100);

@@ -6,12 +6,14 @@ on:
     paths:
       - 'frontend/**'
       - 'api/**'
+      - 'scripts/**'
       - '.github/workflows/test.yml'
   push:
     branches: [main]
     paths:
       - 'frontend/**'
       - 'api/**'
+      - 'scripts/**'
       - '.github/workflows/test.yml'
   workflow_dispatch:
 
@@ -58,3 +60,16 @@ jobs:
         working-directory: api
       - run: npm test
         working-directory: api
+
+  # Backup, restore y chequeo de disco con docker, rclone, curl y df falsos: corren en el servidor
+  # de cada gym, así que tienen que pasar en Linux (en Windows, node y tar no se entienden con
+  # las rutas /tmp de bash).
+  scripts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - run: bash scripts/tests/backup-restore.test.sh
+      - run: bash scripts/tests/disk-check.test.sh

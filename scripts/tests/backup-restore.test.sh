@@ -93,5 +93,36 @@ mkdir -p "$T/tamper" && tar -xzf "$T/remote/lauyim/prod/$pkg" -C "$T/tamper" && 
 msg="$(bash "$ROOT/scripts/restore.sh" --package "$T/bad.tar.gz" --target "$T/r2" 2>&1)"; rc=$?
 [[ $rc -eq 1 && "$msg" == *sha256* && ! -e "$T/r2/secret" ]] && ok "paquete alterado rechazado" || ko "paquete alterado ($rc: $msg)"
 
+# 10-14. Avisos a healthchecks (BACKUP_PING_URL), con un curl falso que anota URL y cuerpo.
+cat > "$T/bin/curl" <<STUB
+#!/usr/bin/env bash
+[[ -f "$T/curl-fail" ]] && exit 7
+body=""; url=""
+while [[ \$# -gt 0 ]]; do case "\$1" in --data-raw) body="\$2"; shift 2 ;; -m|-o|--retry) shift 2 ;; -*) shift ;; *) url="\$1"; shift ;; esac; done
+printf '%s\n' "\$url" >> "$T/curl.log"
+printf '%s' "\$body" > "$T/curl-body-\${url##*/}"
+STUB
+chmod +x "$T/bin/curl"
+H=https://hc.test/abc
+rm -f "$T/curl.log"
+BACKUP_REMOTE=gcrypt:lauyim BACKUP_PING_URL="$H" bash "$ROOT/scripts/backup.sh" 2>/dev/null; rc=$?
+if [[ $rc -eq 0 && "$(cat "$T/curl.log" 2>/dev/null | tr '\n' ' ')" == "$H/start $H/0 " ]]; then
+  body="$(cat "$T/curl-body-0")"
+  [[ "$body" == *"Backup terminado (código 0)"* && $(grep -c "Backup iniciado" <<< "$body") -eq 1 ]] \
+    && ok "ping start y 0 con el log de esa corrida (sola)" || ko "cuerpo del ping: $body"
+else ko "pings de un backup bueno ($rc: $(cat "$T/curl.log" 2>/dev/null))"; fi
+rm -f "$T/curl.log"
+BACKUP_REMOTE=gplain:lauyim BACKUP_PING_URL="$H" bash "$ROOT/scripts/backup.sh" 2>/dev/null; rc=$?
+[[ $rc -eq 2 && "$(tr '\n' ' ' < "$T/curl.log")" == "$H/start $H/2 " ]] && ok "configuración inválida avisa /2" || ko "ping de config inválida ($rc: $(cat "$T/curl.log" 2>/dev/null))"
+touch "$T/curl-fail"
+BACKUP_REMOTE=gcrypt:lauyim BACKUP_PING_URL="$H" bash "$ROOT/scripts/backup.sh" 2>/dev/null; rc=$?
+[[ $rc -eq 0 ]] && grep -q "no se pudo avisar a healthchecks" "$T/backup.log" && ! grep -q "hc.test" "$T/backup.log" \
+  && ok "healthchecks caído no frena el backup ni deja la URL en el log" || ko "healthchecks caído ($rc)"
+rm -f "$T/curl-fail" "$T/curl.log"
+BACKUP_REMOTE=gcrypt:lauyim bash "$ROOT/scripts/backup.sh" 2>/dev/null; rc=$?
+[[ $rc -eq 0 && ! -f "$T/curl.log" ]] && ok "sin BACKUP_PING_URL no hay pings" || ko "pings sin BACKUP_PING_URL ($rc)"
+BACKUP_REMOTE=gcrypt:lauyim BACKUP_PING_URL=http://hc.test/abc bash "$ROOT/scripts/backup.sh" --check > /dev/null 2>&1; rc=$?
+[[ $rc -eq 2 && ! -f "$T/curl.log" ]] && ok "BACKUP_PING_URL sin https rechazada y --check no manda pings" || ko "URL http ($rc)"
+
 echo "# pass $pass, fail $failed"
 [[ $failed -eq 0 ]]
