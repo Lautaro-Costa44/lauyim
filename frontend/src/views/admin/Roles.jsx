@@ -77,6 +77,8 @@ export default function Roles() {
           {isOwner && <button type="button" className="iconbtn" aria-label={t('Editar {0}', role.name)} onClick={() => edit(role)}><Icon name="pencil" /></button>}
           {assignable(role) && <button type="button" className="iconbtn" aria-label={t('Asignar {0}', role.name)} onClick={() => assign(role)}><Icon name="personPlus" /></button>}
           {isOwner && !role.builtin && <button type="button" className="iconbtn role-del" aria-label={t('Eliminar {0}', role.name)} onClick={() => remove(role)}><Icon name="trash" /></button>}
+          {/* Administrador no se borra: el hueco del tacho mantiene los íconos en columna. */}
+          {isOwner && role.builtin && <span className="role-action-gap" aria-hidden="true" />}
         </span>
       </div>)}
     </div>

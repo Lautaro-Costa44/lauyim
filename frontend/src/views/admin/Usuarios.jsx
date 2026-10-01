@@ -4,6 +4,7 @@ import { useAdmin } from './context.js'
 import { useDesktop } from './useDesktop.js'
 import { useUI } from '../../store/useUI.js'
 import { useStore } from '../../store/useStore.js'
+import { can } from '../../lib/permissions.js'
 import { t } from '../../lib/i18n.js'
 import Icon from '../../components/Icon.jsx'
 import { Button, Row, TextField } from '../../components/ui.jsx'
@@ -92,7 +93,8 @@ export default function Usuarios() {
   const openSheet = useUI(s => s.openSheet)
   const toast = useUI(s => s.toast)
   const { users, loadUsers, billingEnabled } = useAdmin()
-  const isOwner = !!useStore(s => s.user)?.owner
+  const me = useStore(s => s.user)
+  const isOwner = !!me?.owner
   const [userSearch, setUserSearch] = useState('')
   const [userPage, setUserPage] = useState(1)
   const desktop = useDesktop()
@@ -129,7 +131,7 @@ export default function Usuarios() {
   const disabledCount = (users || []).filter(u => u.disabled).length
   const pendingCount = (users || []).filter(isPending).length
   const filters = pendingCount || appFilter === 'pending' ? [...APP_FILTERS, ['pending', t('Pendientes ({0})', pendingCount)]] : APP_FILTERS
-  const showBilling = billingEnabled !== false
+  const showBilling = billingEnabled !== false && can(me, 'fees.view')
   const query = userSearch.trim().toLocaleLowerCase()
   const filteredUsers = (users || []).filter(u => matchesAppFilter(u, appFilter)
     && (u.name.toLocaleLowerCase().includes(query) || (u.fullName || '').toLocaleLowerCase().includes(query)))
@@ -159,7 +161,7 @@ export default function Usuarios() {
   return <div className="admin-users">
     <div className="admin-users-list">
     <div className="member-actions">
-      <Button variant="tinted" icon="plus" className="member-new" onClick={newMember}>{t('Nuevo socio (sin app)')}</Button>
+      {can(me, 'members.edit') && <Button variant="tinted" icon="plus" className="member-new" onClick={newMember}>{t('Nuevo socio (sin app)')}</Button>}
       {isOwner && <Button variant="tinted" icon="upload" className="member-import" onClick={importMembers}>{t('Importar socios')}</Button>}
       {isOwner && <Button variant="tinted" icon="download" className="member-export" disabled={exporting} onClick={exportMembers}>{exporting ? t('Exportando…') : t('Exportar socios')}</Button>}
     </div>

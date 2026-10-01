@@ -652,6 +652,9 @@ function AdminRoutineCard({ userId }) {
 // administración de un socio (metas, sugerencias, comidas globales) sin montar todo el panel.
 // healthConsent 'declined': el socio no dio consentimiento de datos de salud; nutrición y
 // lesiones quedan deshabilitadas (el servidor igual responde 409).
+// Título del botón y de la hoja según las pestañas que permite el rol.
+const manageTitle = tabs => tabs.length > 1 ? t('Administrar Nutrición/Rutina') : tabs[0] === 'nutrition' ? t('Administrar nutrición') : t('Administrar rutina')
+
 export function AdminManageSheet({ userId, userName, healthConsent = null, close, setOnBack, tabs = ['nutrition', 'routine'] }) {
   const [tab, setTab] = useState(tabs[0])
   const [suggestionFlow, setSuggestionFlow] = useState(null)
@@ -699,7 +702,7 @@ export function AdminManageSheet({ userId, userName, healthConsent = null, close
         {picker.view}
         <div hidden={picker.isOpen}>
         <div className="row between compound-builder-header">
-          <div><h3 style={{ margin: 0 }}>{t('Administrar Nutrición/Rutina')}</h3><div className="t-sub" style={{ color: 'var(--label)', marginTop: 2 }}>{userName}</div></div>
+          <div><h3 style={{ margin: 0 }}>{manageTitle(tabs)}</h3><div className="t-sub" style={{ color: 'var(--label)', marginTop: 2 }}>{userName}</div></div>
           <button type="button" className="iconbtn" onClick={close} aria-label={t('Close')}><Icon name="xmark" /></button>
         </div>
         {tabs.length > 1 && <Segmented options={[{ value: 'nutrition', label: t('Nutrición') }, { value: 'routine', label: t('Rutina') }]} value={tab} onChange={setTab} />}
@@ -761,7 +764,7 @@ export function UserDetail({ id, billingEnabled = true, users, openUser, onChang
   // Cada bloque de la ficha según el rol de quien mira (el servidor lo vuelve a controlar).
   const allowed = code => can(currentUser, code)
   const manageTabs = [allowed('nutrition.manage') && 'nutrition', allowed('training.manage') && 'routine'].filter(Boolean)
-  const manageLabel = manageTabs.length > 1 ? t('Administrar Nutrición/Rutina') : manageTabs[0] === 'nutrition' ? t('Administrar nutrición') : t('Administrar rutina')
+  const manageLabel = manageTitle(manageTabs)
   const seesHealth = d.healthConsent !== 'declined' && allowed('health.view')
   const manageRoles = () => openSheet(c => <RolePickSheet user={u} close={c} onChanged={() => { setReloadKey(k => k + 1); onChanged() }} />)
   // Historial del socio: el mismo detalle que ve él, en solo lectura y como panel (centrado en

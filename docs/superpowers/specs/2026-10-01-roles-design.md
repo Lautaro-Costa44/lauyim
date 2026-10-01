@@ -31,7 +31,7 @@ Cada permiso: código, área, nombre visible, explicación de una línea y de qu
 | Código | Área | Nombre | Depende de | Rutas `/api/admin` que habilita |
 |---|---|---|---|---|
 | `members.view` | Socios | Ver socios | — | `GET users`, `GET user`, `GET members/lookup`, `GET members/settings`, `GET users/:userId/profile` |
-| `members.edit` | Socios | Editar socios | `members.view` | `POST members`, `PUT users/:userId/profile`, `POST user/disable`, `POST/DELETE users/:userId/link-code`, `POST users/:userId/merge`, `GET invites`, `POST invites/new`, `POST invites/revoke`, `PUT members/settings` |
+| `members.edit` | Socios | Editar socios | `members.view` | `POST members`, `PUT users/:userId/profile`, `POST user/disable`, `POST/DELETE users/:userId/link-code`, `POST users/:userId/merge`, `GET invites`, `POST invites/new`, `POST invites/revoke` |
 | `members.approve` | Socios | Aprobar cuentas | `members.view` | `GET approval`, `POST users/:userId/approve/check`, `POST users/:userId/approve`, `POST users/:userId/reject` |
 | `fees.view` | Cuotas | Ver cuotas | `members.view` | `GET billing`, `GET billing/plans`, `GET billing/settings`, `GET users/:userId/billing` |
 | `fees.manage` | Cuotas | Registrar pagos y gestionar cuotas | `fees.view` | `POST billing/plans`, `PUT billing/plans/:id`, `PUT billing/settings`, `POST users/:userId/trial`, `PUT users/:userId/billing`, `POST users/:userId/payments`, `POST users/:userId/payments/:paymentId/void` |
@@ -44,6 +44,8 @@ Cada permiso: código, área, nombre visible, explicación de una línea y de qu
 | `stats.view` | Operación | Resumen y estadísticas | — | `GET attendance-heatmap`, `POST attendance-week-start` |
 | `audit.view` | Operación | Registro de actividad | — | `GET audit` |
 | `roles.assign` | Staff | Asignar roles | `members.view` | `GET roles`, `POST users/role` |
+
+`PUT /api/admin/members/settings` (campos del registro) ya era solo del owner y sigue así.
 
 Cambio respecto de hoy: `POST /api/admin/audit/clear` pasa a ser solo del owner (`/api/owner/audit/clear`):
 borrar el registro de actividad no se delega.
@@ -125,7 +127,9 @@ Roles (owner): `GET /api/admin/roles` (owner o `roles.assign`; cada rol con su c
 personas), `POST /api/owner/roles/save` (crea si no trae `id`), `POST /api/owner/roles/delete`
 (no el de fábrica; sus usuarios pasan a Ninguno en la misma transacción). Ambos auditados.
 
-`/api/me` agrega `role: { id, name, color } | null` y `permissions: [...]`. `admin` sigue
+`/api/me` agrega `role: { id, name, color } | null`, `permissions: [...]` y, para el staff,
+`panel: { billingEnabled, checkinEnabled, auditEnabled }` (qué secciones existen, también para quien
+no lista socios). La lista de usuarios trae `role` y `feeExempt`. `admin` sigue
 viniendo (= `isStaff`) para no romper clientes viejos durante la actualización.
 
 ### Datos de salud
