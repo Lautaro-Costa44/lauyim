@@ -30,7 +30,15 @@ server {
     # as /api/anything.json would be matched by the \.(js|css|json|html)$ block instead and be
     # looked for on disk rather than proxied.
     location ^~ /api/ {
-        proxy_pass http://${BACKEND}:${PORT};
+        # IP del backend por el DNS de Docker, re-preguntada cada 10 s. Con el nombre fijo en
+        # proxy_pass nginx la resuelve una sola vez al arrancar: si api se recrea (deploy, crash)
+        # y le toca otra IP, todo /api da 502 "Host is unreachable" hasta reiniciar web. Con la
+        # variable, además, nginx arranca aunque api todavía no exista. Sin URI en la variable,
+        # el pedido llega con su ruta original, igual que antes.
+        resolver 127.0.0.11 valid=10s ipv6=off;
+        resolver_timeout 5s;
+        set $lauyim_api http://${BACKEND}:${PORT};
+        proxy_pass $lauyim_api;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;

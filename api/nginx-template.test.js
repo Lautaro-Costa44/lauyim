@@ -27,7 +27,16 @@ test('/api recibe la IP real en X-Real-IP / X-Forwarded-For y no recibe CF-Conne
   assert.ok(directives.includes('proxy_set_header X-Real-IP $remote_addr;'));
   assert.ok(directives.includes('proxy_set_header X-Forwarded-For $remote_addr;'));
   assert.ok(directives.includes('proxy_set_header CF-Connecting-IP "";'));
-  assert.ok(directives.includes('proxy_pass http://api:3000;'));
+});
+
+test('/api re-resuelve la IP del backend: si el contenedor api se recrea, nginx lo encuentra solo', () => {
+  // Con un nombre fijo en proxy_pass nginx resuelve la IP una sola vez al arrancar; cuando api se
+  // recrea con otra IP, todo /api da 502 "Host is unreachable" hasta reiniciar web. Con el DNS de
+  // Docker y una variable, vuelve a preguntar cada 10 s.
+  assert.ok(directives.includes('resolver 127.0.0.11 valid=10s ipv6=off;'));
+  assert.ok(directives.includes('set $lauyim_api http://api:3000;'));
+  assert.ok(directives.includes('proxy_pass $lauyim_api;'));
+  assert.ok(!directives.some(d => d.startsWith('proxy_pass http://')));
 });
 
 test('/privacidad y /privacidad/: redirect relativo a la ruta hash del aviso', () => {
