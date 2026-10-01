@@ -11,6 +11,8 @@ export const PERMISSIONS = Object.freeze([
   { code: 'fees.view', area: 'Cuotas', name: 'Ver cuotas', help: 'Quién está al día, quién debe y los planes.', requires: ['members.view'] },
   { code: 'fees.manage', area: 'Cuotas', name: 'Registrar pagos y gestionar cuotas', help: 'Cobrar, anular pagos, cambiar planes y vencimientos.', requires: ['fees.view'] },
   { code: 'training.manage', area: 'Entrenamiento', name: 'Rutinas y planes', help: 'Armar las rutinas de los socios y los planes del gimnasio.', requires: ['members.view'] },
+  { code: 'classes.attendance', area: 'Clases', name: 'Tomar lista', help: 'Ver los anotados de sus clases, tomar lista y anotar a alguien a mano.', requires: ['members.view'] },
+  { code: 'classes.manage', area: 'Clases', name: 'Clases y horarios', help: 'Crear clases, armar el horario y cambiar o cancelar una fecha (de todas las clases).', requires: ['classes.attendance'] },
   { code: 'exercises.share', area: 'Entrenamiento', name: 'Ejercicios públicos', help: 'Compartir ejercicios propios con todo el gimnasio.', requires: [] },
   { code: 'nutrition.manage', area: 'Nutrición', name: 'Gestionar nutrición', help: 'Objetivos, sugerencias y plantillas de nutrición de los socios.', requires: ['members.view'] },
   { code: 'health.view', area: 'Salud', name: 'Ver datos de salud', help: 'Peso corporal y lesiones de los socios (datos sensibles).', requires: ['members.view'] },
@@ -141,7 +143,7 @@ export const DEFAULT_ROLES = Object.freeze([
   { id: ADMIN_ROLE_ID, name: 'Administrador', color: '#ff453a', builtin: true, permissions: PERMISSION_CODES.filter(c => c !== 'roles.assign') },
   { id: 'reception', name: 'Recepción', color: '#0a84ff', builtin: false, permissions: withDependencies(['members.edit', 'members.approve', 'fees.manage', 'checkin.operate']) },
   { id: 'nutrition', name: 'Nutricionista', color: '#30d158', builtin: false, permissions: withDependencies(['nutrition.manage', 'health.view']) },
-  { id: 'coach', name: 'Profesor/a', color: '#ff9f0a', builtin: false, permissions: withDependencies(['training.manage', 'health.view']) }
+  { id: 'coach', name: 'Profesor/a', color: '#ff9f0a', builtin: false, permissions: withDependencies(['training.manage', 'health.view', 'classes.manage']) }
 ]);
 
 export const MAX_ROLE_NAME = 30;

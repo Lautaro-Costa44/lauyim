@@ -466,6 +466,17 @@ function migrateRoles(db) {
     db.prepare("INSERT INTO admin_settings (key, value, updated_at) VALUES ('roles_seeded', 'true', ?)").run(Date.now());
   }
   db.prepare('UPDATE users SET role_id = ? WHERE admin = 1 AND owner = 0 AND role_id IS NULL').run(ADMIN_ROLE_ID);
+  // Permisos de clases (llegaron después de los roles): una sola vez, a Administrador y a
+  // Profesor/a si sigue existiendo. Si el owner se los saca, no vuelven.
+  if (!db.prepare("SELECT value FROM admin_settings WHERE key = 'classes_perms_seeded'").get()) {
+    for (const id of [ADMIN_ROLE_ID, 'coach']) {
+      const row = db.prepare('SELECT permissions FROM roles WHERE id = ?').get(id);
+      if (!row) continue;
+      const perms = withDependencies([...JSON.parse(row.permissions || '[]'), 'classes.manage']);
+      db.prepare('UPDATE roles SET permissions = ? WHERE id = ?').run(JSON.stringify(perms), id);
+    }
+    db.prepare("INSERT INTO admin_settings (key, value, updated_at) VALUES ('classes_perms_seeded', 'true', ?)").run(Date.now());
+  }
 }
 
 const roleFromRow = (row, members = 0) => row && ({

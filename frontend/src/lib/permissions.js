@@ -15,6 +15,7 @@ export const ADMIN_SECTIONS = [
   { path: 'usuarios', label: 'Usuarios', perm: 'members.view' },
   { path: 'cuotas', label: 'Cuotas', perm: 'fees.view', flag: 'billingEnabled' },
   { path: 'rutinas', label: 'Rutinas', perm: 'training.manage' },
+  { path: 'clases', label: 'Clases', perm: 'classes.attendance', flag: 'classesEnabled', ownerAlways: true },
   { path: 'notificaciones', label: 'Notificaciones', perm: 'notifications.send' },
   { path: 'acceso', label: 'Acceso', perm: 'members.edit' },
   { path: 'roles', label: 'Roles', perm: 'roles.assign' },

@@ -26,4 +26,12 @@ describe('permisos en el cliente', () => {
     expect(owner).toContain('roles')
     expect(owner).not.toContain('logs')
   })
+
+  it('clases: con tomar lista y el módulo prendido; el owner la ve apagada para prenderla', () => {
+    const profe = { permissions: ['members.view', 'classes.attendance'] }
+    expect(paths(profe, { classesEnabled: true })).toEqual(['usuarios', 'clases'])
+    expect(paths(profe, { classesEnabled: false })).toEqual(['usuarios'])
+    expect(paths({ owner: true }, { classesEnabled: false })).toContain('clases')
+    expect(paths({ permissions: ['members.view'] }, { classesEnabled: true })).not.toContain('clases')
+  })
 })

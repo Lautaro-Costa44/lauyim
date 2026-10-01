@@ -60,3 +60,21 @@ test('createUser con admin: true lleva el rol Administrador (demo y altas viejas
   db.createUser({ id: 'staff2', name: 'Staff', admin: true });
   assert.equal(db.getUserById('staff2').role_id, 'admin');
 });
+
+test('migración de clases: suma los permisos de clases a Administrador y Profesor/a una sola vez', () => {
+  const dbh = db.getDatabase();
+  if (!db.getRole('coach')) dbh.prepare("INSERT INTO roles (id, name, color, permissions, fee_exempt, builtin, created_at) VALUES ('coach', 'Profesor/a', '#ff9f0a', '[]', 1, 0, ?)").run(new Date().toISOString());
+  // Una instancia con roles de antes de las clases: sin esos permisos y sin la marca.
+  const strip = id => { const r = db.getRole(id); db.getDatabase().prepare('UPDATE roles SET permissions = ? WHERE id = ?').run(JSON.stringify(r.permissions.filter(c => !c.startsWith('classes.'))), id); };
+  strip('admin'); strip('coach');
+  dbh.prepare("DELETE FROM admin_settings WHERE key = 'classes_perms_seeded'").run();
+  db.closeDatabase();
+  db.initDatabase();
+  for (const id of ['admin', 'coach']) assert.ok(db.getRole(id).permissions.includes('classes.manage'), id);
+  assert.ok(!db.getRole('reception').permissions.includes('classes.manage'));
+  // Ya migrada: si el owner se los saca a Profesor/a, reiniciar no los vuelve a poner.
+  strip('coach');
+  db.closeDatabase();
+  db.initDatabase();
+  assert.ok(!db.getRole('coach').permissions.includes('classes.manage'));
+});

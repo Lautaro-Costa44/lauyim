@@ -48,3 +48,12 @@ test('validateRole: nombre, color, permisos del catálogo con sus dependencias, 
   assert.equal(validateRole({ name: 'Caja', color: 'azul' }).field, 'color');
   assert.equal(validateRole({ name: 'Caja', color: '#0a84ff', permissions: 'todo' }).field, 'permissions');
 });
+
+test('clases: tomar lista (con ver socios) y clases y horarios (con tomar lista); Profesor/a los trae', () => {
+  assert.deepEqual(withDependencies(['classes.manage']), ['members.view', 'classes.attendance', 'classes.manage']);
+  assert.deepEqual(withoutDependents(['classes.attendance', 'classes.manage'], 'classes.attendance'), ['members.view']);
+  const coach = DEFAULT_ROLES.find(r => r.id === 'coach');
+  assert.ok(coach.permissions.includes('classes.manage') && coach.permissions.includes('classes.attendance'));
+  assert.ok(DEFAULT_ROLES.find(r => r.id === ADMIN_ROLE_ID).permissions.includes('classes.manage'));
+  assert.ok(!DEFAULT_ROLES.find(r => r.id === 'reception').permissions.includes('classes.attendance'));
+});
