@@ -23,7 +23,8 @@ export function parseLicenseConfig(env = process.env) {
   const errors = [];
   const raw = String(env.LICENSE_PAID_UNTIL || '').trim();
   if (!raw) return { config: null, errors };
-  const m = raw.match(/^(\d{4})-(0[1-9]|1[0-2])$/);
+  // AAAA-MM; también AAAA-M ("2026-9"), que es lo primero que se escribe.
+  const m = raw.match(/^(\d{4})-(0?[1-9]|1[0-2])$/);
   if (!m) return { config: null, errors: [`LICENSE_PAID_UNTIL='${raw}' no es un mes AAAA-MM: sin control mensual de la licencia.`] };
   const due = intIn(env.LICENSE_DUE_DAY, 1, 31);
   if (due.error) errors.push(`LICENSE_DUE_DAY='${env.LICENSE_DUE_DAY}' tiene que ser un día entre 1 y 31: se usa ${DEFAULT_DUE_DAY}.`);

@@ -34,6 +34,9 @@ test('día de vencimiento y días de mora configurables; un día que el mes no t
 test('sin LICENSE_PAID_UNTIL no hay control mensual; valores mal escritos se informan y no cortan nada', () => {
   assert.deepEqual(parseLicenseConfig({}), { config: null, errors: [] });
   assert.equal(licenseState(null, '2030-01-01').status, 'ok');
+  // El mes con un dígito vale igual que con dos.
+  assert.deepEqual(parseLicenseConfig({ LICENSE_PAID_UNTIL: '2026-9' }).config.paidUntil, { year: 2026, month: 9 });
+  assert.equal(parseLicenseConfig({ LICENSE_PAID_UNTIL: '2026-13' }).config, null);
   const bad = parseLicenseConfig({ LICENSE_PAID_UNTIL: 'octubre' });
   assert.equal(bad.config, null);
   assert.match(bad.errors[0], /LICENSE_PAID_UNTIL/);
