@@ -1961,3 +1961,22 @@ button.wh-row{font:inherit;color:inherit;border:0;cursor:pointer}
 .consent-actions{display:flex;flex-direction:column;gap:8px;margin-top:16px;text-align:center}
 .consent-actions p{margin:4px 0 0}
 .privacy-version{margin-top:18px}
+
+/* Abono de lauyim (components/LicenseBanner.jsx): aviso al staff arriba de todo. Amarillo por
+   vencer, rojo en mora. */
+.license-banner{display:flex;align-items:flex-start;gap:10px;margin:10px 0 12px;padding:12px 12px 12px 14px;border-radius:var(--r-card);
+  font-size:14px;line-height:1.45;border:1px solid color-mix(in srgb,var(--yellow) 45%,transparent);background:color-mix(in srgb,var(--yellow) 12%,var(--surface))}
+.license-banner.overdue{border-color:color-mix(in srgb,var(--red) 50%,transparent);background:color-mix(in srgb,var(--red) 12%,var(--surface))}
+.license-banner > svg{flex:none;width:18px;height:18px;margin-top:2px;color:var(--yellow)}
+.license-banner.overdue > svg{color:var(--red)}
+.license-banner-text{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.license-banner-text span{color:var(--label-2);font-size:13px}
+.license-banner-text a{color:var(--acc)}
+.license-banner-x{flex:none;border:0;background:none;color:var(--label-3);padding:2px;cursor:pointer;display:flex}
+.license-banner-x svg{width:16px;height:16px}
+
+/* Servicio suspendido (views/LicenseExpired.jsx). */
+.license-expired{min-height:calc(var(--viewport-height, 100vh) - 40px);display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:10px;padding:24px 0}
+.license-expired-icon{width:64px;height:64px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:var(--red);background:color-mix(in srgb,var(--red) 15%,transparent)}
+.license-expired p{max-width:420px;line-height:1.5;margin:0}
+.license-expired-btn{display:inline-flex;align-items:center;gap:8px;text-decoration:none;margin:8px 0}

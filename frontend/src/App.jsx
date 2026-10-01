@@ -18,6 +18,7 @@ import { installKeyboardViewport } from './lib/keyboard.js'
 import { disableKeyboardAutofill } from './lib/input-safety.js'
 import Login from './views/Login.jsx'
 import LicenseExpired from './views/LicenseExpired.jsx'
+import LicenseBanner from './components/LicenseBanner.jsx'
 import MembershipBlocked from './views/MembershipBlocked.jsx'
 import AccountEnded from './views/AccountEnded.jsx'
 import UpdateGate from './components/UpdateGate.jsx'
@@ -183,6 +184,9 @@ function Shell() {
           re-mounts the boundary, so the tab bar is always a way out. Every /admin/* section
           shares one key: switching sections must not re-mount the admin layout (and its poll). */}
       <div id="app" className={'vfade' + (isAdminPath ? ' admin-app' : '') + (isPrivacy ? ' privacy-app' : '') + (isCheckin ? ' checkin-app' : '')} key={isAdminPath ? '/admin' : loc.pathname}>
+        {/* Abono de lauyim por vencer o vencido: arriba de todo, solo staff (el servidor no se lo
+            manda a los socios), con la app normal. */}
+        {authed && !isCheckin && !isPrivacy && !accountEnded && !licenseExpired && !blocked && !askProfile && !askHealth && !askNotif && <LicenseBanner />}
         <ErrorBoundary>
           {isCheckin ? (loc.pathname === CHECKIN_ROUTE
               ? <Suspense fallback={<div className="page-loading" aria-busy="true" />}><IngresoFisicoScreen /></Suspense>

@@ -199,6 +199,8 @@ export const useStore = create((set, get) => {
     if (me && 'healthConsent' in me) get().setHealthConsent(me.healthConsent, { ask: me.healthConsent === null })
     // Términos y aviso: sin la versión vigente aceptada, la pantalla de una sola vez los pide.
     if (me?.legal) set({ legalVersion: me.legal.version, legalAsk: !me.legal.accepted })
+    // Abono de lauyim (solo staff): por vencer o en mora → el aviso de arriba.
+    if (me && 'license' in me) set({ license: me.license })
   }
 
   const scheduleSync = (delay = 2000) => {
@@ -321,6 +323,9 @@ export const useStore = create((set, get) => {
     // Términos y aviso de privacidad: versión vigente (de /api/me) y si hay que pedir aceptarla.
     legalVersion: null,
     legalAsk: false,
+    // Abono de lauyim para el staff (de /api/me): { status, reason, month, dueDate, suspendDate }.
+    license: null,
+    licenseReason: null,
     setLegalAccepted() { set({ legalAsk: false }) },
     setHealthConsent(value, { ask = false } = {}) {
       const v = value === 'granted' || value === 'declined' ? value : null
@@ -589,8 +594,9 @@ export const useStore = create((set, get) => {
     // Boot: ask the server who we are, then pull.
     async boot() {
       if (typeof window !== 'undefined') {
-        window.addEventListener('gym:license_expired', () => {
-          set({ licenseExpired: true })
+        // reason: 'unpaid' (abono impago) o 'expired' (corte fijo): cambia el texto para el staff.
+        window.addEventListener('gym:license_expired', e => {
+          set({ licenseExpired: true, licenseReason: e.detail?.reason || null })
         })
       }
       // Guests never authenticate, so an instance that turned guest mode off has no request to
@@ -626,7 +632,7 @@ export const useStore = create((set, get) => {
       } catch (e) {
         if (e.status === 401) await endSession(e.data?.reason || 'session_expired')
         if (e.data?.error === 'license_expired') {
-          set({ licenseExpired: true })
+          set({ licenseExpired: true, licenseReason: e.data?.reason || null })
         }
       }
       set({ ready: true })

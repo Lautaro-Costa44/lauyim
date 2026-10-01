@@ -18,7 +18,8 @@ function usedByApi() {
   for (const file of fs.readdirSync(here)) {
     if (!file.endsWith('.js') || file.endsWith('.test.js')) continue;
     const src = fs.readFileSync(path.join(here, file), 'utf8');
-    for (const m of src.matchAll(/process\.env\.([A-Z][A-Z0-9_]*)/g)) names.add(m[1]);
+    // process.env.X, o env.X en las funciones que reciben el entorno como parámetro (license.js).
+    for (const m of src.matchAll(/\benv\.([A-Z][A-Z0-9_]*)/g)) names.add(m[1]);
     for (const m of src.matchAll(/envMax\('([A-Z][A-Z0-9_]*)'/g)) names.add(m[1]);
   }
   return names;

@@ -1,28 +1,33 @@
 import Icon from '../components/Icon.jsx'
+import { useStore } from '../store/useStore.js'
+import { t } from '../lib/i18n.js'
+import { SUPPORT_EMAIL } from '../components/LicenseBanner.jsx'
 
+// Servicio suspendido (api/license.js): abono impago (reason 'unpaid') o corte fijo vencido
+// ('expired'). El staff ve el motivo y cómo reactivarlo; el socio, solo que la app no está
+// disponible: el atraso es entre el gimnasio y lauyim.
 export default function LicenseExpired() {
+  const user = useStore(s => s.user)
+  const reason = useStore(s => s.licenseReason)
+  const staff = !!(user?.admin || user?.owner)
+  const title = staff
+    ? (reason === 'unpaid' ? t('Servicio suspendido por falta de pago') : t('La licencia de lauyim venció'))
+    : t('La app no está disponible')
+  const text = staff
+    ? (reason === 'unpaid'
+      ? t('El abono de lauyim de este gimnasio está impago. Los datos de tus socios están guardados y no se perdió nada. Para reactivar el servicio, regularizá el pago y escribinos.')
+      : t('El período de la licencia de este gimnasio terminó. Los datos de tus socios están guardados. Escribinos para renovarla.'))
+    : t('La app de este gimnasio no está disponible por el momento. Tus datos están guardados. Consultá en la recepción.')
+  const subject = encodeURIComponent(t('Reactivar el servicio') + ' - ' + window.location.hostname)
   return (
-    <div className="view" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', padding: 24, textAlign: 'center', backgroundColor: 'var(--bg, #000)', color: 'var(--text, #fff)' }}>
-      <div style={{ width: 64, height: 64, borderRadius: '50%', backgroundColor: 'rgba(239, 68, 68, 0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 20, color: '#ef4444' }}>
-        <Icon name="lock" size={32} />
-      </div>
-      <h1 style={{ fontSize: 24, fontWeight: 700, marginBottom: 10 }}>Licencia Expirada</h1>
-      <p style={{ fontSize: 15, opacity: 0.7, maxWidth: 400, lineHeight: 1.5, marginBottom: 24 }}>
-        El período de licencia de esta instancia ha expirado. Por favor, póngase en contacto con el soporte técnico o el administrador del sistema para renovar su licencia y continuar utilizando la aplicación.
-      </p>
-      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', justifyContent: 'center' }}>
-        <a 
-          href={`mailto:soporte@lauyim.online?subject=${encodeURIComponent('Renovación de Licencia - ' + window.location.hostname)}`} 
-          className="btn primary"
-          style={{ padding: '12px 24px', borderRadius: 12, fontWeight: 600, textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 8 }}
-        >
-          <Icon name="mail" size={18} />
-          Contactar Soporte
-        </a>
-      </div>
-      <div style={{ marginTop: 40, fontSize: 13, opacity: 0.4 }}>
-        Lauyim — Licencia de Instancia
-      </div>
+    <div className="narrow license-expired">
+      <div className="license-expired-icon"><Icon name="lock" size={32} /></div>
+      <h1 className="privacy-title">{title}</h1>
+      <p className="muted">{text}</p>
+      {staff && <a href={`mailto:${SUPPORT_EMAIL}?subject=${subject}`} className="btn primary license-expired-btn">
+        <Icon name="mail" size={18} />{t('Escribir a lauyim')}
+      </a>}
+      <p className="dim small">{t('lauyim')} · <a className="privacy-link" href="#/terminos">{t('Términos')}</a> · <a className="privacy-link" href="#/privacidad">{t('Privacidad')}</a></p>
     </div>
   )
 }

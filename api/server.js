@@ -146,6 +146,7 @@ import { parseImportBody, analyzeImport } from './member-import.js';
 import { PRIVACY_GYM_NAME_SETTING, PRIVACY_CONTACT_SETTING, validatePrivacySettings } from './privacy.js';
 import { sanitizeExerciseDef } from './custom-exercise.js';
 import { LEGAL_VERSION, legalAcceptedOf, legalOkOf, healthChoiceOf } from './legal.js';
+import { parseLicenseConfig, licenseState } from './license.js';
 import {
   APPROVAL_REQUIRED_SETTING, APPROVAL_MODE_SETTING, readApprovalSettings, validateApprovalSettings,
   effectiveMode, allowedStarts, needsProfilePrompt, anyFieldEnabled
@@ -274,8 +275,12 @@ const RATE_LIMITS_BY_IP = {
 // Secure cookies require HTTPS; over plain http://localhost the flag would drop the cookie
 const SECURE = /^https:/i.test(ORIGIN) ? ' Secure;' : '';
 
-// Licencia por fecha (LICENSE_EXPIRES_AT)
+// Licencia: mensual (LICENSE_PAID_UNTIL, vencimiento y suspensión según el contrato: license.js)
+// y/o un corte fijo por fecha (LICENSE_EXPIRES_AT, para demos y pruebas).
 const LICENSE_EXPIRES_AT = process.env.LICENSE_EXPIRES_AT ? new Date(process.env.LICENSE_EXPIRES_AT).getTime() : null;
+const { config: LICENSE_CONFIG, errors: licenseConfigErrors } = parseLicenseConfig(process.env);
+for (const message of licenseConfigErrors) console.warn(message);
+const LICENSE_WARN_DAYS = 7;   // el corte fijo se avisa al staff una semana antes
 
 fs.mkdirSync(DATA, { recursive: true });
 
@@ -652,6 +657,30 @@ function requireActiveTargetUser(res, userId) {
 // y para el scheduler por igual.
 const billingSettingsNow = () => getBillingSettings(getDatabase());
 const billingToday = settings => gymToday(Date.now(), settings.gym_tz);
+
+// Estado de la licencia ahora: { status: 'ok' | 'due' | 'overdue' | 'suspended', reason?, month?,
+// dueDate?, suspendDate? }. reason: 'unpaid' (mensual) o 'expired' (corte fijo). Lo consulta cada
+// pedido, así que se recalcula como mucho una vez por minuto (la fecha es la del gym).
+let licenseCache = { at: 0, value: null };
+const LICENSE_SEVERITY = { ok: 0, due: 1, overdue: 2, suspended: 3 };
+function licenseNow() {
+  const now = Date.now();
+  if (licenseCache.value && now - licenseCache.at < 60000) return licenseCache.value;
+  let value = { status: 'ok' };
+  if (LICENSE_CONFIG) {
+    const monthly = licenseState(LICENSE_CONFIG, billingToday(billingSettingsNow()));
+    if (monthly.status !== 'ok') value = { ...monthly, reason: 'unpaid' };
+  }
+  if (LICENSE_EXPIRES_AT) {
+    const date = new Date(LICENSE_EXPIRES_AT).toISOString().slice(0, 10);
+    const fixed = now > LICENSE_EXPIRES_AT ? { status: 'suspended', reason: 'expired', suspendDate: date }
+      : LICENSE_EXPIRES_AT - now <= LICENSE_WARN_DAYS * 86400000 ? { status: 'due', reason: 'expired', dueDate: date, suspendDate: date }
+      : null;
+    if (fixed && LICENSE_SEVERITY[fixed.status] > LICENSE_SEVERITY[value.status]) value = fixed;
+  }
+  licenseCache = { at: now, value };
+  return value;
+}
 // Interruptor de cuotas (lo cambia el owner). Apagado no borra ni toca ningún dato de cuotas:
 // solo deja de bloquear, de avisar vencimientos y de aceptar cambios.
 const billingEnabledNow = () => isBillingEnabled(getDatabase());
@@ -2421,6 +2450,9 @@ const routes = {
       healthConsent: healthConsentOf(user),
       // Términos y aviso: sin la versión vigente aceptada, la app los pide una vez al entrar.
       legal: { version: LEGAL_VERSION, accepted: legalAcceptedOf(user) },
+      // Abono de lauyim por vencer o vencido: solo lo ve el staff (el atraso del gym no es asunto
+      // de los socios hasta que el servicio se suspende).
+      license: isRealStaff(user) ? licenseNow() : null,
       pending: isAccountPending(user),
       profilePrompt: needsProfilePrompt(user, { admin: isAdmin(user), approvalRequired: approvalNow().required, fields, profile: getMemberProfile(user.id) })
         ? { fields } : null
@@ -4355,11 +4387,12 @@ http.createServer(async (req, res) => {
   const rateLimitMax = RATE_LIMITS_BY_IP[routeKey];
   if (rateLimitMax && !rateLimit(res, ipRateKey(req, routeKey), rateLimitMax)) return;
 
-  // Verificar expiración de licencia por fecha (si está configurada y vencida)
-  // Excluimos /api/health para que monitores o chequeos básicos puedan seguir funcionando si es necesario, 
-  // pero endpoints protegidos / login / /api/me devuelven license_expired.
-  if (LICENSE_EXPIRES_AT && Date.now() > LICENSE_EXPIRES_AT && url.pathname.startsWith('/api/') && url.pathname !== '/api/health' && url.pathname !== '/api/support' && url.pathname !== '/api/privacy') {
-    return json(res, 403, { error: 'license_expired' });
+  // Licencia suspendida (abono impago o corte fijo vencido): todo responde license_expired, con el
+  // motivo para el texto de la app. Quedan: /api/health (monitores), /api/support (poder avisar) y
+  // /api/privacy (los textos legales son públicos).
+  if (url.pathname.startsWith('/api/') && url.pathname !== '/api/health' && url.pathname !== '/api/support' && url.pathname !== '/api/privacy') {
+    const license = licenseNow();
+    if (license.status === 'suspended') return json(res, 403, { error: 'license_expired', reason: license.reason });
   }
 
   // Cuenta pendiente de aprobación y bloqueo por cuota (Cuotas v1). Sin sesión sigue al
