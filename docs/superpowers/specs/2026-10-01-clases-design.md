@@ -137,19 +137,21 @@ entrada para reservas nuevas. Defecto `[60]`.
 
 ## Permisos
 
-Dos permisos nuevos en `api/permissions.js`, área "Clases":
+Cinco permisos en `api/permissions.js`, área "Clases" (revisado tras la prueba en dev):
 
-- `classes.manage` — "Clases y horarios": crear, editar y archivar clases, horario semanal,
-  cambios de una fecha y clases sueltas. Requiere `classes.attendance`.
-- `classes.attendance` — "Tomar lista": ver anotados y lista de espera, tomar lista y anotar a
-  mano.
+- `classes.view_all` — "Ver todas las clases": el calendario completo con los anotados, sin cambiar nada.
+- `classes.book_members` — "Anotar socios a mano" en cualquier clase (requiere ver socios y ver todas).
+- `classes.attendance` — "Tomar lista en sus clases": ver los anotados de las que da y anotar a mano en ellas.
+- `classes.own` — "Crear y editar sus clases": la profe es siempre esa persona; cambia horario, fechas y suspende las suyas; no elige ni cambia profes (requiere tomar lista).
+- `classes.manage` — "Todas las clases y horarios": cualquier clase, elige la profe (requiere los otros cuatro).
 
-Una profe con cuenta y solo `classes.attendance` ve y opera **solo sus clases** (las que tiene
-asignadas, o cambiadas a ella ese día). Con `classes.manage`, todas.
+Roles de fábrica: Administrador todos; Profesor/a `classes.own`; Recepción `classes.book_members`.
+Migraciones únicas en `admin_settings`: `classes_perms_seeded` y `classes_perms_v2` (Profesor/a con
+la primera versión, que tenía todas las clases, pasa a las suyas). Una ruta `/api/admin` puede
+pedir cualquiera de varios permisos (lista en `ROUTE_PERMISSIONS`).
 
-Migración única (marca `classes_perms_seeded` en `admin_settings`): suma los dos permisos al rol
-Administrador y al rol con id `coach` (Profesor/a) si todavía existe. Los roles de fábrica nuevos
-ya los traen.
+Una fecha suspendida se puede quitar de la vista (`class_sessions.hidden`): deja de aparecer para
+el staff y para los socios.
 
 Los ajustes de clases (`/api/owner/classes/settings`) son solo del owner.
 
