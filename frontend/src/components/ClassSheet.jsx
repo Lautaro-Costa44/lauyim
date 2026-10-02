@@ -111,7 +111,7 @@ function ClassDetail({ occ: initial, today, cancelHours, onChange, close }) {
       {mine
         ? <Button variant="tinted" disabled={busy} onClick={() => cancelBooking(occ, { cancelHours, onChange, close })}>{mine.status === 'waitlist' ? t('Salir de la lista de espera') : t('Cancelar mi lugar')}</Button>
         : <Button variant="primary" disabled={busy || state.disabled} onClick={primary}>{t(state.label)}</Button>}
-      {mine && <div className="muted small center">{mine.status === 'waitlist' ? t('Estás n.º {0} en la lista de espera.', mine.waitlistPos) : t('Tenés tu lugar.')}</div>}
+      {mine && <div className="muted small class-sheet-status">{mine.status === 'waitlist' ? t('Estás n.º {0} en la lista de espera.', mine.waitlistPos) : t('Tenés tu lugar.')}</div>}
     </div>
 
     {occ.slotId && <div className="branding-lock">

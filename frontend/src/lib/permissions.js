@@ -2,7 +2,8 @@
 // user.permissions llega en el login y en /api/me. Un cliente con la sesión guardada de antes de
 // los roles no la tiene: ahí manda `admin` (todo o nada) hasta el próximo /api/me.
 
-export const can = (user, code) => !!user && (!!user.owner || (Array.isArray(user.permissions) ? user.permissions.includes(code) : !!user.admin))
+// code: un permiso o una lista (alcanza con cualquiera).
+export const can = (user, code) => !!user && (!!user.owner || (Array.isArray(user.permissions) ? [].concat(code).some(c => user.permissions.includes(c)) : !!user.admin))
 
 // Del staff: entra al panel de admin.
 export const isStaffUser = user => !!user && (!!user.owner || (Array.isArray(user.permissions) ? user.permissions.length > 0 : !!user.admin))
@@ -15,7 +16,7 @@ export const ADMIN_SECTIONS = [
   { path: 'usuarios', label: 'Usuarios', perm: 'members.view' },
   { path: 'cuotas', label: 'Cuotas', perm: 'fees.view', flag: 'billingEnabled' },
   { path: 'rutinas', label: 'Rutinas', perm: 'training.manage' },
-  { path: 'clases', label: 'Clases', perm: 'classes.attendance', flag: 'classesEnabled', ownerAlways: true },
+  { path: 'clases', label: 'Clases', perm: ['classes.attendance', 'classes.view_all'], flag: 'classesEnabled', ownerAlways: true },
   { path: 'notificaciones', label: 'Notificaciones', perm: 'notifications.send' },
   { path: 'acceso', label: 'Acceso', perm: 'members.edit' },
   { path: 'roles', label: 'Roles', perm: 'roles.assign' },

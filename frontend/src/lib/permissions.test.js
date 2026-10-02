@@ -33,5 +33,8 @@ describe('permisos en el cliente', () => {
     expect(paths(profe, { classesEnabled: false })).toEqual(['usuarios'])
     expect(paths({ owner: true }, { classesEnabled: false })).toContain('clases')
     expect(paths({ permissions: ['members.view'] }, { classesEnabled: true })).not.toContain('clases')
+    // Recepción: ve todas las clases sin tomar lista.
+    expect(paths({ permissions: ['classes.view_all'] }, { classesEnabled: true })).toEqual(['clases'])
+    expect(can({ permissions: ['classes.view_all'] }, ['classes.attendance', 'classes.view_all'])).toBe(true)
   })
 })

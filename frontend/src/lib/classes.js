@@ -64,6 +64,7 @@ export const classesApi = {
   session: occ => api(`/api/admin/classes/session?${occQuery(occ)}`),
   addToSession: (occ, userId) => post('/api/admin/classes/sessions/add', { sessionId: occ.sessionId, slotId: occ.slotId, date: occ.date, userId }),
   changeSession: body => post('/api/admin/classes/sessions/change', body),
+  hideSession: sessionId => post('/api/admin/classes/sessions/hide', { sessionId }),
   // owner
   settings: () => api('/api/owner/classes/settings'),
   saveSettings: body => put('/api/owner/classes/settings', body),

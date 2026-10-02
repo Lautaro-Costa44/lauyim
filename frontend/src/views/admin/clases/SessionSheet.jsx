@@ -47,6 +47,15 @@ function SessionDetail({ occ: initial, canManage, users, teachers, onChange, clo
     onConfirm: () => change({ cancelled: true }, t('Clase suspendida'))
   }))
 
+  const hide = () => import('../../../sheets.jsx').then(({ confirmSheet }) => confirmSheet({
+    title: t('¿Quitar {0} de la vista?', occ.name),
+    message: t('La fecha suspendida deja de aparecer en el calendario y en la app de los socios.'),
+    confirmText: t('Quitar'), danger: true,
+    onConfirm: async () => {
+      try { await classesApi.hideSession(occ.sessionId); ui().toast(t('Fecha quitada')); onChange && onChange(); close() }
+      catch (e) { ui().toast(errorText(e, t('No se pudo quitar'))) }
+    }
+  }))
   const taken = new Set([...(detail?.booked || []), ...(detail?.waitlist || [])].map(p => p.userId))
   const matches = (users || []).filter(u => !u.disabled && !taken.has(u.id) && (!q.trim() || u.name.toLowerCase().includes(q.trim().toLowerCase()))).slice(0, 8)
 
@@ -73,18 +82,26 @@ function SessionDetail({ occ: initial, canManage, users, teachers, onChange, clo
       <div className="list">{detail.waitlist.map(p => <div key={p.bookingId} className="item"><span className="tag">{p.pos}</span><div className="grow"><div className="tt">{p.name}</div></div></div>)}</div>
     </>}
 
+    {occ.cancelled && occ.editable && occ.sessionId && <div className="class-session-actions">
+      <div className="small dim">{t('Esta fecha está suspendida: los anotados ya recibieron el aviso.')}</div>
+      <Button variant="danger" icon="trash" onClick={hide}>{t('Quitar de la vista')}</Button>
+    </div>}
     {!occ.cancelled && <div className="class-session-actions">
-      {mode === 'add'
+      {occ.canBook && (mode === 'add'
         ? <div className="member-form">
             <TextField name="class-add-search" value={q} onChange={e => setQ(e.target.value)} placeholder={t('Buscar socio')} />
             <div className="list">{matches.map(u => <button key={u.id} type="button" className="item" onClick={() => add(u.id)}><div className="grow"><div className="tt">{u.name}</div></div><Icon name="plus" className="chev" /></button>)}</div>
             <div className="small dim">{t('Se anota aunque la clase esté llena.')}</div>
+            <Button size="sm" variant="plain" onClick={() => setMode(null)}>{t('Cancel')}</Button>
           </div>
-        : <Button icon="personPlus" onClick={() => setMode('add')}>{t('Anotar a mano')}</Button>}
+        : !mode && <Button variant="tinted" icon="personPlus" onClick={() => setMode('add')}>{t('Anotar a mano')}</Button>)}
 
-      {canManage && mode === 'time' && <div className="class-inline">
+      {occ.editable && mode === 'time' && <div className="class-inline">
         <input className="input" type="time" value={time} onChange={e => setTime(e.target.value)} aria-label={t('Hora nueva')} />
-        <Button size="sm" variant="primary" onClick={() => change({ start: time }, t('Horario cambiado'))}>{t('Guardar')}</Button>
+        <div className="class-inline-buttons">
+          <Button size="sm" variant="plain" onClick={() => setMode(null)}>{t('Cancel')}</Button>
+          <Button size="sm" variant="primary" onClick={() => change({ start: time }, t('Horario cambiado'))}>{t('Guardar')}</Button>
+        </div>
       </div>}
       {canManage && mode === 'teacher' && <div className="class-inline">
         <select className="input" value={teacher} onChange={e => setTeacher(e.target.value)} aria-label={t('Profe de este día')}>
@@ -92,15 +109,17 @@ function SessionDetail({ occ: initial, canManage, users, teachers, onChange, clo
           <option value="">{t('Otra persona (sin cuenta)')}</option>
         </select>
         {!teacher && <TextField name="class-day-teacher" value={teacherName} onChange={e => setTeacherName(e.target.value)} placeholder={t('Nombre')} />}
-        <Button size="sm" variant="primary" disabled={!teacher && !teacherName.trim()} onClick={() => change({ teacherUserId: teacher || null, teacherName: teacher ? null : teacherName.trim() }, t('Profe cambiada'))}>{t('Guardar')}</Button>
+        <div className="class-inline-buttons">
+          <Button size="sm" variant="plain" onClick={() => setMode(null)}>{t('Cancel')}</Button>
+          <Button size="sm" variant="primary" disabled={!teacher && !teacherName.trim()} onClick={() => change({ teacherUserId: teacher || null, teacherName: teacher ? null : teacherName.trim() }, t('Profe cambiada'))}>{t('Guardar')}</Button>
+        </div>
       </div>}
-      {canManage && !mode && <div className="class-session-manage">
+      {occ.editable && !mode && <div className="class-session-manage">
         <Button size="sm" icon="clock" onClick={() => setMode('time')}>{t('Cambiar horario este día')}</Button>
-        <Button size="sm" icon="personCircle" onClick={() => setMode('teacher')}>{t('Cambiar profe este día')}</Button>
+        {canManage && <Button size="sm" icon="personCircle" onClick={() => setMode('teacher')}>{t('Cambiar profe este día')}</Button>}
         <Button size="sm" variant="danger" icon="xmark" onClick={suspend}>{t('Suspender este día')}</Button>
       </div>}
     </div>}
-    <div style={{ height: 8 }} />
     <Button variant="ghost" className="dim" onClick={close}>{t('Cerrar')}</Button>
   </div>
 }

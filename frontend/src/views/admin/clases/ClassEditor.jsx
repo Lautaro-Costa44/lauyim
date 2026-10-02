@@ -20,9 +20,9 @@ const OTHER = '__otra__'
 
 const blank = () => ({ name: '', color: ACCENTS.orange, icon: 'dumbbell', description: '', durationMin: 60, capacity: 15, teacherUserId: null, teacherName: '', room: '', logMode: 'muscles', log: { muscles: [], intensity: 'medium' } })
 
-function Editor({ type, slots: initialSlots, teachers, allowOverlap, onSaved, close }) {
+function Editor({ type, slots: initialSlots, teachers, canManage = true, me, allowOverlap, onSaved, close }) {
   const body = useStore(s => s.S?.body) || 'male'
-  const [draft, setDraft] = useState(() => type ? { ...type } : blank())
+  const [draft, setDraft] = useState(() => type ? { ...type } : { ...blank(), ...(!canManage && me ? { teacherUserId: me.id } : {}) })
   const [teacherChoice, setTeacherChoice] = useState(() => type?.teacherUserId || (type?.teacherName ? OTHER : ''))
   const [slots, setSlots] = useState(() => (initialSlots || []).map(s => ({ ...s, key: s.id })))
   const [removed, setRemoved] = useState([])
@@ -127,12 +127,12 @@ function Editor({ type, slots: initialSlots, teachers, allowOverlap, onSaved, cl
         {field('capacity', t('Cupo'), <TextField name="class-capacity" type="number" inputMode="numeric" min={1} max={200} value={draft.capacity} onChange={e => set({ capacity: e.target.value })} />)}
       </div>
       {field('room', t('Sala (opcional)'), <TextField name="class-room" maxLength={30} value={draft.room} onChange={e => set({ room: e.target.value })} placeholder={t('Sala 1')} />)}
-      {field('teacherUserId', t('Profe'), <select className="input" value={teacherChoice} onChange={e => chooseTeacher(e.target.value)} aria-label={t('Profe')}>
+      {canManage ? field('teacherUserId', t('Profe'), <select className="input" value={teacherChoice} onChange={e => chooseTeacher(e.target.value)} aria-label={t('Profe')}>
         <option value="">{t('Sin profe')}</option>
         {teachers.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
         <option value={OTHER}>{t('Otra persona (sin cuenta)')}</option>
-      </select>)}
-      {teacherChoice === OTHER && field('teacherName', t('Nombre de la profe'), <TextField name="class-teacher" maxLength={40} value={draft.teacherName} onChange={e => set({ teacherName: e.target.value })} />)}
+      </select>) : <div className="member-field"><span className="member-field-l">{t('Profe')}</span><div className="small">{me?.name || t('Vos')} <span className="dim">· {t('las clases que creás las das vos')}</span></div></div>}
+      {canManage && teacherChoice === OTHER && field('teacherName', t('Nombre de la profe'), <TextField name="class-teacher" maxLength={40} value={draft.teacherName} onChange={e => set({ teacherName: e.target.value })} />)}
     </div>
 
     <h4 className="sec">{t('¿Cómo se registra la clase?')}</h4>
@@ -146,12 +146,14 @@ function Editor({ type, slots: initialSlots, teachers, allowOverlap, onSaved, cl
           <Segmented options={Object.entries(INTENSITY_LABELS).map(([value, label]) => ({ value, label: t(label) }))} value={log.intensity || 'medium'} onChange={v => set({ log: { ...log, intensity: v } })} />
         </div>
       : <div className="list">
-          {exercises.map((e, i) => <div key={e.id} className="item">
+          {exercises.map((e, i) => <div key={e.id} className="item class-ex-row">
             <div className="grow"><div className="tt capitalize">{EXIDX[e.id] ? exerciseNameFor(EXIDX[e.id]) : e.id}</div></div>
+            <div className="class-ex-controls">
             <input className="input class-num" type="number" min={1} max={10} value={e.sets} aria-label={t('Series')} onChange={ev => setExercise(i, { sets: Number(ev.target.value) })} />
             <span className="dim">×</span>
             <input className="input class-num" type="number" min={1} max={100} value={e.reps} aria-label={t('Repeticiones')} onChange={ev => setExercise(i, { reps: Number(ev.target.value) })} />
             <button type="button" className="iconbtn" aria-label={t('Quitar')} onClick={() => set({ log: { exercises: exercises.filter((_, j) => j !== i) } })}><Icon name="trash" /></button>
+            </div>
           </div>)}
           <Button size="sm" icon="plus" onClick={addExercise}>{t('Agregar ejercicio')}</Button>
         </div>}
@@ -182,6 +184,6 @@ function Editor({ type, slots: initialSlots, teachers, allowOverlap, onSaved, cl
   </div>
 }
 
-export function classEditorSheet({ type, slots, teachers, allowOverlap, onSaved }) {
-  ui().openSheet(close => <Editor type={type} slots={slots} teachers={teachers} allowOverlap={allowOverlap} onSaved={onSaved} close={close} />, { kind: 'panel' })
+export function classEditorSheet({ type, slots, teachers, canManage, me, allowOverlap, onSaved }) {
+  ui().openSheet(close => <Editor type={type} slots={slots} teachers={teachers} canManage={canManage} me={me} allowOverlap={allowOverlap} onSaved={onSaved} close={close} />, { kind: 'panel' })
 }

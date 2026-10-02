@@ -45,6 +45,7 @@ export default function AdminClases() {
 
   if (!data || !week) return <div className="page-loading" aria-busy="true" />
   const canManage = data.canManage
+  const canCreate = canManage || data.canOwn
   const reload = () => { load(week); loadTypes() }
   const goWeek = n => { const w = addDays(week, 7 * n); setWeek(w); setDay(addDays(day, 7 * n)); load(w) }
   const goToday = () => { const w = mondayOf(data.today); setWeek(w); setDay(data.today); load(w) }
@@ -55,19 +56,20 @@ export default function AdminClases() {
   }
   const teachers = types?.teachers || []
   const openOcc = occ => sessionSheet(occ, { canManage, users, teachers, onChange: reload })
-  const editType = type => classEditorSheet({ type, slots: (types?.slots || []).filter(s => s.classId === type?.id), teachers, allowOverlap: types?.settings?.allowOverlap, onSaved: reload })
+  const editType = type => classEditorSheet({ type, slots: (types?.slots || []).filter(s => s.classId === type?.id), teachers, canManage, me: types?.me, allowOverlap: types?.settings?.allowOverlap, onSaved: reload })
+  const editable = (types?.types || []).filter(tp => tp.editable)
   const listTypes = () => ui().openSheet(close => <TypeList types={types?.types || []} onEdit={tp => { close(); editType(tp) }} onArchived={() => { close(); reload() }} close={close} />, { kind: 'panel' })
 
   const days = Array.from({ length: 7 }, (_, i) => addDays(week, i))
   const s = data.summary
   return <div className="admin-classes">
     <div className="card">
-      <div className="row between wrap" style={{ gap: 8 }}>
-        <h2 style={{ margin: 0 }}>{t('Clases')}</h2>
-        <div className="row wrap" style={{ gap: 6 }}>
-          {canManage && <Button size="sm" variant="primary" icon="plus" onClick={() => editType(null)}>{t('Nueva clase')}</Button>}
-          {canManage && <Button size="sm" icon="calendar" disabled={!types?.types?.length} onClick={() => looseClassSheet({ types: types.types, today: data.today, onChange: reload })}>{t('Clase suelta')}</Button>}
-          {canManage && <Button size="sm" icon="list" onClick={listTypes}>{t('Clases')}</Button>}
+      <div className="class-admin-head">
+        <h2>{t('Clases')}</h2>
+        <div className="class-admin-actions">
+          {canCreate && <Button size="sm" variant="primary" icon="plus" onClick={() => editType(null)}>{t('Nueva clase')}</Button>}
+          {canCreate && editable.length > 0 && <Button size="sm" icon="calendar" onClick={() => looseClassSheet({ types: editable, today: data.today, onChange: reload })}>{t('Clase suelta')}</Button>}
+          {editable.length > 0 && <Button size="sm" icon="list" onClick={listTypes}>{canManage ? t('Clases') : t('Mis clases')}</Button>}
           {user?.owner && <Button size="sm" icon="gear" onClick={() => classSettingsSheet({ onChange: reload })}>{t('Ajustes')}</Button>}
         </div>
       </div>
@@ -90,7 +92,7 @@ export default function AdminClases() {
     </div>
 
     {data.occurrences.length === 0 && !types?.types?.length
-      ? <div className="empty">{canManage ? t('Todavía no hay clases. Creá la primera con "Nueva clase".') : t('No tenés clases asignadas.')}</div>
+      ? <div className="empty">{canCreate ? t('Todavía no hay clases. Creá la primera con "Nueva clase".') : t('No tenés clases asignadas.')}</div>
       : desktop ? <WeekGrid days={days} today={data.today} occurrences={data.occurrences} onOpen={openOcc} />
       : <DayList occurrences={data.occurrences.filter(o => o.date === day)} onOpen={openOcc} />}
   </div>
@@ -154,8 +156,8 @@ function TypeList({ types, onEdit, onArchived, close }) {
       : <div className="list">{types.map(tp => <div key={tp.id} className="item">
           <span className="class-dot" style={{ background: tp.color }} aria-hidden="true" />
           <div className="grow"><div className="tt">{tp.name}</div><div className="ss">{[tp.teacherName, tp.room, `${tp.durationMin} min`, t('cupo {0}', tp.capacity)].filter(Boolean).join(' · ')}</div></div>
-          <button type="button" className="iconbtn" aria-label={t('Editar {0}', tp.name)} onClick={() => onEdit(tp)}><Icon name="pencil" /></button>
-          <button type="button" className="iconbtn" aria-label={t('Archivar {0}', tp.name)} onClick={() => archive(tp)}><Icon name="trash" /></button>
+          {tp.editable && <button type="button" className="iconbtn" aria-label={t('Editar {0}', tp.name)} onClick={() => onEdit(tp)}><Icon name="pencil" /></button>}
+          {tp.editable && <button type="button" className="iconbtn" aria-label={t('Archivar {0}', tp.name)} onClick={() => archive(tp)}><Icon name="trash" /></button>}
         </div>)}</div>}
     <div style={{ height: 10 }} />
     <Button variant="ghost" className="dim" onClick={close}>{t('Cerrar')}</Button>

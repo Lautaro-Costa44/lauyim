@@ -20,9 +20,9 @@ const { sessionSheet } = await import('./clases/SessionSheet.jsx')
 const { classEditorSheet } = await import('./clases/ClassEditor.jsx')
 
 const TODAY = '2026-10-07'   // miércoles
-const occ = (extra = {}) => ({ key: 's1:' + TODAY, classId: 'c1', slotId: 's1', sessionId: 'x1', date: TODAY, start: '19:00', end: '20:00', movedFrom: null, teacherUserId: 'profe', teacherName: 'Caro', room: 'Sala 1', cancelled: false, name: 'Spinning', color: '#ff9f0a', icon: 'bike', capacity: 12, booked: 3, waitlist: 1, ...extra })
-let canManage, overlap
-const calendar = () => ({ today: TODAY, from: '2026-10-05', days: 7, canManage, settings: { enabled: true, allowOverlap: false }, occurrences: [occ(), occ({ key: 's2:2026-10-05', slotId: 's2', date: '2026-10-05', name: 'Pilates', start: '08:00', end: '09:00' })], summary: { classes: 2, occupancy: 25, lateCancels: 1, waitlist: 1 } })
+const occ = (extra = {}) => ({ key: 's1:' + TODAY, classId: 'c1', slotId: 's1', sessionId: 'x1', date: TODAY, start: '19:00', end: '20:00', movedFrom: null, teacherUserId: 'profe', teacherName: 'Caro', room: 'Sala 1', cancelled: false, name: 'Spinning', color: '#ff9f0a', icon: 'bike', capacity: 12, booked: 3, waitlist: 1, editable: true, canBook: true, ...extra })
+let canManage, overlap, sessionOcc
+const calendar = () => ({ today: TODAY, from: '2026-10-05', days: 7, canManage, canOwn: canManage, settings: { enabled: true, allowOverlap: false }, occurrences: [occ(), occ({ key: 's2:2026-10-05', slotId: 's2', date: '2026-10-05', name: 'Pilates', start: '08:00', end: '09:00' })], summary: { classes: 2, occupancy: 25, lateCancels: 1, waitlist: 1 } })
 
 let container, root
 const tick = () => act(async () => { await new Promise(r => setTimeout(r, 10)) })
@@ -45,12 +45,12 @@ async function openLastSheet() {
 beforeEach(async () => {
   await setLang('es')
   globalThis.IS_REACT_ACT_ENVIRONMENT = true
-  canManage = true; overlap = { blocking: [], warnings: [] }; desktop.on = true
+  canManage = true; overlap = { blocking: [], warnings: [] }; desktop.on = true; sessionOcc = null
   apiMock.mockReset()
   apiMock.mockImplementation((url, opts) => {
     if (url.startsWith('/api/admin/classes/calendar')) return Promise.resolve(calendar())
-    if (url === '/api/admin/classes/types') return Promise.resolve({ types: [{ id: 'c1', name: 'Spinning', color: '#ff9f0a', durationMin: 60, capacity: 12, teacherName: '', room: 'Sala 1' }], slots: [], teachers: [{ id: 'profe', name: 'Caro' }], settings: { allowOverlap: false } })
-    if (url.startsWith('/api/admin/classes/session?')) return Promise.resolve({ occurrence: occ(), booked: [{ bookingId: 'b1', userId: 'ana', name: 'Ana', addedBy: null }], waitlist: [{ bookingId: 'b2', userId: 'cami', name: 'Cami', pos: 1 }] })
+    if (url === '/api/admin/classes/types') return Promise.resolve({ types: [{ id: 'c1', name: 'Spinning', color: '#ff9f0a', durationMin: 60, capacity: 12, teacherName: '', room: 'Sala 1', editable: canManage }], slots: [], teachers: canManage ? [{ id: 'profe', name: 'Caro' }] : [], canManage, canOwn: canManage, settings: { allowOverlap: false } })
+    if (url.startsWith('/api/admin/classes/session?')) return Promise.resolve({ occurrence: sessionOcc || occ(), booked: [{ bookingId: 'b1', userId: 'ana', name: 'Ana', addedBy: null }], waitlist: [{ bookingId: 'b2', userId: 'cami', name: 'Cami', pos: 1 }] })
     if (url === '/api/admin/classes/overlap-check') return Promise.resolve(overlap)
     return Promise.resolve({ occurrence: occ(), booking: { id: 'b9' } })
   })
@@ -114,7 +114,52 @@ describe('hoja de la fecha', () => {
   })
 })
 
+describe('fecha suspendida', () => {
+  it('quien la puede editar la quita de la vista; sin permiso, no hay botón', async () => {
+    sessionOcc = occ({ cancelled: true })
+    sessionSheet(sessionOcc, { canManage: true, users: [], teachers: [], onChange: vi.fn() })
+    let sheet = await openLastSheet()
+    expect(button(sheet.host, 'Quitar de la vista')).toBeTruthy()
+    expect(button(sheet.host, 'Anotar a mano')).toBeFalsy()
+    const before = useUI.getState().sheets.length
+    await act(async () => { button(sheet.host, 'Quitar de la vista').click() })
+    for (let i = 0; i < 200 && useUI.getState().sheets.length === before; i++) await tick()
+    const confirm = useUI.getState().sheets.at(-1)
+    const host = document.createElement('div'); document.body.appendChild(host)
+    const r = createRoot(host)
+    await act(async () => { r.render(confirm.render(() => useUI.getState().closeSheet(confirm.id))) })
+    await act(async () => { button(host, 'Quitar').click() })
+    await tick()
+    expect(apiMock).toHaveBeenCalledWith('/api/admin/classes/sessions/hide', { method: 'POST', body: JSON.stringify({ sessionId: 'x1' }) })
+    await act(async () => r.unmount()); host.remove()
+    await sheet.unmount()
+    sessionOcc = occ({ cancelled: true, editable: false })
+    sessionSheet(sessionOcc, { canManage: false, users: [], teachers: [] })
+    sheet = await openLastSheet()
+    expect(button(sheet.host, 'Quitar de la vista')).toBeFalsy()
+    await sheet.unmount()
+  })
+
+  it('profe de sus clases: puede cambiar la hora y suspender, no la profe', async () => {
+    sessionOcc = occ({ canBook: false })
+    sessionSheet(sessionOcc, { canManage: false, users: [], teachers: [] })
+    const { host, unmount } = await openLastSheet()
+    expect(button(host, 'Cambiar horario este día')).toBeTruthy()
+    expect(button(host, 'Suspender este día')).toBeTruthy()
+    expect(button(host, 'Cambiar profe este día')).toBeFalsy()
+    await unmount()
+  })
+})
+
 describe('editor', () => {
+  it('sin "todas las clases" no se elige profe: la da quien la crea', async () => {
+    classEditorSheet({ type: null, slots: [], teachers: [], canManage: false, me: { id: 'profe', name: 'Caro' }, allowOverlap: false })
+    const { host, unmount } = await openLastSheet()
+    expect(host.querySelector('select[aria-label="Profe"]')).toBeNull()
+    expect(host.textContent).toContain('Caro · las clases que creás las das vos')
+    await unmount()
+  })
+
   it('músculos por defecto; un horario que choca muestra el aviso y deshabilita Guardar', async () => {
     overlap = { blocking: [{ text: 'Ya hay Pilates el lunes de 18:30 a 19:30 en Sala 1, con Ana.' }], warnings: [] }
     classEditorSheet({ type: null, slots: [], teachers: [{ id: 'profe', name: 'Caro' }], allowOverlap: false })
