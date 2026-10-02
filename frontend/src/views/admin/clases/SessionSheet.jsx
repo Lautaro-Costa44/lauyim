@@ -5,7 +5,7 @@ import { useUI } from '../../../store/useUI.js'
 import { t } from '../../../lib/i18n.js'
 import { errorText } from '../../../lib/errors.js'
 import { capacityText, timeRange, shortDay, classesApi } from '../../../lib/classes.js'
-import { Button, Switch, TextField } from '../../../components/ui.jsx'
+import { Button, Segmented, Switch, TextField } from '../../../components/ui.jsx'
 import Icon from '../../../components/Icon.jsx'
 
 const ui = () => useUI.getState()
@@ -82,6 +82,9 @@ function SessionDetail({ occ: initial, canManage, users, teachers, onChange, clo
       <div className="list">{detail.waitlist.map(p => <div key={p.bookingId} className="item"><span className="tag">{p.pos}</span><div className="grow"><div className="tt">{p.name}</div></div></div>)}</div>
     </>}
 
+    {detail?.canTakeAttendance && detail.booked.length > 0 && (mode === 'roll'
+      ? <RollCall detail={detail} sessionId={occ.sessionId} onDone={async () => { setMode(null); await done() }} onCancel={() => setMode(null)} />
+      : !mode && <div className="class-session-actions"><Button variant="primary" icon="checkCircle" onClick={() => setMode('roll')}>{detail.attendanceTaken ? t('Corregir lista') : t('Tomar lista')}</Button></div>)}
     {occ.cancelled && occ.editable && occ.sessionId && <div className="class-session-actions">
       <div className="small dim">{t('Esta fecha está suspendida: los anotados ya recibieron el aviso.')}</div>
       <Button variant="danger" icon="trash" onClick={hide}>{t('Quitar de la vista')}</Button>
@@ -213,4 +216,28 @@ function Settings({ onChange, close }) {
 
 export function classSettingsSheet(opts) {
   ui().openSheet(close => <Settings {...opts} close={close} />, { kind: 'panel' })
+}
+
+// Tomar lista: Presente / Ausente por anotado (de entrada, lo que ya se sabe; si no, presente).
+function RollCall({ detail, sessionId, onDone, onCancel }) {
+  const [roll, setRoll] = useState(() => Object.fromEntries(detail.booked.map(p => [p.userId, p.status !== 'absent'])))
+  const [busy, setBusy] = useState(false)
+  const save = async () => {
+    setBusy(true)
+    const present = Object.keys(roll).filter(u => roll[u]), absent = Object.keys(roll).filter(u => !roll[u])
+    try { await classesApi.takeAttendance(sessionId, present, absent); ui().toast(t('Lista guardada')); await onDone() }
+    catch (e) { ui().toast(errorText(e, t('No se pudo guardar'))) }
+    setBusy(false)
+  }
+  return <div className="class-session-actions">
+    <div className="list">{detail.booked.map(p => <div key={p.userId} className="item">
+      <div className="grow"><div className="tt">{p.name}</div>{p.answered && <div className="ss">{p.status === 'attended' ? t('Dijo que fue') : t('Dijo que no fue')}</div>}</div>
+      <Segmented className="seg-inline" options={[{ value: 'p', label: t('Presente') }, { value: 'a', label: t('Ausente') }]} value={roll[p.userId] ? 'p' : 'a'} onChange={v => setRoll(r => ({ ...r, [p.userId]: v === 'p' }))} />
+    </div>)}</div>
+    <Button size="sm" variant="plain" onClick={() => setRoll(r => Object.fromEntries(Object.keys(r).map(u => [u, true])))}>{t('Todos presentes')}</Button>
+    <div className="class-inline-buttons">
+      <Button size="sm" variant="plain" onClick={onCancel}>{t('Cancel')}</Button>
+      <Button size="sm" variant="primary" disabled={busy} onClick={save}>{t('Guardar lista')}</Button>
+    </div>
+  </div>
 }
