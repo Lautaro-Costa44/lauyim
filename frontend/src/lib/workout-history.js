@@ -20,9 +20,12 @@ export const workoutDuration = w => Math.max(0, (w.end || w.start || 0) - (w.sta
  * Entrenos filtrados por rutina y por nombre de ejercicio (sin mayúsculas ni tildes).
  * @param {(entry) => string} nameOf  nombre visible de un ejercicio de un entreno
  */
-export function filterWorkouts(workouts, { routineId = null, query = '', nameOf = e => e.n || e.id } = {}) {
+// kind: 'all' | 'workouts' | 'classes' (clases: kind === 'class').
+export const isClassWorkout = w => w?.kind === 'class'
+export function filterWorkouts(workouts, { routineId = null, query = '', nameOf = e => e.n || e.id, kind = 'all' } = {}) {
   const q = foldText(query)
-  return (workouts || []).filter(w => (!routineId || w.routineId === routineId)
+  return (workouts || []).filter(w => (kind === 'all' || (kind === 'classes') === isClassWorkout(w))
+    && (!routineId || w.routineId === routineId)
     && (!q || (w.entries || []).some(e => foldText(nameOf(e)).includes(q))))
 }
 

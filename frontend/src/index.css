@@ -2199,3 +2199,9 @@ button.wh-row{font:inherit;color:inherit;border:0;cursor:pointer}
 .class-sheet-status{text-align:center}
 .class-calendar-choice{display:flex;flex-direction:column;gap:8px}
 .class-calendar-choice .btn{width:100%;justify-content:center}
+.class-after{display:flex;flex-direction:column;align-items:center;text-align:center;gap:8px}
+.class-after h3{margin:4px 0 0}
+.class-after-buttons{display:grid;grid-template-columns:1fr 1fr;gap:8px;width:100%;margin-top:8px}
+.class-stars{display:flex;gap:6px;justify-content:center}
+.class-star{font-size:30px;color:var(--label-3);padding:4px}
+.class-star.on{color:var(--orange)}

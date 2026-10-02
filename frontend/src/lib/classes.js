@@ -64,6 +64,12 @@ export const classesApi = {
   setReminderDefaults: reminders => put('/api/classes/reminder-defaults', { reminders }),
   recurring: (slotId, on) => post(on ? '/api/classes/recurring' : '/api/classes/recurring/delete', { slotId }),
   icsUrl: bookingId => `/api/classes/ics?booking=${encodeURIComponent(bookingId)}`,
+  pending: () => api('/api/classes/pending'),
+  answer: (bookingId, attended, rating) => post('/api/classes/attendance', { bookingId, attended, rating }),
+  logged: bookingId => post('/api/classes/logged', { bookingId }),
+  rate: (bookingId, rating) => post('/api/classes/rating', { bookingId, rating }),
+  takeAttendance: (sessionId, present, absent) => post('/api/admin/classes/sessions/attendance', { sessionId, present, absent }),
+  stats: weeks => api(`/api/admin/classes/stats?weeks=${weeks}`),
   // staff
   types: () => api('/api/admin/classes/types'),
   saveType: body => post('/api/admin/classes/types/save', body),

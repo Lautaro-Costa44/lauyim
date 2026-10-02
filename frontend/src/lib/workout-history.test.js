@@ -84,3 +84,12 @@ describe('cumplimiento semanal (lunes a domingo, en el calendario del gym)', () 
     expect(weekAdherence({ workouts: [], week: {}, dayPlan: {} }, '2026-09-24').hasPlan).toBe(false)
   })
 })
+
+describe('filtro de clases', () => {
+  it('todo, solo entrenamientos o solo clases', () => {
+    const ws = [{ id: 'a', entries: [] }, { id: 'b', kind: 'class', entries: [] }]
+    expect(filterWorkouts(ws).map(w => w.id)).toEqual(['a', 'b'])
+    expect(filterWorkouts(ws, { kind: 'workouts' }).map(w => w.id)).toEqual(['a'])
+    expect(filterWorkouts(ws, { kind: 'classes' }).map(w => w.id)).toEqual(['b'])
+  })
+})

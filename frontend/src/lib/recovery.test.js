@@ -687,3 +687,16 @@ describe('workout time for date and fatigue questions', () => {
     expect(strengthOf([future], NOW)[SINGLE_SLUG]).toBe(1)
   })
 })
+
+describe('clases con músculos e intensidad', () => {
+  it('una clase alta de cuádriceps fatiga como 6 series a RIR 2; sin ejercicios no rompe', async () => {
+    const { fatigueOf } = await import('./recovery.js')
+    const now = Date.parse('2026-10-05T20:00:00Z')
+    const cls = { id: 'c', d: '2026-10-05', start: now - 3600000, entries: [], kind: 'class', muscleLoad: { muscles: ['quadriceps'], intensity: 'high' } }
+    const low = { ...cls, muscleLoad: { muscles: ['quadriceps'], intensity: 'low' } }
+    const high = fatigueOf([cls], now).quadriceps
+    expect(high).toBeGreaterThan(0)
+    expect(fatigueOf([low], now).quadriceps).toBeLessThan(high)
+    expect(fatigueOf([cls], now).chest).toBe(0)
+  })
+})

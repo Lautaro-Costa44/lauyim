@@ -270,6 +270,9 @@ function e1rmWindow() {
 // One session's effective sets per muscle, and how many of them were at RIR 0. Warm-ups and
 // incomplete sets are skipped. Cardio is pooled across the session, capped, and then split in
 // proportion to each cardio exercise's minutes.
+// Clases (kind: 'class') sin ejercicios: series de esfuerzo medio según la intensidad.
+export const CLASS_LOAD_SETS = { low: 2, medium: 4, high: 6 }
+
 function sessionStimulus(workout, prevE1rmOf, opts = {}) {
   const effective = emptyMuscleMap(0)
   const failure = emptyMuscleMap(0)
@@ -299,6 +302,11 @@ function sessionStimulus(workout, prevE1rmOf, opts = {}) {
       // when the row itself was at RIR 0.
       add(weights, amount, rir <= 0)
     }
+  }
+  // Clase de "músculos e intensidad" (sin ejercicios): series equivalentes a RIR 2 por músculo.
+  if (workout?.muscleLoad) {
+    const sets = CLASS_LOAD_SETS[workout.muscleLoad.intensity] || CLASS_LOAD_SETS.medium
+    for (const slug of workout.muscleLoad.muscles || []) add({ [slug]: 1 }, sets * stimulusOfRir(2), false)
   }
   const cardioMinutes = cardio.reduce((sum, item) => sum + item.minutes, 0)
   if (cardioMinutes > 0) {

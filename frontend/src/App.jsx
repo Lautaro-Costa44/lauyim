@@ -1,3 +1,4 @@
+import ClassAfterPrompt from './components/ClassAfterPrompt.jsx'
 import { HashRouter, Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom'
 import { lazy, Suspense, useEffect, useLayoutEffect, useState } from 'react'
 import { useStore, billingExempt, healthOff } from './store/useStore.js'
@@ -242,6 +243,7 @@ function Shell() {
           por cada sheet abierto). El fallback deja el botón de recarga. */}
       <ErrorBoundary><Modals /></ErrorBoundary>
       <Toast />
+      {!isCheckin && !accountEnded && !licenseExpired && !blocked && <ClassAfterPrompt />}
       <UpdateGate />
     </>
   )
