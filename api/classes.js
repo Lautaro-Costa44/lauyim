@@ -123,7 +123,8 @@ export function validateClassType(body, { activeNames = [] } = {}) {
   const description = typeof body.description === 'string' ? body.description.trim() : '';
   if (description.length > MAX_DESCRIPTION) return { error: `La descripción admite hasta ${MAX_DESCRIPTION} caracteres`, field: 'description' };
   if (!intIn(body.durationMin, [15, 240])) return { error: 'La duración va de 15 a 240 minutos', field: 'durationMin' };
-  if (!intIn(body.capacity, [1, 200])) return { error: 'El cupo va de 1 a 200', field: 'capacity' };
+  // null: sin cupo (gimnasios chicos o clases tranquilas): se anota quien quiera, sin lista de espera.
+  if (body.capacity !== null && !intIn(body.capacity, [1, 200])) return { error: 'El cupo va de 1 a 200', field: 'capacity' };
   const teacherUserId = typeof body.teacherUserId === 'string' && body.teacherUserId ? body.teacherUserId : null;
   const teacherName = teacherUserId ? '' : clean(body.teacherName);
   if (teacherName.length > MAX_TEACHER) return { error: `El nombre de la profe admite hasta ${MAX_TEACHER} caracteres`, field: 'teacherName' };
@@ -340,6 +341,13 @@ export function classWorkout({ occ, bookingId, tz }) {
 // ---- números (entrega 3) ----
 
 const avg = list => list.length ? list.reduce((a, b) => a + b, 0) / list.length : null;
+// Ocupación promedio en %, sin las clases sin cupo; null si todas son sin cupo (0 si no hubo fechas).
+const occupancyPct = list => {
+  const limited = list.filter(o => o != null);
+  return list.length && !limited.length ? null : Math.round(100 * (avg(limited) || 0));
+};
+// Cupo para reservar: sin cupo, nunca se llena.
+export const capOf = type => type?.capacity ?? Infinity;
 const round1 = v => v == null ? null : Math.round(v * 10) / 10;
 
 // rows: [{ occ, bookings }] de fechas pasadas no suspendidas. → por clase, por profe y por bloque
@@ -349,7 +357,7 @@ export function classStats(rows) {
   const bucket = (map, key, init) => { if (!map.has(key)) map.set(key, { ...init, occ: [], ratings: [] }); return map.get(key); };
   for (const { occ, bookings } of rows) {
     const booked = bookings.filter(b => ['booked', 'attended', 'absent'].includes(b.status)).length;
-    const occupancy = Math.min(1, booked / occ.type.capacity);
+    const occupancy = occ.type.capacity == null ? null : Math.min(1, booked / occ.type.capacity);
     const ratings = bookings.filter(b => Number.isInteger(b.rating)).map(b => b.rating);
     const counts = {
       present: bookings.filter(b => b.status === 'attended').length,
@@ -364,7 +372,7 @@ export function classStats(rows) {
   }
   const close = ({ occ, ratings, ...rest }) => ({
     ...rest, sessions: occ.length,
-    occupancy: Math.round(100 * avg(occ.map(o => o.occupancy))),
+    occupancy: occupancyPct(occ.map(o => o.occupancy)),
     present: occ.reduce((n, o) => n + o.present, 0), absent: occ.reduce((n, o) => n + o.absent, 0),
     lateCancels: occ.reduce((n, o) => n + o.lateCancels, 0), withWaitlist: occ.filter(o => o.waitlisted).length,
     rating: round1(avg(ratings)), ratings: ratings.length

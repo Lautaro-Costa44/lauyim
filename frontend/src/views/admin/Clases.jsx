@@ -156,7 +156,7 @@ function TypeList({ types, onEdit, onArchived, close }) {
     {types.length === 0 ? <div className="dim small">{t('Todavía no hay clases.')}</div>
       : <div className="list">{types.map(tp => <div key={tp.id} className="item">
           <span className="class-dot" style={{ background: tp.color }} aria-hidden="true" />
-          <div className="grow"><div className="tt">{tp.name}</div><div className="ss">{[tp.teacherName, tp.room, `${tp.durationMin} min`, t('cupo {0}', tp.capacity)].filter(Boolean).join(' · ')}</div></div>
+          <div className="grow"><div className="tt">{tp.name}</div><div className="ss">{[tp.teacherName, tp.room, `${tp.durationMin} min`, tp.capacity == null ? t('sin cupo') : t('cupo {0}', tp.capacity)].filter(Boolean).join(' · ')}</div></div>
           {tp.editable && <button type="button" className="iconbtn" aria-label={t('Editar {0}', tp.name)} onClick={() => onEdit(tp)}><Icon name="pencil" /></button>}
           {tp.editable && <button type="button" className="iconbtn" aria-label={t('Archivar {0}', tp.name)} onClick={() => archive(tp)}><Icon name="trash" /></button>}
         </div>)}</div>}

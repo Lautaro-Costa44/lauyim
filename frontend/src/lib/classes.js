@@ -5,7 +5,8 @@ import { api } from './api.js'
 
 export const REMINDER_OPTIONS = [300, 120, 60, 30, 15]
 export const reminderLabel = m => m >= 60 ? `${m / 60} h` : `${m} min`
-export const capacityText = (booked, capacity) => `${booked}/${capacity}`
+// Sin cupo (capacity null): solo cuántos hay.
+export const capacityText = (booked, capacity) => capacity == null ? `${booked}` : `${booked}/${capacity}`
 export const timeRange = occ => `${occ.start}–${occ.end}`
 export const INTENSITY_LABELS = { low: 'Baja', medium: 'Media', high: 'Alta' }
 export const intensityLabel = key => INTENSITY_LABELS[key] || ''
@@ -46,7 +47,7 @@ export function buttonState({ state, booked, capacity, myBooking, teaching }) {
   if (state === 'cancelled') return { key: 'cancelled', label: 'Suspendida', disabled: true }
   if (state === 'started') return { key: 'started', label: 'Empezó', disabled: true }
   if (state === 'not_yet') return { key: 'not_yet', label: 'Todavía no abre', disabled: true }
-  if (booked >= capacity) return { key: 'waitlist', label: 'Lista de espera', disabled: false }
+  if (capacity != null && booked >= capacity) return { key: 'waitlist', label: 'Lista de espera', disabled: false }
   return { key: 'book', label: 'Anotarme', disabled: false }
 }
 
@@ -166,4 +167,21 @@ export function teacherHome(occurrences, nowMs, tz) {
   const next = mine.find(o => occTimes(o, tz).end > nowMs) || null
   const sameDay = next ? mine.filter(o => o.date === next.date && o.key !== next.key) : []
   return { next, sameDay, over: o => occTimes(o, tz).end <= nowMs }
+}
+
+// Lugares de una fecha para el socio: [texto, ...valores] para t().
+export function spotsText({ booked, capacity }) {
+  if (capacity == null) return ['Sin cupo']
+  const left = capacity - booked
+  if (left <= 0) return ['Lista de espera']
+  return left === 1 ? ['Queda 1'] : ['Quedan {0}', left]
+}
+
+// Inicio sin reservas: las clases del primer día (desde hoy) que todavía tienen algo por delante:
+// sin terminar, sin suspender y que no da la persona. -> { date, items } (items vacío: no hay).
+export function homeStrip(occurrences, nowMs, tz) {
+  const open = (occurrences || []).filter(o => !o.cancelled && !o.teaching && occTimes(o, tz).end > nowMs)
+    .sort((a, b) => occTimes(a, tz).start - occTimes(b, tz).start)
+  const date = open[0]?.date || null
+  return { date, items: date ? open.filter(o => o.date === date) : [] }
 }

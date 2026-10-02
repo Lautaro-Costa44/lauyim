@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import {
   canAsk, resolveAttendance, canTakeAttendance, canRate, afterPushDue, zonedToEpoch, classWorkout, classStats, penaltyOf,
   CLASS_DEFAULTS, REMINDER_OPTIONS, MUSCLE_SLUGS, classSettingsOf, validateClassSettings, validateClassType, validateSlot,
-  addMinutes, occurrencesBetween, overlapConflicts, conflictText, bookingState, cancelKind, canPromote, remindersDue, buildIcs
+  capOf, addMinutes, occurrencesBetween, overlapConflicts, conflictText, bookingState, cancelKind, canPromote, remindersDue, buildIcs
 } from './classes.js';
 
 const spinning = { id: 'spin', name: 'Spinning', color: '#ff9f0a', icon: 'bike', description: '', durationMin: 45, capacity: 12, teacherUserId: null, teacherName: 'Caro', room: 'Sala 2', logMode: 'muscles', log: { muscles: ['quadriceps'], intensity: 'high' }, archived: false };
@@ -249,4 +249,16 @@ test('penalización: apagada, menos que el límite, bloqueado hasta y vencida', 
   assert.equal(penaltyOf({ dates, today: '2026-10-08', penalty }), null);
   // Una de hace más de 30 días no cuenta.
   assert.equal(penaltyOf({ dates: ['2026-08-01', ...dates.slice(1)], today: '2026-10-02', penalty }), null);
+});
+
+test('sin cupo: capacity null se guarda, nunca llena y no cuenta para la ocupación', () => {
+  const base = { name: 'Yoga', color: '#000000', durationMin: 60, logMode: 'muscles', log: { muscles: ['abs'], intensity: 'low' } };
+  assert.equal(validateClassType({ ...base, capacity: null }).value.capacity, null);
+  assert.equal(validateClassType({ ...base }).field, 'capacity');          // sin decir nada: hay que elegir
+  assert.equal(validateClassType({ ...base, capacity: 0 }).field, 'capacity');
+  assert.equal(capOf({ capacity: null }), Infinity);
+  assert.equal(capOf({ capacity: 12 }), 12);
+  const occ = { classId: 'y', key: 'k', date: '2026-10-05', start: '10:00', teacherName: '', type: { name: 'Yoga', color: '#000', capacity: null } };
+  const stats = classStats([{ occ, bookings: [{ status: 'attended', rating: null, waitlistPos: null }] }]);
+  assert.deepEqual([stats.classes[0].present, stats.classes[0].occupancy], [1, null]);
 });

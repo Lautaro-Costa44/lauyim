@@ -2155,6 +2155,24 @@ button.wh-row{font:inherit;color:inherit;border:0;cursor:pointer}
 .class-teach-row+.class-teach-row{border-top:var(--hair) solid var(--sep)}
 .class-teach-time{width:46px;font-weight:600;font-variant-numeric:tabular-nums}
 .class-teach-row .grow{flex:1;min-width:0}
+/* Inicio sin reservas: fila de clases. Cuántas entran según el ancho (container query): 2,2 en un
+   celular chico, 2,5 en uno común, 3,5 en uno grande o tablet y 4,5 en PC; la media asoma para que se
+   vea que se desliza. Con pocas, se estiran y llenan la fila. */
+.class-strip-card{padding:12px 0;container-type:inline-size}
+.class-strip-head{display:flex;align-items:center;gap:8px;padding:0 14px 10px}.class-strip-head .grow{flex:1;min-width:0}
+.class-strip-all{display:flex;align-items:center;gap:2px;color:var(--acc);font-size:14px;font-weight:600}
+.class-strip{display:flex;gap:8px;overflow-x:auto;scroll-snap-type:x mandatory;scroll-padding:0 14px;padding:0 14px 2px;scrollbar-width:none;overscroll-behavior-x:contain}
+.class-strip::-webkit-scrollbar{display:none}
+.class-mini{flex:1 0 calc((100% - 16px) / 2.5);min-width:0;scroll-snap-align:start;display:flex;flex-direction:column;gap:2px;text-align:left;color:inherit;
+  background:var(--surface-2);border-radius:12px;border-top:3px solid var(--c);padding:10px 12px}
+.class-mini:active{background:var(--surface-3)}
+.class-mini-time{font-weight:700;font-variant-numeric:tabular-nums}
+.class-mini-name{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.class-mini-spots{font-size:12px;color:var(--label-2)}
+.class-mini.full .class-mini-spots{color:var(--warning)}
+@container (max-width:340px){.class-mini{flex-basis:calc((100% - 16px) / 2.2)}}
+@container (min-width:480px){.class-mini{flex-basis:calc((100% - 24px) / 3.5)}}
+@container (min-width:680px){.class-mini{flex-basis:calc((100% - 32px) / 4.5)}}
 .class-teach-row .tt,.class-teach-row .ss{display:block}.class-teach-row .ss{font-size:13px;color:var(--label-2)}
 .class-teach-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:12px 0 4px}
 .class-teach-stats div{background:var(--surface-2);border-radius:12px;padding:10px 6px;text-align:center;display:flex;flex-direction:column;gap:2px}

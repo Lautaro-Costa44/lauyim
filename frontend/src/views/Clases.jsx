@@ -59,7 +59,7 @@ export default function Clases() {
               <div className="grow">
                 <div className="class-time">{timeRange(occ)}{occ.movedFrom ? <span className="tag" style={{ marginLeft: 6 }}>{t('cambió')}</span> : null}{occ.teaching ? <span className="tag nocap class-tag-present" style={{ marginLeft: 6 }}>{t('La das vos')}</span> : null}</div>
                 <div className="tt">{occ.name}</div>
-                <div className="ss">{[occ.teacherName, occ.room, capacityText(occ.booked, occ.capacity)].filter(Boolean).join(' · ')}</div>
+                <div className="ss">{[occ.teacherName, occ.room, occ.capacity == null ? t('{0} anotados', occ.booked) : capacityText(occ.booked, occ.capacity)].filter(Boolean).join(' · ')}</div>
               </div>
               {/* La profe: en lugar de anotarse, la rueda para gestionar la fecha. */}
               {occ.teaching ? <GearButton occ={occ} onChange={load} />

@@ -191,7 +191,21 @@ describe('Inicio', () => {
   })
   afterEach(() => { vi.useRealTimers() })
 
-  it('sin reservas: invita a anotarse', async () => {
+  it('sin reservas: las clases de hoy en fila; tocar una abre su hoja', async () => {
+    occurrences = [occ(), occ({ key: 'g', slotId: 's3', name: 'GAP', start: '20:00', end: '21:00', booked: 12, capacity: 12 }),
+      occ({ key: 'y', slotId: 's4', name: 'Yoga', start: '21:00', end: '22:00', capacity: null }), occ({ key: 's1:2026-10-06', date: '2026-10-06' })]
+    await mount(<HomeClassCard />)
+    expect(container.querySelector('.class-strip-head').textContent).toContain('Clases de hoy')
+    const minis = [...container.querySelectorAll('.class-mini')]
+    expect(minis.map(m => m.textContent)).toEqual(['19:00SpinningQuedan 9', '20:00GAPLista de espera', '21:00YogaSin cupo'])
+    await act(async () => { minis[0].click() })
+    const sheet = useUI.getState().sheets.at(-1)
+    expect(sheet).toBeTruthy()
+    expect(container.textContent).not.toContain('Anotate a una clase')
+  })
+
+  it('sin reservas ni clases por delante: invita a anotarse', async () => {
+    occurrences = []
     await mount(<HomeClassCard />)
     expect(container.textContent).toContain('Anotate a una clase')
   })

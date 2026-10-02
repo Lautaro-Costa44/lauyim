@@ -112,7 +112,7 @@ function inTransaction(fn) {
 
 const typeFromRow = r => r && ({
   id: r.id, name: r.name, color: r.color, icon: r.icon, description: r.description, durationMin: r.duration_min,
-  capacity: r.capacity, teacherUserId: r.teacher_user_id || null, teacherName: r.teacher_name || '', room: r.room || '',
+  capacity: r.capacity || null, teacherUserId: r.teacher_user_id || null, teacherName: r.teacher_name || '', room: r.room || '',
   logMode: r.log_mode, log: parse(r.log, {}), archived: !!r.archived, createdAt: r.created_at
 });
 
@@ -126,7 +126,7 @@ export const getClassType = id => typeFromRow(getDatabase().prepare('SELECT * FR
 // Crea (sin id) o edita una clase ya validada (classes.js → validateClassType). null si el id no existe.
 export function saveClassType({ id, name, color, icon, description, durationMin, capacity, teacherUserId, teacherName, room, logMode, log }) {
   const db = getDatabase();
-  const values = [name, color, icon, description, durationMin, capacity, teacherUserId || null, teacherName || '', room || '', logMode, JSON.stringify(log)];
+  const values = [name, color, icon, description, durationMin, capacity ?? 0, teacherUserId || null, teacherName || '', room || '', logMode, JSON.stringify(log)];
   if (id) {
     const res = db.prepare(`UPDATE class_types SET name = ?, color = ?, icon = ?, description = ?, duration_min = ?, capacity = ?,
       teacher_user_id = ?, teacher_name = ?, room = ?, log_mode = ?, log = ? WHERE id = ?`).run(...values, id);

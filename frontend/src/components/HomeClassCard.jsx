@@ -9,7 +9,7 @@ import { useNavigate } from 'react-router-dom'
 import { useStore } from '../store/useStore.js'
 import { useUI } from '../store/useUI.js'
 import { t } from '../lib/i18n.js'
-import { classesApi, timeRange, weekdayOf, capacityText, countdown, occTimes, homeClasses, teacherHome } from '../lib/classes.js'
+import { classesApi, timeRange, weekdayOf, capacityText, countdown, occTimes, homeClasses, teacherHome, homeStrip, spotsText, addDays, shortDay } from '../lib/classes.js'
 import { classSheet, dayLabel } from './ClassSheet.jsx'
 import { Button } from './ui.jsx'
 import Icon from './Icon.jsx'
@@ -71,17 +71,13 @@ export default function HomeClassCard() {
   if (!next) return <>
     {teaching}
     {alerts}
-    {!teaching && <div className="card tappable home-class-empty" onClick={() => nav('/plan/clases')}>
-      <span className="lrow-i" style={{ background: 'var(--surface-3)' }}><Icon name="calendar" /></span>
-      <div className="grow"><div className="lbl2">{t('Clases')}</div><div className="ttl">{t('Anotate a una clase')}</div></div>
-      <Icon name="chevronRight" className="chev" />
-    </div>}
+    {!teaching && <ClassStrip {...homeStrip(data.occurrences, now, tz)} opts={opts} onAll={() => nav('/plan/clases')} />}
   </>
 
   const { start, end } = occTimes(next, tz)
   const cd = countdown(start, end, now)
   const soon = cd.mode !== 'days'
-  const fill = Math.min(1, next.booked / next.capacity)
+  const fill = next.capacity == null ? null : Math.min(1, next.booked / next.capacity)
   return <>
     {teaching}
     {alerts}
@@ -105,8 +101,8 @@ export default function HomeClassCard() {
       </button>
       {soon && <div className="class-ticket-count" aria-live={cd.mode === 'minutes' ? 'off' : 'polite'}>
         <div className="class-ticket-clock">{cd.mode === 'live' ? t('En curso') : <><span className="small muted">{t('Empieza en')}</span> <b>{cd.label}</b></>}</div>
-        <div className="class-ticket-bar" aria-hidden="true"><span style={{ width: `${Math.round(fill * 100)}%` }} /></div>
-        <div className="small muted">{t('{0} lugares ocupados', capacityText(next.booked, next.capacity))}{next.waitlist ? ' · ' + t('{0} en espera', next.waitlist) : ''}</div>
+        {fill !== null && <div className="class-ticket-bar" aria-hidden="true"><span style={{ width: `${Math.round(fill * 100)}%` }} /></div>}
+        <div className="small muted">{next.capacity == null ? t('{0} anotados', next.booked) : t('{0} lugares ocupados', capacityText(next.booked, next.capacity))}{next.waitlist ? ' · ' + t('{0} en espera', next.waitlist) : ''}</div>
       </div>}
       <button type="button" className="class-ticket-more" onClick={openList}>
         {upcoming.length > 1 ? t('Mis clases ({0})', upcoming.length) : t('Mis clases')} <Icon name="chevronRight" />
@@ -162,7 +158,7 @@ function TeacherTicket({ next, sameDay, over, now, tz, opts }) {
   const { start, end } = occTimes(next, tz)
   const cd = countdown(start, end, now)
   const soon = cd.mode !== 'days'
-  const fill = Math.min(1, next.booked / next.capacity)
+  const fill = next.capacity == null ? null : Math.min(1, next.booked / next.capacity)
   return <div className={'card class-ticket teach' + (soon ? ' soon' : '')} style={{ '--c': next.color }}>
     <div className="class-ticket-row">
       <button type="button" className="class-ticket-main" onClick={() => classSheet(next, opts)} aria-label={t('Ver {0}', next.name)}>
@@ -182,7 +178,7 @@ function TeacherTicket({ next, sameDay, over, now, tz, opts }) {
     </div>
     <div className="class-ticket-count">
       {soon && <div className="class-ticket-clock">{cd.mode === 'live' ? t('En curso') : <><span className="small muted">{t('Empieza en')}</span> <b>{cd.label}</b></>}</div>}
-      <div className="class-ticket-bar" aria-hidden="true"><span style={{ width: `${Math.round(fill * 100)}%` }} /></div>
+      {fill !== null && <div className="class-ticket-bar" aria-hidden="true"><span style={{ width: `${Math.round(fill * 100)}%` }} /></div>}
       <div className="small muted">{t('{0} anotados', capacityText(next.booked, next.capacity))}{next.waitlist ? ' · ' + t('{0} en espera', next.waitlist) : ''}</div>
     </div>
     {sameDay.length > 0 && <div className="class-teach-more">
@@ -197,5 +193,36 @@ function TeacherTicket({ next, sameDay, over, now, tz, opts }) {
         <GearButton occ={o} onChange={opts.onChange} />
       </div>)}
     </div>}
+  </div>
+}
+
+// ---- sin reservas: las clases del día en fila ----
+
+// Las clases del primer día con algo por delante, en una fila que se desliza (el ancho de cada una
+// se ajusta al de la pantalla, ver .class-mini). Tocar una abre su hoja, como en Plan → Clases. Sin
+// ninguna en la ventana, la invitación de siempre.
+function ClassStrip({ date, items, opts, onAll }) {
+  if (!items.length) return <div className="card tappable home-class-empty" onClick={onAll}>
+    <span className="lrow-i" style={{ background: 'var(--surface-3)' }}><Icon name="calendar" /></span>
+    <div className="grow"><div className="lbl2">{t('Clases')}</div><div className="ttl">{t('Anotate a una clase')}</div></div>
+    <Icon name="chevronRight" className="chev" />
+  </div>
+  const title = date === opts.today ? t('Clases de hoy') : date === addDays(opts.today, 1) ? t('Clases de mañana') : t('Clases del {0}', shortDay(date))
+  return <div className="card class-strip-card">
+    <div className="class-strip-head">
+      <span className="grow ttl">{title}</span>
+      <button type="button" className="class-strip-all" onClick={onAll}>{t('Ver todas')} <Icon name="chevronRight" /></button>
+    </div>
+    <div className="class-strip" role="list">
+      {items.map(o => {
+        const [text, ...args] = o.state === 'started' ? ['En curso'] : spotsText(o)
+        return <button key={o.key} type="button" role="listitem" className={'class-mini' + (text === 'Lista de espera' ? ' full' : '')} style={{ '--c': o.color }}
+          onClick={() => classSheet(o, opts)} aria-label={t('Ver {0}', o.name)}>
+          <span className="class-mini-time">{o.start}</span>
+          <span className="class-mini-name">{o.name}</span>
+          <span className="class-mini-spots">{t(text, ...args)}</span>
+        </button>
+      })}
+    </div>
   </div>
 }

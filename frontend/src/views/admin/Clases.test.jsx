@@ -160,6 +160,20 @@ describe('editor', () => {
     await unmount()
   })
 
+  it('cupo: se puede apagar (sin cupo) y al guardar va null', async () => {
+    classEditorSheet({ type: { id: 'c1', name: 'Yoga', color: '#ff9f0a', icon: 'dumbbell', description: '', durationMin: 60, capacity: 12, teacherUserId: null, teacherName: '', room: '', logMode: 'muscles', log: { muscles: ['abs'], intensity: 'low' } }, slots: [], teachers: [], allowOverlap: false })
+    const { host, unmount } = await openLastSheet()
+    expect(host.querySelector('input[name="class-capacity"]')).toBeTruthy()
+    await act(async () => { host.querySelector('[role="switch"][aria-label="Cupo limitado"]').click() })
+    expect(host.querySelector('input[name="class-capacity"]')).toBeNull()
+    expect(host.textContent).toContain('Se anota quien quiera, sin lista de espera.')
+    await act(async () => { button(host, 'Guardar').click() })
+    await tick()
+    const call = apiMock.mock.calls.find(([u]) => u === '/api/admin/classes/types/save')
+    expect(JSON.parse(call[1].body).capacity).toBeNull()
+    await unmount()
+  })
+
   it('músculos por defecto; un horario que choca muestra el aviso y deshabilita Guardar', async () => {
     overlap = { blocking: [{ text: 'Ya hay Pilates el lunes de 18:30 a 19:30 en Sala 1, con Ana.' }], warnings: [] }
     classEditorSheet({ type: null, slots: [], teachers: [{ id: 'profe', name: 'Caro' }], allowOverlap: false })

@@ -30,6 +30,9 @@ for (const [id, due] of [['ana', 20], ['beto', 20], ['caro', 20], ['eva', 20], [
 const spinning = cdb.saveClassType({ name: 'Spinning', color: '#ff9f0a', icon: 'bike', description: 'Pedaleo', durationMin: 45, capacity: 1, teacherUserId: null, teacherName: 'Caro', room: 'Sala 2', logMode: 'muscles', log: { muscles: ['quadriceps'], intensity: 'high' } });
 const slot = cdb.saveClassSlot({ classId: spinning.id, weekday: weekdayOf(day), start: '19:00' });
 const otherSlot = cdb.saveClassSlot({ classId: spinning.id, weekday: weekdayOf(addDays(today, 3)), start: '08:00' });
+// Sin cupo: se anota quien quiera.
+const yoga = cdb.saveClassType({ name: 'Yoga', color: '#30d158', icon: 'yoga', description: '', durationMin: 60, capacity: null, teacherUserId: null, teacherName: 'Lu', room: 'Sala 3', logMode: 'muscles', log: { muscles: ['abs'], intensity: 'low' } });
+const yogaSlot = cdb.saveClassSlot({ classId: yoga.id, weekday: weekdayOf(day), start: '07:00' });
 db.closeDatabase();
 
 const PORT = 51000 + Math.floor(Math.random() * 900);
@@ -179,4 +182,13 @@ test('anotarme a todas esta semana: cada fecha abierta de la clase, las llenas a
   assert.equal(mine.find(o => o.slotId === slot.id).myBooking.status, 'waitlist');   // cupo 1, lleno
   // Repetirlo no duplica nada.
   assert.deepEqual((await call('eva', 'POST', '/api/classes/book-week', { classId: spinning.id })).body, { booked: 0, waitlist: 0 });
+});
+
+test('clase sin cupo: todos reservan, nadie queda en lista de espera', async () => {
+  for (const uid of ['ana', 'beto', 'caro', 'eva']) {
+    const r = await call(uid, 'POST', '/api/classes/book', { slotId: yogaSlot.id, date: day });
+    assert.deepEqual([r.status, r.body.booking?.status], [200, 'booked'], JSON.stringify(r.body));
+  }
+  const occ = (await list('ana', day, 1)).occurrences.find(o => o.slotId === yogaSlot.id);
+  assert.deepEqual([occ.capacity, occ.booked, occ.waitlist], [null, 4, 0]);
 });

@@ -73,6 +73,10 @@ test('permisos: recepción ve pero no crea; con permiso se crean clases; la prof
   assert.equal(ok.status, 200, JSON.stringify(ok.body));
   spinning = ok.body.type;
   assert.equal((await call('profe', 'POST', '/api/admin/classes/types/save', typeBody({ name: 'Otra' }))).status, 403);
+  // Sin cupo: capacity null; el cupo, si viene, de 1 a 200.
+  const free = await call('owner', 'POST', '/api/admin/classes/types/save', typeBody({ name: 'Libre', room: 'Sala 9', capacity: null }));
+  assert.deepEqual([free.status, free.body.type?.capacity], [200, null], JSON.stringify(free.body));
+  assert.equal((await call('owner', 'POST', '/api/admin/classes/types/save', typeBody({ name: 'Mal', capacity: 0 }))).body.field, 'capacity');
   const list = await call('profe', 'GET', '/api/admin/classes/types');
   assert.deepEqual(list.body.types.map(t => t.name), ['Spinning']);
   const teachers = (await call('owner', 'GET', '/api/admin/classes/types')).body.teachers;

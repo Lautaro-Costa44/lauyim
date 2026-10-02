@@ -8,7 +8,7 @@ import { errorText } from '../../../lib/errors.js'
 import { ACCENTS } from '../../../lib/format.js'
 import { EXIDX } from '../../../lib/exercises.js'
 import { INTENSITY_LABELS, classesApi } from '../../../lib/classes.js'
-import { Button, Segmented, TextField } from '../../../components/ui.jsx'
+import { Button, Segmented, Switch, TextField } from '../../../components/ui.jsx'
 import BodyMap from '../../../components/BodyMap.jsx'
 import Icon from '../../../components/Icon.jsx'
 
@@ -28,6 +28,9 @@ function Editor({ type, slots: initialSlots, teachers, canManage = true, me, all
   const [removed, setRemoved] = useState([])
   const [conflicts, setConflicts] = useState({})   // key → { blocking, warnings }
   const [errors, setErrors] = useState({})
+  // Cupo: null es sin cupo. Al volver a prenderlo, el último número que tuvo.
+  const limited = draft.capacity !== null
+  const lastCapacity = useRef(draft.capacity ?? 15)
   const [busy, setBusy] = useState(false)
   const set = patch => { setDraft(d => ({ ...d, ...patch })); setErrors({}) }
   const log = draft.log || {}
@@ -73,7 +76,7 @@ function Editor({ type, slots: initialSlots, teachers, canManage = true, me, all
   const save = async () => {
     setBusy(true)
     try {
-      const payload = { ...draft, id: type?.id, durationMin: Number(draft.durationMin), capacity: Number(draft.capacity) }
+      const payload = { ...draft, id: type?.id, durationMin: Number(draft.durationMin), capacity: limited ? Number(draft.capacity) : null }
       const { type: savedType } = await classesApi.saveType(payload)
       const warnings = []
       for (const id of removed) await classesApi.deleteSlot(id)
@@ -124,7 +127,11 @@ function Editor({ type, slots: initialSlots, teachers, canManage = true, me, all
       {field('description', t('Descripción'), <textarea className="input" rows={2} maxLength={500} value={draft.description} onChange={e => set({ description: e.target.value })} placeholder={t('Qué se hace, qué traer…')} />)}
       <div className="class-editor-row">
         {field('durationMin', t('Duración (min)'), <TextField name="class-duration" type="number" inputMode="numeric" min={15} max={240} value={draft.durationMin} onChange={e => set({ durationMin: e.target.value })} />)}
-        {field('capacity', t('Cupo'), <TextField name="class-capacity" type="number" inputMode="numeric" min={1} max={200} value={draft.capacity} onChange={e => set({ capacity: e.target.value })} />)}
+        {limited && field('capacity', t('Cupo'), <TextField name="class-capacity" type="number" inputMode="numeric" min={1} max={200} value={draft.capacity} onChange={e => { lastCapacity.current = e.target.value; set({ capacity: e.target.value }) }} />)}
+      </div>
+      <div className="branding-lock">
+        <div><div>{t('Cupo limitado')}</div><div className="small dim">{limited ? t('Cuando se llena, los demás van a la lista de espera.') : t('Se anota quien quiera, sin lista de espera.')}</div></div>
+        <Switch checked={limited} onChange={on => set({ capacity: on ? lastCapacity.current || 15 : null })} label={t('Cupo limitado')} />
       </div>
       {field('room', t('Sala (opcional)'), <TextField name="class-room" maxLength={30} value={draft.room} onChange={e => set({ room: e.target.value })} placeholder={t('Sala 1')} />)}
       {canManage ? field('teacherUserId', t('Profe'), <select className="input" value={teacherChoice} onChange={e => chooseTeacher(e.target.value)} aria-label={t('Profe')}>

@@ -119,7 +119,7 @@ function ClassDetail({ occ: initial, today, tz, cancelHours, onChange, close }) 
     <div className="class-sheet-meta small">
       {occ.teacherName && <span><Icon name="personCircle" /> {occ.teacherName}</span>}
       {occ.room && <span><Icon name="house" /> {occ.room}</span>}
-      <span><Icon name="person" /> {capacityText(occ.booked, occ.capacity)}{occ.waitlist ? ' · ' + t('{0} en espera', occ.waitlist) : ''}</span>
+      <span><Icon name="person" /> {occ.capacity == null ? t('{0} anotados', occ.booked) + ' · ' + t('sin cupo') : capacityText(occ.booked, occ.capacity)}{occ.waitlist ? ' · ' + t('{0} en espera', occ.waitlist) : ''}</span>
     </div>
     {occ.description && <p className="class-sheet-desc">{occ.description}</p>}
 

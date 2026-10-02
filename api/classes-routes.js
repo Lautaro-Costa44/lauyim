@@ -4,7 +4,7 @@
 import {
   CLASS_DEFAULTS, REMINDER_OPTIONS, classSettingsOf, validateClassSettings, validateClassType, validateSlot,
   addMinutes, addDays, weekdayOf, occurrencesBetween, overlapConflicts, conflictText, bookingState, cancelKind, canPromote, remindersDue, minutesLeft, buildIcs,
-  canAsk, resolveAttendance, canTakeAttendance, canRate, afterPushDue, classWorkout, classStats, penaltyOf
+  canAsk, resolveAttendance, canTakeAttendance, canRate, afterPushDue, classWorkout, classStats, penaltyOf, capOf
 } from './classes.js';
 import * as cdb from './classes-db.js';
 import { getAllUsers, getUserById, getAdminSetting, setAdminSetting, getDatabase } from './database.js';
@@ -85,7 +85,7 @@ export function materializeRecurring({ slotId, userId, send = () => {}, now = cl
       }
       const session = occ.sessionId ? cdb.getClassSession(occ.sessionId) : cdb.ensureClassSession({ classId: occ.classId, slotId: occ.slotId, date: occ.date, start: occ.start });
       if (cdb.getBookingsForSessions([session.id]).some(b => b.userId === r.userId)) continue;
-      const { booking } = cdb.bookOrWaitlist({ sessionId: session.id, userId: r.userId, capacity: occ.type.capacity, reminders: memberReminderDefaults(r.userId), recurringId: r.id });
+      const { booking } = cdb.bookOrWaitlist({ sessionId: session.id, userId: r.userId, capacity: capOf(occ.type), reminders: memberReminderDefaults(r.userId), recurringId: r.id });
       count++;
       if (booking.status === 'waitlist') send(r.userId, classChangePush('waitlisted', { name: occ.type.name, date: occ.date, today: now.date, start: occ.start, waitlistPos: booking.waitlistPos, sessionId: session.id }));
     }
@@ -129,7 +129,7 @@ export function dropTeacherBookings({ send = () => {}, now = clockNow() } = {}) 
   for (const b of cdb.getBookingsForSessions([...bySession.keys()])) {
     const occ = bySession.get(b.sessionId);
     if (!teachesOcc(occ, b.userId) || !['booked', 'waitlist'].includes(b.status)) continue;
-    const out = cdb.cancelAndPromote({ bookingId: b.id, kind: 'cancelled', promote: b.status === 'booked' && canPromote({ occ, now, settings }), capacity: occ.type.capacity });
+    const out = cdb.cancelAndPromote({ bookingId: b.id, kind: 'cancelled', promote: b.status === 'booked' && canPromote({ occ, now, settings }), capacity: capOf(occ.type) });
     if (out.promoted) send(out.promoted.userId, classChangePush('promoted', { name: occ.type.name, date: occ.date, today: now.date, start: occ.start, sessionId: occ.sessionId }));
     dropped++;
   }
@@ -362,7 +362,8 @@ export function classRoutes(d) {
     const counts = countsBySession(occs);
     const live = occs.filter(o => !o.cancelled);
     const sum = (k) => live.reduce((n, o) => n + (counts[o.sessionId]?.[k] || 0), 0);
-    const occupancy = live.length ? Math.round(100 * live.reduce((n, o) => n + Math.min(1, (counts[o.sessionId]?.booked || 0) / o.type.capacity), 0) / live.length) : 0;
+    const limited = live.filter(o => o.type.capacity != null);   // las sin cupo no tienen ocupación
+    const occupancy = limited.length ? Math.round(100 * limited.reduce((n, o) => n + Math.min(1, (counts[o.sessionId]?.booked || 0) / o.type.capacity), 0) / limited.length) : 0;
     json(res, 200, {
       today, from, days, canManage, canOwn: has(user, 'classes.own'), canBook: has(user, 'classes.book_members'), settings: settings(),
       occurrences: occs.map(o => occView(o, counts[o.sessionId], user)),
@@ -458,7 +459,7 @@ export function classRoutes(d) {
     if (!person || person.disabled) return json(res, 404, { error: 'El usuario no existe' });
     if (teachesOcc(occ, person.id)) return json(res, 409, { error: 'own_class', message: 'Es quien da la clase' });
     const session = occ.sessionId ? cdb.getClassSession(occ.sessionId) : cdb.ensureClassSession({ classId: occ.classId, slotId: occ.slotId, date: occ.date, start: occ.start });
-    const { booking } = cdb.bookOrWaitlist({ sessionId: session.id, userId: person.id, capacity: occ.type.capacity, reminders: memberReminderDefaults(person.id), addedBy: user.id, force: true });
+    const { booking } = cdb.bookOrWaitlist({ sessionId: session.id, userId: person.id, capacity: capOf(occ.type), reminders: memberReminderDefaults(person.id), addedBy: user.id, force: true });
     d.audit(req, 'classes.booking.add', { user, target: person, msg: `${occ.type.name} ${occ.date} ${occ.start}` });
     notify([person.id], 'added', { ...occ, sessionId: session.id });
     json(res, 200, { booking });
@@ -555,7 +556,7 @@ export function classRoutes(d) {
     const punished = penaltyNow(user.id);
     if (punished) return json(res, 403, { error: 'booking_penalty', until: punished.until, count: punished.count });
     const session = occ.sessionId ? cdb.getClassSession(occ.sessionId) : cdb.ensureClassSession({ classId: occ.classId, slotId: occ.slotId, date: occ.date, start: occ.start });
-    const { booking } = cdb.bookOrWaitlist({ sessionId: session.id, userId: user.id, capacity: occ.type.capacity, reminders: memberReminderDefaults(user.id) });
+    const { booking } = cdb.bookOrWaitlist({ sessionId: session.id, userId: user.id, capacity: capOf(occ.type), reminders: memberReminderDefaults(user.id) });
     json(res, 200, { booking: bookingView(booking) });
   },
   // "Anotarme a todas esta semana": cada fecha abierta de la clase en los próximos 7 días; las
@@ -574,7 +575,7 @@ export function classRoutes(d) {
     for (const occ of loadOccurrences(clock.date, 7)) {
       if (occ.classId !== type.id || teachesOcc(occ, user.id) || bookingState({ occ, now: clock, settings: s }) !== 'open') continue;
       const session = occ.sessionId ? cdb.getClassSession(occ.sessionId) : cdb.ensureClassSession({ classId: occ.classId, slotId: occ.slotId, date: occ.date, start: occ.start });
-      const { booking, created } = cdb.bookOrWaitlist({ sessionId: session.id, userId: user.id, capacity: occ.type.capacity, reminders: memberReminderDefaults(user.id) });
+      const { booking, created } = cdb.bookOrWaitlist({ sessionId: session.id, userId: user.id, capacity: capOf(occ.type), reminders: memberReminderDefaults(user.id) });
       if (created) out[booking.status === 'booked' ? 'booked' : 'waitlist']++;
     }
     json(res, 200, out);
@@ -590,7 +591,7 @@ export function classRoutes(d) {
     const clock = now();
     if (bookingState({ occ, now: clock, settings: s }) === 'started') return json(res, 409, { error: 'booking_started' });
     const kind = b.status === 'waitlist' ? 'cancelled' : cancelKind({ occ, now: clock, settings: s });
-    const out = cdb.cancelAndPromote({ bookingId: b.id, kind, promote: canPromote({ occ, now: clock, settings: s }), capacity: occ.type.capacity });
+    const out = cdb.cancelAndPromote({ bookingId: b.id, kind, promote: canPromote({ occ, now: clock, settings: s }), capacity: capOf(occ.type) });
     if (out.promoted) notify([out.promoted.userId], 'promoted', occ);
     json(res, 200, { booking: bookingView(out.booking), kind });
   },

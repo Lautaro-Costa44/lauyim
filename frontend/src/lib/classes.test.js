@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest'
 const apiMock = vi.hoisted(() => vi.fn(() => Promise.resolve({})))
 vi.mock('./api.js', () => ({ api: apiMock }))
 
-const { REMINDER_OPTIONS, reminderLabel, buttonState, capacityText, timeRange, dayChips, conflictMessages, intensityLabel, googleCalendarUrl, classesApi, zonedToEpoch, countdown, homeClasses, classSlotChips, weekBookable, bookWeekText, teacherHome } = await import('./classes.js')
+const { REMINDER_OPTIONS, reminderLabel, buttonState, capacityText, timeRange, dayChips, conflictMessages, intensityLabel, googleCalendarUrl, classesApi, zonedToEpoch, countdown, homeClasses, classSlotChips, weekBookable, bookWeekText, teacherHome, spotsText, homeStrip } = await import('./classes.js')
 
 describe('etiquetas', () => {
   it('recordatorios, cupo, horario e intensidad', () => {
@@ -153,5 +153,29 @@ describe('Inicio de la profe', () => {
   it('terminadas las de hoy, la de mañana; sin clases que da, nada', () => {
     expect(teacherHome(occs, Date.parse('2026-10-06T00:00:00Z'), TZ).next.key).toBe('tom')
     expect(teacherHome(occs.map(x => ({ ...x, teaching: false })), Date.parse('2026-10-05T15:00:00Z'), TZ)).toMatchObject({ next: null, sameDay: [] })
+  })
+})
+
+describe('sin cupo y fila de Inicio', () => {
+  it('sin cupo: el número solo y nunca lista de espera', () => {
+    expect(capacityText(30, null)).toBe('30')
+    expect(buttonState({ state: 'open', booked: 300, capacity: null, myBooking: null }).key).toBe('book')
+  })
+
+  it('lugares para el socio', () => {
+    expect(spotsText({ booked: 3, capacity: null })).toEqual(['Sin cupo'])
+    expect(spotsText({ booked: 8, capacity: 12 })).toEqual(['Quedan {0}', 4])
+    expect(spotsText({ booked: 11, capacity: 12 })).toEqual(['Queda 1'])
+    expect(spotsText({ booked: 12, capacity: 12 })).toEqual(['Lista de espera'])
+  })
+
+  it('fila de Inicio: el primer día con clases por delante, sin las terminadas, suspendidas ni las que da', () => {
+    const TZ = 'America/Argentina/Buenos_Aires'
+    const o = (key, date, start, extra) => ({ key, date, start, durationMin: 60, cancelled: false, ...extra })
+    const occs = [o('pm', '2026-10-05', '19:00'), o('am', '2026-10-05', '08:00'), o('sus', '2026-10-05', '20:00', { cancelled: true }),
+      o('mine', '2026-10-05', '18:00', { teaching: true }), o('tom', '2026-10-06', '09:00')]
+    expect(homeStrip(occs, Date.parse('2026-10-05T15:00:00Z'), TZ)).toMatchObject({ date: '2026-10-05', items: [{ key: 'pm' }] })
+    expect(homeStrip(occs, Date.parse('2026-10-06T01:00:00Z'), TZ)).toMatchObject({ date: '2026-10-06', items: [{ key: 'tom' }] })
+    expect(homeStrip([], Date.now(), TZ)).toEqual({ date: null, items: [] })
   })
 })
