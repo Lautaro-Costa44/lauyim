@@ -21,10 +21,11 @@ export async function logClassWorkout(bookingId, workout) {
   try { await classesApi.logged(bookingId) } catch { /* se reintenta en la próxima apertura */ }
 }
 
+// Sin onChange, solo se muestran (no se pueden tocar).
 export function Stars({ value, onChange }) {
-  return <div className="class-stars" role="radiogroup" aria-label={t('Calificación')}>
-    {[1, 2, 3, 4, 5].map(n => <button key={n} type="button" role="radio" aria-checked={value === n} aria-label={t('{0} estrellas', n)}
-      className={'class-star' + (value >= n ? ' on' : '')} onClick={() => onChange(n)}><Icon name={value >= n ? 'starFill' : 'star'} /></button>)}
+  return <div className={'class-stars' + (onChange ? '' : ' readonly')} role="radiogroup" aria-label={t('Calificación')}>
+    {[1, 2, 3, 4, 5].map(n => <button key={n} type="button" role="radio" aria-checked={value === n} aria-label={t('{0} estrellas', n)} disabled={!onChange}
+      className={'class-star' + (value >= n ? ' on' : '')} onClick={() => onChange?.(n)}><Icon name={value >= n ? 'starFill' : 'star'} /></button>)}
   </div>
 }
 

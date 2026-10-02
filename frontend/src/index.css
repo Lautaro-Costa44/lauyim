@@ -2251,6 +2251,11 @@ button.wh-row{font:inherit;color:inherit;border:0;cursor:pointer}
 .class-stars{display:flex;gap:6px;justify-content:center}
 .class-star{font-size:30px;color:var(--label-3);padding:4px}
 .class-star.on{color:var(--orange)}
+.class-stars.readonly{justify-content:flex-start}.class-stars.readonly .class-star{font-size:24px;padding:2px;cursor:default}.class-stars.readonly .class-star:disabled{opacity:1}
+.class-history .class-tag-present{display:inline-flex;align-items:center;gap:4px;margin-top:2px}
+.class-history-hint{text-align:center;margin-top:4px}
+.class-share{display:flex;flex-direction:column;gap:10px}
+.class-share-preview{margin:0;padding:12px 14px;background:var(--surface-2);border-radius:12px;font:inherit;font-size:14px;line-height:1.45;white-space:pre-wrap;max-height:40vh;overflow:auto}
 .class-editor-row.three{grid-template-columns:1fr 1fr 1fr}
 .class-penalty{margin-bottom:10px}
 .class-slot-stats{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:6px}

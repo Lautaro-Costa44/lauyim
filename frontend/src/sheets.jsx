@@ -21,6 +21,8 @@ import { Button, Slider, Switch, Segmented, SelectRow, Row, TextField, MultiSele
 import { NO_AUTOFILL } from './lib/input-safety.js'
 import { glyphOf, GLYPH_GROUPS, DEFAULT_GLYPH } from './lib/glyphs.js'
 import BodyMap from './components/BodyMap.jsx'
+import ClassWorkoutDetail from './components/workout/ClassWorkoutDetail.jsx'
+import { isClassWorkout } from './lib/workout-history.js'
 import { exerciseMuscleSnapshot, loadOfWorkouts, MUSCLES, MUSCLE_NAME, normalizeMuscleGroups, hasExplicitMuscleMetadata } from './lib/muscles.js'
 import { parseImport, mergeImport } from './lib/import-csv.js'
 import { buildPlanBundle, parsePlan, mergePlan, printPlan } from './lib/plan-share.js'
@@ -1299,9 +1301,14 @@ function DayAssign({ day, close }) {
 export const dayAssignSheet = day => ui().openSheet(close => <DayAssign day={day} close={close} />)
 
 /* ============================ workout detail ============================ */
+// Una clase del historial tiene su propio detalle (ClassWorkoutDetail); el resto, el de un entreno.
+export function WorkoutDetail(props) {
+  return isClassWorkout(props.w) ? <ClassWorkoutDetail {...props} /> : <TrainingDetail {...props} />
+}
+
 // El detalle es WorkoutDetailView (components/workout/), el mismo que ve el staff. Acá se le suma
 // lo que es solo del socio: la nota editable, "Repetir este entreno" y borrar.
-export function WorkoutDetail({ w, close }) {
+function TrainingDetail({ w, close }) {
   const st = useStore(s => s.S)
   const update = useStore(s => s.update)
   const noHealth = useStore(s => s.healthConsent === 'declined')

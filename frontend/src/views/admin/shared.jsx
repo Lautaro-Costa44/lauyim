@@ -16,7 +16,8 @@ import { MAX_ROUTINE_GROUPS, canAddGroup, validateGroupName, syncActiveGroupInSt
 import { errorText } from '../../lib/errors.js'
 import WorkoutHistoryList from '../../components/workout/WorkoutHistoryList.jsx'
 import WorkoutDetailView from '../../components/workout/WorkoutDetailView.jsx'
-import { weekAdherence } from '../../lib/workout-history.js'
+import ClassWorkoutDetail from '../../components/workout/ClassWorkoutDetail.jsx'
+import { weekAdherence, isClassWorkout } from '../../lib/workout-history.js'
 import { can } from '../../lib/permissions.js'
 import { RoleTag, RolePickSheet } from './roles-common.jsx'
 
@@ -770,7 +771,8 @@ export function UserDetail({ id, billingEnabled = true, users, openUser, onChang
   // Historial del socio: el mismo detalle que ve él, en solo lectura y como panel (centrado en
   // tablet y escritorio, hoja en el celular). Su unidad y sus nombres de ejercicios propios.
   const historyData = { workouts: d.workouts, routines: d.routines, unit: d.unit, names: d.names || {} }
-  const openWorkout = w => openSheet(() => <WorkoutDetailView w={w} data={historyData} showBw={d.healthConsent !== 'declined'} note={w.note || null} />, { kind: 'panel' })
+  const openWorkout = w => openSheet(() => isClassWorkout(w) ? <ClassWorkoutDetail w={w} staff />
+    : <WorkoutDetailView w={w} data={historyData} showBw={d.healthConsent !== 'declined'} note={w.note || null} />, { kind: 'panel' })
   // Ficha without a passkey: nothing to train or sync, so the training parts stay out.
   const hasApp = u.hasApp !== false
   // Desactivada o pendiente de aprobación. Quitar el rol de admin sigue permitido.

@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest'
 const apiMock = vi.hoisted(() => vi.fn(() => Promise.resolve({})))
 vi.mock('./api.js', () => ({ api: apiMock }))
 
-const { REMINDER_OPTIONS, reminderLabel, buttonState, capacityText, timeRange, dayChips, conflictMessages, intensityLabel, googleCalendarUrl, classesApi, zonedToEpoch, countdown, homeClasses, classSlotChips, weekBookable, bookWeekText, teacherHome, spotsText, homeStrip } = await import('./classes.js')
+const { REMINDER_OPTIONS, reminderLabel, buttonState, capacityText, timeRange, dayChips, conflictMessages, intensityLabel, googleCalendarUrl, classesApi, zonedToEpoch, countdown, homeClasses, classSlotChips, weekBookable, bookWeekText, teacherHome, spotsText, homeStrip, shortName, shareListText } = await import('./classes.js')
 
 describe('etiquetas', () => {
   it('recordatorios, cupo, horario e intensidad', () => {
@@ -177,5 +177,22 @@ describe('sin cupo y fila de Inicio', () => {
     expect(homeStrip(occs, Date.parse('2026-10-05T15:00:00Z'), TZ)).toMatchObject({ date: '2026-10-05', items: [{ key: 'pm' }] })
     expect(homeStrip(occs, Date.parse('2026-10-06T01:00:00Z'), TZ)).toMatchObject({ date: '2026-10-06', items: [{ key: 'tom' }] })
     expect(homeStrip([], Date.now(), TZ)).toEqual({ date: null, items: [] })
+  })
+})
+
+describe('compartir la lista', () => {
+  const occ = { name: 'Spinning', date: '2026-10-05', start: '19:00', room: 'Sala 2', teacherName: 'Caro', capacity: 12 }
+  const booked = [{ name: 'Ana Pérez', status: 'booked' }, { name: 'Beto Ruiz Díaz', status: 'booked' }, { name: 'Lu', status: 'booked' }]
+  it('nombre e inicial', () => {
+    expect([shortName('Ana Pérez'), shortName('beto ruiz díaz'), shortName('Lu'), shortName('  ')]).toEqual(['Ana P.', 'beto D.', 'Lu', ''])
+  })
+  it('el texto: encabezado, anotados con cupo y en espera; nombre completo si se elige', () => {
+    expect(shareListText({ occ, booked, waitlist: [{ name: 'Cami López' }] })).toBe(
+      'Spinning · Lun 5/10 · 19:00 · Sala 2\nProfe: Caro\n\nAnotados (3/12):\n1. Ana P.\n2. Beto D.\n3. Lu\n\nEn espera:\n1. Cami L.')
+    expect(shareListText({ occ, booked, full: true })).toContain('2. Beto Ruiz Díaz')
+  })
+  it('sin cupo, sin anotados y con la lista tomada', () => {
+    expect(shareListText({ occ: { ...occ, capacity: null, room: '', teacherName: '' }, booked: [] })).toBe('Spinning · Lun 5/10 · 19:00\n\nAnotados (0):\nTodavía no hay nadie anotado.')
+    expect(shareListText({ occ, booked: [{ name: 'Ana Pérez', status: 'attended' }, { name: 'Beto Ruiz', status: 'absent' }] })).toContain('1. Ana P. ✓\n2. Beto R. ✗')
   })
 })

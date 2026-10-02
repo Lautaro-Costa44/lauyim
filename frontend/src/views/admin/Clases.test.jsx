@@ -262,3 +262,42 @@ describe('mensaje a los anotados', () => {
     await unmount()
   })
 })
+
+describe('compartir la lista', () => {
+  const detail = { occurrence: occ(), canMessage: true, booked: [{ bookingId: 'b1', userId: 'ana', name: 'Ana Pérez', status: 'booked' }], waitlist: [] }
+  beforeEach(() => {
+    try { localStorage.removeItem('lauyim_share_names') } catch {}
+    apiMock.mockImplementation(url => url.startsWith('/api/admin/classes/session?') ? Promise.resolve(detail) : Promise.resolve({}))
+  })
+  afterEach(() => { delete navigator.share })
+
+  it('desde la hoja de la fecha: vista previa con inicial; cambia a nombre completo y lo recuerda; comparte', async () => {
+    const shared = vi.fn(() => Promise.resolve())
+    navigator.share = shared
+    sessionSheet(occ(), { canManage: false, users: [], teachers: [] })
+    let sheet = await openLastSheet()
+    await act(async () => { button(sheet.host, 'Compartir lista').click() })
+    await sheet.unmount()
+    sheet = await openLastSheet()
+    const preview = () => sheet.host.querySelector('.class-share-preview').textContent
+    expect(preview()).toContain('1. Ana P.')
+    await act(async () => { button(sheet.host, 'Nombre completo').click() })
+    expect(preview()).toContain('1. Ana Pérez')
+    expect(localStorage.getItem('lauyim_share_names')).toBe('full')
+    await act(async () => { button(sheet.host, 'Compartir').click() })
+    expect(shared).toHaveBeenCalledWith({ text: expect.stringContaining('Anotados (1/12):') })
+    await sheet.unmount()
+  })
+
+  it('sin compartir del sistema (PC): copia y ofrece abrir WhatsApp', async () => {
+    const writeText = vi.fn(() => Promise.resolve())
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } })
+    const { shareListSheet } = await import('./clases/SessionSheet.jsx')
+    shareListSheet(occ(), detail)
+    const sheet = await openLastSheet()
+    await act(async () => { button(sheet.host, 'Compartir').click() })
+    expect(writeText).toHaveBeenCalled()
+    expect(sheet.host.querySelector('a[href^="https://wa.me/?text="]')).toBeTruthy()
+    await sheet.unmount()
+  })
+})

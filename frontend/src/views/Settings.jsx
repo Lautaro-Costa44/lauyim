@@ -81,6 +81,7 @@ import { pushSupported, enablePush, disablePush, sendTestPush } from '../lib/pus
 import { wakeLockSupported } from '../lib/wakelock.js'
 import { errorText } from '../lib/errors.js'
 import { classesApi, reminderLabel, REMINDER_OPTIONS as CLASS_REMINDER_OPTIONS } from '../lib/classes.js'
+import { can } from '../lib/permissions.js'
 import { confirmSheet, importFromApp, equipmentProfileSheet } from '../sheets.jsx'
 import { routinesFromPresets, presetSourceFor, addPresetCustomExercises } from '../lib/starter.js'
 import { programsOf, fetchProgramToApply, programUnavailableMessage } from '../components/ProgramPicker.jsx'
@@ -657,25 +658,45 @@ function NotificationsCard({ S, update, toast }) {
 }
 
 // Recordatorios de entrada para las reservas de clases nuevas (cada reserva se puede cambiar
-// después desde su hoja). Solo con clases en el gimnasio.
+// después desde su hoja). Solo con clases en el gimnasio. A quien da clases (tomar lista), además,
+// cuánto antes de sus clases le avisamos.
+const TEACHER_REMINDER_CHOICES = [[0, 'No'], [30, '30 min'], [60, '1 h'], [120, '2 h']]
 function ClassReminderDefaults({ toast }) {
   const on = useStore(s => !!s.config?.classes_available)
+  const teaches = useStore(s => can(s.user, 'classes.attendance'))
   const [chosen, setChosen] = useState(null)
-  useEffect(() => { if (on) classesApi.list().then(d => setChosen(d.reminderDefaults || [60])).catch(() => {}) }, [on])
+  const [teach, setTeach] = useState(60)
+  useEffect(() => {
+    if (on) classesApi.list().then(d => { setChosen(d.reminderDefaults || [60]); setTeach(d.teacherReminder ?? 60) }).catch(() => {})
+  }, [on])
   if (!on || !chosen) return null
+  const saveTeach = async minutes => {
+    const before = teach
+    setTeach(minutes)
+    try { await classesApi.setTeacherReminder(minutes) } catch (e) { setTeach(before); toast(errorText(e, t('No se pudo guardar'))) }
+  }
   const save = async next => {
     setChosen(next)
     try { await classesApi.setReminderDefaults(next) } catch (e) { toast(errorText(e, t('No se pudo guardar'))) }
   }
   const toggle = m => save(chosen.includes(m) ? chosen.filter(x => x !== m) : CLASS_REMINDER_OPTIONS.filter(x => x === m || chosen.includes(x)))
-  return <Section title={t('Recordatorios de clases')} footer={t('Se ponen al anotarte a una clase. En cada reserva los podés cambiar.')}>
-    <div className="lrow" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 10, paddingTop: 13, paddingBottom: 14 }}>
-      <div className="chips class-reminders" role="group" aria-label={t('Recordatorios de clases')}>
-        {CLASS_REMINDER_OPTIONS.map(m => <button key={m} type="button" className={'chip' + (chosen.includes(m) ? ' on' : '')} aria-pressed={chosen.includes(m)} onClick={() => toggle(m)}>{t('{0} antes', reminderLabel(m))}</button>)}
-        <button type="button" className={'chip' + (!chosen.length ? ' on' : '')} aria-pressed={!chosen.length} onClick={() => save([])}>{t('Sin recordatorio')}</button>
+  return <>
+    <Section title={t('Recordatorios de clases')} footer={t('Se ponen al anotarte a una clase. En cada reserva los podés cambiar.')}>
+      <div className="lrow" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 10, paddingTop: 13, paddingBottom: 14 }}>
+        <div className="chips class-reminders" role="group" aria-label={t('Recordatorios de clases')}>
+          {CLASS_REMINDER_OPTIONS.map(m => <button key={m} type="button" className={'chip' + (chosen.includes(m) ? ' on' : '')} aria-pressed={chosen.includes(m)} onClick={() => toggle(m)}>{t('{0} antes', reminderLabel(m))}</button>)}
+          <button type="button" className={'chip' + (!chosen.length ? ' on' : '')} aria-pressed={!chosen.length} onClick={() => save([])}>{t('Sin recordatorio')}</button>
+        </div>
       </div>
-    </div>
-  </Section>
+    </Section>
+    {teaches && <Section title={t('Antes de las clases que doy')} footer={t('Te avisamos cuántos hay anotados y en espera. Solo en las clases que das vos.')}>
+      <div className="lrow" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 10, paddingTop: 13, paddingBottom: 14 }}>
+        <div className="chips class-reminders" role="radiogroup" aria-label={t('Antes de las clases que doy')}>
+          {TEACHER_REMINDER_CHOICES.map(([m, label]) => <button key={m} type="button" role="radio" className={'chip' + (teach === m ? ' on' : '')} aria-checked={teach === m} onClick={() => saveTeach(m)}>{m ? t('{0} antes', label) : t(label)}</button>)}
+        </div>
+      </div>
+    </Section>}
+  </>
 }
 
 function PushCard({ S, update, toast }) {

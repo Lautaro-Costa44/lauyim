@@ -66,6 +66,8 @@ export const classesApi = {
   setReminderDefaults: reminders => put('/api/classes/reminder-defaults', { reminders }),
   recurring: (slotId, on) => post(on ? '/api/classes/recurring' : '/api/classes/recurring/delete', { slotId }),
   bookWeek: classId => post('/api/classes/book-week', { classId }),
+  booking: id => api(`/api/classes/booking?id=${encodeURIComponent(id)}`),
+  setTeacherReminder: minutes => put('/api/classes/teacher-reminder', { minutes }),
   icsUrl: bookingId => `/api/classes/ics?booking=${encodeURIComponent(bookingId)}`,
   pending: () => api('/api/classes/pending'),
   answer: (bookingId, attended, rating) => post('/api/classes/attendance', { bookingId, attended, rating }),
@@ -82,6 +84,7 @@ export const classesApi = {
   overlapCheck: body => post('/api/admin/classes/overlap-check', body),
   calendar: (from, days) => api(`/api/admin/classes/calendar?from=${from}&days=${days}`),
   session: occ => api(`/api/admin/classes/session?${occQuery(occ)}`),
+  adminBooking: id => api(`/api/admin/classes/booking?id=${encodeURIComponent(id)}`),
   messageSession: (occ, text, waitlist) => post('/api/admin/classes/sessions/message', { sessionId: occ.sessionId, slotId: occ.slotId, date: occ.date, text, waitlist }),
   addToSession: (occ, userId) => post('/api/admin/classes/sessions/add', { sessionId: occ.sessionId, slotId: occ.slotId, date: occ.date, userId }),
   changeSession: body => post('/api/admin/classes/sessions/change', body),
@@ -184,4 +187,39 @@ export function homeStrip(occurrences, nowMs, tz) {
     .sort((a, b) => occTimes(a, tz).start - occTimes(b, tz).start)
   const date = open[0]?.date || null
   return { date, items: date ? open.filter(o => o.date === date) : [] }
+}
+
+// Cómo quedó presente en una clase (detalle del historial). staff: dicho desde la ficha.
+export function attendanceSourceLabel(source, staff = false) {
+  if (source === 'teacher') return 'La profe tomó lista'
+  if (source === 'checkin') return staff ? 'Ingresó al gimnasio' : 'Ingresaste al gimnasio'
+  if (source === 'member') return staff ? 'Dijo que fue' : 'Dijiste que fuiste'
+  return null
+}
+
+// ---- compartir la lista ----
+
+// "Ana Pérez" -> "Ana P." (cuida los datos al compartir en grupos con otros socios).
+export function shortName(name) {
+  const words = String(name || '').trim().split(/\s+/).filter(Boolean)
+  if (words.length < 2) return words[0] || ''
+  return `${words[0]} ${words.at(-1)[0].toUpperCase()}.`
+}
+
+// Texto de la lista de una fecha para compartir (WhatsApp, etc.). full: nombre completo. Con la
+// lista tomada, cada anotado lleva ✓ (presente) o ✗ (ausente).
+export function shareListText({ occ, booked = [], waitlist = [], full = false }) {
+  const name = p => full ? p.name : shortName(p.name)
+  const mark = p => p.status === 'attended' ? ' ✓' : p.status === 'absent' ? ' ✗' : ''
+  const count = occ.capacity == null ? `${booked.length}` : `${booked.length}/${occ.capacity}`
+  const lines = [[occ.name, `${shortDay(occ.date)}/${Number(occ.date.slice(5, 7))}`, occ.start, occ.room].filter(Boolean).join(' · ')]
+  if (occ.teacherName) lines.push(`Profe: ${occ.teacherName}`)
+  lines.push('', `Anotados (${count}):`)
+  if (!booked.length) lines.push('Todavía no hay nadie anotado.')
+  booked.forEach((p, i) => lines.push(`${i + 1}. ${name(p)}${mark(p)}`))
+  if (waitlist.length) {
+    lines.push('', 'En espera:')
+    waitlist.forEach((p, i) => lines.push(`${i + 1}. ${name(p)}`))
+  }
+  return lines.join('\n')
 }
