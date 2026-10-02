@@ -9,8 +9,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { gymToday } from './billing.js';
-import { addDays, weekdayOf } from './classes.js';
+import { gymToday, gymClock } from './billing.js';
+import { addDays, addMinutes, weekdayOf } from './classes.js';
 
 const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lauyim-classes-after-'));
 const SECRET = crypto.randomBytes(32).toString('hex');
@@ -39,6 +39,11 @@ for (let i = 2; i <= 4; i++) {
   const { booking } = cdb.bookOrWaitlist({ sessionId: s.id, userId: 'caro', capacity: 10 });
   cdb.updateBooking(booking.id, { status: 'absent', attendanceSource: 'timeout' });
 }
+// Una clase en curso (empezó hace 10 minutos), con Ana anotada.
+const clockNow = gymClock(Date.now(), 'America/Argentina/Buenos_Aires');
+const liveOk = clockNow.time >= '00:20';   // pasada la medianoche no hay "hace 10 minutos" el mismo día
+const live = liveOk ? cdb.ensureClassSession({ classId: spinning.id, slotId: null, date: today, start: addMinutes(clockNow.time, -10) }) : null;
+if (live) ids.live = cdb.bookOrWaitlist({ sessionId: live.id, userId: 'ana', capacity: 10 }).booking.id;
 // Una clase de mañana para intentar reservar.
 const tomorrowSlot = cdb.saveClassSlot({ classId: spinning.id, weekday: weekdayOf(addDays(today, 1)), start: '10:00' });
 db.closeDatabase();
@@ -180,4 +185,24 @@ test('ficha del socio: el último mes, la penalización (que se levanta) y cance
   assert.equal(cancel.status, 200, JSON.stringify(cancel.body));
   assert.deepEqual((await call('owner', 'GET', '/api/admin/classes/member?userId=caro')).body.upcoming, []);
   assert.equal((await call('owner', 'POST', '/api/admin/classes/member/cancel', { bookingId: 'nada' })).status, 404);
+});
+
+test('clase en curso: aunque la profe ya tomó lista, no se suma al historial hasta que termina', async (t) => {
+  if (!live) return t.skip('pasada la medianoche');
+  assert.equal((await call('profe', 'POST', '/api/admin/classes/sessions/attendance', { sessionId: live.id, present: ['ana'] })).status, 200);
+  const pending = (await call('ana', 'GET', '/api/classes/pending')).body;
+  assert.ok(!pending.log.some(l => l.bookingId === ids.live));
+});
+
+test('corregir la lista: presente a ausente saca la clase del historial y borra la calificación; vuelve si la marcan presente', async () => {
+  // Ana fue a la de ayer, calificó con 5 y ya la tiene en el historial (logged).
+  const absent = await call('profe', 'POST', '/api/admin/classes/sessions/attendance', { sessionId: session.id, absent: ['ana'] });
+  assert.equal(absent.status, 200);
+  const pending = (await call('ana', 'GET', '/api/classes/pending')).body;
+  assert.deepEqual(pending.unlog, [ids.ana]);
+  assert.equal((await call('ana', 'GET', `/api/classes/booking?id=${ids.ana}`)).body.booking.rating, null);
+  assert.equal((await call('ana', 'POST', '/api/classes/logged', { bookingId: ids.ana, logged: false })).status, 200);
+  assert.deepEqual((await call('ana', 'GET', '/api/classes/pending')).body.unlog, []);
+  await call('profe', 'POST', '/api/admin/classes/sessions/attendance', { sessionId: session.id, present: ['ana'] });
+  assert.ok((await call('ana', 'GET', '/api/classes/pending')).body.log.some(l => l.bookingId === ids.ana));
 });

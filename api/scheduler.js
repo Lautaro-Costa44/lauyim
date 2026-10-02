@@ -142,8 +142,9 @@ function effectiveRoutineId(state, dateStr) {
   return state?.week?.[weekday] || null;
 }
 
+// Una clase hecha ese día no cuenta: la rutina del día sigue pendiente (decisión 2026-10-02).
 function hasWorkoutOnDate(state, dateStr) {
-  return (state?.workouts || []).some(workout => workout.d === dateStr);
+  return (state?.workouts || []).some(workout => workout.d === dateStr && workout.kind !== 'class');
 }
 
 // `now` y `sendToUser` solo se reemplazan en tests (hora del gym fija, envío sin red).

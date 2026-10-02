@@ -113,3 +113,14 @@ test('recordatorio de entrenamiento: nombra la rutina que toca hoy', async () =>
   await tick('07:00');
   assert.deepEqual(sent.filter(s => s.userId === 'trainer').map(s => s.title), ['Hoy toca Piernas 🏋️']);
 });
+
+test('recordatorio de entrenamiento: una clase hecha ese día no lo apaga (la rutina sigue pendiente)', async () => {
+  db.createUser({ id: 'trainer2', name: 'trainer2' });
+  db.createSubscription({ endpoint: 'https://push.invalid/trainer2', userId: 'trainer2', keys: { p256dh: 'x', auth: 'x' } });
+  const at = Date.parse(`${TODAY}T06:00:00Z`);
+  db.saveUserState('trainer2', { routines: [{ id: 'r2', name: 'Piernas', ex: [] }], week: { 4: 'r2' },
+    workouts: [{ id: 'cls-1', d: TODAY, start: at, end: at + 2700000, name: 'Spinning', kind: 'class', classBookingId: 'b1', entries: [] }] });
+  db.getDatabase().prepare(`INSERT INTO reminder_settings (user_id, "on", time, tz) VALUES ('trainer2', 1, '07:00', 'UTC')`).run();
+  await tick('07:00');
+  assert.deepEqual(sent.filter(s => s.userId === 'trainer2').map(s => s.title), ['Hoy toca Piernas 🏋️']);
+});

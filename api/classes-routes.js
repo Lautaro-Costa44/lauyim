@@ -554,7 +554,8 @@ export function classRoutes(d) {
     let changed = 0;
     for (const b of cdb.getBookingsForSessions([session.id])) {
       if (!want.has(b.userId) || teachesOcc(occ, b.userId) || !['booked', 'attended', 'absent'].includes(b.status)) continue;
-      cdb.updateBooking(b.id, { status: want.get(b.userId), attendanceSource: 'teacher' });
+      // Ausente no califica: si había calificado (dijo que fue), se borra.
+      cdb.updateBooking(b.id, { status: want.get(b.userId), attendanceSource: 'teacher', ...(want.get(b.userId) === 'absent' ? { rating: null } : {}) });
       changed++;
     }
     cdb.updateClassSession(session.id, { attendanceTaken: true });
@@ -861,15 +862,19 @@ export function classRoutes(d) {
     const from = addDays(clock.date, -8);
     const mine = cdb.getUserBookingsBetween(user.id, from, addDays(clock.date, 1));
     const occs = new Map(loadOccurrences(from, 9).filter(o => o.sessionId).map(o => [o.sessionId, o]));
-    const ask = [], log = [];
+    const ask = [], log = [], unlog = [];
     for (const b of mine) {
+      // Ya sumada al historial y después corregida (la profe la pasó a ausente): se saca.
+      if (b.logged && b.status !== 'attended') { unlog.push(b.id); continue; }
       const occ = occs.get(b.sessionId);
       if (!occ || occ.cancelled || teachesOcc(occ, user.id)) continue;
+      // En curso: aunque la profe ya haya tomado lista, se suma recién cuando termina.
+      if (minutesLeft(occ, clock) + occ.type.durationMin > 0) continue;
       const info = { bookingId: b.id, name: occ.type.name, color: occ.type.color, icon: occ.type.icon, date: occ.date, start: occ.start, teacherName: occ.teacherName, rated: b.rating != null, canRate: canRate({ occ, booking: b, now: clock }) };
       if (canAsk({ occ, booking: b, attendanceTaken: b.session.attendanceTaken, now: clock })) ask.push(info);
       else if (b.status === 'attended' && !b.logged) log.push({ ...info, source: b.attendanceSource, workout: classWorkout({ occ, bookingId: b.id, tz: d.gymTz() }) });
     }
-    json(res, 200, { ask, log });
+    json(res, 200, { ask, log, unlog });
   },
   'POST /api/classes/attendance': async (req, res) => {
     const user = member(req, res); if (!user) return;
@@ -886,10 +891,11 @@ export function classRoutes(d) {
   },
   'POST /api/classes/logged': async (req, res) => {
     const user = member(req, res); if (!user) return;
-    const { bookingId } = await readBody(req);
+    // logged: false cuando la app la sacó del historial (la corrigieron a ausente).
+    const { bookingId, logged = true } = await readBody(req);
     const b = cdb.getBooking(bookingId);
     if (!b || b.userId !== user.id) return json(res, 404, { error: 'not_found' });
-    cdb.updateBooking(b.id, { logged: true });
+    cdb.updateBooking(b.id, { logged: logged !== false });
     json(res, 200, { ok: true });
   },
   'POST /api/classes/rating': async (req, res) => {
