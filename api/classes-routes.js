@@ -3,12 +3,12 @@
 // La lógica está en classes.js y los datos en classes-db.js.
 import {
   CLASS_DEFAULTS, REMINDER_OPTIONS, classSettingsOf, validateClassSettings, validateClassType, validateSlot,
-  addMinutes, addDays, weekdayOf, occurrencesBetween, overlapConflicts, conflictText, bookingState, cancelKind, canPromote, buildIcs
+  addMinutes, addDays, weekdayOf, occurrencesBetween, overlapConflicts, conflictText, bookingState, cancelKind, canPromote, remindersDue, buildIcs
 } from './classes.js';
 import * as cdb from './classes-db.js';
 import { getAllUsers, getUserById, getAdminSetting, setAdminSetting, getUserState } from './database.js';
 import { gymClock } from './billing.js';
-import { classChangePush } from './push-messages.js';
+import { classChangePush, classReminderPush } from './push-messages.js';
 
 export const CLASS_SETTINGS_KEY = 'classes';
 const CHECK_WEEKS = 8;          // superposición de un bloque semanal: contra las próximas 8 semanas
@@ -37,9 +37,60 @@ export function loadOccurrences(from, days) {
 const occOfKey = (date, key) => loadOccurrences(date, 1).find(o => o.key === key) || null;
 const occOfSession = session => session ? occOfKey(session.date, session.slotId ? `${session.slotId}:${session.date}` : session.id) : null;
 
+// Lo que server.js le pasa a classRoutes y usan también las reservas fijas y los recordatorios del
+// scheduler (sin server, en los tests del scheduler, nadie está bloqueado y la zona es la de cuotas).
+let deps = { isMembershipBlocked: () => false, gymTz: () => 'America/Argentina/Buenos_Aires' };
+const clockNow = (ms = Date.now()) => gymClock(ms, deps.gymTz());
+
+// Reserva sola las fechas abiertas de las reservas fijas (todas, o las de un bloque o un socio).
+// Una fecha que el socio ya tuvo (aunque la haya cancelado) no se vuelve a reservar. send(userId,
+// payload): aviso si quedó en la lista de espera. -> cuántas reservó.
+export function materializeRecurring({ slotId, userId, send = () => {}, now = clockNow() } = {}) {
+  const settings = classSettingsNow();
+  if (!settings.enabled) return 0;
+  const recurring = cdb.getRecurring({ slotId, userId });
+  if (!recurring.length) return 0;
+  const occs = loadOccurrences(now.date, settings.bookAheadDays + 1);
+  let count = 0;
+  for (const r of recurring) {
+    const user = getUserById(r.userId);
+    if (!user || user.disabled || deps.isMembershipBlocked(user)) continue;
+    for (const occ of occs) {
+      if (occ.slotId !== r.slotId || occ.type.archived || bookingState({ occ, now, settings }) !== 'open') continue;
+      const session = occ.sessionId ? cdb.getClassSession(occ.sessionId) : cdb.ensureClassSession({ classId: occ.classId, slotId: occ.slotId, date: occ.date, start: occ.start });
+      if (cdb.getBookingsForSessions([session.id]).some(b => b.userId === r.userId)) continue;
+      const { booking } = cdb.bookOrWaitlist({ sessionId: session.id, userId: r.userId, capacity: occ.type.capacity, reminders: memberReminderDefaults(r.userId), recurringId: r.id });
+      count++;
+      if (booking.status === 'waitlist') send(r.userId, classChangePush('waitlisted', { name: occ.type.name, date: occ.date, today: now.date, start: occ.start, sessionId: session.id }));
+    }
+  }
+  return count;
+}
+
+// Recordatorios que tocan ahora (reservas de hoy y mañana). Si varios llegaron juntos, uno solo, con
+// el más cercano. -> cuántos mandó.
+export function sendClassReminders({ send, now = clockNow() } = {}) {
+  if (!classSettingsNow().enabled) return 0;
+  const bookings = cdb.getBookingsInRange({ from: now.date, to: addDays(now.date, 2), statuses: ['booked'] });
+  if (!bookings.length) return 0;
+  const occs = new Map(loadOccurrences(now.date, 2).filter(o => o.sessionId).map(o => [o.sessionId, o]));
+  let sent = 0;
+  for (const b of bookings) {
+    const occ = occs.get(b.sessionId);
+    if (!occ) continue;
+    const due = remindersDue({ occ, reminders: b.reminders, sent: b.remindersSent, now, bookedAt: clockNow(Date.parse(b.createdAt)) });
+    if (!due.length) continue;
+    cdb.updateBooking(b.id, { remindersSent: [...b.remindersSent, ...due] });
+    send(b.userId, classReminderPush({ name: occ.type.name, date: occ.date, today: now.date, start: occ.start, movedFrom: occ.movedFrom, teacher: occ.teacherName, room: occ.room, minutes: Math.min(...due), sessionId: occ.sessionId }));
+    sent++;
+  }
+  return sent;
+}
+
 export function classRoutes(d) {
-  // d: { json, readBody, readSession, requireAdmin, requireOwner, audit, sendPush, can, gymTz }
+  // d: { json, readBody, readSession, requireAdmin, requireOwner, audit, sendPush, can, gymTz, isMembershipBlocked, isInactiveAccount }
   const { json, readBody } = d;
+  deps = { isMembershipBlocked: d.isMembershipBlocked, gymTz: d.gymTz };
   const now = () => gymClock(Date.now(), d.gymTz());
   const settings = classSettingsNow;
   const notify = (userIds, kind, occ, extra = {}) => {
@@ -102,6 +153,23 @@ export function classRoutes(d) {
   };
   // Fechas guardadas de hoy en adelante de un bloque o de una clase.
   const futureOccs = pick => loadOccurrences(now().date, MAX_RANGE_DAYS).filter(o => o.sessionId && !o.cancelled && pick(o));
+
+  // Socio con sesión y cuenta activa.
+  const member = (req, res) => {
+    const user = d.readSession(req);
+    if (!user) { json(res, 401, { error: 'No has iniciado sesión' }); return null; }
+    if (d.isInactiveAccount(user)) { json(res, 403, { error: 'account_not_active' }); return null; }
+    return user;
+  };
+  const publicSettings = s => ({ bookAheadDays: s.bookAheadDays, cancelHours: s.cancelHours });
+  const bookingView = b => b && ({ id: b.id, status: b.status, waitlistPos: b.waitlistPos, reminders: b.reminders });
+  const memberView = (occ, counts, mine, recurring, state) => ({
+    key: occ.key, classId: occ.classId, slotId: occ.slotId, sessionId: occ.sessionId, date: occ.date, start: occ.start, end: occ.end,
+    movedFrom: occ.movedFrom, teacherName: occ.teacherName, room: occ.room, cancelled: occ.cancelled,
+    name: occ.type.name, color: occ.type.color, icon: occ.type.icon, description: occ.type.description, durationMin: occ.type.durationMin,
+    logMode: occ.type.logMode, log: occ.type.log, capacity: occ.type.capacity,
+    booked: counts?.booked || 0, waitlist: counts?.waitlist || 0, state, recurring, myBooking: mine ? bookingView(mine) : null
+  });
 
   return {
   // ---------------- staff ----------------
@@ -268,12 +336,98 @@ export function classRoutes(d) {
     if (!occ) return json(res, 404, { error: 'not_found' });
     if (!canSee(user, occ)) return json(res, 403, { error: 'forbidden' });
     if (occ.cancelled) return json(res, 409, { error: 'class_cancelled' });
-    const member = getUserById(body.userId);
-    if (!member || member.disabled) return json(res, 404, { error: 'El usuario no existe' });
+    const person = getUserById(body.userId);
+    if (!person || person.disabled) return json(res, 404, { error: 'El usuario no existe' });
     const session = occ.sessionId ? cdb.getClassSession(occ.sessionId) : cdb.ensureClassSession({ classId: occ.classId, slotId: occ.slotId, date: occ.date, start: occ.start });
-    const { booking } = cdb.bookOrWaitlist({ sessionId: session.id, userId: member.id, capacity: occ.type.capacity, reminders: memberReminderDefaults(member.id), addedBy: user.id, force: true });
-    d.audit(req, 'classes.booking.add', { user, target: member, msg: `${occ.type.name} ${occ.date} ${occ.start}` });
+    const { booking } = cdb.bookOrWaitlist({ sessionId: session.id, userId: person.id, capacity: occ.type.capacity, reminders: memberReminderDefaults(person.id), addedBy: user.id, force: true });
+    d.audit(req, 'classes.booking.add', { user, target: person, msg: `${occ.type.name} ${occ.date} ${occ.start}` });
     json(res, 200, { booking });
+  },
+
+  // ---------------- socio ----------------
+  'GET /api/classes': async (req, res) => {
+    const user = member(req, res); if (!user) return;
+    const s = settings();
+    const q = new URL(req.url, 'http://x').searchParams;
+    const today = now().date;
+    const from = isDate(q.get('from')) ? q.get('from') : today;
+    const days = Math.min(MAX_RANGE_DAYS, Math.max(1, Number(q.get('days')) || s.bookAheadDays));
+    if (!s.enabled) return json(res, 200, { enabled: false, today, from, days, occurrences: [], settings: publicSettings(s) });
+    const occs = loadOccurrences(from, days).filter(o => !(o.type.archived && !o.sessionId));
+    const counts = countsBySession(occs);
+    const mine = new Map(cdb.getUserBookings(user.id, { from }).map(b => [b.sessionId, b]));
+    const fixed = new Set(cdb.getRecurring({ userId: user.id }).map(r => r.slotId));
+    const clock = now();
+    json(res, 200, {
+      enabled: true, today, from, days, settings: publicSettings(s), reminderDefaults: memberReminderDefaults(user.id),
+      occurrences: occs.map(o => memberView(o, counts[o.sessionId], mine.get(o.sessionId), fixed.has(o.slotId), bookingState({ occ: o, now: clock, settings: s })))
+    });
+  },
+  'POST /api/classes/book': async (req, res) => {
+    const user = member(req, res); if (!user) return;
+    const s = settings();
+    if (!s.enabled) return json(res, 409, { error: 'classes_disabled' });
+    const body = await readBody(req);
+    const occ = body.sessionId ? occOfSession(cdb.getClassSession(body.sessionId)) : (isDate(body.date) ? occOfKey(body.date, `${body.slotId}:${body.date}`) : null);
+    if (!occ || occ.type.archived) return json(res, 404, { error: 'not_found' });
+    const state = bookingState({ occ, now: now(), settings: s });
+    if (state !== 'open') return json(res, 409, { error: 'booking_' + state });
+    const session = occ.sessionId ? cdb.getClassSession(occ.sessionId) : cdb.ensureClassSession({ classId: occ.classId, slotId: occ.slotId, date: occ.date, start: occ.start });
+    const { booking } = cdb.bookOrWaitlist({ sessionId: session.id, userId: user.id, capacity: occ.type.capacity, reminders: memberReminderDefaults(user.id) });
+    json(res, 200, { booking: bookingView(booking) });
+  },
+  'POST /api/classes/cancel': async (req, res) => {
+    const user = member(req, res); if (!user) return;
+    const { bookingId } = await readBody(req);
+    const b = cdb.getBookingWithSession(bookingId);
+    if (!b || b.userId !== user.id || !['booked', 'waitlist'].includes(b.status)) return json(res, 404, { error: 'not_found' });
+    const occ = occOfSession(b.session);
+    if (!occ) return json(res, 404, { error: 'not_found' });
+    const s = settings();
+    const clock = now();
+    if (bookingState({ occ, now: clock, settings: s }) === 'started') return json(res, 409, { error: 'booking_started' });
+    const kind = b.status === 'waitlist' ? 'cancelled' : cancelKind({ occ, now: clock, settings: s });
+    const out = cdb.cancelAndPromote({ bookingId: b.id, kind, promote: canPromote({ occ, now: clock, settings: s }), capacity: occ.type.capacity });
+    if (out.promoted) notify([out.promoted.userId], 'promoted', occ);
+    json(res, 200, { booking: bookingView(out.booking), kind });
+  },
+  'PUT /api/classes/reminders': async (req, res) => {
+    const user = member(req, res); if (!user) return;
+    const { bookingId, reminders } = await readBody(req);
+    const b = cdb.getBooking(bookingId);
+    if (!b || b.userId !== user.id) return json(res, 404, { error: 'not_found' });
+    if (!Array.isArray(reminders) || reminders.some(m => !REMINDER_OPTIONS.includes(m))) return json(res, 400, { error: 'validation_error', message: 'Recordatorio inválido' });
+    const chosen = REMINDER_OPTIONS.filter(m => reminders.includes(m));
+    const booking = cdb.updateBooking(b.id, { reminders: chosen, remindersSent: b.remindersSent.filter(m => chosen.includes(m)) });
+    json(res, 200, { booking: bookingView(booking) });
+  },
+  'POST /api/classes/recurring': async (req, res) => {
+    const user = member(req, res); if (!user) return;
+    if (!settings().enabled) return json(res, 409, { error: 'classes_disabled' });
+    const { slotId } = await readBody(req);
+    const slot = cdb.getClassSlot(slotId);
+    const type = slot && cdb.getClassType(slot.classId);
+    if (!slot || !type || type.archived) return json(res, 404, { error: 'not_found' });
+    cdb.addRecurring(slot.id, user.id);
+    const booked = materializeRecurring({ slotId: slot.id, userId: user.id, send: (uid, payload) => d.sendPush(uid, payload).catch(() => {}) });
+    json(res, 200, { recurring: true, booked });
+  },
+  'POST /api/classes/recurring/delete': async (req, res) => {
+    const user = member(req, res); if (!user) return;
+    const { slotId } = await readBody(req);
+    cdb.removeRecurring(slotId, user.id);
+    json(res, 200, { recurring: false });
+  },
+  'GET /api/classes/ics': async (req, res) => {
+    const user = member(req, res); if (!user) return;
+    const b = cdb.getBookingWithSession(new URL(req.url, 'http://x').searchParams.get('booking'));
+    if (!b || b.userId !== user.id) return json(res, 404, { error: 'not_found' });
+    const occ = occOfSession(b.session);
+    if (!occ) return json(res, 404, { error: 'not_found' });
+    const stamp = new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
+    const body = buildIcs({ occ, gymTz: d.gymTz(), uid: `${b.id}@lauyim`, stamp });
+    res.writeHead(200, { 'Content-Type': 'text/calendar; charset=utf-8', 'Content-Disposition': 'attachment; filename="clase.ics"', 'Cache-Control': 'no-store' });
+    res.end(body);
   },
 
   // ---------------- owner ----------------
