@@ -75,6 +75,7 @@ export const classesApi = {
   pending: () => api('/api/classes/pending'),
   answer: (bookingId, attended, rating) => post('/api/classes/attendance', { bookingId, attended, rating }),
   logged: bookingId => post('/api/classes/logged', { bookingId }),
+  unlogged: bookingId => post('/api/classes/logged', { bookingId, logged: false }),
   rate: (bookingId, rating) => post('/api/classes/rating', { bookingId, rating }),
   takeAttendance: (sessionId, present, absent) => post('/api/admin/classes/sessions/attendance', { sessionId, present, absent }),
   stats: weeks => api(`/api/admin/classes/stats?weeks=${weeks}`),
@@ -270,3 +271,9 @@ export function planLine(planLimit, date, today) {
 
 // El límite en palabras: "2 clases por semana".
 export const planLimitLabel = ({ limit, period }) => `${limit === 1 ? '1 clase' : `${limit} clases`} por ${period === 'month' ? 'mes' : 'semana'}`
+
+// Clases reservadas (o ya marcadas presentes) que están en curso ahora: el renglón "Ahora" del historial.
+export function liveClasses(occurrences, nowMs, tz) {
+  return (occurrences || []).filter(o => !o.cancelled && o.myBooking && ['booked', 'attended'].includes(o.myBooking.status)
+    && occTimes(o, tz).start <= nowMs && nowMs < occTimes(o, tz).end)
+}

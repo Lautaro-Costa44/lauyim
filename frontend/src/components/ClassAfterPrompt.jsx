@@ -87,8 +87,15 @@ function showQueue(queue) {
   ui().openSheet(close => <Dialog item={next.item} close={close} done={() => showQueue(queue)} />, { kind: 'center' })
 }
 
+// Una clase sumada al historial que la profe después corrigió a ausente: se saca.
+export async function unlogClassWorkout(bookingId) {
+  useStore.getState().update(s => { s.workouts = (s.workouts || []).filter(w => w.classBookingId !== bookingId) })
+  try { await classesApi.unlogged(bookingId) } catch { /* se reintenta en la próxima apertura */ }
+}
+
 export async function checkClassesAfter() {
-  const { ask, log } = await classesApi.pending()
+  const { ask, log, unlog = [] } = await classesApi.pending()
+  for (const bookingId of unlog) await unlogClassWorkout(bookingId)
   for (const item of log) await logClassWorkout(item.bookingId, item.workout)
   const queue = [
     ...ask.map(item => ({ kind: 'ask', item })),

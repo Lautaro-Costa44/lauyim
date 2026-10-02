@@ -251,7 +251,7 @@ function RollCall({ detail, sessionId, onDone, onCancel }) {
   }
   return <div className="class-session-actions">
     <div className="list">{detail.booked.map(p => <div key={p.userId} className="item">
-      <div className="grow"><div className="tt">{p.name}</div>{p.answered && <div className="ss">{p.status === 'attended' ? t('Dijo que fue') : t('Dijo que no fue')}</div>}</div>
+      <div className="grow"><div className="tt">{p.name}</div>{p.answered && p.source === 'member' && <div className="ss">{p.status === 'attended' ? t('Dijo que fue') : t('Dijo que no fue')}</div>}</div>
       <Segmented className="seg-inline" options={[{ value: 'p', label: t('Presente') }, { value: 'a', label: t('Ausente') }]} value={roll[p.userId] ? 'p' : 'a'} onChange={v => setRoll(r => ({ ...r, [p.userId]: v === 'p' }))} />
     </div>)}</div>
     <Button size="sm" variant="plain" onClick={() => setRoll(r => Object.fromEntries(Object.keys(r).map(u => [u, true])))}>{t('Todos presentes')}</Button>

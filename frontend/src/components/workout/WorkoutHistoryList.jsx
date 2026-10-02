@@ -32,7 +32,8 @@ export function HistoryRow({ w, routines, unit, selected, onClick }) {
   </button>
 }
 
-export default function WorkoutHistoryList({ data, selectedId, onOpen, picker }) {
+// data.live: clases en curso del socio (renglón "Ahora", arriba); onOpenLive abre su hoja.
+export default function WorkoutHistoryList({ data, selectedId, onOpen, onOpenLive, picker }) {
   const desktop = useDesktop()
   const [routineId, setRoutineId] = useState(null)
   const [kind, setKind] = useState('all')
@@ -54,7 +55,18 @@ export default function WorkoutHistoryList({ data, selectedId, onOpen, picker })
   const pick = id => { setRoutineId(id); setShown(PAGE) }
   const monthLabel = key => { const [y, m] = key.split('-').map(Number); return `${t(MONTHS_LONG[m - 1])} ${y}` }
 
-  if (!(data.workouts || []).length) return <div className="empty"><div className="ico"><Icon name="history" /></div>{t('No workouts yet.')}</div>
+  const live = kind === 'workouts' ? [] : (data.live || [])
+  const liveSection = live.length > 0 && <section className="wh-month wh-live">
+    <h4 className="wh-month-h"><span>{t('Ahora')}</span></h4>
+    <div className="list">{live.map(o => <button key={o.key} type="button" className="item wh-row" onClick={() => onOpenLive && onOpenLive(o)}>
+      <span className="class-bar" style={{ background: o.color }} aria-hidden="true" />
+      <span className="grow"><span className="tt">{o.name} <span className="tag nocap class-tag-live">{t('En curso')}</span></span>
+        <span className="ss">{[`${o.start}–${o.end}`, o.teacherName && t('con {0}', o.teacherName), o.room].filter(Boolean).join(' · ')}</span></span>
+      <Icon name="chevronRight" className="chev" />
+    </button>)}</div>
+  </section>
+  if (!(data.workouts || []).length) return live.length ? <div className="wh">{liveSection}<div className="empty small">{t('Cuando termine, se suma acá.')}</div></div>
+    : <div className="empty"><div className="ico"><Icon name="history" /></div>{t('No workouts yet.')}</div>
   return <div className="wh">
     <div className="wh-filters">
       {showKinds && <Segmented options={[{ value: 'all', label: t('Todo') }, { value: 'workouts', label: t('Entrenamientos') }, { value: 'classes', label: t('Clases') }]}
@@ -68,7 +80,8 @@ export default function WorkoutHistoryList({ data, selectedId, onOpen, picker })
           {usedRoutines.map(r => <button key={r.id} type="button" className={'chip nocap' + (routineId === r.id ? ' on' : '')} aria-pressed={routineId === r.id} onClick={() => pick(r.id)}>{r.name || t('Rutina')}</button>)}
         </div>)}
     </div>
-    {!filtered.length ? <div className="empty small">{t('Ningún entreno coincide con el filtro.')}</div> : <>
+    {liveSection}
+    {!filtered.length ? !live.length && <div className="empty small">{t('Ningún entreno coincide con el filtro.')}</div> : <>
       {groups.map(g => <section key={g.key} className="wh-month">
         <h4 className="wh-month-h">
           <span>{monthLabel(g.key)}</span>

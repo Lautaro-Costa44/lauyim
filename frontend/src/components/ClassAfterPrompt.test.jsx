@@ -28,3 +28,12 @@ it('no busca clases pendientes hasta que terminó el primer pull', async () => {
   await act(async () => { useStore.setState({ pulled: true }) })
   expect(apiMock).toHaveBeenCalledWith('/api/classes/pending')
 })
+
+it('una clase corregida a ausente se saca del historial y se avisa al servidor', async () => {
+  const { checkClassesAfter } = await import('./ClassAfterPrompt.jsx')
+  useStore.setState({ S: { ...useStore.getState().S, workouts: [{ id: 'cls-b1', d: '2026-10-05', kind: 'class', classBookingId: 'b1', entries: [] }, { id: 'w2', d: '2026-10-05', entries: [] }] } })
+  apiMock.mockImplementation(url => url === '/api/classes/pending' ? Promise.resolve({ ask: [], log: [], unlog: ['b1'] }) : Promise.resolve({ ok: true }))
+  await checkClassesAfter()
+  expect(useStore.getState().S.workouts.map(w => w.id)).toEqual(['w2'])
+  expect(apiMock).toHaveBeenCalledWith('/api/classes/logged', { method: 'POST', body: JSON.stringify({ bookingId: 'b1', logged: false }) })
+})

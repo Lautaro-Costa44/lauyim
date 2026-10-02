@@ -105,3 +105,23 @@ describe('WorkoutDetailView', () => {
     expect([...container.querySelectorAll('button')].every(b => b.classList.contains('wd-ex-h'))).toBe(true)
   })
 })
+
+describe('clase en curso en el historial', () => {
+  const live = [{ key: 'k', name: 'Spinning', color: '#ff9f0a', start: '19:00', end: '19:45', teacherName: 'Caro', room: 'Sala 2' }]
+  it('el renglón "Ahora" arriba con "En curso"; tocarlo abre la clase; no en el filtro Entrenamientos', async () => {
+    const onOpenLive = vi.fn()
+    await render(<WorkoutHistoryList data={{ ...DATA, classesOn: true, live }} onOpen={() => {}} onOpenLive={onOpenLive} />)
+    const first = container.querySelector('.wh-month')
+    expect(first.classList.contains('wh-live')).toBe(true)
+    expect(first.textContent).toContain('AhoraSpinning En curso19:00–19:45 · con Caro · Sala 2')
+    await act(async () => { first.querySelector('button').click() })
+    expect(onOpenLive).toHaveBeenCalledWith(live[0])
+    await act(async () => { [...container.querySelectorAll('button')].find(b => b.textContent === 'Entrenamientos').click() })
+    expect(container.querySelector('.wh-live')).toBeNull()
+  })
+  it('sin entrenos todavía: igual muestra la clase en curso', async () => {
+    await render(<WorkoutHistoryList data={{ workouts: [], routines: [], unit: 'kg', classesOn: true, live }} onOpen={() => {}} />)
+    expect(text()).toContain('En curso')
+    expect(text()).toContain('Cuando termine, se suma acá.')
+  })
+})

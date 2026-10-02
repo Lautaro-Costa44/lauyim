@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest'
 const apiMock = vi.hoisted(() => vi.fn(() => Promise.resolve({})))
 vi.mock('./api.js', () => ({ api: apiMock }))
 
-const { REMINDER_OPTIONS, reminderLabel, buttonState, capacityText, timeRange, dayChips, conflictMessages, intensityLabel, googleCalendarUrl, classesApi, zonedToEpoch, countdown, homeClasses, classSlotChips, weekBookable, bookWeekText, teacherHome, spotsText, homeStrip, shortName, shareListText, periodStart, markPlanFull, planLine, planLimitLabel } = await import('./classes.js')
+const { REMINDER_OPTIONS, reminderLabel, buttonState, capacityText, timeRange, dayChips, conflictMessages, intensityLabel, googleCalendarUrl, classesApi, zonedToEpoch, countdown, homeClasses, classSlotChips, weekBookable, bookWeekText, teacherHome, spotsText, homeStrip, shortName, shareListText, periodStart, markPlanFull, planLine, planLimitLabel, liveClasses } = await import('./classes.js')
 
 describe('etiquetas', () => {
   it('recordatorios, cupo, horario e intensidad', () => {
@@ -218,5 +218,14 @@ describe('límite de clases por plan', () => {
     expect(planLine({ limit: 1, period: 'month', used: {} }, '2026-10-20', '2026-10-06')).toEqual(['Te queda 1 clase {0}', 'este mes'])
     expect(planLine(null, '2026-10-07', '2026-10-06')).toBeNull()
     expect(planLimitLabel({ limit: 8, period: 'month' })).toBe('8 clases por mes')
+  })
+})
+
+describe('clases en curso', () => {
+  it('las reservadas o presentes que empezaron y no terminaron', () => {
+    const TZ = 'America/Argentina/Buenos_Aires'
+    const o = (key, start, extra) => ({ key, date: '2026-10-05', start, durationMin: 60, cancelled: false, myBooking: { status: 'booked' }, ...extra })
+    const occs = [o('now', '11:30'), o('later', '13:00'), o('done', '10:00'), o('mine', '11:45', { myBooking: { status: 'attended' } }), o('other', '11:40', { myBooking: null }), o('sus', '11:50', { cancelled: true })]
+    expect(liveClasses(occs, Date.parse('2026-10-05T15:00:00Z'), TZ).map(x => x.key)).toEqual(['now', 'mine'])   // 12:00 en Buenos Aires
   })
 })
