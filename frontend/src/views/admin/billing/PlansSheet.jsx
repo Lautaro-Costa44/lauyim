@@ -48,7 +48,7 @@ function PlanEditor({ plan, onSaved, onCancel }) {
       ? t('Pase libre: se anota a todas las clases que quiera.')
       : t('Al llegar al límite no puede reservar más esa semana (de lunes a domingo) o ese mes. Cancelar a tiempo le devuelve la clase. Recepción puede anotarlo igual.')}>
       <div className="lrow" style={{ paddingTop: 10, paddingBottom: 10 }}>
-        <Segmented options={[{ value: 'free', label: t('Libre') }, { value: 'week', label: t('Por semana') }, { value: 'month', label: t('Por mes') }]} value={classPeriod} onChange={setClassPeriod} />
+        <Segmented options={[{ value: 'free', label: t('Libre') }, { value: 'week', label: t('Por semana') }, { value: 'month', label: t('Por mes') }]} value={classPeriod} onChange={setClassPeriod} className="plan-classes-seg" />
       </div>
       {classPeriod !== 'free' && <Row title={classPeriod === 'week' ? t('Clases por semana') : t('Clases por mes')}>
         <NumberField className="row-num" value={classLimit} onChange={setClassLimit} decimal={false} nullable />
