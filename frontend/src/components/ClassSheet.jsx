@@ -7,11 +7,13 @@ import { useStore } from '../store/useStore.js'
 import { t, exerciseNameFor } from '../lib/i18n.js'
 import { errorText } from '../lib/errors.js'
 import { EXIDX } from '../lib/exercises.js'
-import { REMINDER_OPTIONS, reminderLabel, buttonState, capacityText, timeRange, intensityLabel, shortDay, googleCalendarUrl, classesApi, classSlotChips, weekBookable, bookWeekText } from '../lib/classes.js'
+import { REMINDER_OPTIONS, reminderLabel, buttonState, capacityText, timeRange, intensityLabel, shortDay, googleCalendarUrl, classesApi, classSlotChips, weekBookable, bookWeekText, countdown, occTimes } from '../lib/classes.js'
 import { IS_APPLE } from '../lib/api.js'
+import { can } from '../lib/permissions.js'
 import { Button } from './ui.jsx'
 import BodyMap from './BodyMap.jsx'
 import Icon from './Icon.jsx'
+import { GearButton } from './TeacherClass.jsx'
 
 const ui = () => useUI.getState()
 const WEEKDAY_PLURAL = ['domingos', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábados']
@@ -106,7 +108,6 @@ function ClassDetail({ occ: initial, today, tz, cancelHours, onChange, close }) 
     } catch (e) { mark(!on); ui().toast(errorText(e, t('No se pudo guardar'))) }
   }
   const otherDates = week.bookable.filter(o => o.key !== occ.key)
-  const log = occ.log || {}
   return <div className="class-sheet">
     <div className="class-sheet-head">
       <span className="class-dot" style={{ background: occ.color }} aria-hidden="true" />
@@ -122,13 +123,7 @@ function ClassDetail({ occ: initial, today, tz, cancelHours, onChange, close }) 
     </div>
     {occ.description && <p className="class-sheet-desc">{occ.description}</p>}
 
-    <h4 className="sec">{t('Qué se trabaja')}</h4>
-    {occ.logMode === 'exercises'
-      ? <div className="list">{(log.exercises || []).map(e => <div key={e.id} className="item"><div className="grow"><div className="tt capitalize">{EXIDX[e.id] ? exerciseNameFor(EXIDX[e.id]) : e.id}</div><div className="ss">{t('{0} series × {1}', e.sets, e.reps)}</div></div></div>)}</div>
-      : <div className="class-sheet-map">
-          <BodyMap load={Object.fromEntries((log.muscles || []).map(m => [m, 1]))} body={body} />
-          <div className="small muted">{t('Intensidad')}: <b>{t(intensityLabel(log.intensity))}</b></div>
-        </div>}
+    <WorkedOn occ={occ} body={body} />
 
     <div className="class-sheet-actions">
       {mine
@@ -159,8 +154,77 @@ function ClassDetail({ occ: initial, today, tz, cancelHours, onChange, close }) 
   </div>
 }
 
+// Qué se trabaja: los ejercicios o el mapa del cuerpo con la intensidad.
+function WorkedOn({ occ, body }) {
+  const log = occ.log || {}
+  return <>
+    <h4 className="sec">{t('Qué se trabaja')}</h4>
+    {occ.logMode === 'exercises'
+      ? <div className="list">{(log.exercises || []).map(e => <div key={e.id} className="item"><div className="grow"><div className="tt capitalize">{EXIDX[e.id] ? exerciseNameFor(EXIDX[e.id]) : e.id}</div><div className="ss">{t('{0} series × {1}', e.sets, e.reps)}</div></div></div>)}</div>
+      : <div className="class-sheet-map">
+          <BodyMap load={Object.fromEntries((log.muscles || []).map(m => [m, 1]))} body={body} />
+          <div className="small muted">{t('Intensidad')}: <b>{t(intensityLabel(log.intensity))}</b></div>
+        </div>}
+  </>
+}
+
+// La misma hoja para la profe que da esa fecha: sin anotarse; cuántos hay, cuánto falta y la rueda
+// para gestionarla. Se refresca al volver de la rueda.
+function TeachingDetail({ occ: initial, today, tz, onChange }) {
+  const [occ, setOcc] = useState(initial)
+  const [people, setPeople] = useState(null)   // quiénes vienen (si puede ver socios)
+  const body = useStore(s => s.S?.body) || 'male'
+  const seesMembers = useStore(s => can(s.user, 'members.view'))
+  const loadPeople = () => seesMembers && classesApi.session(occ).then(d => setPeople({ booked: d.booked, waitlist: d.waitlist })).catch(() => {})
+  useEffect(() => { loadPeople() }, [])
+  const refresh = async () => {
+    onChange && onChange()
+    loadPeople()
+    try {
+      const fresh = (await classesApi.list(occ.date, 1)).occurrences.find(o => o.key === occ.key)
+      if (fresh) setOcc(fresh)
+    } catch { /* queda lo que había */ }
+  }
+  const { start, end } = occTimes(occ, tz)
+  const cd = countdown(start, end, Date.now())
+  const when = cd.mode === 'over' ? t('Terminó') : cd.mode === 'live' ? t('En curso') : cd.label
+  return <div className="class-sheet">
+    <div className="class-sheet-head">
+      <span className="class-dot" style={{ background: occ.color }} aria-hidden="true" />
+      <div className="grow">
+        <h3>{occ.name}</h3>
+        <div className="muted small">{dayLabel(occ.date, today)} · {timeRange(occ)}{occ.room ? ' · ' + occ.room : ''}{occ.movedFrom ? ' · ' + t('cambió (era {0})', occ.movedFrom) : ''}</div>
+      </div>
+      <GearButton occ={occ} onChange={refresh} />
+    </div>
+    <span className="tag nocap class-tag-present">{t('La das vos')}</span>
+    <div className="class-teach-stats">
+      <div><b>{capacityText(occ.booked, occ.capacity)}</b><span>{t('anotados')}</span></div>
+      <div><b>{occ.waitlist || 0}</b><span>{t('en espera')}</span></div>
+      <div><b>{when}</b><span>{cd.mode === 'over' || cd.mode === 'live' ? t('estado') : t('para empezar')}</span></div>
+    </div>
+    {people && <>
+      <h4 className="sec">{t('Anotados')}</h4>
+      {people.booked.length === 0 ? <div className="dim small">{t('Nadie anotado todavía.')}</div>
+        : <div className="list">{people.booked.map(p => <div key={p.bookingId} className="item"><div className="grow"><div className="tt">{p.name}</div></div>
+            {p.status === 'attended' && <span className="tag nocap class-tag-present">{t('Presente')}</span>}
+            {p.status === 'absent' && <span className="tag nocap class-tag-absent">{t('Ausente')}</span>}
+          </div>)}</div>}
+      {people.waitlist.length > 0 && <>
+        <h4 className="sec">{t('Lista de espera')}</h4>
+        <div className="list">{people.waitlist.map(p => <div key={p.bookingId} className="item"><span className="tag">{p.pos}</span><div className="grow"><div className="tt">{p.name}</div></div></div>)}</div>
+      </>}
+    </>}
+    {occ.description && <p className="class-sheet-desc">{occ.description}</p>}
+    <WorkedOn occ={occ} body={body} />
+    <div className="small dim class-teach-hint"><Icon name="gear" /> {t('Con la rueda tomás lista, mandás un mensaje a los anotados o cambiás algo de esta fecha.')}</div>
+  </div>
+}
+
 export function classSheet(occ, { today, tz, cancelHours = 2, onChange } = {}) {
-  ui().openSheet(close => <ClassDetail occ={occ} today={today} tz={tz} cancelHours={cancelHours} onChange={onChange} close={close} />, { kind: 'panel' })
+  ui().openSheet(close => occ.teaching
+    ? <TeachingDetail occ={occ} today={today} tz={tz} onChange={onChange} close={close} />
+    : <ClassDetail occ={occ} today={today} tz={tz} cancelHours={cancelHours} onChange={onChange} close={close} />, { kind: 'panel' })
 }
 
 // ---- agregar al calendario ----

@@ -2,16 +2,18 @@
 // A menos de 24 h se despliega la cuenta regresiva y el cupo. "Mis clases" abre la lista de sus
 // próximas reservas. Si le suspenden una clase, un aviso que puede cerrar. Se recarga al volver a
 // la app y cada 2 minutos (cambios de horario, de profe, del cupo o una suspensión llegan solos);
-// el reloj corre cada segundo en la última hora y cada 30 s antes.
+// el reloj corre cada segundo en la última hora y cada 30 s antes. A la profe, arriba, la próxima
+// clase que da y las otras de ese día: tocar la clase abre su hoja, la rueda la gestión.
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useStore } from '../store/useStore.js'
 import { useUI } from '../store/useUI.js'
 import { t } from '../lib/i18n.js'
-import { classesApi, timeRange, weekdayOf, capacityText, countdown, occTimes, homeClasses } from '../lib/classes.js'
+import { classesApi, timeRange, weekdayOf, capacityText, countdown, occTimes, homeClasses, teacherHome } from '../lib/classes.js'
 import { classSheet, dayLabel } from './ClassSheet.jsx'
 import { Button } from './ui.jsx'
 import Icon from './Icon.jsx'
+import { GearButton } from './TeacherClass.jsx'
 
 const ui = () => useUI.getState()
 const WEEKDAY_SHORT = ['DOM', 'LUN', 'MAR', 'MIÉ', 'JUE', 'VIE', 'SÁB']
@@ -49,11 +51,14 @@ export default function HomeClassCard() {
 
   const tz = data?.tz
   const coarse = homeClasses(data?.occurrences, Date.now(), tz, dismissed)
-  const nextStart = coarse.next ? occTimes(coarse.next, tz).start : Infinity
+  const coarseTeach = teacherHome(data?.occurrences, Date.now(), tz)
+  const nextStart = Math.min(...[coarse.next, coarseTeach.next].filter(Boolean).map(o => occTimes(o, tz).start), Infinity)
   const now = useNow(nextStart - Date.now() < 3600000 ? 1000 : 30000)
   if (!on || !data) return null
   const { next, upcoming, suspended } = homeClasses(data.occurrences, now, tz, dismissed)
   const opts = { today: data.today, tz, cancelHours: data.settings?.cancelHours ?? 2, onChange: load }
+  const teach = teacherHome(data.occurrences, now, tz)
+  const teaching = teach.next && <TeacherTicket {...teach} now={now} tz={tz} opts={opts} />
   const dismiss = key => { const keys = [...dismissed, key]; setDismissed(keys); saveDismissed(keys) }
   const openList = () => myClassesSheet({ upcoming, suspended, opts, onAll: () => nav('/plan/clases') })
 
@@ -64,12 +69,13 @@ export default function HomeClassCard() {
   </div>)
 
   if (!next) return <>
+    {teaching}
     {alerts}
-    <div className="card tappable home-class-empty" onClick={() => nav('/plan/clases')}>
+    {!teaching && <div className="card tappable home-class-empty" onClick={() => nav('/plan/clases')}>
       <span className="lrow-i" style={{ background: 'var(--surface-3)' }}><Icon name="calendar" /></span>
       <div className="grow"><div className="lbl2">{t('Clases')}</div><div className="ttl">{t('Anotate a una clase')}</div></div>
       <Icon name="chevronRight" className="chev" />
-    </div>
+    </div>}
   </>
 
   const { start, end } = occTimes(next, tz)
@@ -77,6 +83,7 @@ export default function HomeClassCard() {
   const soon = cd.mode !== 'days'
   const fill = Math.min(1, next.booked / next.capacity)
   return <>
+    {teaching}
     {alerts}
     <div className={'card class-ticket' + (soon ? ' soon' : '')} style={{ '--c': next.color }}>
       <button type="button" className="class-ticket-main" onClick={() => classSheet(next, opts)} aria-label={t('Ver {0}', next.name)}>
@@ -147,3 +154,48 @@ export function myClassesSheet(props) {
   ui().openSheet(close => <MyClasses {...props} close={close} />, { kind: 'panel' })
 }
 
+// ---- la profe ----
+
+// Próxima clase que da, como ticket (sin botones: tocarla abre su hoja, la rueda la gestión) y
+// debajo las otras que da ese día.
+function TeacherTicket({ next, sameDay, over, now, tz, opts }) {
+  const { start, end } = occTimes(next, tz)
+  const cd = countdown(start, end, now)
+  const soon = cd.mode !== 'days'
+  const fill = Math.min(1, next.booked / next.capacity)
+  return <div className={'card class-ticket teach' + (soon ? ' soon' : '')} style={{ '--c': next.color }}>
+    <div className="class-ticket-row">
+      <button type="button" className="class-ticket-main" onClick={() => classSheet(next, opts)} aria-label={t('Ver {0}', next.name)}>
+        <span className="class-ticket-date">
+          <span>{WEEKDAY_SHORT[weekdayOf(next.date)]}</span>
+          <b>{Number(next.date.slice(8, 10))}</b>
+          <span>{next.start}</span>
+        </span>
+        <span className="class-ticket-info">
+          <span className="lbl2">{t('Próxima clase que das')}</span>
+          <span className="class-ticket-name">{next.name}</span>
+          <span className="muted small">{[next.room, next.movedFrom && t('cambió (era {0})', next.movedFrom)].filter(Boolean).join(' · ')}</span>
+          {cd.mode === 'days' && <span className="class-ticket-tags"><span className="tag nocap">{cd.label}</span></span>}
+        </span>
+      </button>
+      <GearButton occ={next} onChange={opts.onChange} className="class-ticket-gear" />
+    </div>
+    <div className="class-ticket-count">
+      {soon && <div className="class-ticket-clock">{cd.mode === 'live' ? t('En curso') : <><span className="small muted">{t('Empieza en')}</span> <b>{cd.label}</b></>}</div>}
+      <div className="class-ticket-bar" aria-hidden="true"><span style={{ width: `${Math.round(fill * 100)}%` }} /></div>
+      <div className="small muted">{t('{0} anotados', capacityText(next.booked, next.capacity))}{next.waitlist ? ' · ' + t('{0} en espera', next.waitlist) : ''}</div>
+    </div>
+    {sameDay.length > 0 && <div className="class-teach-more">
+      <div className="lbl2">{next.date === opts.today ? t('También hoy') : t('También ese día')}</div>
+      {sameDay.map(o => <div key={o.key} role="button" tabIndex={0} className="class-teach-row" aria-label={t('Ver {0}', o.name)}
+        onClick={() => classSheet(o, opts)} onKeyDown={e => { if (e.key === 'Enter') classSheet(o, opts) }}>
+        <span className="class-teach-time">{o.start}</span>
+        <span className="grow">
+          <span className="tt">{o.name}</span>
+          <span className="ss">{over(o) ? t('Terminó') : t('{0} anotados', capacityText(o.booked, o.capacity))}{!over(o) && o.waitlist ? ' · ' + t('{0} en espera', o.waitlist) : ''}</span>
+        </span>
+        <GearButton occ={o} onChange={opts.onChange} />
+      </div>)}
+    </div>}
+  </div>
+}

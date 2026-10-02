@@ -6,6 +6,7 @@ import { t } from '../lib/i18n.js'
 import { errorText } from '../lib/errors.js'
 import { buttonState, capacityText, timeRange, dayChips, shortDay, classesApi } from '../lib/classes.js'
 import { classSheet, classAction } from '../components/ClassSheet.jsx'
+import { GearButton } from '../components/TeacherClass.jsx'
 import { Button } from '../components/ui.jsx'
 import Icon from '../components/Icon.jsx'
 
@@ -56,13 +57,15 @@ export default function Clases() {
               onClick={() => classSheet(occ, opts)} onKeyDown={e => { if (e.key === 'Enter') classSheet(occ, opts) }}>
               <span className="class-bar" style={{ background: occ.color }} aria-hidden="true" />
               <div className="grow">
-                <div className="class-time">{timeRange(occ)}{occ.movedFrom ? <span className="tag" style={{ marginLeft: 6 }}>{t('cambió')}</span> : null}</div>
+                <div className="class-time">{timeRange(occ)}{occ.movedFrom ? <span className="tag" style={{ marginLeft: 6 }}>{t('cambió')}</span> : null}{occ.teaching ? <span className="tag nocap class-tag-present" style={{ marginLeft: 6 }}>{t('La das vos')}</span> : null}</div>
                 <div className="tt">{occ.name}</div>
                 <div className="ss">{[occ.teacherName, occ.room, capacityText(occ.booked, occ.capacity)].filter(Boolean).join(' · ')}</div>
               </div>
-              <Button size="sm" variant={state.key === 'book' ? 'primary' : state.key === 'booked' ? 'tinted' : 'plain'}
+              {/* La profe: en lugar de anotarse, la rueda para gestionar la fecha. */}
+              {occ.teaching ? <GearButton occ={occ} onChange={load} />
+                : <Button size="sm" variant={state.key === 'book' ? 'primary' : state.key === 'booked' ? 'tinted' : 'plain'}
                 disabled={state.disabled || busyKey === occ.key} onClick={e => act(e, occ)}
-                icon={state.key === 'booked' ? 'check' : undefined}>{t(state.label)}</Button>
+                icon={state.key === 'booked' ? 'check' : undefined}>{t(state.label)}</Button>}
             </div>
           })}
         </div>}

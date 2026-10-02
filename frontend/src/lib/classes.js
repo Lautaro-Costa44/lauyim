@@ -157,3 +157,13 @@ export function bookWeekText({ booked, waitlist }) {
   if (!booked) return ['Quedaste en lista de espera en {0}', n(waitlist)]
   return ['Te anotaste a {0} y quedaste en espera en {1}', n(booked), n(waitlist)]
 }
+
+// Inicio de la profe: la próxima clase que da (sin terminar ni suspendida) y las otras que da ese
+// mismo día (también las que ya terminaron, para tomar lista), por hora.
+export function teacherHome(occurrences, nowMs, tz) {
+  const mine = (occurrences || []).filter(o => o.teaching && !o.cancelled)
+    .sort((a, b) => occTimes(a, tz).start - occTimes(b, tz).start)
+  const next = mine.find(o => occTimes(o, tz).end > nowMs) || null
+  const sameDay = next ? mine.filter(o => o.date === next.date && o.key !== next.key) : []
+  return { next, sameDay, over: o => occTimes(o, tz).end <= nowMs }
+}

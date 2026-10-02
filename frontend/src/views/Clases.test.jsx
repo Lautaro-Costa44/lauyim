@@ -259,3 +259,74 @@ describe('Inicio', () => {
     expect(apiMock).not.toHaveBeenCalled()
   })
 })
+
+describe('la profe', () => {
+  const NOW = Date.parse('2026-10-05T15:00:00Z')   // 12:00 en Buenos Aires
+  const teachOcc = extra => occ({ teaching: true, booked: 8, waitlist: 2, ...extra })
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval'] }); vi.setSystemTime(NOW)
+    useStore.setState({ config: { classes_available: true }, user: { id: 'profe', permissions: ['members.view', 'classes.attendance'] } })
+    apiMock.mockImplementation(url => {
+      if (url === '/api/admin/classes/types') return Promise.resolve({ types: [], slots: [], teachers: [], canManage: false })
+      if (url === '/api/admin/users') return Promise.resolve({ users: [{ id: 'ana', name: 'Ana' }] })
+      if (url.startsWith('/api/admin/classes/session?')) return Promise.resolve({ occurrence: teachOcc({ sessionId: 'x1' }), canMessage: true, booked: [], waitlist: [] })
+      if (url.startsWith('/api/classes')) return Promise.resolve({ ...listBody(), tz: 'America/Argentina/Buenos_Aires' })
+      return Promise.resolve({})
+    })
+  })
+  afterEach(() => { vi.useRealTimers(); useStore.setState({ user: null }) })
+
+  it('Inicio: la próxima que da con cupo y la rueda, y las otras de ese día; sin botones de acción', async () => {
+    occurrences = [teachOcc(), teachOcc({ key: 'f', name: 'Funcional', start: '08:00', end: '08:45', booked: 5, waitlist: 0 })]
+    await mount(<HomeClassCard />)
+    const ticket = container.querySelector('.class-ticket.teach')
+    expect(ticket.textContent).toContain('Próxima clase que das')
+    expect(ticket.querySelector('.class-ticket-name').textContent).toBe('Spinning')
+    expect(ticket.textContent).toContain('8/12 anotados · 2 en espera')
+    expect([...ticket.querySelectorAll('.class-teach-row .tt')].map(e => e.textContent)).toEqual(['Funcional'])
+    expect(ticket.querySelector('.class-teach-row .ss').textContent).toBe('Terminó')
+    expect([...ticket.querySelectorAll('.class-gear')].map(b => b.getAttribute('aria-label'))).toEqual(['Gestionar Spinning', 'Gestionar Funcional'])
+    expect(container.textContent).not.toContain('Anotate a una clase')
+  })
+
+  it('tocar la clase abre su hoja de profe: cuántos hay, cuánto falta y la rueda', async () => {
+    occurrences = [teachOcc()]
+    await mount(<HomeClassCard />)
+    await act(async () => { container.querySelector('.class-ticket.teach .class-ticket-main').click() })
+    const { host, unmount } = await openLastSheet()
+    expect(host.textContent).toContain('La das vos')
+    expect([...host.querySelectorAll('.class-teach-stats b')].map(b => b.textContent)).toEqual(['8/12', '2', '7 h 00 min'])
+    expect(host.textContent).not.toContain('Anotarme')
+    expect(host.textContent).not.toContain('Fija')
+    expect(host.querySelector('.class-gear')).toBeTruthy()
+    // Quiénes vienen: los anotados de la fecha.
+    expect(host.textContent).toContain('Nadie anotado todavía.')
+    await unmount(); host.remove()
+  })
+
+  it('la rueda abre la gestión de la fecha (con los socios para anotar a mano)', async () => {
+    occurrences = [teachOcc()]
+    await mount(<HomeClassCard />)
+    const before = useUI.getState().sheets.length
+    await act(async () => { container.querySelector('.class-ticket.teach .class-gear').click() })
+    // La hoja del panel se carga recién al tocar la rueda.
+    for (let i = 0; i < 50 && useUI.getState().sheets.length === before; i++) await act(async () => { await new Promise(r => setTimeout(r, 20)) })
+    expect(apiMock).toHaveBeenCalledWith('/api/admin/classes/types')
+    expect(apiMock).toHaveBeenCalledWith('/api/admin/users')
+    expect(useUI.getState().sheets.length).toBe(before + 1)
+    const { host, unmount } = await openLastSheet()
+    expect(host.textContent).toContain('Mandar un mensaje a los anotados')
+    await unmount(); host.remove()
+  })
+
+  it('Plan → Clases: la que da muestra "La das vos" y la rueda en lugar de "Anotarme"', async () => {
+    occurrences = [teachOcc(), occ({ key: 'o', slotId: 's2', name: 'Pilates', start: '20:00', end: '21:00' })]
+    await mount(<Clases />)
+    const items = [...container.querySelectorAll('.class-item')]
+    expect(items[0].textContent).toContain('La das vos')
+    expect(items[0].querySelector('.class-gear')).toBeTruthy()
+    expect(items[0].textContent).not.toContain('Anotarme')
+    expect(items[1].querySelector('button').textContent).toBe('Anotarme')
+  })
+})
+

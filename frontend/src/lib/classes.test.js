@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest'
 const apiMock = vi.hoisted(() => vi.fn(() => Promise.resolve({})))
 vi.mock('./api.js', () => ({ api: apiMock }))
 
-const { REMINDER_OPTIONS, reminderLabel, buttonState, capacityText, timeRange, dayChips, conflictMessages, intensityLabel, googleCalendarUrl, classesApi, zonedToEpoch, countdown, homeClasses, classSlotChips, weekBookable, bookWeekText } = await import('./classes.js')
+const { REMINDER_OPTIONS, reminderLabel, buttonState, capacityText, timeRange, dayChips, conflictMessages, intensityLabel, googleCalendarUrl, classesApi, zonedToEpoch, countdown, homeClasses, classSlotChips, weekBookable, bookWeekText, teacherHome } = await import('./classes.js')
 
 describe('etiquetas', () => {
   it('recordatorios, cupo, horario e intensidad', () => {
@@ -135,5 +135,23 @@ describe('varios días de una clase', () => {
     expect(bookWeekText({ booked: 0, waitlist: 1 })).toEqual(['Quedaste en lista de espera en {0}', '1 fecha'])
     expect(bookWeekText({ booked: 2, waitlist: 1 })).toEqual(['Te anotaste a {0} y quedaste en espera en {1}', '2 fechas', '1 fecha'])
     expect(bookWeekText({ booked: 0, waitlist: 0 })).toEqual(['Ya estabas en todas'])
+  })
+})
+
+describe('Inicio de la profe', () => {
+  const TZ = 'America/Argentina/Buenos_Aires'
+  const o = (key, date, start, extra) => ({ key, date, start, durationMin: 60, teaching: true, cancelled: false, ...extra })
+  const occs = [
+    o('late', '2026-10-05', '19:30'), o('early', '2026-10-05', '08:00'), o('tom', '2026-10-06', '10:00'),
+    o('sus', '2026-10-05', '12:00', { cancelled: true }), o('other', '2026-10-05', '18:00', { teaching: false })
+  ]
+  it('la próxima que da y las otras de ese día, también las que terminaron', () => {
+    const r = teacherHome(occs, Date.parse('2026-10-05T15:00:00Z'), TZ)   // 12:00 en Buenos Aires
+    expect([r.next.key, r.sameDay.map(x => x.key)]).toEqual(['late', ['early']])
+    expect(r.over(r.sameDay[0])).toBe(true)
+  })
+  it('terminadas las de hoy, la de mañana; sin clases que da, nada', () => {
+    expect(teacherHome(occs, Date.parse('2026-10-06T00:00:00Z'), TZ).next.key).toBe('tom')
+    expect(teacherHome(occs.map(x => ({ ...x, teaching: false })), Date.parse('2026-10-05T15:00:00Z'), TZ)).toMatchObject({ next: null, sameDay: [] })
   })
 })
