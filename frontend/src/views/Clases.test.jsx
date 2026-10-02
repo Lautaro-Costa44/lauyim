@@ -92,6 +92,18 @@ describe('Plan → Clases', () => {
   })
 })
 
+describe('día cerrado', () => {
+  it('el chip lleva candado y el día muestra el aviso en lugar de la lista', async () => {
+    apiMock.mockImplementation(url => url.startsWith('/api/classes') ? Promise.resolve({ ...listBody(), closures: [{ id: 'k', from: '2026-10-06', to: '2026-10-06', reason: 'Feriado' }] }) : Promise.resolve({}))
+    await mount(<Clases />)
+    const chip = buttons().find(b => b.getAttribute('role') === 'tab' && b.textContent === 'Mañana')
+    expect(chip.classList.contains('closed')).toBe(true)
+    await act(async () => { chip.click() })
+    expect(container.querySelector('.class-closed-day').textContent).toBe('El gimnasio está cerrado · Feriado')
+    expect(container.querySelectorAll('.class-item')).toHaveLength(0)
+  })
+})
+
 describe('hoja de la clase y recordatorios', () => {
   it('anotado: cancelar, fija, recordatorios y calendario', async () => {
     occurrences[0] = occ({ myBooking: { id: 'b1', status: 'booked', waitlistPos: null, reminders: [60] } })

@@ -301,3 +301,43 @@ describe('compartir la lista', () => {
     await sheet.unmount()
   })
 })
+
+describe('cerrar el gimnasio', () => {
+  it('hoja: vista previa con clases y personas; cerrar y avisar', async () => {
+    apiMock.mockImplementation((url, opts) => {
+      if (url.startsWith('/api/admin/classes/closures/preview')) return Promise.resolve({ classes: 7, people: 42 })
+      if (url === '/api/admin/classes/closures' && opts?.method === 'POST') return Promise.resolve({ closure: { id: 'k1' }, notified: 42, classes: 7 })
+      return Promise.resolve({})
+    })
+    const { closureSheet } = await import('./clases/ClosureSheet.jsx')
+    const onChange = vi.fn()
+    closureSheet({ today: TODAY, onChange })
+    const { host, unmount } = await openLastSheet()
+    await act(async () => { await new Promise(r => setTimeout(r, 300)) })
+    expect(apiMock).toHaveBeenCalledWith('/api/admin/classes/closures/preview?from=2026-10-08&to=2026-10-08')
+    expect(host.querySelector('.class-closure-preview').textContent).toContain('Se suspenden 7 clases y le avisamos a 42 personas.')
+    await act(async () => { button(host, 'Vacaciones').click() })
+    await act(async () => { button(host, 'Cerrar y avisar').click() })
+    await tick()
+    expect(apiMock).toHaveBeenCalledWith('/api/admin/classes/closures', { method: 'POST', body: JSON.stringify({ from: '2026-10-08', to: '2026-10-08', reason: 'Vacaciones' }) })
+    expect(useUI.getState().toastMsg).toBe('Gimnasio cerrado: avisamos a 42 personas')
+    expect(onChange).toHaveBeenCalled()
+    await unmount()
+  })
+
+  it('panel: próximos cierres con Reabrir y el día cerrado marcado', async () => {
+    const closures = [{ id: 'k1', from: '2026-10-12', to: '2026-10-12', reason: 'Feriado' }]
+    apiMock.mockImplementation(url => {
+      if (url === '/api/admin/classes/closures') return Promise.resolve({ closures })
+      if (url.startsWith('/api/admin/classes/calendar')) return Promise.resolve({ ...calendar(), closures: [{ id: 'k2', from: '2026-10-07', to: '2026-10-07', reason: 'Feriado' }] })
+      if (url === '/api/admin/classes/types') return Promise.resolve({ types: [], slots: [], teachers: [], canManage: true, canOwn: true, settings: {} })
+      return Promise.resolve({})
+    })
+    await mount(<AdminClases />)
+    expect(container.querySelector('.class-closure-row').textContent).toContain('Cerrado · Lun 12/10 · Feriado')
+    expect(button(container, 'Reabrir')).toBeTruthy()
+    expect(button(container, 'Cerrar el gimnasio')).toBeTruthy()
+    expect(container.querySelector('.class-week-head span.closed').textContent).toBe('Mié 7')
+  })
+})
+
