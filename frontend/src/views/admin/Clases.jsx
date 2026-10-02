@@ -84,7 +84,7 @@ export default function AdminClases() {
       <button className="iconbtn" onClick={() => desktop ? goWeek(-1) : goDay(-1)} aria-label={desktop ? t('Semana anterior') : t('Día anterior')}><Icon name="chevronLeft" /></button>
       <div className="row" style={{ gap: 8 }}>
         <b>{desktop ? `${shortDay(days[0])} – ${shortDay(days[6])}` : (day === data.today ? t('Hoy') : shortDay(day))}</b>
-        <Button size="sm" variant="plain" onClick={goToday}>{t('Hoy')}</Button>
+        {(desktop ? week !== mondayOf(data.today) : day !== data.today) && <Button size="sm" variant="plain" onClick={goToday}>{t('Hoy')}</Button>}
       </div>
       <button className="iconbtn" onClick={() => desktop ? goWeek(1) : goDay(1)} aria-label={desktop ? t('Semana siguiente') : t('Día siguiente')}><Icon name="chevronRight" /></button>
     </div>
@@ -99,9 +99,8 @@ export default function AdminClases() {
 function Block({ occ, onOpen, style }) {
   return <button type="button" className={'class-block' + (occ.cancelled ? ' cancelled' : '')} style={{ '--c': occ.color, ...style }} onClick={() => onOpen(occ)}
     aria-label={`${occ.name} ${timeRange(occ)}`}>
-    <span className="class-block-time">{occ.start}</span>
+    <span className="class-block-time">{occ.start} <span className="class-block-cap">· {capacityText(occ.booked, occ.capacity)}{occ.waitlist ? ` +${occ.waitlist}` : ''}</span></span>
     <span className="class-block-name">{occ.name}</span>
-    <span className="class-block-cap">{capacityText(occ.booked, occ.capacity)}{occ.waitlist ? ` +${occ.waitlist}` : ''}</span>
   </button>
 }
 

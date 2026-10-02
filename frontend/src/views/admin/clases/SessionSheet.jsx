@@ -67,7 +67,7 @@ function SessionDetail({ occ: initial, canManage, users, teachers, onChange, clo
     <h4 className="sec">{t('Anotados')}</h4>
     {!detail ? <div className="dim small">{t('Loading…')}</div>
       : detail.booked.length === 0 ? <div className="dim small">{t('Nadie anotado todavía.')}</div>
-      : <div className="list">{detail.booked.map(p => <div key={p.bookingId} className="item"><div className="grow"><div className="tt">{p.name}</div></div>{p.addedBy && <span className="tag">{t('a mano')}</span>}</div>)}</div>}
+      : <div className="list">{detail.booked.map(p => <div key={p.bookingId} className="item"><div className="grow"><div className="tt">{p.name}</div></div>{p.addedBy && <span className="tag nocap">{t('a mano')}</span>}</div>)}</div>}
     {detail?.waitlist?.length > 0 && <>
       <h4 className="sec">{t('Lista de espera')}</h4>
       <div className="list">{detail.waitlist.map(p => <div key={p.bookingId} className="item"><span className="tag">{p.pos}</span><div className="grow"><div className="tt">{p.name}</div></div></div>)}</div>
@@ -97,7 +97,7 @@ function SessionDetail({ occ: initial, canManage, users, teachers, onChange, clo
       {canManage && !mode && <div className="class-session-manage">
         <Button size="sm" icon="clock" onClick={() => setMode('time')}>{t('Cambiar horario este día')}</Button>
         <Button size="sm" icon="personCircle" onClick={() => setMode('teacher')}>{t('Cambiar profe este día')}</Button>
-        <Button size="sm" variant="ghost" className="danger-text" icon="xmark" onClick={suspend}>{t('Suspender este día')}</Button>
+        <Button size="sm" variant="danger" icon="xmark" onClick={suspend}>{t('Suspender este día')}</Button>
       </div>}
     </div>}
     <div style={{ height: 8 }} />

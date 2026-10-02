@@ -7,12 +7,13 @@ import { useStore } from '../store/useStore.js'
 import { t, exerciseNameFor } from '../lib/i18n.js'
 import { errorText } from '../lib/errors.js'
 import { EXIDX } from '../lib/exercises.js'
-import { REMINDER_OPTIONS, reminderLabel, buttonState, capacityText, timeRange, intensityLabel, shortDay, classesApi } from '../lib/classes.js'
+import { REMINDER_OPTIONS, reminderLabel, buttonState, capacityText, timeRange, intensityLabel, shortDay, weekdayOf, classesApi } from '../lib/classes.js'
 import { Button, Switch } from './ui.jsx'
 import BodyMap from './BodyMap.jsx'
 import Icon from './Icon.jsx'
 
 const ui = () => useUI.getState()
+const WEEKDAY_NAMES = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado']
 
 // "Hoy", "Mañana" o "Mié 7".
 export function dayLabel(date, today) {
@@ -114,7 +115,7 @@ function ClassDetail({ occ: initial, today, cancelHours, onChange, close }) {
     </div>
 
     {occ.slotId && <div className="branding-lock">
-      <div><div>{t('Todas las semanas')}</div><div className="small dim">{t('Te anotamos solos en cada {0} a las {1}.', shortDay(occ.date).split(' ')[0].toLowerCase(), occ.start)}</div></div>
+      <div><div>{t('Todas las semanas')}</div><div className="small dim">{t('Te anotamos solos en cada {0} a las {1}.', t(WEEKDAY_NAMES[weekdayOf(occ.date)]), occ.movedFrom || occ.start)}</div></div>
       <Switch checked={!!occ.recurring} onChange={toggleRecurring} label={t('Todas las semanas')} />
     </div>}
 
