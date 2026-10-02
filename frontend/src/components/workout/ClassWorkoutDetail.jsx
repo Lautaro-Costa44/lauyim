@@ -43,14 +43,15 @@ function useNote(w) {
 export default function ClassWorkoutDetail({ w, close, staff = false }) {
   const body = useStore(s => s.S?.body) || 'male'
   const update = useStore(s => s.update)
-  // null: cargando; false: sin conexión (se ve lo que trae el entrenamiento).
+  // null: cargando; false: sin conexión (se ve lo que trae el entrenamiento); 'gone': la reserva ya
+  // no existe (sin calificación que mostrar).
   const [info, setInfo] = useState(null)
   const [rating, setRating] = useState(null)
   const { note, setNote, save } = useNote(w)
   useEffect(() => {
-    if (!w.classBookingId) { setInfo(false); return }
+    if (!w.classBookingId) { setInfo('gone'); return }
     const get = staff ? classesApi.adminBooking : classesApi.booking
-    get(w.classBookingId).then(setInfo).catch(() => setInfo(false))
+    get(w.classBookingId).then(setInfo).catch(e => setInfo(e?.status === 404 ? 'gone' : false))
   }, [w.id])
   const occ = info?.occurrence
   const booking = info?.booking
@@ -93,8 +94,9 @@ export default function ClassWorkoutDetail({ w, close, staff = false }) {
           <div className="ss">{t('{0} series × {1}', (e.sets || []).length, e.sets?.[0]?.r ?? '')}</div>
         </div></div>)}</div>}
 
-    <h4 className="sec">{staff ? t('Calificación') : t('Tu calificación')}</h4>
-    {info === null ? <div className="dim small">{t('Loading…')}</div>
+    {info !== 'gone' && <h4 className="sec">{staff ? t('Calificación') : t('Tu calificación')}</h4>}
+    {info === 'gone' ? null
+      : info === null ? <div className="dim small">{t('Loading…')}</div>
       : info === false ? <div className="dim small">{t('Sin conexión: la calificación se ve cuando vuelva.')}</div>
       : !staff && booking.canRate ? <><Stars value={stars} onChange={rate} /><div className="small dim class-history-hint">{t('Podés cambiarla durante 7 días.')}</div></>
       : stars ? <Stars value={stars} />

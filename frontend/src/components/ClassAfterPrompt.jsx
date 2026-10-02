@@ -1,5 +1,5 @@
 // Después de una clase: "¿Fuiste a Spinning?" (con estrellas si fue) y las clases en las que
-// estuvo (lista de la profe o ingreso físico) se suman solas al historial. Corre al abrir la app y
+// estuvo (lista de la profe o ingreso físico) se suman al historial. Corre al abrir la app y
 // al volver a primer plano, con el módulo de clases prendido.
 import { useEffect, useState } from 'react'
 import { useStore } from '../store/useStore.js'
@@ -98,7 +98,9 @@ export async function checkClassesAfter() {
 }
 
 export default function ClassAfterPrompt() {
-  const on = useStore(s => !!s.config?.classes_enabled && !!s.user)
+  // Después del primer pull: si la clase se sumara antes, el estado del servidor la pisaría (y el
+  // servidor ya la daría por sumada).
+  const on = useStore(s => !!s.config?.classes_enabled && !!s.user && s.pulled)
   const [tick, setTick] = useState(0)
   useEffect(() => {
     const onVisible = () => { if (document.visibilityState === 'visible') setTick(n => n + 1) }

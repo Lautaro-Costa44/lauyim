@@ -316,6 +316,9 @@ export const useStore = create((set, get) => {
     verifySession,
     user: (() => { try { return JSON.parse(localStorage.getItem('gym_user')) || null } catch { return null } })(),
     ready: false,
+    // true cuando terminó el primer pull del servidor: lo que se suma solo al estado (las clases a las
+    // que fue) espera a esto, para que el pull no lo pise.
+    pulled: false,
     membershipBlocked: (() => { try { return localStorage.getItem(BLOCK_KEY) === '1' } catch { return false } })(),
     accountPending: (() => { try { return localStorage.getItem(PENDING_KEY) === '1' } catch { return false } })(),
     profilePrompt: null,
@@ -623,6 +626,7 @@ export const useStore = create((set, get) => {
           // Pull after the queue is drained so a just-completed local change cannot be
           // replaced by the older full snapshot that was on the server before reload.
           await get().pullState()
+          set({ pulled: true })
         }
         // Re-stamp the reminder's timezone on every load — keeps it correct if you're travelling,
         // without needing to revisit Settings.

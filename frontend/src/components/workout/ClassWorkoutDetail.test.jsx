@@ -99,6 +99,13 @@ describe('la clase en el historial', () => {
     expect([...container.querySelectorAll('.class-star')].every(b => b.disabled)).toBe(true)
   })
 
+  it('la reserva ya no existe: sin sección de calificación (no dice "sin conexión")', async () => {
+    apiMock.mockRejectedValue(Object.assign(new Error('not found'), { status: 404 }))
+    await mount(<ClassWorkoutDetail w={W} close={close} />)
+    expect(container.textContent).not.toContain('Tu calificación')
+    expect(container.textContent).not.toContain('Sin conexión')
+  })
+
   it('sin conexión: lo que trae el entrenamiento, sin estrellas', async () => {
     apiMock.mockRejectedValue(new Error('offline'))
     await mount(<ClassWorkoutDetail w={W} close={close} />)

@@ -262,8 +262,8 @@ function RemindersPicker({ booking, onSaved, close }) {
     <h3>{t('Recordatorios para esta clase')}</h3>
     <p className="muted small">{t('Te avisamos antes de que empiece. Podés elegir varios.')}</p>
     <div className="chips class-reminders" role="group" aria-label={t('Recordatorios para esta clase')}>
-      {REMINDER_OPTIONS.map(m => <button key={m} type="button" className={'chip' + (chosen.includes(m) ? ' on' : '')} aria-pressed={chosen.includes(m)} onClick={() => toggle(m)}>{t('{0} antes', reminderLabel(m))}</button>)}
-      <button type="button" className={'chip' + (!chosen.length ? ' on' : '')} aria-pressed={!chosen.length} onClick={() => save([])}>{t('Sin recordatorio')}</button>
+      {REMINDER_OPTIONS.map(m => <button key={m} type="button" className={'chip nocap' + (chosen.includes(m) ? ' on' : '')} aria-pressed={chosen.includes(m)} onClick={() => toggle(m)}>{t('{0} antes', reminderLabel(m))}</button>)}
+      <button type="button" className={'chip nocap' + (!chosen.length ? ' on' : '')} aria-pressed={!chosen.length} onClick={() => save([])}>{t('Sin recordatorio')}</button>
     </div>
     <div style={{ height: 14 }} />
     <Button variant="primary" onClick={close}>{t('Listo')}</Button>

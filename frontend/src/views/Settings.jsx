@@ -684,15 +684,15 @@ function ClassReminderDefaults({ toast }) {
     <Section title={t('Recordatorios de clases')} footer={t('Se ponen al anotarte a una clase. En cada reserva los podés cambiar.')}>
       <div className="lrow" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 10, paddingTop: 13, paddingBottom: 14 }}>
         <div className="chips class-reminders" role="group" aria-label={t('Recordatorios de clases')}>
-          {CLASS_REMINDER_OPTIONS.map(m => <button key={m} type="button" className={'chip' + (chosen.includes(m) ? ' on' : '')} aria-pressed={chosen.includes(m)} onClick={() => toggle(m)}>{t('{0} antes', reminderLabel(m))}</button>)}
-          <button type="button" className={'chip' + (!chosen.length ? ' on' : '')} aria-pressed={!chosen.length} onClick={() => save([])}>{t('Sin recordatorio')}</button>
+          {CLASS_REMINDER_OPTIONS.map(m => <button key={m} type="button" className={'chip nocap' + (chosen.includes(m) ? ' on' : '')} aria-pressed={chosen.includes(m)} onClick={() => toggle(m)}>{t('{0} antes', reminderLabel(m))}</button>)}
+          <button type="button" className={'chip nocap' + (!chosen.length ? ' on' : '')} aria-pressed={!chosen.length} onClick={() => save([])}>{t('Sin recordatorio')}</button>
         </div>
       </div>
     </Section>
     {teaches && <Section title={t('Antes de las clases que doy')} footer={t('Te avisamos cuántos hay anotados y en espera. Solo en las clases que das vos.')}>
       <div className="lrow" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 10, paddingTop: 13, paddingBottom: 14 }}>
         <div className="chips class-reminders" role="radiogroup" aria-label={t('Antes de las clases que doy')}>
-          {TEACHER_REMINDER_CHOICES.map(([m, label]) => <button key={m} type="button" role="radio" className={'chip' + (teach === m ? ' on' : '')} aria-checked={teach === m} onClick={() => saveTeach(m)}>{m ? t('{0} antes', label) : t(label)}</button>)}
+          {TEACHER_REMINDER_CHOICES.map(([m, label]) => <button key={m} type="button" role="radio" className={'chip nocap' + (teach === m ? ' on' : '')} aria-checked={teach === m} onClick={() => saveTeach(m)}>{m ? t('{0} antes', label) : t(label)}</button>)}
         </div>
       </div>
     </Section>}
