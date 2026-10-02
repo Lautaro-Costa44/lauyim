@@ -21,6 +21,7 @@ const Personalizacion = lazy(() => import('./Personalizacion.jsx'))
 const Logs = lazy(() => import('./Logs.jsx'))
 const IngresoFisico = lazy(() => import('./IngresoFisico.jsx'))
 const Roles = lazy(() => import('./Roles.jsx'))
+const AdminClases = lazy(() => import('./Clases.jsx'))
 
 // Panel del staff: cada sección y cada carga según los permisos del rol (lib/permissions.js; el
 // servidor vuelve a controlar cada pedido).
@@ -48,6 +49,7 @@ export default function AdminLayout() {
   const [auditEnabled, setAuditEnabled] = useState(null)   // null until the server says; false = AUDIT_LOG=0
   const [billingEnabled, setBillingEnabled] = useState(null)   // null until the server says; false = cuotas off (owner switch in Acceso)
   const [checkinEnabled, setCheckinEnabled] = useState(null)   // Ingreso Físico: el owner siempre ve la sección; los demás, solo encendido
+  const [classesEnabled, setClassesEnabled] = useState(null)   // Clases: igual que Ingreso Físico (el owner la prende desde la sección)
 
   // audit_enabled and billing_enabled ride along with the users poll: they decide whether the
   // Logs and Cuotas tabs exist.
@@ -65,7 +67,7 @@ export default function AdminLayout() {
   useEffect(() => {
     api('/api/me').then(me => {
       if (me?.user && JSON.stringify(me.user) !== JSON.stringify(user)) setUser(me.user)
-      if (me?.panel) { setBillingEnabled(me.panel.billingEnabled !== false); setCheckinEnabled(me.panel.checkinEnabled === true); setAuditEnabled(me.panel.auditEnabled !== false) }
+      if (me?.panel) { setBillingEnabled(me.panel.billingEnabled !== false); setCheckinEnabled(me.panel.checkinEnabled === true); setAuditEnabled(me.panel.auditEnabled !== false); setClassesEnabled(me.panel.classesEnabled !== false) }
     }).catch(() => {})
   }, [])
   // poll every 15s so the "training now" section stays live without a manual refresh
@@ -98,7 +100,7 @@ export default function AdminLayout() {
 
   if (!isStaffUser(user)) return null
 
-  const sections = visibleSections(user, { billingEnabled, checkinEnabled, auditEnabled }).map(s => [s.path, t(s.label)])
+  const sections = visibleSections(user, { billingEnabled, checkinEnabled, auditEnabled, classesEnabled }).map(s => [s.path, t(s.label)])
   const visible = new Set(sections.map(([path]) => path))
   const home = sections[0]?.[0] || 'resumen'
   // Una sección que esta persona no ve: a la primera que sí (sin cargar el chunk).
@@ -126,6 +128,7 @@ export default function AdminLayout() {
                 users poll answers, a placeholder (not the chunk) holds the spot. */}
             <Route path="cuotas" element={only('cuotas', billingEnabled == null ? <div className="page-loading" aria-busy="true" /> : <Cuotas />)} />
             <Route path="rutinas" element={only('rutinas', <Rutinas />)} />
+            <Route path="clases" element={only('clases', <AdminClases />)} />
             <Route path="notificaciones" element={only('notificaciones', <Notificaciones />)} />
             <Route path="acceso" element={only('acceso', <Acceso />)} />
             <Route path="roles" element={only('roles', <Roles />)} />
