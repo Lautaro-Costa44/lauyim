@@ -99,7 +99,15 @@ export function classChangePush(kind, { name, date, today, start, movedFrom, tea
     teacher: `${name} ${ref} lo da ${teacher}.`,
     cancelled: `${name} ${ref} se suspende.`,
     promoted: `Entraste a ${name} ${ref} a las ${start}: se liberó un lugar.`,
-    waitlisted: `${name} ${ref} está llena: quedaste en la lista de espera.`
+    waitlisted: `${name} ${ref} está llena: quedaste en la lista de espera.`,
+    added: `Te anotaron a ${name} ${ref} a las ${start}.`,
+    fee_blocked: `No te anotamos a ${name} ${ref}: tu cuota está vencida. Regularizala en recepción.`,
+    penalty_blocked: `No te anotamos a ${name} ${ref}: por ausencias no podés reservar por unos días.`
   }[kind];
   return { title: `${name} · ${start}`, body, ...classData(date, sessionId) };
+}
+
+// Después de una clase sin respuesta: "¿Fuiste a Spinning?".
+export function classAfterPush({ name, date, sessionId }) {
+  return { title: `¿Fuiste a ${name}?`, body: 'Contanos y sumala a tu historial.', ...classData(date, sessionId) };
 }

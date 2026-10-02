@@ -112,3 +112,10 @@ test('reservas fijas: alta idempotente, consulta y baja', () => {
   assert.equal(cdb.removeRecurring(slot.id, 'beto'), true);
   assert.equal(cdb.removeRecurring(slot.id, 'beto'), false);
 });
+
+test('avisos una sola vez por socio, fecha y tipo', () => {
+  assert.equal(cdb.noticeOnce('ana', 's1:2026-10-05', 'fee_blocked'), true);
+  assert.equal(cdb.noticeOnce('ana', 's1:2026-10-05', 'fee_blocked'), false);
+  assert.equal(cdb.noticeOnce('ana', 's1:2026-10-05', 'after'), true);
+  assert.equal(cdb.noticeOnce('beto', 's1:2026-10-05', 'fee_blocked'), true);
+});

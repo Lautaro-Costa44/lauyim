@@ -55,9 +55,15 @@ export function materializeRecurring({ slotId, userId, send = () => {}, now = cl
   let count = 0;
   for (const r of recurring) {
     const user = getUserById(r.userId);
-    if (!user || user.disabled || deps.isMembershipBlocked(user)) continue;
+    if (!user || user.disabled) continue;
+    const blocked = deps.isMembershipBlocked(user);
     for (const occ of occs) {
       if (occ.slotId !== r.slotId || occ.type.archived || bookingState({ occ, now, settings }) !== 'open') continue;
+      // Cuota vencida: esa fecha no se reserva y se avisa una sola vez.
+      if (blocked) {
+        if (cdb.noticeOnce(r.userId, occ.key, 'fee_blocked')) send(r.userId, classChangePush('fee_blocked', { name: occ.type.name, date: occ.date, today: now.date, start: occ.start, sessionId: occ.sessionId || occ.key }));
+        continue;
+      }
       const session = occ.sessionId ? cdb.getClassSession(occ.sessionId) : cdb.ensureClassSession({ classId: occ.classId, slotId: occ.slotId, date: occ.date, start: occ.start });
       if (cdb.getBookingsForSessions([session.id]).some(b => b.userId === r.userId)) continue;
       const { booking } = cdb.bookOrWaitlist({ sessionId: session.id, userId: r.userId, capacity: occ.type.capacity, reminders: memberReminderDefaults(r.userId), recurringId: r.id });
@@ -384,6 +390,7 @@ export function classRoutes(d) {
     const session = occ.sessionId ? cdb.getClassSession(occ.sessionId) : cdb.ensureClassSession({ classId: occ.classId, slotId: occ.slotId, date: occ.date, start: occ.start });
     const { booking } = cdb.bookOrWaitlist({ sessionId: session.id, userId: person.id, capacity: occ.type.capacity, reminders: memberReminderDefaults(person.id), addedBy: user.id, force: true });
     d.audit(req, 'classes.booking.add', { user, target: person, msg: `${occ.type.name} ${occ.date} ${occ.start}` });
+    notify([person.id], 'added', { ...occ, sessionId: session.id });
     json(res, 200, { booking });
   },
 

@@ -76,3 +76,12 @@ test('avisos de cambios de una clase', async () => {
   assert.equal(classChangePush('cancelled', base).title, 'Spinning · 20:00');
   assert.deepEqual(classChangePush('cancelled', base).data, { redirectUrl: '/#/plan/clases?d=2026-10-05' });
 });
+
+test('avisos de clases: anotado a mano, cuota vencida, penalización y después de la clase', async () => {
+  const { classChangePush, classAfterPush } = await import('./push-messages.js');
+  const base = { name: 'Spinning', date: '2026-10-06', today: '2026-10-05', start: '19:00', sessionId: 'x1' };
+  assert.equal(classChangePush('added', base).body, 'Te anotaron a Spinning de mañana a las 19:00.');
+  assert.equal(classChangePush('fee_blocked', { ...base, date: '2026-10-09' }).body, 'No te anotamos a Spinning del viernes 9: tu cuota está vencida. Regularizala en recepción.');
+  assert.match(classChangePush('penalty_blocked', base).body, /^No te anotamos a Spinning de mañana: por ausencias/);
+  assert.deepEqual(classAfterPush(base), { title: '¿Fuiste a Spinning?', body: 'Contanos y sumala a tu historial.', tag: 'class-x1', data: { redirectUrl: '/#/plan/clases?d=2026-10-06' } });
+});

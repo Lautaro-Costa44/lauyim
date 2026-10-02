@@ -9,6 +9,9 @@ export function migrateClasses(db) {
   migrateClassTables(db);
   // Fecha suspendida que se sacó del calendario.
   try { db.exec('ALTER TABLE class_sessions ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0;'); } catch {}
+  // Entrega 2: el socio contestó "¿Fuiste?" y la clase ya está en su historial.
+  try { db.exec('ALTER TABLE class_bookings ADD COLUMN answered_at TEXT;'); } catch {}
+  try { db.exec('ALTER TABLE class_bookings ADD COLUMN logged INTEGER NOT NULL DEFAULT 0;'); } catch {}
 }
 
 function migrateClassTables(db) {
@@ -67,6 +70,13 @@ function migrateClassTables(db) {
       UNIQUE (session_id, user_id)
     );
     CREATE INDEX IF NOT EXISTS class_bookings_user ON class_bookings(user_id);
+    CREATE TABLE IF NOT EXISTS class_notices (
+      user_id TEXT NOT NULL,
+      session_key TEXT NOT NULL,
+      kind TEXT NOT NULL,
+      sent_at TEXT NOT NULL,
+      PRIMARY KEY (user_id, session_key, kind)
+    );
     CREATE TABLE IF NOT EXISTS class_prefs (
       user_id TEXT PRIMARY KEY,
       reminders TEXT NOT NULL DEFAULT '[60]'
@@ -351,4 +361,12 @@ export function getClassReminderDefaults(userId) {
 export function setClassReminderDefaults(userId, reminders) {
   getDatabase().prepare('INSERT INTO class_prefs (user_id, reminders) VALUES (?, ?) ON CONFLICT(user_id) DO UPDATE SET reminders = excluded.reminders')
     .run(userId, JSON.stringify(reminders));
+}
+
+// ---- avisos que salen una sola vez ----
+
+// true la primera vez para (socio, fecha, tipo); después false. Para avisos que no se repiten.
+export function noticeOnce(userId, sessionKey, kind) {
+  return getDatabase().prepare('INSERT OR IGNORE INTO class_notices (user_id, session_key, kind, sent_at) VALUES (?, ?, ?, ?)')
+    .run(userId, sessionKey, kind, nowIso()).changes > 0;
 }
