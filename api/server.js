@@ -158,6 +158,7 @@ import {
   effectiveMode, allowedStarts, needsProfilePrompt, anyFieldEnabled
 } from './approval.js';
 import { membersCsv } from './member-export.js';
+import { classRoutes, classSettingsNow, classesAvailable } from './classes-routes.js';
 import {
   readCheckinSettings, validateCheckinSettings, CHECKIN_SETTINGS, createDevice, findDevice, touchDevice,
   listDevices, revokeDevice, revokeAllDevices, lookup as checkinLookup, confirm as checkinConfirm,
@@ -2412,7 +2413,11 @@ const routes = {
       exercise_gifs: EXERCISE_GIFS,
       instance_name: process.env.INSTANCE_NAME || req.headers['x-forwarded-host'] || req.headers['host'] || 'lauyim',
       // Nombre, frase, color y logo del gym: la app los aplica antes del login (public).
-      branding: brandingNow()
+      branding: brandingNow(),
+      // Clases: módulo prendido (classes_enabled) y con clases cargadas (classes_available, la
+      // pestaña del socio).
+      classes_enabled: classSettingsNow().enabled,
+      classes_available: classesAvailable()
     });
   },
 
@@ -2483,7 +2488,7 @@ const routes = {
       license: isStaff(user) ? licenseNow() : null,
       // Qué secciones del panel existen (cuotas, ingreso físico, registro): las ve todo el staff,
       // también quien no puede listar socios (ahí venían hasta ahora).
-      panel: isStaff(user) ? { billingEnabled: billingEnabledNow(), checkinEnabled: checkinSettingsNow().enabled, auditEnabled: AUDIT_ON } : null,
+      panel: isStaff(user) ? { billingEnabled: billingEnabledNow(), checkinEnabled: checkinSettingsNow().enabled, auditEnabled: AUDIT_ON, classesEnabled: classSettingsNow().enabled } : null,
       pending: isAccountPending(user),
       profilePrompt: needsProfilePrompt(user, { admin: isStaff(user), approvalRequired: approvalNow().required, fields, profile: getMemberProfile(user.id) })
         ? { fields } : null
@@ -4402,7 +4407,9 @@ const routes = {
     auditCount = 0;
     audit(req, 'owner.audit.clear', { user: owner });
     json(res, 200, { ok: true });
-  }
+  },
+  // Clases grupales (classes-routes.js).
+  ...classRoutes({ json, readBody, readSession, requireAdmin, requireOwner, audit, sendPush, can, gymTz: () => billingSettingsNow().gym_tz }),
 };
 
 http.createServer(async (req, res) => {

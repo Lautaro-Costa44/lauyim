@@ -131,6 +131,17 @@ export const ROUTE_PERMISSIONS = Object.freeze({
   'GET /api/admin/attendance-heatmap': 'stats.view',
   'POST /api/admin/attendance-week-start': 'stats.view',
   'GET /api/admin/audit': 'audit.view',
+  // Clases (classes-routes.js)
+  'GET /api/admin/classes/types': 'classes.attendance',
+  'POST /api/admin/classes/types/save': 'classes.manage',
+  'POST /api/admin/classes/types/archive': 'classes.manage',
+  'POST /api/admin/classes/slots/save': 'classes.manage',
+  'POST /api/admin/classes/slots/delete': 'classes.manage',
+  'POST /api/admin/classes/overlap-check': 'classes.manage',
+  'GET /api/admin/classes/calendar': 'classes.attendance',
+  'POST /api/admin/classes/sessions/change': 'classes.manage',
+  'GET /api/admin/classes/session': 'classes.attendance',
+  'POST /api/admin/classes/sessions/add': 'classes.attendance',
   // Staff
   'GET /api/admin/roles': 'roles.assign',
   'POST /api/admin/users/role': 'roles.assign'

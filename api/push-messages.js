@@ -65,3 +65,39 @@ export function billingDuePush(lang, daysLeft) {
     tag: 'billing-due'
   }
 }
+
+// ---- clases (docs/superpowers/specs/2026-10-01-clases-design.md) ----
+
+const WEEKDAYS = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
+const dayNum = date => Date.UTC(+date.slice(0, 4), +date.slice(5, 7) - 1, +date.slice(8, 10)) / 86400000;
+const classData = (date, sessionId) => ({ tag: `class-${sessionId}`, data: { redirectUrl: `/#/plan/clases?d=${date}` } });
+// "de hoy", "de mañana" o "del miércoles 7".
+function dayRef(date, today) {
+  const diff = dayNum(date) - dayNum(today);
+  if (diff === 0) return 'de hoy';
+  if (diff === 1) return 'de mañana';
+  return `del ${WEEKDAYS[new Date(dayNum(date) * 86400000).getUTCDay()]} ${Number(date.slice(8, 10))}`;
+}
+const inMinutes = m => m >= 60 ? (m === 60 ? 'en 1 hora' : `en ${m / 60} horas`) : `en ${m} minutos`;
+
+// Recordatorio de una clase reservada: "Spinning · 19:00" / "Hoy con Caro, en Sala 2. Empieza en 1 hora."
+export function classReminderPush({ name, date, today, start, movedFrom, teacher, room, minutes, sessionId }) {
+  const day = date === today ? 'Hoy' : 'Mañana';
+  const where = movedFrom
+    ? `${day} cambió a las ${start}.`
+    : `${day}${teacher ? ` con ${teacher}` : ''}${room ? `, en ${room}` : ''}.`;
+  return { title: `${name} · ${start}`, body: `${where} Empieza ${inMinutes(minutes)}.`, ...classData(date, sessionId) };
+}
+
+// Avisos de una fecha de clase: moved | teacher | cancelled | promoted | waitlisted.
+export function classChangePush(kind, { name, date, today, start, movedFrom, teacher, sessionId }) {
+  const ref = dayRef(date, today);
+  const body = {
+    moved: `${name} ${ref} pasa a las ${start}${movedFrom ? ` (era a las ${movedFrom})` : ''}.`,
+    teacher: `${name} ${ref} lo da ${teacher}.`,
+    cancelled: `${name} ${ref} se suspende.`,
+    promoted: `Entraste a ${name} ${ref} a las ${start}: se liberó un lugar.`,
+    waitlisted: `${name} ${ref} está llena: quedaste en la lista de espera.`
+  }[kind];
+  return { title: `${name} · ${start}`, body, ...classData(date, sessionId) };
+}
