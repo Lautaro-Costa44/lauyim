@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import {
+  canAsk, resolveAttendance, canTakeAttendance, canRate, afterPushDue, zonedToEpoch, classWorkout, classStats, penaltyOf,
   CLASS_DEFAULTS, REMINDER_OPTIONS, MUSCLE_SLUGS, classSettingsOf, validateClassSettings, validateClassType, validateSlot,
   addMinutes, occurrencesBetween, overlapConflicts, conflictText, bookingState, cancelKind, canPromote, remindersDue, buildIcs
 } from './classes.js';
@@ -19,12 +20,17 @@ const occs = (extra = {}) => occurrencesBetween({ types: [spinning, pilates], sl
 
 test('ajustes: defectos, lo guardado y los rangos', () => {
   assert.deepEqual(classSettingsOf(null), CLASS_DEFAULTS);
-  assert.deepEqual(CLASS_DEFAULTS, { enabled: true, bookAheadDays: 7, cancelHours: 2, waitlistCutoffMin: 60, allowOverlap: false });
+  assert.deepEqual(CLASS_DEFAULTS, { enabled: true, bookAheadDays: 7, cancelHours: 2, waitlistCutoffMin: 60, allowOverlap: false, afterPush: { on: true, minutes: 30 }, penalty: { on: false, absences: 3, windowDays: 30, blockDays: 7 } });
+  assert.deepEqual(classSettingsOf({ afterPush: { on: false, minutes: 200 }, penalty: { on: true, absences: 5 } }).penalty, { on: true, absences: 5, windowDays: 30, blockDays: 7 });
+  assert.deepEqual(classSettingsOf({ afterPush: { on: false, minutes: 200 } }).afterPush, { on: false, minutes: 30 });
+  assert.equal(validateClassSettings({ afterPush: { minutes: 181 } }).field, 'afterPush.minutes');
+  assert.equal(validateClassSettings({ penalty: { on: true, blockDays: 0 } }).field, 'penalty.blockDays');
+  assert.deepEqual(validateClassSettings({ penalty: { on: true, absences: 2, windowDays: 14, blockDays: 3 } }).value.penalty, { on: true, absences: 2, windowDays: 14, blockDays: 3 });
   assert.equal(classSettingsOf(JSON.stringify({ bookAheadDays: 14 })).bookAheadDays, 14);
   assert.equal(classSettingsOf('roto').cancelHours, 2);
   assert.equal(classSettingsOf({ bookAheadDays: 99 }).bookAheadDays, 7);
   assert.deepEqual(validateClassSettings({ enabled: false, bookAheadDays: 3, cancelHours: 0, waitlistCutoffMin: 30, allowOverlap: true }).value,
-    { enabled: false, bookAheadDays: 3, cancelHours: 0, waitlistCutoffMin: 30, allowOverlap: true });
+    { ...CLASS_DEFAULTS, enabled: false, bookAheadDays: 3, cancelHours: 0, waitlistCutoffMin: 30, allowOverlap: true });
   assert.equal(validateClassSettings({ bookAheadDays: 0 }).field, 'bookAheadDays');
   assert.equal(validateClassSettings({ cancelHours: 49 }).field, 'cancelHours');
   assert.equal(validateClassSettings({ waitlistCutoffMin: 721 }).field, 'waitlistCutoffMin');
@@ -179,4 +185,68 @@ test('una fecha suspendida y sacada del calendario no aparece', () => {
   const hidden = { id: 'h1', classId: 'spin', slotId: 's-lun', date: '2026-10-05', start: '19:00', movedFrom: null, teacherUserId: null, teacherName: null, cancelled: true, hidden: true };
   assert.ok(!occs({ sessions: [hidden] }).some(o => o.key === 's-lun:2026-10-05'));
   assert.ok(occs({ sessions: [{ ...hidden, hidden: false }] }).find(o => o.key === 's-lun:2026-10-05').cancelled);
+});
+
+test('después de la clase: preguntar, resolver a las 24 h, tomar lista, calificar y el push', () => {
+  const occ = occs()[1]; // lunes 2026-10-05 19:00–19:45
+  const booking = { status: 'booked', answeredAt: null };
+  const at = (date, time) => ({ date, time });
+  assert.equal(canAsk({ occ, booking, now: at('2026-10-05', '19:44') }), false);
+  assert.equal(canAsk({ occ, booking, now: at('2026-10-05', '19:45') }), true);
+  assert.equal(canAsk({ occ, booking, now: at('2026-10-07', '19:44') }), true);
+  assert.equal(canAsk({ occ, booking, now: at('2026-10-07', '19:45') }), false);
+  assert.equal(canAsk({ occ, booking: { ...booking, answeredAt: 'x' }, now: at('2026-10-05', '20:00') }), false);
+  assert.equal(canAsk({ occ, booking, attendanceTaken: true, now: at('2026-10-05', '20:00') }), false);
+  assert.equal(resolveAttendance({ occ, booking, checkedIn: true, now: at('2026-10-06', '19:44') }), null);
+  assert.deepEqual(resolveAttendance({ occ, booking, checkedIn: true, now: at('2026-10-06', '19:45') }), { status: 'attended', source: 'checkin' });
+  assert.deepEqual(resolveAttendance({ occ, booking, checkedIn: false, now: at('2026-10-06', '19:45') }), { status: 'absent', source: 'timeout' });
+  assert.equal(resolveAttendance({ occ, booking: { status: 'attended' }, checkedIn: false, now: at('2026-10-08', '00:00') }), null);
+  assert.equal(canTakeAttendance({ occ, now: at('2026-10-05', '18:59') }), false);
+  assert.equal(canTakeAttendance({ occ, now: at('2026-10-05', '19:00') }), true);
+  assert.equal(canTakeAttendance({ occ, now: at('2026-10-12', '19:00') }), true);
+  assert.equal(canTakeAttendance({ occ, now: at('2026-10-12', '19:01') }), false);
+  assert.equal(canRate({ occ, booking: { status: 'attended' }, now: at('2026-10-12', '19:45') }), true);
+  assert.equal(canRate({ occ, booking: { status: 'absent' }, now: at('2026-10-06', '10:00') }), false);
+  assert.equal(afterPushDue({ occ, now: at('2026-10-05', '20:14'), minutes: 30 }), false);
+  assert.equal(afterPushDue({ occ, now: at('2026-10-05', '20:15'), minutes: 30 }), true);
+});
+
+test('el entrenamiento de una clase: hora del gimnasio, músculos o ejercicios sin peso', () => {
+  assert.equal(new Date(zonedToEpoch('2026-10-05', '19:00', 'America/Argentina/Buenos_Aires')).toISOString(), '2026-10-05T22:00:00.000Z');
+  const occ = occs()[1];
+  const w = classWorkout({ occ, bookingId: 'b1', tz: 'America/Argentina/Buenos_Aires' });
+  assert.deepEqual({ ...w, start: undefined, end: undefined }, { id: 'cls-b1', d: '2026-10-05', start: undefined, end: undefined, name: 'Spinning', kind: 'class', classBookingId: 'b1', classId: 'spin', teacher: 'Caro', entries: [], muscleLoad: { muscles: ['quadriceps'], intensity: 'high' } });
+  assert.equal(w.end - w.start, 45 * 60000);
+  const ex = classWorkout({ occ: { ...occ, type: { ...occ.type, logMode: 'exercises', log: { exercises: [{ id: 'sq', sets: 2, reps: 10 }] } } }, bookingId: 'b2', tz: 'UTC' });
+  assert.deepEqual(ex.entries, [{ id: 'sq', sets: [{ r: 10, done: true }, { r: 10, done: true }] }]);
+  assert.equal(ex.muscleLoad, undefined);
+});
+
+test('estadísticas: ocupación, presentes, ausentes, tardías y promedio sin los que no calificaron', () => {
+  const [pil, spin] = occs();
+  const b = (status, rating = null, extra = {}) => ({ status, rating, waitlistPos: null, ...extra });
+  const stats = classStats([
+    { occ: spin, bookings: [b('attended', 5), b('attended'), b('absent'), b('late_cancel')] },
+    { occ: { ...spin, date: '2026-10-12', key: 'x' }, bookings: [b('attended', 3), b('waitlist', null, { waitlistPos: 1 })] },
+    { occ: pil, bookings: [] }
+  ]);
+  const s = stats.classes.find(c => c.name === 'Spinning');
+  assert.deepEqual({ sessions: s.sessions, present: s.present, absent: s.absent, late: s.lateCancels, rating: s.rating, ratings: s.ratings, waitlist: s.withWaitlist }, { sessions: 2, present: 3, absent: 1, late: 1, rating: 4, ratings: 2, waitlist: 1 });
+  // Cupo 12: 3/12 y 1/12 → 17 %.
+  assert.equal(s.occupancy, 17);
+  const p = stats.classes.find(c => c.name === 'Pilates');
+  assert.deepEqual([p.rating, p.ratings, p.occupancy], [null, 0, 0]);
+  assert.deepEqual(stats.teachers.map(t => [t.name, t.sessions, t.rating]), [['Ana', 1, null], ['Caro', 2, 4]]);
+  assert.deepEqual(stats.slots.map(x => [x.weekday, x.start, x.sessions]), [[1, '18:30', 1], [1, '19:00', 2]]);
+});
+
+test('penalización: apagada, menos que el límite, bloqueado hasta y vencida', () => {
+  const penalty = { on: true, absences: 3, windowDays: 30, blockDays: 7 };
+  const dates = ['2026-09-20', '2026-09-28', '2026-10-01'];
+  assert.equal(penaltyOf({ dates, today: '2026-10-02', penalty: { ...penalty, on: false } }), null);
+  assert.equal(penaltyOf({ dates: dates.slice(1), today: '2026-10-02', penalty }), null);
+  assert.deepEqual(penaltyOf({ dates, today: '2026-10-02', penalty }), { count: 3, until: '2026-10-08' });
+  assert.equal(penaltyOf({ dates, today: '2026-10-08', penalty }), null);
+  // Una de hace más de 30 días no cuenta.
+  assert.equal(penaltyOf({ dates: ['2026-08-01', ...dates.slice(1)], today: '2026-10-02', penalty }), null);
 });

@@ -3,7 +3,20 @@
 // el .ics. Sin base ni HTTP: server.js y scheduler.js le pasan los datos. Fechas y horas son las
 // del gimnasio (gymClock), como 'YYYY-MM-DD' y 'HH:MM'; `now` es { date, time }.
 
-export const CLASS_DEFAULTS = Object.freeze({ enabled: true, bookAheadDays: 7, cancelHours: 2, waitlistCutoffMin: 60, allowOverlap: false });
+export const CLASS_DEFAULTS = Object.freeze({
+  enabled: true, bookAheadDays: 7, cancelHours: 2, waitlistCutoffMin: 60, allowOverlap: false,
+  // Push "¿Fuiste?" después de la clase (entrega 2) y penalización por ausencias (entrega 3).
+  afterPush: Object.freeze({ on: true, minutes: 30 }),
+  penalty: Object.freeze({ on: false, absences: 3, windowDays: 30, blockDays: 7 })
+});
+const NESTED_RANGES = {
+  afterPush: { minutes: [0, 180] },
+  penalty: { absences: [1, 10], windowDays: [7, 90], blockDays: [1, 30] }
+};
+const NESTED_LABELS = {
+  afterPush: { minutes: 'El aviso después de la clase va de 0 a 180 minutos' },
+  penalty: { absences: 'Las ausencias van de 1 a 10', windowDays: 'Los días que se miran van de 7 a 90', blockDays: 'Los días sin reservar van de 1 a 30' }
+};
 // Recordatorios posibles, en minutos antes de la clase.
 export const REMINDER_OPTIONS = Object.freeze([300, 120, 60, 30, 15]);
 export const INTENSITIES = Object.freeze(['low', 'medium', 'high']);
@@ -38,6 +51,12 @@ export function classSettingsOf(stored) {
   if (typeof saved.enabled === 'boolean') out.enabled = saved.enabled;
   if (typeof saved.allowOverlap === 'boolean') out.allowOverlap = saved.allowOverlap;
   for (const [k, range] of Object.entries(SETTING_RANGES)) if (intIn(saved[k], range)) out[k] = saved[k];
+  for (const [group, ranges] of Object.entries(NESTED_RANGES)) {
+    const src = saved[group] && typeof saved[group] === 'object' ? saved[group] : {};
+    out[group] = { ...CLASS_DEFAULTS[group] };
+    if (typeof src.on === 'boolean') out[group].on = src.on;
+    for (const [k, range] of Object.entries(ranges)) if (intIn(src[k], range)) out[group][k] = src[k];
+  }
   return out;
 }
 
@@ -50,6 +69,18 @@ export function validateClassSettings(body) {
     if (body[k] === undefined) continue;
     if (!intIn(body[k], range)) return { error: labels[k], field: k };
     value[k] = body[k];
+  }
+  for (const [group, ranges] of Object.entries(NESTED_RANGES)) {
+    value[group] = { ...CLASS_DEFAULTS[group] };
+    const src = body[group];
+    if (src === undefined) continue;
+    if (!src || typeof src !== 'object') return { error: 'Datos inválidos', field: group };
+    if (src.on !== undefined) value[group].on = src.on === true;
+    for (const [k, range] of Object.entries(ranges)) {
+      if (src[k] === undefined) continue;
+      if (!intIn(src[k], range)) return { error: NESTED_LABELS[group][k], field: `${group}.${k}` };
+      value[group][k] = src[k];
+    }
   }
   return { value };
 }
@@ -244,4 +275,116 @@ export function buildIcs({ occ, gymTz, uid, stamp: dtstamp }) {
   if (occ.teacherName) lines.push(`DESCRIPTION:${icsText('Con ' + occ.teacherName)}`);
   lines.push('BEGIN:VALARM', 'TRIGGER:-PT1H', 'ACTION:DISPLAY', `DESCRIPTION:${icsText(occ.type.name)}`, 'END:VALARM', 'END:VEVENT', 'END:VCALENDAR');
   return lines.join('\r\n') + '\r\n';
+}
+
+// ---- después de la clase (entrega 2) ----
+
+export const ATTENDANCE_WINDOWS = Object.freeze({ askHours: 48, resolveHours: 24, teacherDays: 7, ratingDays: 7 });
+// Minutos desde que terminó (negativo si no terminó) y desde que empezó.
+const sinceEnd = (occ, now) => -minutesUntil(occ, now) - occ.type.durationMin;
+const sinceStart = (occ, now) => -minutesUntil(occ, now);
+
+// ¿Se le pregunta "¿Fuiste?"? Reservada, sin respuesta ni lista, terminó hace menos de 48 h.
+export function canAsk({ occ, booking, attendanceTaken, now }) {
+  const m = sinceEnd(occ, now);
+  return booking.status === 'booked' && !booking.answeredAt && !attendanceTaken && m >= 0 && m < ATTENDANCE_WINDOWS.askHours * 60;
+}
+
+// A las 24 h del fin, una reserva sin lista ni respuesta: presente si tuvo ingreso físico ese día,
+// si no, ausente. null si todavía no toca o ya se resolvió.
+export function resolveAttendance({ occ, booking, checkedIn, now }) {
+  if (booking.status !== 'booked' || booking.answeredAt) return null;
+  if (sinceEnd(occ, now) < ATTENDANCE_WINDOWS.resolveHours * 60) return null;
+  return checkedIn ? { status: 'attended', source: 'checkin' } : { status: 'absent', source: 'timeout' };
+}
+
+// La profe toma (o corrige) la lista desde que empieza hasta 7 días después.
+export function canTakeAttendance({ occ, now }) {
+  const m = sinceStart(occ, now);
+  return !occ.cancelled && m >= 0 && m <= ATTENDANCE_WINDOWS.teacherDays * 1440;
+}
+
+// Calificar: presente, hasta 7 días después del fin.
+export const canRate = ({ occ, booking, now }) => booking.status === 'attended' && sinceEnd(occ, now) <= ATTENDANCE_WINDOWS.ratingDays * 1440;
+
+// Push "¿Fuiste?": `minutes` después del fin, antes de que venza la pregunta.
+export function afterPushDue({ occ, now, minutes }) {
+  const m = sinceEnd(occ, now);
+  return m >= minutes && m < ATTENDANCE_WINDOWS.askHours * 60;
+}
+
+// Fecha y hora del gimnasio → milisegundos (con la zona horaria del gimnasio).
+export function zonedToEpoch(date, time, tz) {
+  const guess = Date.UTC(+date.slice(0, 4), +date.slice(5, 7) - 1, +date.slice(8, 10), +time.slice(0, 2), +time.slice(3, 5));
+  const parts = new Intl.DateTimeFormat('en-CA', { timeZone: tz, hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }).formatToParts(new Date(guess));
+  const g = t => Number(parts.find(p => p.type === t).value);
+  const asLocal = Date.UTC(g('year'), g('month') - 1, g('day'), g('hour'), g('minute'));
+  return guess - (asLocal - guess);
+}
+
+// El entrenamiento que una clase suma al historial del socio (kind: 'class'). Modo músculos: sin
+// ejercicios, con muscleLoad para la fatiga. Modo ejercicios: las series de la profe, sin peso.
+export function classWorkout({ occ, bookingId, tz }) {
+  const start = zonedToEpoch(occ.date, occ.start, tz);
+  const log = occ.type.log || {};
+  const base = {
+    id: 'cls-' + bookingId, d: occ.date, start, end: start + occ.type.durationMin * 60000, name: occ.type.name,
+    kind: 'class', classBookingId: bookingId, classId: occ.classId, teacher: occ.teacherName || ''
+  };
+  if (occ.type.logMode === 'exercises') {
+    return { ...base, entries: (log.exercises || []).map(e => ({ id: e.id, sets: Array.from({ length: e.sets }, () => ({ r: e.reps, done: true })) })) };
+  }
+  return { ...base, entries: [], muscleLoad: { muscles: [...(log.muscles || [])], intensity: log.intensity || 'medium' } };
+}
+
+// ---- números (entrega 3) ----
+
+const avg = list => list.length ? list.reduce((a, b) => a + b, 0) / list.length : null;
+const round1 = v => v == null ? null : Math.round(v * 10) / 10;
+
+// rows: [{ occ, bookings }] de fechas pasadas no suspendidas. → por clase, por profe y por bloque
+// (día de la semana × hora). Ocupación en %, calificación promedio solo de quienes calificaron.
+export function classStats(rows) {
+  const byClass = new Map(), byTeacher = new Map(), bySlot = new Map();
+  const bucket = (map, key, init) => { if (!map.has(key)) map.set(key, { ...init, occ: [], ratings: [] }); return map.get(key); };
+  for (const { occ, bookings } of rows) {
+    const booked = bookings.filter(b => ['booked', 'attended', 'absent'].includes(b.status)).length;
+    const occupancy = Math.min(1, booked / occ.type.capacity);
+    const ratings = bookings.filter(b => Number.isInteger(b.rating)).map(b => b.rating);
+    const counts = {
+      present: bookings.filter(b => b.status === 'attended').length,
+      absent: bookings.filter(b => b.status === 'absent').length,
+      lateCancels: bookings.filter(b => b.status === 'late_cancel').length,
+      waitlisted: bookings.some(b => b.waitlistPos != null || b.status === 'waitlist')
+    };
+    const add = item => { item.occ.push({ occupancy, ...counts }); item.ratings.push(...ratings); };
+    add(bucket(byClass, occ.classId, { classId: occ.classId, name: occ.type.name, color: occ.type.color }));
+    if (occ.teacherName) add(bucket(byTeacher, occ.teacherUserId || 'n:' + occ.teacherName.toLowerCase(), { teacherUserId: occ.teacherUserId || null, name: occ.teacherName }));
+    add(bucket(bySlot, `${weekdayOf(occ.date)}|${occ.start}`, { weekday: weekdayOf(occ.date), start: occ.start }));
+  }
+  const close = ({ occ, ratings, ...rest }) => ({
+    ...rest, sessions: occ.length,
+    occupancy: Math.round(100 * avg(occ.map(o => o.occupancy))),
+    present: occ.reduce((n, o) => n + o.present, 0), absent: occ.reduce((n, o) => n + o.absent, 0),
+    lateCancels: occ.reduce((n, o) => n + o.lateCancels, 0), withWaitlist: occ.filter(o => o.waitlisted).length,
+    rating: round1(avg(ratings)), ratings: ratings.length
+  });
+  const sortBy = (list, f) => [...list].sort(f);
+  return {
+    classes: sortBy([...byClass.values()].map(close), (a, b) => a.name.localeCompare(b.name)),
+    teachers: sortBy([...byTeacher.values()].map(close), (a, b) => a.name.localeCompare(b.name)),
+    slots: sortBy([...bySlot.values()].map(close), (a, b) => ((a.weekday + 6) % 7) - ((b.weekday + 6) % 7) || a.start.localeCompare(b.start))
+  };
+}
+
+// Penalización: ausencias y cancelaciones tardías de los últimos windowDays (dates: las fechas de
+// esas clases). Con `absences` o más, bloqueado hasta blockDays después de la última. → null o
+// { count, until } (until: primer día en que vuelve a poder reservar).
+export function penaltyOf({ dates, today, penalty }) {
+  if (!penalty?.on) return null;
+  const from = addDays(today, -penalty.windowDays);
+  const recent = dates.filter(d => d > from && d <= today).sort();
+  if (recent.length < penalty.absences) return null;
+  const until = addDays(recent[recent.length - 1], penalty.blockDays);
+  return until > today ? { count: recent.length, until } : null;
 }
