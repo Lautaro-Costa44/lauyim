@@ -161,3 +161,23 @@ test('mensaje de la profe: a los anotados (y a la lista de espera si quiere), co
   const old = await call('profe', 'POST', '/api/admin/classes/sessions/message', { sessionId: session.id, text: 'Gracias' });
   assert.deepEqual([old.status, old.body.error], [409, 'class_over']);
 });
+
+test('ficha del socio: el último mes, la penalización (que se levanta) y cancelar una reserva', async () => {
+  assert.equal((await call('ana', 'GET', '/api/admin/classes/member?userId=caro')).status, 403);
+  const before = (await call('owner', 'GET', '/api/admin/classes/member?userId=caro')).body;
+  assert.deepEqual({ absent: before.month.absent, present: before.month.present, rate: before.month.rate }, { absent: 4, present: 0, rate: 0 });
+  assert.deepEqual([before.penalty?.count, before.canReset, before.canCancel], [4, true, true]);
+  assert.equal((await call('ana', 'POST', '/api/admin/classes/member/penalty-reset', { userId: 'caro' })).status, 403);
+  assert.equal((await call('owner', 'POST', '/api/admin/classes/member/penalty-reset', { userId: 'caro' })).status, 200);
+  assert.equal((await call('owner', 'GET', '/api/admin/classes/member?userId=caro')).body.penalty, null);
+  // Ya puede reservar; el staff le cancela el lugar desde la ficha.
+  const tomorrow = addDays(today, 1);
+  const booked = await call('caro', 'POST', '/api/classes/book', { slotId: tomorrowSlot.id, date: tomorrow });
+  assert.equal(booked.status, 200, JSON.stringify(booked.body));
+  const card = (await call('owner', 'GET', '/api/admin/classes/member?userId=caro')).body;
+  assert.deepEqual(card.upcoming.map(u => [u.name, u.date, u.status]), [['Spinning', tomorrow, 'booked']]);
+  const cancel = await call('owner', 'POST', '/api/admin/classes/member/cancel', { bookingId: card.upcoming[0].bookingId });
+  assert.equal(cancel.status, 200, JSON.stringify(cancel.body));
+  assert.deepEqual((await call('owner', 'GET', '/api/admin/classes/member?userId=caro')).body.upcoming, []);
+  assert.equal((await call('owner', 'POST', '/api/admin/classes/member/cancel', { bookingId: 'nada' })).status, 404);
+});

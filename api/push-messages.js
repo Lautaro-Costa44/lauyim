@@ -109,6 +109,7 @@ export function classChangePush(kind, { name, date, today, start, movedFrom, tea
     cancelled: [`Se suspendió ${name}`, `${at} no se da. Tu lugar quedó liberado.`],
     promoted: [`¡Entraste a ${name}!`, `Se liberó un lugar para ${dayWord(date, today)} a las ${start}. Si no podés ir, cancelala así entra otra persona.`],
     waitlisted: ['Lista de espera: ' + name, `${at} está llena. Quedaste ${waitlistPos ? `n.º ${waitlistPos} ` : ''}en la lista de espera; si se libera un lugar, te avisamos.`],
+    staff_cancelled: [`Se canceló tu lugar en ${name}`, `El gimnasio canceló tu lugar ${ref} a las ${start}. Si fue un error, avisá en recepción.`],
     added: [`Te anotaron a ${name}`, `Tenés lugar ${dayWord(date, today)} a las ${start}. Si no podés ir, cancelala desde la app.`],
     fee_blocked: ['No pudimos anotarte', `Tu reserva fija de ${name} ${ref} no se hizo porque tu cuota está vencida. Regularizala en recepción.`],
     penalty_blocked: ['No pudimos anotarte', `Tu reserva fija de ${name} ${ref} no se hizo por las ausencias.${until ? ` Podés volver a reservar desde el ${ddmm(until)}.` : ''}`]
@@ -146,4 +147,9 @@ export function closurePush({ from, to, today, reason, items }) {
     ? `${items.length > 1 ? 'Se suspendieron' : 'Se suspendió'} ${joined}; tu lugar quedó liberado.`
     : items.length > 1 ? `Se suspendieron tus ${items.length} reservas.` : `Se suspendió tu reserva de ${items[0].name} ${dayRef(items[0].date, today)}.`;
   return { title, body: reason ? `${reason}. ${what}` : what, tag: `class-closure-${from}`, data: { redirectUrl: `/#/plan/clases?d=${from}` } };
+}
+
+// El staff levantó la penalización por ausencias.
+export function penaltyResetPush() {
+  return { title: 'Ya podés volver a reservar clases', body: 'El gimnasio levantó tu penalización por ausencias.', tag: 'class-penalty', data: { redirectUrl: '/#/plan/clases' } };
 }

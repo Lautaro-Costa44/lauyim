@@ -10,7 +10,7 @@ import {
 import * as cdb from './classes-db.js';
 import { getAllUsers, getUserById, getAdminSetting, setAdminSetting, getDatabase } from './database.js';
 import { gymClock, getBillingSettings } from './billing.js';
-import { classChangePush, classReminderPush, classAfterPush, classMessagePush, teacherReminderPush, closurePush } from './push-messages.js';
+import { classChangePush, classReminderPush, classAfterPush, classMessagePush, teacherReminderPush, closurePush, penaltyResetPush } from './push-messages.js';
 
 export const CLASS_SETTINGS_KEY = 'classes';
 const CHECK_WEEKS = 8;          // superposición de un bloque semanal: contra las próximas 8 semanas
@@ -56,7 +56,10 @@ const clockNow = classClock;
 export function penaltyNow(userId, today = clockNow().date) {
   const penalty = classSettingsNow().penalty;
   if (!penalty.on) return null;
-  return penaltyOf({ dates: cdb.absenceDates(userId, addDays(today, -penalty.windowDays)), today, penalty });
+  // Si el staff la levantó, las ausencias de ese día o antes no cuentan.
+  const reset = cdb.getPenaltyReset(userId);
+  const dates = cdb.absenceDates(userId, addDays(today, -penalty.windowDays)).filter(date => !reset || date > reset);
+  return penaltyOf({ dates, today, penalty });
 }
 
 // Reserva sola las fechas abiertas de las reservas fijas (todas, o las de un bloque o un socio).
@@ -566,6 +569,61 @@ export function classRoutes(d) {
     d.audit(req, 'classes.message', { user, msg: `${occ.type.name} ${occ.date} ${occ.start} a ${to.length}: ${text}` });
     json(res, 200, { sent: new Set(to).size, left: MESSAGES_PER_DATE - slot });
   },
+  // ---- ficha del socio ----
+  // Sus próximas reservas, los días fijos, el último mes (30 días) y la penalización vigente.
+  'GET /api/admin/classes/member': async (req, res) => {
+    const user = d.requireAdmin(req, res); if (!user) return;
+    const userId = new URL(req.url, 'http://x').searchParams.get('userId');
+    if (!getUserById(userId)) return json(res, 404, { error: 'not_found' });
+    const clock = now();
+    const today = clock.date;
+    const bySession = new Map(loadOccurrences(today, MAX_RANGE_DAYS).filter(o => o.sessionId).map(o => [o.sessionId, o]));
+    const upcoming = cdb.getUserBookingsBetween(userId, today, addDays(today, MAX_RANGE_DAYS))
+      .filter(b => ['booked', 'waitlist'].includes(b.status))
+      .map(b => ({ b, occ: bySession.get(b.sessionId) }))
+      .filter(({ occ }) => occ && !occ.cancelled && minutesLeft(occ, clock) + occ.type.durationMin > 0)
+      .map(({ b, occ }) => ({ bookingId: b.id, name: occ.type.name, color: occ.type.color, date: occ.date, start: occ.start, status: b.status, waitlistPos: b.waitlistPos }));
+    const fixed = cdb.getRecurring({ userId }).map(r => {
+      const slot = cdb.getClassSlot(r.slotId);
+      const type = slot && cdb.getClassType(slot.classId);
+      return type && !type.archived ? { slotId: slot.id, name: type.name, color: type.color, weekday: slot.weekday, start: slot.start } : null;
+    }).filter(Boolean).sort((a, b) => ((a.weekday + 6) % 7) - ((b.weekday + 6) % 7) || a.start.localeCompare(b.start));
+    const past = cdb.getUserBookingsBetween(userId, addDays(today, -30), today);
+    const count = status => past.filter(b => b.status === status).length;
+    const present = count('attended'), absent = count('absent');
+    json(res, 200, {
+      upcoming, fixed, penalty: penaltyNow(userId, today),
+      month: { present, absent, late: count('late_cancel'), rate: present + absent ? Math.round(100 * present / (present + absent)) : null },
+      canCancel: has(user, 'classes.book_members'), canReset: isManager(user)
+    });
+  },
+  // El staff cancela una reserva desde la ficha: a tiempo (sin penalización), sube la primera de la
+  // lista de espera y se le avisa al socio.
+  'POST /api/admin/classes/member/cancel': async (req, res) => {
+    const user = d.requireAdmin(req, res); if (!user) return;
+    const { bookingId } = await readBody(req);
+    const b = cdb.getBookingWithSession(bookingId);
+    const occ = b && ['booked', 'waitlist'].includes(b.status) ? occOfSession(b.session) : null;
+    if (!occ) return json(res, 404, { error: 'not_found' });
+    const clock = now();
+    const out = cdb.cancelAndPromote({ bookingId: b.id, kind: 'cancelled', promote: b.status === 'booked' && canPromote({ occ, now: clock, settings: settings() }), capacity: capOf(occ.type) });
+    notify([b.userId], 'staff_cancelled', occ);
+    if (out.promoted) notify([out.promoted.userId], 'promoted', occ);
+    d.audit(req, 'classes.booking.cancel', { user, target: getUserById(b.userId), msg: `${occ.type.name} ${occ.date} ${occ.start}` });
+    json(res, 200, { ok: true });
+  },
+  // Levantar la penalización: desde hoy, las ausencias anteriores no cuentan.
+  'POST /api/admin/classes/member/penalty-reset': async (req, res) => {
+    const user = d.requireAdmin(req, res); if (!user) return;
+    const { userId } = await readBody(req);
+    const person = getUserById(userId);
+    if (!person) return json(res, 404, { error: 'not_found' });
+    cdb.setPenaltyReset(person.id, now().date);
+    d.sendPush(person.id, penaltyResetPush()).catch(() => {});
+    d.audit(req, 'classes.penalty.reset', { user, target: person, msg: 'Penalización por ausencias levantada' });
+    json(res, 200, { ok: true });
+  },
+
   // ---- cierres del gimnasio (feriado, vacaciones) ----
   'GET /api/admin/classes/closures': async (req, res) => {
     const user = d.requireAdmin(req, res); if (!user) return;

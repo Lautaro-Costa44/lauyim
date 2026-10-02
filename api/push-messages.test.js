@@ -153,3 +153,10 @@ test('cierre del gimnasio: un aviso por persona con sus clases', async () => {
   assert.deepEqual([range.title, range.body], ['Sin clases del 2/1 al 15/1', 'Vacaciones. Se suspendieron tus 6 reservas.']);
   assert.equal(closurePush({ from: '2027-01-02', to: '2027-01-15', today: '2026-12-20', reason: '', items: [{ name: 'GAP', start: '20:30', date: '2027-01-04' }] }).body, 'Se suspendió tu reserva de GAP del lunes 4.');
 });
+
+test('avisos desde la ficha: el staff canceló tu lugar y levantó la penalización', async () => {
+  const { classChangePush, penaltyResetPush } = await import('./push-messages.js');
+  const p = classChangePush('staff_cancelled', { name: 'Spinning', date: '2026-10-05', today: '2026-10-05', start: '19:00', sessionId: 'x' });
+  assert.deepEqual([p.title, p.body], ['Se canceló tu lugar en Spinning', 'El gimnasio canceló tu lugar de hoy a las 19:00. Si fue un error, avisá en recepción.']);
+  assert.deepEqual(penaltyResetPush(), { title: 'Ya podés volver a reservar clases', body: 'El gimnasio levantó tu penalización por ausencias.', tag: 'class-penalty', data: { redirectUrl: '/#/plan/clases' } });
+});
