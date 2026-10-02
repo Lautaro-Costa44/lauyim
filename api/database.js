@@ -468,17 +468,27 @@ function migrateRoles(db) {
     db.prepare("INSERT INTO admin_settings (key, value, updated_at) VALUES ('roles_seeded', 'true', ?)").run(Date.now());
   }
   db.prepare('UPDATE users SET role_id = ? WHERE admin = 1 AND owner = 0 AND role_id IS NULL').run(ADMIN_ROLE_ID);
-  // Permisos de clases (llegaron después de los roles): una sola vez, a Administrador y a
-  // Profesor/a si sigue existiendo. Si el owner se los saca, no vuelven.
-  if (!db.prepare("SELECT value FROM admin_settings WHERE key = 'classes_perms_seeded'").get()) {
-    for (const id of [ADMIN_ROLE_ID, 'coach']) {
+  // Permisos de clases (llegaron después de los roles), una sola vez: Administrador todos;
+  // Profesor/a crear y editar sus clases; Recepción anotar socios. Si el owner se los saca, no
+  // vuelven. classes_perms_v2: las instancias que recibieron la primera versión (Profesor/a con
+  // todas las clases) pasan a la nueva.
+  const migrateRolePerms = (marker, changes) => {
+    if (db.prepare('SELECT value FROM admin_settings WHERE key = ?').get(marker)) return;
+    for (const [id, change] of Object.entries(changes)) {
       const row = db.prepare('SELECT permissions FROM roles WHERE id = ?').get(id);
       if (!row) continue;
-      const perms = withDependencies([...JSON.parse(row.permissions || '[]'), 'classes.manage']);
+      const perms = withDependencies(change(JSON.parse(row.permissions || '[]')));
       db.prepare('UPDATE roles SET permissions = ? WHERE id = ?').run(JSON.stringify(perms), id);
     }
-    db.prepare("INSERT INTO admin_settings (key, value, updated_at) VALUES ('classes_perms_seeded', 'true', ?)").run(Date.now());
-  }
+    db.prepare('INSERT INTO admin_settings (key, value, updated_at) VALUES (?, ?, ?)').run(marker, 'true', Date.now());
+  };
+  const add = codes => perms => [...perms, ...codes];
+  migrateRolePerms('classes_perms_seeded', { [ADMIN_ROLE_ID]: add(['classes.manage']), coach: add(['classes.own']), reception: add(['classes.book_members']) });
+  migrateRolePerms('classes_perms_v2', {
+    [ADMIN_ROLE_ID]: add(['classes.manage']),
+    coach: perms => perms.includes('classes.manage') ? [...perms.filter(c => !['classes.manage', 'classes.view_all', 'classes.book_members'].includes(c)), 'classes.own'] : perms,
+    reception: add(['classes.book_members'])
+  });
 }
 
 const roleFromRow = (row, members = 0) => row && ({

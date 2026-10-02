@@ -6,6 +6,12 @@ import crypto from 'node:crypto';
 import { getDatabase } from './database.js';
 
 export function migrateClasses(db) {
+  migrateClassTables(db);
+  // Fecha suspendida que se sacó del calendario.
+  try { db.exec('ALTER TABLE class_sessions ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0;'); } catch {}
+}
+
+function migrateClassTables(db) {
   db.exec(`
     CREATE TABLE IF NOT EXISTS class_types (
       id TEXT PRIMARY KEY,
@@ -163,7 +169,7 @@ export function deleteClassSlot(id) {
 
 const sessionFromRow = r => r && ({
   id: r.id, classId: r.class_id, slotId: r.slot_id || null, date: r.date, start: r.start, movedFrom: r.moved_from || null,
-  teacherUserId: r.teacher_user_id || null, teacherName: r.teacher_name || null, cancelled: !!r.cancelled, attendanceTaken: !!r.attendance_taken
+  teacherUserId: r.teacher_user_id || null, teacherName: r.teacher_name || null, cancelled: !!r.cancelled, attendanceTaken: !!r.attendance_taken, hidden: !!r.hidden
 });
 
 // Fechas guardadas en [from, to).
@@ -190,7 +196,7 @@ export function ensureClassSession({ classId, slotId, date, start }) {
   return getClassSession(created);
 }
 
-const SESSION_COLUMNS = { start: 'start', movedFrom: 'moved_from', teacherUserId: 'teacher_user_id', teacherName: 'teacher_name', cancelled: 'cancelled', attendanceTaken: 'attendance_taken' };
+const SESSION_COLUMNS = { start: 'start', movedFrom: 'moved_from', teacherUserId: 'teacher_user_id', teacherName: 'teacher_name', cancelled: 'cancelled', attendanceTaken: 'attendance_taken', hidden: 'hidden' };
 
 export function updateClassSession(id, patch) {
   const sets = [], values = [];

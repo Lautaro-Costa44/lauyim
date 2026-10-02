@@ -11,8 +11,11 @@ export const PERMISSIONS = Object.freeze([
   { code: 'fees.view', area: 'Cuotas', name: 'Ver cuotas', help: 'Quién está al día, quién debe y los planes.', requires: ['members.view'] },
   { code: 'fees.manage', area: 'Cuotas', name: 'Registrar pagos y gestionar cuotas', help: 'Cobrar, anular pagos, cambiar planes y vencimientos.', requires: ['fees.view'] },
   { code: 'training.manage', area: 'Entrenamiento', name: 'Rutinas y planes', help: 'Armar las rutinas de los socios y los planes del gimnasio.', requires: ['members.view'] },
-  { code: 'classes.attendance', area: 'Clases', name: 'Tomar lista', help: 'Ver los anotados de sus clases, tomar lista y anotar a alguien a mano.', requires: ['members.view'] },
-  { code: 'classes.manage', area: 'Clases', name: 'Clases y horarios', help: 'Crear clases, armar el horario y cambiar o cancelar una fecha (de todas las clases).', requires: ['classes.attendance'] },
+  { code: 'classes.view_all', area: 'Clases', name: 'Ver todas las clases', help: 'El calendario completo con los anotados (sin cambiar nada).', requires: [] },
+  { code: 'classes.book_members', area: 'Clases', name: 'Anotar socios a mano', help: 'Anotar a un socio en cualquier clase, aunque esté llena.', requires: ['members.view', 'classes.view_all'] },
+  { code: 'classes.attendance', area: 'Clases', name: 'Tomar lista en sus clases', help: 'Ver los anotados de las clases que da, tomar lista y anotar a alguien a mano.', requires: ['members.view'] },
+  { code: 'classes.own', area: 'Clases', name: 'Crear y editar sus clases', help: 'Crear clases que da esta persona y cambiar su horario o una fecha. No elige ni cambia la profe.', requires: ['classes.attendance'] },
+  { code: 'classes.manage', area: 'Clases', name: 'Todas las clases y horarios', help: 'Crear y editar cualquier clase, elegir la profe y cambiar o suspender cualquier fecha.', requires: ['classes.own', 'classes.view_all', 'classes.book_members'] },
   { code: 'exercises.share', area: 'Entrenamiento', name: 'Ejercicios públicos', help: 'Compartir ejercicios propios con todo el gimnasio.', requires: [] },
   { code: 'nutrition.manage', area: 'Nutrición', name: 'Gestionar nutrición', help: 'Objetivos, sugerencias y plantillas de nutrición de los socios.', requires: ['members.view'] },
   { code: 'health.view', area: 'Salud', name: 'Ver datos de salud', help: 'Peso corporal y lesiones de los socios (datos sensibles).', requires: ['members.view'] },
@@ -50,7 +53,8 @@ export function permissionsOf({ owner = false, envAdmin = false, role = null } =
   if (owner || envAdmin) return [...PERMISSION_CODES];
   return role ? withDependencies(role.permissions) : [];
 }
-export const can = (perms, code) => Array.isArray(perms) && perms.includes(code);
+// code: un permiso o una lista (alcanza con cualquiera).
+export const can = (perms, code) => Array.isArray(perms) && [].concat(code).some(c => perms.includes(c));
 export const isSubset = (wanted, held) => wanted.every(c => held.includes(c));
 
 // Permiso que pide cada ruta /api/admin (requireAdmin en server.js). Una ruta /api/admin que no
@@ -131,17 +135,19 @@ export const ROUTE_PERMISSIONS = Object.freeze({
   'GET /api/admin/attendance-heatmap': 'stats.view',
   'POST /api/admin/attendance-week-start': 'stats.view',
   'GET /api/admin/audit': 'audit.view',
-  // Clases (classes-routes.js)
-  'GET /api/admin/classes/types': 'classes.attendance',
-  'POST /api/admin/classes/types/save': 'classes.manage',
-  'POST /api/admin/classes/types/archive': 'classes.manage',
-  'POST /api/admin/classes/slots/save': 'classes.manage',
-  'POST /api/admin/classes/slots/delete': 'classes.manage',
-  'POST /api/admin/classes/overlap-check': 'classes.manage',
-  'GET /api/admin/classes/calendar': 'classes.attendance',
-  'POST /api/admin/classes/sessions/change': 'classes.manage',
-  'GET /api/admin/classes/session': 'classes.attendance',
-  'POST /api/admin/classes/sessions/add': 'classes.attendance',
+  // Clases (classes-routes.js). Una lista: alcanza con cualquiera; el handler controla cuáles
+  // clases (las suyas o todas) y si puede cambiar la profe.
+  'GET /api/admin/classes/types': ['classes.attendance', 'classes.view_all'],
+  'POST /api/admin/classes/types/save': 'classes.own',
+  'POST /api/admin/classes/types/archive': 'classes.own',
+  'POST /api/admin/classes/slots/save': 'classes.own',
+  'POST /api/admin/classes/slots/delete': 'classes.own',
+  'POST /api/admin/classes/overlap-check': 'classes.own',
+  'GET /api/admin/classes/calendar': ['classes.attendance', 'classes.view_all'],
+  'POST /api/admin/classes/sessions/change': 'classes.own',
+  'POST /api/admin/classes/sessions/hide': 'classes.own',
+  'GET /api/admin/classes/session': ['classes.attendance', 'classes.view_all'],
+  'POST /api/admin/classes/sessions/add': ['classes.attendance', 'classes.book_members'],
   // Staff
   'GET /api/admin/roles': 'roles.assign',
   'POST /api/admin/users/role': 'roles.assign'
@@ -152,9 +158,9 @@ export const ADMIN_ROLE_ID = 'admin';
 // Roles que trae cada instancia (se crean una vez; el de fábrica no se borra ni se renombra).
 export const DEFAULT_ROLES = Object.freeze([
   { id: ADMIN_ROLE_ID, name: 'Administrador', color: '#ff453a', builtin: true, permissions: PERMISSION_CODES.filter(c => c !== 'roles.assign') },
-  { id: 'reception', name: 'Recepción', color: '#0a84ff', builtin: false, permissions: withDependencies(['members.edit', 'members.approve', 'fees.manage', 'checkin.operate']) },
+  { id: 'reception', name: 'Recepción', color: '#0a84ff', builtin: false, permissions: withDependencies(['members.edit', 'members.approve', 'fees.manage', 'checkin.operate', 'classes.book_members']) },
   { id: 'nutrition', name: 'Nutricionista', color: '#30d158', builtin: false, permissions: withDependencies(['nutrition.manage', 'health.view']) },
-  { id: 'coach', name: 'Profesor/a', color: '#ff9f0a', builtin: false, permissions: withDependencies(['training.manage', 'health.view', 'classes.manage']) }
+  { id: 'coach', name: 'Profesor/a', color: '#ff9f0a', builtin: false, permissions: withDependencies(['training.manage', 'health.view', 'classes.own']) }
 ]);
 
 export const MAX_ROLE_NAME = 30;

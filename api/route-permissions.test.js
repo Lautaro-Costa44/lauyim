@@ -20,7 +20,7 @@ test('toda ruta con requireAdmin tiene permiso', () => {
 test('el catálogo solo nombra rutas que existen y permisos conocidos', () => {
   const keys = new Set(handlers.map(([k]) => k));
   assert.deepEqual(Object.keys(ROUTE_PERMISSIONS).filter(k => !keys.has(k)), []);
-  assert.deepEqual(Object.values(ROUTE_PERMISSIONS).filter(c => !PERMISSION_CODES.includes(c)), []);
+  assert.deepEqual(Object.values(ROUTE_PERMISSIONS).flat().filter(c => !PERMISSION_CODES.includes(c)), []);
 });
 
 test('las rutas /api/admin solo se protegen con requireAdmin (las del owner viven en /api/owner)', () => {

@@ -102,8 +102,16 @@ export function classRoutes(d) {
     }
   };
   const activeUsers = sessionId => cdb.getBookingsForSessions([sessionId]).filter(b => ['booked', 'waitlist'].includes(b.status)).map(b => b.userId);
-  const teacherOf = (user, occ) => !!occ && occ.teacherUserId === user.id;
-  const canSee = (user, occ) => d.can(user, 'classes.manage') || teacherOf(user, occ);
+  // Permisos de clases (permissions.js): todas (manage), las suyas (own), ver todas (view_all),
+  // anotar socios en cualquiera (book_members) y tomar lista en las suyas (attendance).
+  const has = (user, ...codes) => codes.some(c => d.can(user, c));
+  const isManager = user => has(user, 'classes.manage');
+  const teacherOf = (user, occ) => !!occ && (occ.teacherUserId === user.id || occ.type?.teacherUserId === user.id);
+  const canSee = (user, occ) => has(user, 'classes.manage', 'classes.view_all') || teacherOf(user, occ);
+  const editableType = (user, type) => !!type && (isManager(user) || (has(user, 'classes.own') && type.teacherUserId === user.id));
+  const editableOcc = (user, occ) => !!occ && (isManager(user) || (has(user, 'classes.own') && teacherOf(user, occ)));
+  const canBookInto = (user, occ) => has(user, 'classes.book_members') || (has(user, 'classes.attendance') && teacherOf(user, occ));
+  const NOT_YOURS = { error: 'forbidden', message: 'Solo podés cambiar las clases que das' };
   const staffTeachers = () => getAllUsers().filter(u => !u.disabled && (u.owner || u.role_id)).map(u => ({ id: u.id, name: u.name }));
   const withText = list => list.map(c => ({ ...c, text: conflictText(c) }));
   // Junta los conflictos de varias fechas: uno por clase, día de la semana y hora.
@@ -130,11 +138,12 @@ export function classRoutes(d) {
   // Para el candidato: el nombre de la profe con cuenta, como lo ven los demás.
   const withTeacherName = type => type.teacherUserId ? { ...type, teacherName: getUserById(type.teacherUserId)?.name || '' } : type;
 
-  const occView = (occ, counts) => ({
+  const occView = (occ, counts, user) => ({
     key: occ.key, classId: occ.classId, slotId: occ.slotId, sessionId: occ.sessionId, date: occ.date, start: occ.start, end: occ.end,
     movedFrom: occ.movedFrom, teacherUserId: occ.teacherUserId, teacherName: occ.teacherName, room: occ.room, cancelled: occ.cancelled,
     name: occ.type.name, color: occ.type.color, icon: occ.type.icon, capacity: occ.type.capacity,
-    booked: counts?.booked || 0, waitlist: counts?.waitlist || 0
+    booked: counts?.booked || 0, waitlist: counts?.waitlist || 0,
+    ...(user ? { editable: editableOcc(user, occ), canBook: canBookInto(user, occ) } : {})
   });
   const countsBySession = occs => {
     const ids = occs.map(o => o.sessionId).filter(Boolean);
@@ -176,13 +185,25 @@ export function classRoutes(d) {
   return {
   // ---------------- staff ----------------
   'GET /api/admin/classes/types': async (req, res) => {
-    if (!d.requireAdmin(req, res)) return;
-    json(res, 200, { types: cdb.getClassTypes(), slots: cdb.getClassSlots(), teachers: staffTeachers(), settings: settings() });
+    const user = d.requireAdmin(req, res); if (!user) return;
+    // Quien no ve todas: solo las clases que da. editable: las puede cambiar.
+    const all = has(user, 'classes.manage', 'classes.view_all');
+    const types = cdb.getClassTypes().filter(tp => all || tp.teacherUserId === user.id).map(tp => ({ ...tp, editable: editableType(user, tp) }));
+    const ids = new Set(types.map(tp => tp.id));
+    json(res, 200, {
+      types, slots: cdb.getClassSlots().filter(sl => ids.has(sl.classId)), settings: settings(),
+      teachers: isManager(user) ? staffTeachers() : [], canManage: isManager(user), canOwn: has(user, 'classes.own'), me: { id: user.id, name: user.name }
+    });
   },
   'POST /api/admin/classes/types/save': async (req, res) => {
     const user = d.requireAdmin(req, res); if (!user) return;
     const body = await readBody(req);
     const id = typeof body.id === 'string' ? body.id : null;
+    // Sin "todas las clases": solo las suyas, y la profe es siempre esta persona.
+    if (!isManager(user)) {
+      if (id && !editableType(user, cdb.getClassType(id))) return json(res, 403, NOT_YOURS);
+      body.teacherUserId = user.id; body.teacherName = '';
+    }
     const activeNames = cdb.getClassTypes().filter(t => t.id !== id).map(t => t.name);
     const checked = validateClassType(body, { activeNames });
     if (checked.error) return json(res, 400, { error: 'validation_error', message: checked.error, field: checked.field });
@@ -199,6 +220,7 @@ export function classRoutes(d) {
     const { id } = await readBody(req);
     const type = cdb.getClassType(id);
     if (!type) return json(res, 404, { error: 'not_found' });
+    if (!editableType(user, type)) return json(res, 403, NOT_YOURS);
     for (const occ of futureOccs(o => o.classId === id)) cancelOcc(occ);
     cdb.archiveClassType(id);
     for (const slot of cdb.getClassSlots({ classId: id })) for (const r of cdb.getRecurring({ slotId: slot.id })) cdb.removeRecurring(slot.id, r.userId);
@@ -214,6 +236,7 @@ export function classRoutes(d) {
     if (body.id && !current) return json(res, 404, { error: 'not_found' });
     const type = cdb.getClassType(current?.classId || body.classId);
     if (!type || type.archived) return json(res, 404, { error: 'not_found' });
+    if (!editableType(user, type)) return json(res, 403, NOT_YOURS);
     const { weekday, start } = checked.value;
     const conflicts = conflictsFor({ type: withTeacherName(type), start, weekday, ownSlotId: current?.id });
     if (conflicts.blocking.length) return json(res, 409, { error: 'class_overlap', conflicts: conflicts.blocking, warnings: conflicts.warnings });
@@ -236,14 +259,16 @@ export function classRoutes(d) {
     const { id } = await readBody(req);
     const slot = cdb.getClassSlot(id);
     if (!slot) return json(res, 404, { error: 'not_found' });
+    if (!editableType(user, cdb.getClassType(slot.classId))) return json(res, 403, NOT_YOURS);
     for (const occ of futureOccs(o => o.slotId === id)) cancelOcc(occ);
     cdb.deleteClassSlot(id);
     d.audit(req, 'classes.slot.delete', { user, msg: `${cdb.getClassType(slot.classId)?.name || ''} ${slot.weekday} ${slot.start}` });
     json(res, 200, { ok: true });
   },
   'POST /api/admin/classes/overlap-check': async (req, res) => {
-    if (!d.requireAdmin(req, res)) return;
+    const user = d.requireAdmin(req, res); if (!user) return;
     const body = await readBody(req);
+    if (!isManager(user)) { body.teacherUserId = user.id; body.teacherName = ''; }
     if (!isTime(body.start) || !(isDate(body.date) || Number.isInteger(body.weekday))) return json(res, 400, { error: 'validation_error' });
     const saved = body.classId ? cdb.getClassType(body.classId) : null;
     const type = withTeacherName({
@@ -260,15 +285,15 @@ export function classRoutes(d) {
     const today = now().date;
     const from = isDate(q.get('from')) ? q.get('from') : today;
     const days = Math.min(MAX_RANGE_DAYS, Math.max(1, Number(q.get('days')) || 7));
-    const canManage = d.can(user, 'classes.manage');
+    const canManage = isManager(user);
     const occs = loadOccurrences(from, days).filter(o => canSee(user, o));
     const counts = countsBySession(occs);
     const live = occs.filter(o => !o.cancelled);
     const sum = (k) => live.reduce((n, o) => n + (counts[o.sessionId]?.[k] || 0), 0);
     const occupancy = live.length ? Math.round(100 * live.reduce((n, o) => n + Math.min(1, (counts[o.sessionId]?.booked || 0) / o.type.capacity), 0) / live.length) : 0;
     json(res, 200, {
-      today, from, days, canManage, settings: settings(),
-      occurrences: occs.map(o => occView(o, counts[o.sessionId])),
+      today, from, days, canManage, canOwn: has(user, 'classes.own'), canBook: has(user, 'classes.book_members'), settings: settings(),
+      occurrences: occs.map(o => occView(o, counts[o.sessionId], user)),
       summary: { classes: live.length, occupancy, lateCancels: sum('lateCancels'), waitlist: sum('waitlist') }
     });
   },
@@ -280,15 +305,18 @@ export function classRoutes(d) {
     if (!body.slotId && !body.sessionId) {
       const type = cdb.getClassType(body.classId);
       if (!type || type.archived) return json(res, 404, { error: 'not_found' });
+      if (!editableType(user, type)) return json(res, 403, NOT_YOURS);
       if (!isDate(body.date) || !isTime(body.start)) return json(res, 400, { error: 'validation_error', message: 'Fecha u hora inválida' });
       const conflicts = conflictsFor({ type: withTeacherName(type), start: body.start, date: body.date });
       if (conflicts.blocking.length) return json(res, 409, { error: 'class_overlap', conflicts: conflicts.blocking, warnings: conflicts.warnings });
       const session = cdb.ensureClassSession({ classId: type.id, slotId: null, date: body.date, start: body.start });
       d.audit(req, 'classes.session.change', { user, msg: `${type.name} ${body.date} ${body.start} (suelta)` });
-      return json(res, 200, { occurrence: occView(occOfSession(session)), warnings: conflicts.warnings });
+      return json(res, 200, { occurrence: occView(occOfSession(session), null, user), warnings: conflicts.warnings });
     }
     let occ = body.sessionId ? occOfSession(cdb.getClassSession(body.sessionId)) : (isDate(body.date) ? occOfKey(body.date, `${body.slotId}:${body.date}`) : null);
     if (!occ) return json(res, 404, { error: 'not_found' });
+    if (!editableOcc(user, occ)) return json(res, 403, NOT_YOURS);
+    if (('teacherUserId' in body || 'teacherName' in body) && !isManager(user)) return json(res, 403, { error: 'forbidden', message: 'Solo quien gestiona todas las clases cambia la profe' });
     const session = occ.sessionId ? cdb.getClassSession(occ.sessionId) : cdb.ensureClassSession({ classId: occ.classId, slotId: occ.slotId, date: occ.date, start: occ.start });
     occ = { ...occ, sessionId: session.id };
     const changes = [];
@@ -315,7 +343,20 @@ export function classRoutes(d) {
       }
     }
     d.audit(req, 'classes.session.change', { user, msg: `${occ.type.name} ${occ.date} ${changes.join(', ')}` });
-    json(res, 200, { occurrence: occView(occOfSession(cdb.getClassSession(session.id)), countsBySession([occ])[session.id]) });
+    json(res, 200, { occurrence: occView(occOfSession(cdb.getClassSession(session.id)), countsBySession([occ])[session.id], user) });
+  },
+  // Una fecha suspendida se puede sacar del calendario (de todos: staff y socios).
+  'POST /api/admin/classes/sessions/hide': async (req, res) => {
+    const user = d.requireAdmin(req, res); if (!user) return;
+    const { sessionId } = await readBody(req);
+    const session = cdb.getClassSession(sessionId);
+    const occ = occOfSession(session);
+    if (!occ) return json(res, 404, { error: 'not_found' });
+    if (!editableOcc(user, occ)) return json(res, 403, NOT_YOURS);
+    if (!occ.cancelled) return json(res, 409, { error: 'class_not_cancelled' });
+    cdb.updateClassSession(session.id, { hidden: true });
+    d.audit(req, 'classes.session.hide', { user, msg: `${occ.type.name} ${occ.date} ${occ.start}` });
+    json(res, 200, { ok: true });
   },
   'GET /api/admin/classes/session': async (req, res) => {
     const user = d.requireAdmin(req, res); if (!user) return;
@@ -326,7 +367,7 @@ export function classRoutes(d) {
     const bookings = occ.sessionId ? cdb.getBookingsForSessions([occ.sessionId]) : [];
     const person = b => ({ bookingId: b.id, userId: b.userId, name: getUserById(b.userId)?.name || '', addedBy: b.addedBy, pos: b.waitlistPos });
     json(res, 200, {
-      occurrence: occView(occ, countsBySession([occ])[occ.sessionId]),
+      occurrence: occView(occ, countsBySession([occ])[occ.sessionId], user),
       booked: bookings.filter(b => b.status === 'booked').map(person),
       waitlist: bookings.filter(b => b.status === 'waitlist').sort((a, b) => a.waitlistPos - b.waitlistPos).map(person)
     });
@@ -336,7 +377,7 @@ export function classRoutes(d) {
     const body = await readBody(req);
     const occ = body.sessionId ? occOfSession(cdb.getClassSession(body.sessionId)) : (isDate(body.date) ? occOfKey(body.date, `${body.slotId}:${body.date}`) : null);
     if (!occ) return json(res, 404, { error: 'not_found' });
-    if (!canSee(user, occ)) return json(res, 403, { error: 'forbidden' });
+    if (!canBookInto(user, occ)) return json(res, 403, { error: 'forbidden' });
     if (occ.cancelled) return json(res, 409, { error: 'class_cancelled' });
     const person = getUserById(body.userId);
     if (!person || person.disabled) return json(res, 404, { error: 'El usuario no existe' });

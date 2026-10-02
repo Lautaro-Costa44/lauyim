@@ -1,5 +1,6 @@
-// Clases desde el panel, sobre server.js de verdad: permisos, superposición (bloquea o avisa),
-// la profe ve solo sus clases, cambios de una fecha, anotar a mano y ajustes del owner.
+// Clases desde el panel, sobre server.js de verdad: permisos (todas, las suyas, ver, anotar,
+// tomar lista), superposición (bloquea o avisa), cambios de una fecha, quitar una suspendida de
+// la vista, anotar a mano y ajustes del owner.
 // Puertos 50000–50900.
 import test, { after, before } from 'node:test';
 import assert from 'node:assert/strict';
@@ -19,8 +20,9 @@ const db = await import('./database.js');
 db.initDatabase();
 db.createUser({ id: 'owner', name: 'Dueña', created: Date.now() });
 db.createUser({ id: 'admin', name: 'Admin', admin: true, created: Date.now() });
-for (const id of ['recep', 'profe', 'socio1', 'socio2']) db.createUser({ id, name: id === 'profe' ? 'Caro' : id, created: Date.now() });
+for (const id of ['recep', 'profe', 'coach', 'socio1', 'socio2']) db.createUser({ id, name: { profe: 'Caro', coach: 'Lu' }[id] || id, created: Date.now() });
 db.setUserRole('recep', 'reception');
+db.setUserRole('coach', 'coach');
 const lista = db.saveRole({ name: 'Solo lista', color: '#123456', permissions: ['classes.attendance'] });
 db.setUserRole('profe', lista.id);
 db.closeDatabase();
@@ -61,8 +63,10 @@ const typeBody = extra => ({ color: '#ff9f0a', durationMin: 60, capacity: 1, roo
 let today, day, weekday, spinning;
 const dayAfter = (date, n) => new Date(Date.parse(date + 'T12:00:00Z') + n * 86400000).toISOString().slice(0, 10);
 
-test('permisos: recepción no entra; con permiso se crean clases; la profe tiene que tener rol', async () => {
-  assert.equal((await call('recep', 'GET', '/api/admin/classes/types')).status, 403);
+test('permisos: recepción ve pero no crea; con permiso se crean clases; la profe tiene que tener rol', async () => {
+  assert.equal((await call('recep', 'GET', '/api/admin/classes/types')).status, 200);
+  assert.equal((await call('recep', 'POST', '/api/admin/classes/types/save', typeBody({ name: 'X' }))).status, 403);
+  assert.equal((await call('socio1', 'GET', '/api/admin/classes/types')).status, 403);
   const bad = await call('owner', 'POST', '/api/admin/classes/types/save', typeBody({ name: 'Spinning', teacherUserId: 'socio1' }));
   assert.deepEqual([bad.status, bad.body.field], [400, 'teacherUserId']);
   const ok = await call('admin', 'POST', '/api/admin/classes/types/save', typeBody({ name: 'Spinning', teacherUserId: 'profe' }));
@@ -71,8 +75,9 @@ test('permisos: recepción no entra; con permiso se crean clases; la profe tiene
   assert.equal((await call('profe', 'POST', '/api/admin/classes/types/save', typeBody({ name: 'Otra' }))).status, 403);
   const list = await call('profe', 'GET', '/api/admin/classes/types');
   assert.deepEqual(list.body.types.map(t => t.name), ['Spinning']);
-  assert.ok(list.body.teachers.some(t => t.id === 'profe' && t.name === 'Caro'));
-  assert.ok(!list.body.teachers.some(t => t.id === 'socio1'));
+  const teachers = (await call('owner', 'GET', '/api/admin/classes/types')).body.teachers;
+  assert.ok(teachers.some(t => t.id === 'profe' && t.name === 'Caro'));
+  assert.ok(!teachers.some(t => t.id === 'socio1'));
 });
 
 test('horario y superposición: bloquea en la misma sala, avisa si se permite y con la misma profe', async () => {
@@ -107,6 +112,8 @@ test('horario y superposición: bloquea en la misma sala, avisa si se permite y 
 test('calendario: la profe solo con tomar lista ve solo sus clases; con permiso, todas', async () => {
   const all = await call('owner', 'GET', `/api/admin/classes/calendar?from=${day}&days=1`);
   assert.deepEqual(all.body.occurrences.map(o => o.name).sort(), ['Pilates', 'Spinning', 'Yoga']);
+  const recep = await call('recep', 'GET', `/api/admin/classes/calendar?from=${day}&days=1`);
+  assert.deepEqual(recep.body.occurrences.map(o => [o.name, o.editable, o.canBook]).sort(), [['Pilates', false, true], ['Spinning', false, true], ['Yoga', false, true]]);
   const mine = await call('profe', 'GET', `/api/admin/classes/calendar?from=${day}&days=1`);
   assert.deepEqual(mine.body.occurrences.map(o => o.name).sort(), ['Spinning', 'Yoga']);
   assert.equal(mine.body.canManage, false);
@@ -125,9 +132,33 @@ test('anotar a mano aunque esté lleno y ver la lista', async () => {
   assert.equal(after.booked, 2);
   const detail = await call('profe', 'GET', `/api/admin/classes/session?sessionId=${after.sessionId}`);
   assert.deepEqual(detail.body.booked.map(b => b.name).sort(), ['socio1', 'socio2']);
-  // La de Pilates no es suya.
+  // La de Pilates no es suya; recepción anota en cualquiera.
   const pil = cal.body.occurrences.find(o => o.name === 'Pilates');
   assert.equal((await call('profe', 'POST', '/api/admin/classes/sessions/add', { slotId: pil.slotId, date: day, userId: 'socio1' })).status, 403);
+  assert.equal((await call('recep', 'POST', '/api/admin/classes/sessions/add', { slotId: pil.slotId, date: day, userId: 'socio1' })).status, 200);
+});
+
+test('profe con "sus clases": crea siendo la profe, edita solo las suyas y no cambia profes', async () => {
+  // Aunque mande otra profe, la clase queda a su nombre.
+  const own = await call('coach', 'POST', '/api/admin/classes/types/save', typeBody({ name: 'Funcional', room: 'Sala 4', teacherUserId: 'profe' }));
+  assert.equal(own.status, 200, JSON.stringify(own.body));
+  assert.equal(own.body.type.teacherUserId, 'coach');
+  const slot = await call('coach', 'POST', '/api/admin/classes/slots/save', { classId: own.body.type.id, weekday, start: '07:00' });
+  assert.equal(slot.status, 200, JSON.stringify(slot.body));
+  // Lo de otros: ni la clase, ni el horario, ni una fecha.
+  assert.equal((await call('coach', 'POST', '/api/admin/classes/types/save', typeBody({ id: spinning.id, name: 'Spinning 2' }))).status, 403);
+  assert.equal((await call('coach', 'POST', '/api/admin/classes/slots/save', { classId: spinning.id, weekday, start: '06:00' })).status, 403);
+  const spin = (await call('owner', 'GET', `/api/admin/classes/calendar?from=${day}&days=1`)).body.occurrences.find(o => o.name === 'Spinning');
+  assert.equal((await call('coach', 'POST', '/api/admin/classes/sessions/change', { slotId: spin.slotId, date: day, start: '22:00' })).status, 403);
+  // Una fecha suya: la hora sí, la profe no.
+  const mine = (await call('coach', 'GET', `/api/admin/classes/calendar?from=${day}&days=1`)).body;
+  assert.equal(mine.canManage, false);
+  assert.deepEqual(mine.occurrences.map(o => [o.name, o.editable]), [['Funcional', true]]);
+  const f = mine.occurrences[0];
+  assert.equal((await call('coach', 'POST', '/api/admin/classes/sessions/change', { slotId: f.slotId, date: day, start: '07:30' })).status, 200);
+  assert.equal((await call('coach', 'POST', '/api/admin/classes/sessions/change', { slotId: f.slotId, date: day, teacherName: 'Otra' })).status, 403);
+  const types = (await call('coach', 'GET', '/api/admin/classes/types')).body;
+  assert.deepEqual([types.types.map(tp => tp.name), types.teachers, types.canManage, types.canOwn], [['Funcional'], [], false, true]);
 });
 
 test('cambios de una fecha: hora, profe y cancelar', async () => {
@@ -142,6 +173,12 @@ test('cambios de una fecha: hora, profe y cancelar', async () => {
   assert.equal(cancelled.body.occurrence.cancelled, true);
   const detail = await call('owner', 'GET', `/api/admin/classes/session?sessionId=${spin.sessionId}`);
   assert.deepEqual(detail.body.booked, []);
+  // Suspendida: se puede sacar del calendario (una activa, no).
+  const pil = (await call('owner', 'GET', `/api/admin/classes/calendar?from=${day}&days=1`)).body.occurrences.find(o => o.name === 'Pilates');
+  assert.equal((await call('owner', 'POST', '/api/admin/classes/sessions/hide', { sessionId: pil.sessionId })).status, 409);
+  assert.equal((await call('owner', 'POST', '/api/admin/classes/sessions/hide', { sessionId: spin.sessionId })).status, 200);
+  const after = (await call('owner', 'GET', `/api/admin/classes/calendar?from=${day}&days=1`)).body.occurrences.map(o => o.name);
+  assert.ok(!after.includes('Spinning'));
   // Clase suelta: otra fecha, otra hora.
   const loose = await call('owner', 'POST', '/api/admin/classes/sessions/change', { classId: spinning.id, date: dayAfter(day, 1), start: '10:00' });
   assert.equal(loose.status, 200, JSON.stringify(loose.body));

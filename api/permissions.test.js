@@ -49,11 +49,14 @@ test('validateRole: nombre, color, permisos del catálogo con sus dependencias, 
   assert.equal(validateRole({ name: 'Caja', color: '#0a84ff', permissions: 'todo' }).field, 'permissions');
 });
 
-test('clases: tomar lista (con ver socios) y clases y horarios (con tomar lista); Profesor/a los trae', () => {
-  assert.deepEqual(withDependencies(['classes.manage']), ['members.view', 'classes.attendance', 'classes.manage']);
-  assert.deepEqual(withoutDependents(['classes.attendance', 'classes.manage'], 'classes.attendance'), ['members.view']);
-  const coach = DEFAULT_ROLES.find(r => r.id === 'coach');
-  assert.ok(coach.permissions.includes('classes.manage') && coach.permissions.includes('classes.attendance'));
-  assert.ok(DEFAULT_ROLES.find(r => r.id === ADMIN_ROLE_ID).permissions.includes('classes.manage'));
-  assert.ok(!DEFAULT_ROLES.find(r => r.id === 'reception').permissions.includes('classes.attendance'));
+test('clases: cinco permisos encadenados; Profesor/a sus clases, Recepción anotar, Administrador todo', () => {
+  assert.deepEqual(withDependencies(['classes.manage']), ['members.view', 'classes.view_all', 'classes.book_members', 'classes.attendance', 'classes.own', 'classes.manage']);
+  assert.deepEqual(withDependencies(['classes.own']), ['members.view', 'classes.attendance', 'classes.own']);
+  assert.deepEqual(withoutDependents(['members.view', 'classes.attendance', 'classes.own'], 'classes.attendance'), ['members.view']);
+  const perms = id => DEFAULT_ROLES.find(r => r.id === id).permissions.filter(c => c.startsWith('classes.'));
+  assert.deepEqual(perms('coach'), ['classes.attendance', 'classes.own']);
+  assert.deepEqual(perms('reception'), ['classes.view_all', 'classes.book_members']);
+  assert.equal(perms(ADMIN_ROLE_ID).length, 5);
+  assert.ok(can(['classes.view_all'], ['classes.attendance', 'classes.view_all']));
+  assert.ok(!can(['fees.view'], ['classes.attendance', 'classes.view_all']));
 });

@@ -70,11 +70,24 @@ test('migración de clases: suma los permisos de clases a Administrador y Profes
   dbh.prepare("DELETE FROM admin_settings WHERE key = 'classes_perms_seeded'").run();
   db.closeDatabase();
   db.initDatabase();
-  for (const id of ['admin', 'coach']) assert.ok(db.getRole(id).permissions.includes('classes.manage'), id);
+  assert.ok(db.getRole('admin').permissions.includes('classes.manage'));
+  assert.ok(db.getRole('coach').permissions.includes('classes.own'));
+  assert.ok(!db.getRole('coach').permissions.includes('classes.manage'));
   assert.ok(!db.getRole('reception').permissions.includes('classes.manage'));
   // Ya migrada: si el owner se los saca a Profesor/a, reiniciar no los vuelve a poner.
   strip('coach');
   db.closeDatabase();
   db.initDatabase();
-  assert.ok(!db.getRole('coach').permissions.includes('classes.manage'));
+  assert.ok(!db.getRole('coach').permissions.includes('classes.own'));
+});
+
+test('migración v2: Profesor/a con todas las clases (primera versión) pasa a solo las suyas', () => {
+  const dbh = () => db.getDatabase();
+  dbh().prepare('UPDATE roles SET permissions = ? WHERE id = ?').run(JSON.stringify(['members.view', 'training.manage', 'classes.attendance', 'classes.manage']), 'coach');
+  dbh().prepare("DELETE FROM admin_settings WHERE key = 'classes_perms_v2'").run();
+  db.closeDatabase();
+  db.initDatabase();
+  const coach = db.getRole('coach').permissions;
+  assert.ok(coach.includes('classes.own') && coach.includes('training.manage'));
+  assert.ok(!coach.includes('classes.manage') && !coach.includes('classes.view_all'));
 });

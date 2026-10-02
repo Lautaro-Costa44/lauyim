@@ -159,6 +159,8 @@ export function occurrencesBetween({ types, slots, sessions = [], from, days, us
     const type = byId.get(session.classId);
     if (!type) continue;
     const key = session.slotId ? `${session.slotId}:${session.date}` : session.id;
+    // Suspendida y sacada del calendario: no aparece (ni la calculada del bloque).
+    if (session.hidden) { out.delete(key); continue; }
     out.set(key, build(type, { key, slotId: session.slotId, session, date: session.date, start: session.start }));
   }
   return [...out.values()].sort((a, b) => a.date.localeCompare(b.date) || a.start.localeCompare(b.start) || a.type.name.localeCompare(b.type.name));

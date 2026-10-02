@@ -174,3 +174,9 @@ test('.ics: evento con la zona del gym, sala, profe y alarma', () => {
   assert.ok(lateIcs.includes('SUMMARY:Yoga\\, nocturno\\; suave'));
   assert.ok(lateIcs.includes('DTEND;TZID=UTC:20261006T001500'));
 });
+
+test('una fecha suspendida y sacada del calendario no aparece', () => {
+  const hidden = { id: 'h1', classId: 'spin', slotId: 's-lun', date: '2026-10-05', start: '19:00', movedFrom: null, teacherUserId: null, teacherName: null, cancelled: true, hidden: true };
+  assert.ok(!occs({ sessions: [hidden] }).some(o => o.key === 's-lun:2026-10-05'));
+  assert.ok(occs({ sessions: [{ ...hidden, hidden: false }] }).find(o => o.key === 's-lun:2026-10-05').cancelled);
+});

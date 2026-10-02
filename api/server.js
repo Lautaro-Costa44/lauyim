@@ -656,7 +656,7 @@ function requireAdmin(req, res) {
   const user = readSession(req);
   if (!user) { json(res, 401, { error: 'No has iniciado sesión' }); return null; }
   const perm = ROUTE_PERMISSIONS[req.routeKey];
-  if (!isOwner(user) && !(perm && can(user, perm))) { audit(req, 'admin.denied', { ok: false, user }); json(res, 403, { error: 'No autorizado' }); return null; }
+  if (!isOwner(user) && !(perm && [].concat(perm).some(p => can(user, p)))) { audit(req, 'admin.denied', { ok: false, user }); json(res, 403, { error: 'No autorizado' }); return null; }
   return user;
 }
 
