@@ -39,7 +39,7 @@ export function googleCalendarUrl(occ, tz) {
 export const conflictMessages = result => result ? [...(result.blocking || []), ...(result.warnings || [])].map(c => c.text) : []
 
 // Botón de una fecha para el socio: { key, label, disabled }. Una reserva cancelada no cuenta.
-export function buttonState({ state, booked, capacity, myBooking, teaching }) {
+export function buttonState({ state, booked, capacity, myBooking, teaching, planFull }) {
   if (teaching) return { key: 'teaching', label: 'La das vos', disabled: true }
   const mine = myBooking && ['booked', 'waitlist'].includes(myBooking.status) ? myBooking : null
   if (mine?.status === 'booked') return { key: 'booked', label: 'Anotado', disabled: false }
@@ -47,6 +47,7 @@ export function buttonState({ state, booked, capacity, myBooking, teaching }) {
   if (state === 'cancelled') return { key: 'cancelled', label: 'Suspendida', disabled: true }
   if (state === 'started') return { key: 'started', label: 'Empezó', disabled: true }
   if (state === 'not_yet') return { key: 'not_yet', label: 'Todavía no abre', disabled: true }
+  if (planFull) return { key: 'plan', label: 'Límite del plan', disabled: true }
   if (capacity != null && booked >= capacity) return { key: 'waitlist', label: 'Lista de espera', disabled: false }
   return { key: 'book', label: 'Anotarme', disabled: false }
 }
@@ -59,7 +60,9 @@ const occQuery = occ => occ.sessionId ? `sessionId=${encodeURIComponent(occ.sess
 export const classesApi = {
   // socio
   // Sin rango: desde hoy, los días de la ventana de reserva.
-  list: (from, days) => api(from ? `/api/classes?from=${from}&days=${days}` : '/api/classes'),
+  // Con límite en el plan, las fechas de semanas (o meses) ya completos vienen marcadas (planFull).
+  list: (from, days) => api(from ? `/api/classes?from=${from}&days=${days}` : '/api/classes')
+    .then(d => d?.planLimit ? { ...d, occurrences: markPlanFull(d.occurrences, d.planLimit) } : d),
   book: ({ slotId, date, sessionId }) => post('/api/classes/book', { slotId, date, sessionId }),
   cancel: bookingId => post('/api/classes/cancel', { bookingId }),
   setReminders: (bookingId, reminders) => put('/api/classes/reminders', { bookingId, reminders }),
@@ -156,7 +159,7 @@ export function classSlotChips(slots, classId) {
 // Fechas de la clase en los próximos 7 días que se pueden reservar y todavía no tiene.
 export function weekBookable(occurrences, classId, today) {
   const end = addDays(today, 7)
-  return (occurrences || []).filter(o => o.classId === classId && o.state === 'open' && !o.cancelled && o.date < end
+  return (occurrences || []).filter(o => o.classId === classId && o.state === 'open' && !o.cancelled && !o.planFull && o.date < end
     && !(o.myBooking && ['booked', 'waitlist'].includes(o.myBooking.status)))
 }
 
@@ -238,3 +241,32 @@ const dm = date => `${Number(date.slice(8, 10))}/${Number(date.slice(5, 7))}`
 export const closureLabel = c => c.from === c.to ? `${shortDay(c.from)}/${Number(c.from.slice(5, 7))}` : `${dm(c.from)} al ${dm(c.to)}`
 // El cierre que toca una fecha (o null).
 export const closureOn = (closures, date) => (closures || []).find(c => c.from <= date && date <= c.to) || null
+
+// ---- límite de clases por plan ----
+
+// Inicio del período de una fecha: el lunes de su semana o el día 1 de su mes.
+export const periodStart = (date, period) => period === 'month' ? date.slice(0, 8) + '01' : addDays(date, -((weekdayOf(date) + 6) % 7))
+const usedIn = (planLimit, date) => planLimit.used?.[periodStart(date, planLimit.period)] ?? 0
+
+// Marca planFull en las fechas sin reserva propia de un período ya completo.
+export function markPlanFull(occurrences, planLimit) {
+  if (!planLimit) return occurrences
+  return (occurrences || []).map(o => {
+    const mine = o.myBooking && ['booked', 'waitlist'].includes(o.myBooking.status)
+    return !mine && !o.teaching && usedIn(planLimit, o.date) >= planLimit.limit ? { ...o, planFull: true } : o
+  })
+}
+
+// La línea de Plan → Clases para el día elegido: [texto, ...valores] para t(), o null sin límite.
+export function planLine(planLimit, date, today) {
+  if (!planLimit) return null
+  const { limit, period } = planLimit
+  const left = Math.max(0, limit - usedIn(planLimit, date))
+  const same = periodStart(date, period) === periodStart(today, period)
+  const when = period === 'month' ? (same ? 'este mes' : 'ese mes') : (same ? 'esta semana' : 'esa semana')
+  if (!left) return limit === 1 ? ['Ya usaste tu clase de {0}', when] : ['Ya usaste tus {0} clases de {1}', limit, when]
+  return limit === 1 ? ['Te queda 1 clase {0}', when] : ['Te quedan {0} de {1} clases {2}', left, limit, when]
+}
+
+// El límite en palabras: "2 clases por semana".
+export const planLimitLabel = ({ limit, period }) => `${limit === 1 ? '1 clase' : `${limit} clases`} por ${period === 'month' ? 'mes' : 'semana'}`

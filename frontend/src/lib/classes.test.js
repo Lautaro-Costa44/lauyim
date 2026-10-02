@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest'
 const apiMock = vi.hoisted(() => vi.fn(() => Promise.resolve({})))
 vi.mock('./api.js', () => ({ api: apiMock }))
 
-const { REMINDER_OPTIONS, reminderLabel, buttonState, capacityText, timeRange, dayChips, conflictMessages, intensityLabel, googleCalendarUrl, classesApi, zonedToEpoch, countdown, homeClasses, classSlotChips, weekBookable, bookWeekText, teacherHome, spotsText, homeStrip, shortName, shareListText } = await import('./classes.js')
+const { REMINDER_OPTIONS, reminderLabel, buttonState, capacityText, timeRange, dayChips, conflictMessages, intensityLabel, googleCalendarUrl, classesApi, zonedToEpoch, countdown, homeClasses, classSlotChips, weekBookable, bookWeekText, teacherHome, spotsText, homeStrip, shortName, shareListText, periodStart, markPlanFull, planLine, planLimitLabel } = await import('./classes.js')
 
 describe('etiquetas', () => {
   it('recordatorios, cupo, horario e intensidad', () => {
@@ -194,5 +194,29 @@ describe('compartir la lista', () => {
   it('sin cupo, sin anotados y con la lista tomada', () => {
     expect(shareListText({ occ: { ...occ, capacity: null, room: '', teacherName: '' }, booked: [] })).toBe('Spinning · Lun 5/10 · 19:00\n\nAnotados (0):\nTodavía no hay nadie anotado.')
     expect(shareListText({ occ, booked: [{ name: 'Ana Pérez', status: 'attended' }, { name: 'Beto Ruiz', status: 'absent' }] })).toContain('1. Ana P. ✓\n2. Beto R. ✗')
+  })
+})
+
+describe('límite de clases por plan', () => {
+  const planLimit = { limit: 2, period: 'week', used: { '2026-10-05': 2, '2026-10-12': 1 } }
+  it('inicio del período: lunes de la semana o día 1 del mes', () => {
+    expect([periodStart('2026-10-11', 'week'), periodStart('2026-10-05', 'week'), periodStart('2026-10-31', 'month')]).toEqual(['2026-10-05', '2026-10-05', '2026-10-01'])
+  })
+  it('marca las fechas sin reserva propia de las semanas completas; el botón queda apagado', () => {
+    const occs = [
+      { key: 'a', date: '2026-10-07', myBooking: null }, { key: 'b', date: '2026-10-07', myBooking: { status: 'booked' } },
+      { key: 'c', date: '2026-10-13', myBooking: null }, { key: 'd', date: '2026-10-08', myBooking: null, teaching: true }
+    ]
+    expect(markPlanFull(occs, planLimit).filter(o => o.planFull).map(o => o.key)).toEqual(['a'])
+    expect(markPlanFull(occs, null)).toBe(occs)
+    expect(buttonState({ state: 'open', booked: 1, capacity: 10, myBooking: null, planFull: true })).toMatchObject({ key: 'plan', label: 'Límite del plan', disabled: true })
+    expect(weekBookable([{ key: 'x', classId: 'c1', date: '2026-10-07', state: 'open', planFull: true }], 'c1', '2026-10-05')).toEqual([])
+  })
+  it('la línea: cuántas quedan, esta o esa semana, y el mes', () => {
+    expect(planLine(planLimit, '2026-10-13', '2026-10-06')).toEqual(['Te quedan {0} de {1} clases {2}', 1, 2, 'esa semana'])
+    expect(planLine(planLimit, '2026-10-07', '2026-10-06')).toEqual(['Ya usaste tus {0} clases de {1}', 2, 'esta semana'])
+    expect(planLine({ limit: 1, period: 'month', used: {} }, '2026-10-20', '2026-10-06')).toEqual(['Te queda 1 clase {0}', 'este mes'])
+    expect(planLine(null, '2026-10-07', '2026-10-06')).toBeNull()
+    expect(planLimitLabel({ limit: 8, period: 'month' })).toBe('8 clases por mes')
   })
 })

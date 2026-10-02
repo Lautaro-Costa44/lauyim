@@ -216,7 +216,7 @@ function ClassStrip({ date, items, opts, onAll }) {
     {/* Una sola: en renglón, con profe y sala, en lugar de una tarjetita estirada. */}
     <div className={'class-strip' + (items.length === 1 ? ' solo' : '')} role="list">
       {items.map(o => {
-        const [text, ...args] = o.state === 'started' ? ['En curso'] : spotsText(o)
+        const [text, ...args] = o.state === 'started' ? ['En curso'] : o.planFull ? ['Límite del plan'] : spotsText(o)
         const solo = items.length === 1
         return <button key={o.key} type="button" role="listitem" className={'class-mini' + (text === 'Lista de espera' ? ' full' : '')} style={{ '--c': o.color }}
           onClick={() => classSheet(o, opts)} aria-label={t('Ver {0}', o.name)}>

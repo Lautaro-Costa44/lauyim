@@ -364,3 +364,23 @@ describe('la profe', () => {
   })
 })
 
+describe('límite del plan', () => {
+  it('la línea de cuántas quedan y, completa la semana, "Límite del plan" apagado', async () => {
+    apiMock.mockImplementation(url => url.startsWith('/api/classes') ? Promise.resolve({ ...listBody(), planLimit: { limit: 2, period: 'week', used: { '2026-10-05': 2 } } }) : Promise.resolve({}))
+    await mount(<Clases />)
+    expect(container.querySelector('.class-plan-line').textContent).toContain('Ya usaste tus 2 clases de esta semana')
+    const btn = container.querySelector('.class-item button')
+    expect([btn.textContent, btn.disabled]).toEqual(['Límite del plan', true])
+  })
+
+  it('al reservar sin lugar en el plan, el aviso con los números', async () => {
+    apiMock.mockImplementation(url => {
+      if (url === '/api/classes/book') return Promise.reject(Object.assign(new Error('plan_limit'), { status: 403, data: { error: 'plan_limit', limit: 2, period: 'week', used: 2 } }))
+      return url.startsWith('/api/classes') ? Promise.resolve(listBody()) : Promise.resolve({})
+    })
+    await mount(<Clases />)
+    await act(async () => { container.querySelector('.class-item button').click() })
+    await tick()
+    expect(useUI.getState().toastMsg).toBe('Tu plan incluye 2 clases por semana y ya las usaste.')
+  })
+})

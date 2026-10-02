@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { useUI } from '../../../store/useUI.js'
 import { t } from '../../../lib/i18n.js'
 import { errorText } from '../../../lib/errors.js'
-import { capacityText, timeRange, shortDay, classesApi, shareListText } from '../../../lib/classes.js'
+import { capacityText, timeRange, shortDay, classesApi, shareListText, planLimitLabel } from '../../../lib/classes.js'
 import { Button, Segmented, Switch, TextArea, TextField } from '../../../components/ui.jsx'
 import Icon from '../../../components/Icon.jsx'
 
@@ -25,8 +25,8 @@ function SessionDetail({ occ: initial, canManage, users, teachers, onChange, clo
 
   const add = async userId => {
     try {
-      await classesApi.addToSession(occ, userId)
-      ui().toast(t('Anotado'))
+      const r = await classesApi.addToSession(occ, userId)
+      ui().toast(r?.overLimit ? t('Anotado. Pasa el límite de su plan ({0}).', planLimitLabel(r.planLimit)) : t('Anotado'))
       setQ(''); setMode(null)
       const d = await classesApi.session(occ)
       setDetail(d); setOcc(d.occurrence); onChange && onChange()

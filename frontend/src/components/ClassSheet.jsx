@@ -7,7 +7,7 @@ import { useStore } from '../store/useStore.js'
 import { t, exerciseNameFor } from '../lib/i18n.js'
 import { errorText } from '../lib/errors.js'
 import { EXIDX } from '../lib/exercises.js'
-import { REMINDER_OPTIONS, reminderLabel, buttonState, capacityText, timeRange, intensityLabel, shortDay, googleCalendarUrl, classesApi, classSlotChips, weekBookable, bookWeekText, countdown, occTimes } from '../lib/classes.js'
+import { REMINDER_OPTIONS, reminderLabel, buttonState, capacityText, timeRange, intensityLabel, shortDay, googleCalendarUrl, classesApi, classSlotChips, weekBookable, bookWeekText, countdown, occTimes, planLimitLabel } from '../lib/classes.js'
 import { IS_APPLE } from '../lib/api.js'
 import { can } from '../lib/permissions.js'
 import { Button } from './ui.jsx'
@@ -28,6 +28,11 @@ export function dayLabel(date, today) {
 // Faltan menos de cancelHours: cancelar cuenta como tardía (aproximado con el reloj del celular).
 export const isLateCancel = (occ, cancelHours) => Date.parse(`${occ.date}T${occ.start}:00`) - Date.now() < cancelHours * 3600000
 
+// Error al reservar: con el límite del plan, con los números.
+export const bookingErrorText = (e, fallback) => e?.data?.error === 'plan_limit' && e.data.limit
+  ? t('Tu plan incluye {0} y ya las usaste.', planLimitLabel(e.data))
+  : errorText(e, fallback)
+
 // Anotarse / cancelar según el estado. onChange: recargar la lista.
 export async function classAction(occ, { cancelHours = 2, onChange } = {}) {
   const toast = ui().toast
@@ -38,7 +43,7 @@ export async function classAction(occ, { cancelHours = 2, onChange } = {}) {
       toast(booking.status === 'booked' ? t('Te anotaste a {0}', occ.name) : t('Quedaste en la lista de espera (n.º {0})', booking.waitlistPos))
       onChange && onChange()
     }
-  } catch (e) { toast(errorText(e, t('No se pudo anotar'))) }
+  } catch (e) { toast(bookingErrorText(e, t('No se pudo anotar'))) }
 }
 
 async function cancelBooking(occ, { cancelHours, onChange, close }) {
@@ -90,10 +95,11 @@ function ClassDetail({ occ: initial, today, tz, cancelHours, onChange, close }) 
   const bookWeek = async () => {
     setBusy(true)
     try {
-      const [text, ...args] = bookWeekText(await classesApi.bookWeek(occ.classId))
-      ui().toast(t(text, ...args))
+      const r = await classesApi.bookWeek(occ.classId)
+      const [text, ...args] = bookWeekText(r)
+      ui().toast(r.limited ? t('{0}. {1} no entraron por el límite de tu plan.', t(text, ...args), r.limited) : t(text, ...args))
       await refresh()
-    } catch (e) { ui().toast(errorText(e, t('No se pudo anotar'))) }
+    } catch (e) { ui().toast(bookingErrorText(e, t('No se pudo anotar'))) }
     setBusy(false)
   }
   const toggleFixed = async slot => {
