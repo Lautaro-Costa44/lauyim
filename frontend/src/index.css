@@ -1147,9 +1147,11 @@ input[type="search"]::-webkit-search-cancel-button{display:none;-webkit-appearan
 .today-row:active{background:var(--surface-3)}
 .today-row .lbl2{font-size:11px;font-weight:500;letter-spacing:.03em;text-transform:uppercase;color:var(--label-3)}
 .today-row .ttl{
-  font-weight:500;font-size:17px;line-height:1.25;text-transform:capitalize;
+  font-weight:500;font-size:17px;line-height:1.25;
   letter-spacing:-.012em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px;
 }
+/* Solo la primera letra en mayúscula ("Día de descanso", no "Día De Descanso"). */
+.today-row .ttl::first-letter{text-transform:uppercase}
 
 /* ------------------------------------------------------------ admin nav --- */
 /* phone: a strip of chips that scrolls sideways inside itself (never the page) */

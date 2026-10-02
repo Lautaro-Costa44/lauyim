@@ -259,6 +259,12 @@ describe('Inicio', () => {
     expect(container.querySelector('.class-ticket-clock').textContent).toContain('28:55')
   })
 
+  it('suspendida por un cierre: el aviso dice el motivo', async () => {
+    occurrences = [occ({ key: 'cl', cancelled: true, closed: 'Feriado', myBooking: { id: 'b1', status: 'cancelled' } })]
+    await mount(<HomeClassCard />)
+    expect(container.querySelector('.class-suspended').textContent).toContain('Gimnasio cerrado: Feriado')
+  })
+
   it('suspendida: aviso que se cierra y no vuelve', async () => {
     occurrences = [occ({ key: 'sus', cancelled: true, myBooking: { id: 'b1', status: 'cancelled' } })]
     await mount(<HomeClassCard />)

@@ -64,7 +64,8 @@ export default function HomeClassCard() {
 
   const alerts = suspended.map(o => <div key={o.key} className="card class-suspended" role="alert">
     <Icon name="warning" />
-    <div className="grow"><b>{t('Se suspendió {0}', o.name)}</b><div className="small">{dayLabel(o.date, data.today)} {o.start}{o.teacherName ? ' · ' + t('con {0}', o.teacherName) : ''}</div></div>
+    {/* Suspendida por un cierre del gimnasio: el motivo en lugar de la profe. */}
+    <div className="grow"><b>{t('Se suspendió {0}', o.name)}</b><div className="small">{dayLabel(o.date, data.today)} {o.start}{o.closed ? ' · ' + t('Gimnasio cerrado: {0}', o.closed) : o.teacherName ? ' · ' + t('con {0}', o.teacherName) : ''}</div></div>
     <button type="button" className="iconbtn" aria-label={t('Cerrar aviso')} onClick={() => dismiss(o.key)}><Icon name="xmark" /></button>
   </div>)
 
@@ -139,7 +140,7 @@ function MyClasses({ upcoming: initialUpcoming, suspended: initialSuspended, opt
             <span className="tt">{o.name}</span>
             <span className="ss">{dayLabel(o.date, opts.today)} · {timeRange(o)}{o.teacherName ? ' · ' + t('con {0}', o.teacherName) : ''}</span>
           </span>
-          {o.cancelled ? <span className="tag nocap class-tag-absent">{t('Suspendida')}</span> : statusTag(o.myBooking)}
+          {o.cancelled ? <span className="tag nocap class-tag-absent">{o.closed ? t('Cerrado') : t('Suspendida')}</span> : statusTag(o.myBooking)}
         </button>)}</div>}
     <div style={{ height: 12 }} />
     <Button variant="tinted" icon="calendar" onClick={() => { close(); onAll() }}>{t('Ver todas las clases')}</Button>
