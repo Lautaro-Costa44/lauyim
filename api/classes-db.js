@@ -61,6 +61,10 @@ export function migrateClasses(db) {
       UNIQUE (session_id, user_id)
     );
     CREATE INDEX IF NOT EXISTS class_bookings_user ON class_bookings(user_id);
+    CREATE TABLE IF NOT EXISTS class_prefs (
+      user_id TEXT PRIMARY KEY,
+      reminders TEXT NOT NULL DEFAULT '[60]'
+    );
     CREATE TABLE IF NOT EXISTS class_recurring (
       id TEXT PRIMARY KEY,
       slot_id TEXT NOT NULL REFERENCES class_slots(id),
@@ -329,3 +333,16 @@ export function addRecurring(slotId, userId) {
 }
 
 export const removeRecurring = (slotId, userId) => getDatabase().prepare('DELETE FROM class_recurring WHERE slot_id = ? AND user_id = ?').run(slotId, userId).changes > 0;
+
+// ---- preferencias del socio ----
+
+// Recordatorios de entrada para sus reservas nuevas (Ajustes), o null si nunca los eligió.
+export function getClassReminderDefaults(userId) {
+  const row = getDatabase().prepare('SELECT reminders FROM class_prefs WHERE user_id = ?').get(userId);
+  return row ? parse(row.reminders, null) : null;
+}
+
+export function setClassReminderDefaults(userId, reminders) {
+  getDatabase().prepare('INSERT INTO class_prefs (user_id, reminders) VALUES (?, ?) ON CONFLICT(user_id) DO UPDATE SET reminders = excluded.reminders')
+    .run(userId, JSON.stringify(reminders));
+}

@@ -148,3 +148,12 @@ test('reserva fija: reserva las fechas abiertas del bloque y no vuelve a reserva
   assert.equal((await call('caro', 'POST', '/api/classes/recurring/delete', { slotId: otherSlot.id })).status, 200);
   assert.equal((await list('caro', first.date, 1)).occurrences.find(o => o.slotId === otherSlot.id).recurring, false);
 });
+
+test('recordatorios de entrada: se guardan y las reservas nuevas los usan', async () => {
+  assert.equal((await call('caro', 'PUT', '/api/classes/reminder-defaults', { reminders: [7] })).status, 400);
+  const saved = await call('caro', 'PUT', '/api/classes/reminder-defaults', { reminders: [15, 120] });
+  assert.deepEqual(saved.body.reminderDefaults, [120, 15]);
+  assert.deepEqual((await list('caro')).reminderDefaults, [120, 15]);
+  const r = await call('caro', 'POST', '/api/classes/book', { slotId: slot.id, date: day });
+  assert.deepEqual(r.body.booking.reminders, [120, 15]);
+});

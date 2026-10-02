@@ -6,7 +6,7 @@ import {
   addMinutes, addDays, weekdayOf, occurrencesBetween, overlapConflicts, conflictText, bookingState, cancelKind, canPromote, remindersDue, minutesLeft, buildIcs
 } from './classes.js';
 import * as cdb from './classes-db.js';
-import { getAllUsers, getUserById, getAdminSetting, setAdminSetting, getUserState, getDatabase } from './database.js';
+import { getAllUsers, getUserById, getAdminSetting, setAdminSetting, getDatabase } from './database.js';
 import { gymClock, getBillingSettings } from './billing.js';
 import { classChangePush, classReminderPush } from './push-messages.js';
 
@@ -20,9 +20,9 @@ export const classSettingsNow = () => classSettingsOf(getAdminSetting(CLASS_SETT
 // Módulo prendido y con al menos una clase activa: lo que decide si el socio ve la pestaña.
 export const classesAvailable = () => classSettingsNow().enabled && cdb.getClassTypes().length > 0;
 
-// Recordatorios de entrada del socio (Ajustes), solo valores conocidos.
+// Recordatorios de entrada del socio (Ajustes), solo valores conocidos. Sin elegir: 1 hora antes.
 export function memberReminderDefaults(userId) {
-  const saved = getUserState(userId)?.classReminders;
+  const saved = cdb.getClassReminderDefaults(userId);
   return Array.isArray(saved) ? REMINDER_OPTIONS.filter(m => saved.includes(m)) : [60];
 }
 
@@ -402,6 +402,14 @@ export function classRoutes(d) {
     const chosen = REMINDER_OPTIONS.filter(m => reminders.includes(m));
     const booking = cdb.updateBooking(b.id, { reminders: chosen, remindersSent: b.remindersSent.filter(m => chosen.includes(m)) });
     json(res, 200, { booking: bookingView(booking) });
+  },
+  'PUT /api/classes/reminder-defaults': async (req, res) => {
+    const user = member(req, res); if (!user) return;
+    const { reminders } = await readBody(req);
+    if (!Array.isArray(reminders) || reminders.some(m => !REMINDER_OPTIONS.includes(m))) return json(res, 400, { error: 'validation_error', message: 'Recordatorio inválido' });
+    const chosen = REMINDER_OPTIONS.filter(m => reminders.includes(m));
+    cdb.setClassReminderDefaults(user.id, chosen);
+    json(res, 200, { reminderDefaults: chosen });
   },
   'POST /api/classes/recurring': async (req, res) => {
     const user = member(req, res); if (!user) return;
