@@ -59,6 +59,7 @@ test('recordatorio de clase: título con nombre y hora; profe, sala y cuánto fa
   assert.equal(classReminderPush({ ...base, room: '', minutes: 15 }).body, 'Hoy con Caro. Empieza en 15 minutos.');
   assert.equal(classReminderPush({ ...base, teacher: '', minutes: 120 }).body, 'Hoy, en Sala 2. Empieza en 2 horas.');
   assert.equal(classReminderPush({ ...base, teacher: '', room: '', minutes: 30 }).body, 'Hoy. Empieza en 30 minutos.');
+  assert.equal(classReminderPush({ ...base, minutes: 90 }).body, 'Hoy con Caro, en Sala 2. Empieza en 1 h 30 min.');
   assert.equal(classReminderPush({ ...base, start: '01:00', date: '2026-10-06', minutes: 300 }).body, 'Mañana con Caro, en Sala 2. Empieza en 5 horas.');
   assert.equal(classReminderPush({ ...base, start: '20:00', movedFrom: '19:00' }).body, 'Hoy cambió a las 20:00. Empieza en 1 hora.');
 });

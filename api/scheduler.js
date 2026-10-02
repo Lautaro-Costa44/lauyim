@@ -6,6 +6,7 @@ import { getDatabase, getUserState, markDuePushSent } from './database.js';
 import { sendPushToSubscription } from './push-send.js';
 import { dayReminderPush, gymFeePush, billingDuePush } from './push-messages.js';
 import { getBillingSettings, gymClock, shouldSendDuePush, daysBetween, isBillingEnabled, getBillingNotifyHour } from './billing.js';
+import { materializeRecurring, sendClassReminders, classClock } from './classes-routes.js';
 
 // Avisos de cuota en vuelo (user_id:due_date). El envío es asíncrono y el tick corre cada
 // minuto: sin esto, un push lento se volvería a disparar antes de guardar push_sent_for_due.
@@ -302,6 +303,17 @@ export function runSchedulerTick({ now = Date.now(), sendToUser = sendPushToUser
     }
   } catch (err) {
     console.error('[Scheduler] Error en tick del scheduler:', err);
+  }
+  // Clases: reservas fijas que entran en la ventana y recordatorios de las reservadas.
+  try {
+    const send = (userId, payload) => {
+      sendToUser(userId, payload).catch(err => console.error(`[Scheduler] Error al enviar aviso de clase a user_id=${userId}:`, err));
+    };
+    const clock = classClock(now);
+    materializeRecurring({ send, now: clock });
+    sendClassReminders({ send, now: clock });
+  } catch (err) {
+    console.error('[Scheduler] Error en clases:', err);
   }
 }
 

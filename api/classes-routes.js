@@ -3,11 +3,11 @@
 // La lógica está en classes.js y los datos en classes-db.js.
 import {
   CLASS_DEFAULTS, REMINDER_OPTIONS, classSettingsOf, validateClassSettings, validateClassType, validateSlot,
-  addMinutes, addDays, weekdayOf, occurrencesBetween, overlapConflicts, conflictText, bookingState, cancelKind, canPromote, remindersDue, buildIcs
+  addMinutes, addDays, weekdayOf, occurrencesBetween, overlapConflicts, conflictText, bookingState, cancelKind, canPromote, remindersDue, minutesLeft, buildIcs
 } from './classes.js';
 import * as cdb from './classes-db.js';
-import { getAllUsers, getUserById, getAdminSetting, setAdminSetting, getUserState } from './database.js';
-import { gymClock } from './billing.js';
+import { getAllUsers, getUserById, getAdminSetting, setAdminSetting, getUserState, getDatabase } from './database.js';
+import { gymClock, getBillingSettings } from './billing.js';
 import { classChangePush, classReminderPush } from './push-messages.js';
 
 export const CLASS_SETTINGS_KEY = 'classes';
@@ -38,9 +38,10 @@ const occOfKey = (date, key) => loadOccurrences(date, 1).find(o => o.key === key
 const occOfSession = session => session ? occOfKey(session.date, session.slotId ? `${session.slotId}:${session.date}` : session.id) : null;
 
 // Lo que server.js le pasa a classRoutes y usan también las reservas fijas y los recordatorios del
-// scheduler (sin server, en los tests del scheduler, nadie está bloqueado y la zona es la de cuotas).
-let deps = { isMembershipBlocked: () => false, gymTz: () => 'America/Argentina/Buenos_Aires' };
-const clockNow = (ms = Date.now()) => gymClock(ms, deps.gymTz());
+// scheduler (sin server, en los tests del scheduler, nadie está bloqueado). La zona es la de cuotas.
+let deps = { isMembershipBlocked: () => false, gymTz: () => getBillingSettings(getDatabase()).gym_tz };
+export const classClock = (ms = Date.now()) => gymClock(ms, deps.gymTz());
+const clockNow = classClock;
 
 // Reserva sola las fechas abiertas de las reservas fijas (todas, o las de un bloque o un socio).
 // Una fecha que el socio ya tuvo (aunque la haya cancelado) no se vuelve a reservar. send(userId,
@@ -67,8 +68,8 @@ export function materializeRecurring({ slotId, userId, send = () => {}, now = cl
   return count;
 }
 
-// Recordatorios que tocan ahora (reservas de hoy y mañana). Si varios llegaron juntos, uno solo, con
-// el más cercano. -> cuántos mandó.
+// Recordatorios que tocan ahora (reservas de hoy y mañana). Si varios llegaron juntos, uno solo; el
+// texto dice lo que falta de verdad. -> cuántos mandó.
 export function sendClassReminders({ send, now = clockNow() } = {}) {
   if (!classSettingsNow().enabled) return 0;
   const bookings = cdb.getBookingsInRange({ from: now.date, to: addDays(now.date, 2), statuses: ['booked'] });
@@ -77,11 +78,12 @@ export function sendClassReminders({ send, now = clockNow() } = {}) {
   let sent = 0;
   for (const b of bookings) {
     const occ = occs.get(b.sessionId);
-    if (!occ) continue;
+    const user = getUserById(b.userId);
+    if (!occ || !user || user.disabled) continue;
     const due = remindersDue({ occ, reminders: b.reminders, sent: b.remindersSent, now, bookedAt: clockNow(Date.parse(b.createdAt)) });
     if (!due.length) continue;
     cdb.updateBooking(b.id, { remindersSent: [...b.remindersSent, ...due] });
-    send(b.userId, classReminderPush({ name: occ.type.name, date: occ.date, today: now.date, start: occ.start, movedFrom: occ.movedFrom, teacher: occ.teacherName, room: occ.room, minutes: Math.min(...due), sessionId: occ.sessionId }));
+    send(b.userId, classReminderPush({ name: occ.type.name, date: occ.date, today: now.date, start: occ.start, movedFrom: occ.movedFrom, teacher: occ.teacherName, room: occ.room, minutes: minutesLeft(occ, now), sessionId: occ.sessionId }));
     sent++;
   }
   return sent;

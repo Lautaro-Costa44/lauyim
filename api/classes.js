@@ -122,6 +122,8 @@ export const weekdayOf = date => new Date(dayNumber(date) * 86400000).getUTCDay(
 // Minutos absolutos de una fecha y hora (para comparar y restar).
 const stamp = (date, time) => dayNumber(date) * 1440 + toMin(time);
 const minutesUntil = (occ, now) => stamp(occ.date, occ.start) - stamp(now.date, now.time);
+// Minutos que faltan para que empiece una fecha (negativo si ya empezó).
+export const minutesLeft = minutesUntil;
 
 // Fechas de clases en [from, from + days): las del horario semanal (de las clases no archivadas)
 // más las sesiones guardadas, que pisan a la calculada del mismo bloque y fecha (cambio de hora,

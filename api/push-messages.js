@@ -78,7 +78,9 @@ function dayRef(date, today) {
   if (diff === 1) return 'de mañana';
   return `del ${WEEKDAYS[new Date(dayNum(date) * 86400000).getUTCDay()]} ${Number(date.slice(8, 10))}`;
 }
-const inMinutes = m => m >= 60 ? (m === 60 ? 'en 1 hora' : `en ${m / 60} horas`) : `en ${m} minutos`;
+const inMinutes = m => m < 60 ? `en ${m} minutos`
+  : m % 60 ? `en ${Math.floor(m / 60)} h ${m % 60} min`
+  : m === 60 ? 'en 1 hora' : `en ${m / 60} horas`;
 
 // Recordatorio de una clase reservada: "Spinning · 19:00" / "Hoy con Caro, en Sala 2. Empieza en 1 hora."
 export function classReminderPush({ name, date, today, start, movedFrom, teacher, room, minutes, sessionId }) {
