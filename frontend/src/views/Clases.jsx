@@ -27,7 +27,7 @@ export default function Clases() {
 
   const chips = dayChips(data.today, data.days)
   const ofDay = data.occurrences.filter(o => o.date === day)
-  const opts = { today: data.today, cancelHours: data.settings?.cancelHours ?? 2, onChange: load }
+  const opts = { today: data.today, tz: data.tz, cancelHours: data.settings?.cancelHours ?? 2, onChange: load }
   const act = async (e, occ) => {
     e.stopPropagation()
     const state = buttonState(occ)

@@ -7,7 +7,8 @@ import { useStore } from '../store/useStore.js'
 import { t, exerciseNameFor } from '../lib/i18n.js'
 import { errorText } from '../lib/errors.js'
 import { EXIDX } from '../lib/exercises.js'
-import { REMINDER_OPTIONS, reminderLabel, buttonState, capacityText, timeRange, intensityLabel, shortDay, weekdayOf, classesApi } from '../lib/classes.js'
+import { REMINDER_OPTIONS, reminderLabel, buttonState, capacityText, timeRange, intensityLabel, shortDay, weekdayOf, googleCalendarUrl, classesApi } from '../lib/classes.js'
+import { IS_APPLE } from '../lib/api.js'
 import { Button, Switch } from './ui.jsx'
 import BodyMap from './BodyMap.jsx'
 import Icon from './Icon.jsx'
@@ -57,7 +58,7 @@ async function cancelBooking(occ, { cancelHours, onChange, close }) {
   } else doIt()
 }
 
-function ClassDetail({ occ: initial, today, cancelHours, onChange, close }) {
+function ClassDetail({ occ: initial, today, tz, cancelHours, onChange, close }) {
   const [occ, setOcc] = useState(initial)
   const [busy, setBusy] = useState(false)
   const body = useStore(s => s.S?.body) || 'male'
@@ -123,13 +124,32 @@ function ClassDetail({ occ: initial, today, cancelHours, onChange, close }) {
       <Button size="sm" icon="bell" onClick={() => classRemindersSheet(mine, { onSaved: reminders => setOcc(o => ({ ...o, myBooking: { ...o.myBooking, reminders } })) })}>
         {mine.reminders?.length ? t('Recordatorios: {0}', mine.reminders.map(reminderLabel).join(', ')) : t('Sin recordatorio')}
       </Button>
-      {mine.status === 'booked' && <a className="btn sm plain" href={classesApi.icsUrl(mine.id)} download="clase.ics"><Icon name="calendar" /><span>{t('Agregar a mi calendario')}</span></a>}
+      {mine.status === 'booked' && <Button size="sm" icon="calendar" onClick={() => calendarChoiceSheet(occ, mine, tz)}>{t('Agregar a mi calendario')}</Button>}
     </div>}
   </div>
 }
 
-export function classSheet(occ, { today, cancelHours = 2, onChange } = {}) {
-  ui().openSheet(close => <ClassDetail occ={occ} today={today} cancelHours={cancelHours} onChange={onChange} close={close} />, { kind: 'panel' })
+export function classSheet(occ, { today, tz, cancelHours = 2, onChange } = {}) {
+  ui().openSheet(close => <ClassDetail occ={occ} today={today} tz={tz} cancelHours={cancelHours} onChange={onChange} close={close} />, { kind: 'panel' })
+}
+
+// ---- agregar al calendario ----
+
+// Google Calendar abre el evento ya cargado (Android y PC). El iPhone abre el .ics y ofrece
+// "Agregar"; el mismo .ics sirve para cualquier otro calendario. Primero, el del celular.
+function CalendarChoice({ occ, booking, tz, close }) {
+  const google = <a key="g" className="btn tinted" href={googleCalendarUrl(occ, tz)} target="_blank" rel="noopener noreferrer" onClick={close}><Icon name="calendar" /><span>Google Calendar</span></a>
+  const apple = <a key="a" className="btn tinted" href={classesApi.icsUrl(booking.id)} onClick={close}><Icon name="calendar" /><span>{IS_APPLE ? t('Calendario del iPhone') : t('Otro calendario (.ics)')}</span></a>
+  return <div className="class-calendar-choice">
+    <h3>{t('Agregar a mi calendario')}</h3>
+    <p className="muted small">{occ.name} · {shortDay(occ.date)} {timeRange(occ)}</p>
+    {IS_APPLE ? [apple, google] : [google, apple]}
+    <Button variant="ghost" className="dim" onClick={close}>{t('Cancel')}</Button>
+  </div>
+}
+
+export function calendarChoiceSheet(occ, booking, tz) {
+  ui().openSheet(close => <CalendarChoice occ={occ} booking={booking} tz={tz} close={close} />)
 }
 
 // ---- recordatorios ----
@@ -153,7 +173,8 @@ function RemindersPicker({ booking, onSaved, close }) {
     </div>
     <div style={{ height: 14 }} />
     <Button variant="primary" onClick={close}>{t('Listo')}</Button>
-    <Button variant="ghost" className="dim" onClick={() => { close(); window.location.hash = '#/settings' }}>{t('Cambiar los de entrada en Ajustes')}</Button>
+    {/* A Ajustes: se cierran esta hoja y la de la clase. */}
+    <Button variant="ghost" className="dim" onClick={() => { ui().closeAll(); window.location.hash = '#/settings' }}>{t('Cambiar los de entrada en Ajustes')}</Button>
   </div>
 }
 

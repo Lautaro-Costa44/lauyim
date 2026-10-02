@@ -402,7 +402,7 @@ export function classRoutes(d) {
     const fixed = new Set(cdb.getRecurring({ userId: user.id }).map(r => r.slotId));
     const clock = now();
     json(res, 200, {
-      enabled: true, today, from, days, settings: publicSettings(s), reminderDefaults: memberReminderDefaults(user.id),
+      enabled: true, today, from, days, tz: d.gymTz(), settings: publicSettings(s), reminderDefaults: memberReminderDefaults(user.id),
       occurrences: occs.map(o => memberView(o, counts[o.sessionId], mine.get(o.sessionId), fixed.has(o.slotId), bookingState({ occ: o, now: clock, settings: s })))
     });
   },
@@ -478,7 +478,8 @@ export function classRoutes(d) {
     if (!occ) return json(res, 404, { error: 'not_found' });
     const stamp = new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
     const body = buildIcs({ occ, gymTz: d.gymTz(), uid: `${b.id}@lauyim`, stamp });
-    res.writeHead(200, { 'Content-Type': 'text/calendar; charset=utf-8', 'Content-Disposition': 'attachment; filename="clase.ics"', 'Cache-Control': 'no-store' });
+    // inline: el iPhone lo abre y ofrece "Agregar al calendario" en vez de bajarlo como archivo.
+    res.writeHead(200, { 'Content-Type': 'text/calendar; charset=utf-8', 'Content-Disposition': 'inline; filename="clase.ics"', 'Cache-Control': 'no-store' });
     res.end(body);
   },
 

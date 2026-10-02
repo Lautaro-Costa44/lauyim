@@ -28,7 +28,7 @@ export default function HomeClassCard() {
   }
   const waiting = next.myBooking.status === 'waitlist'
   return <div className="card tappable home-class" style={{ cursor: 'pointer' }}
-    onClick={() => classSheet(next, { today: data.today, cancelHours: data.settings?.cancelHours ?? 2, onChange: load })}>
+    onClick={() => classSheet(next, { today: data.today, tz: data.tz, cancelHours: data.settings?.cancelHours ?? 2, onChange: load })}>
     <span className="lrow-i" style={{ background: next.color }}><Icon name={next.icon || 'dumbbell'} /></span>
     <div className="grow">
       <div className="lbl2">{t('Tu próxima clase')}</div>

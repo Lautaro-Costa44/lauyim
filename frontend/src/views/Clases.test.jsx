@@ -14,7 +14,7 @@ const { useUI } = await import('../store/useUI.js')
 const { setLang } = await import('../lib/i18n.js')
 const { default: Clases } = await import('./Clases.jsx')
 const { default: HomeClassCard, nextBooked } = await import('../components/HomeClassCard.jsx')
-const { classSheet, classRemindersSheet } = await import('../components/ClassSheet.jsx')
+const { classSheet, classRemindersSheet, calendarChoiceSheet } = await import('../components/ClassSheet.jsx')
 
 const TODAY = '2026-10-05'
 const occ = (extra = {}) => ({
@@ -97,8 +97,30 @@ describe('hoja de la clase y recordatorios', () => {
     expect(host.textContent).toContain('Cancelar mi lugar')
     expect(host.textContent).toContain('Todas las semanas')
     expect(host.textContent).toContain('Recordatorios: 1 h')
-    expect(host.querySelector('a[download]').getAttribute('href')).toBe('/api/classes/ics?booking=b1')
+    expect([...host.querySelectorAll('button')].some(b => b.textContent.trim() === 'Agregar a mi calendario')).toBe(true)
     expect(host.textContent).toContain('Intensidad: Alta')
+    await unmount(); host.remove()
+  })
+
+  it('agregar al calendario: Google Calendar con el evento y el .ics para abrir', async () => {
+    calendarChoiceSheet(occ(), { id: 'b1' }, 'America/Argentina/Buenos_Aires')
+    const { host, unmount } = await openLastSheet()
+    const links = [...host.querySelectorAll('a')]
+    expect(links.find(a => a.textContent === 'Google Calendar').getAttribute('href')).toContain('calendar.google.com/calendar/render?action=TEMPLATE&text=Spinning')
+    const ics = links.find(a => a.getAttribute('href').startsWith('/api/classes/ics'))
+    expect(ics.getAttribute('href')).toBe('/api/classes/ics?booking=b1')
+    expect(ics.hasAttribute('download')).toBe(false)
+    await unmount(); host.remove()
+  })
+
+  it('"Cambiar los de entrada en Ajustes" cierra todas las hojas', async () => {
+    classSheet(occ(), { today: TODAY })
+    classRemindersSheet({ id: 'b1', reminders: [60] })
+    expect(useUI.getState().sheets).toHaveLength(2)
+    const { host, unmount } = await openLastSheet()
+    await act(async () => { [...host.querySelectorAll('button')].find(b => b.textContent.trim() === 'Cambiar los de entrada en Ajustes').click() })
+    expect(useUI.getState().sheets).toHaveLength(0)
+    expect(window.location.hash).toBe('#/settings')
     await unmount(); host.remove()
   })
 

@@ -114,6 +114,7 @@ test('.ics de la propia reserva', async () => {
   const ics = await call('ana', 'GET', `/api/classes/ics?booking=${mine.id}`);
   assert.equal(ics.status, 200);
   assert.match(ics.headers.get('content-type'), /text\/calendar/);
+  assert.match(ics.headers.get('content-disposition'), /^inline/);
   assert.match(ics.body, /SUMMARY:Spinning/);
   assert.match(ics.body, new RegExp(`DTSTART;TZID=America/Argentina/Buenos_Aires:${day.replace(/-/g, '')}T190000`));
   assert.equal((await call('beto', 'GET', `/api/classes/ics?booking=${mine.id}`)).status, 404);

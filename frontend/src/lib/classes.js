@@ -24,6 +24,17 @@ export function dayChips(today, days) {
   })
 }
 
+// Link de Google Calendar con el evento ya cargado (abre la app en Android). tz: la del gimnasio.
+export function googleCalendarUrl(occ, tz) {
+  const stamp = (date, time) => date.replace(/-/g, '') + 'T' + time.replace(':', '') + '00'
+  const endDate = occ.end < occ.start ? addDays(occ.date, 1) : occ.date
+  const params = new URLSearchParams({ action: 'TEMPLATE', text: occ.name, dates: `${stamp(occ.date, occ.start)}/${stamp(endDate, occ.end)}` })
+  if (tz) params.set('ctz', tz)
+  if (occ.room) params.set('location', occ.room)
+  if (occ.teacherName) params.set('details', 'Con ' + occ.teacherName)
+  return 'https://calendar.google.com/calendar/render?' + params.toString()
+}
+
 export const conflictMessages = result => result ? [...(result.blocking || []), ...(result.warnings || [])].map(c => c.text) : []
 
 // Botón de una fecha para el socio: { key, label, disabled }. Una reserva cancelada no cuenta.

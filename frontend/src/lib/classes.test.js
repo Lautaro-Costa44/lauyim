@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest'
 const apiMock = vi.hoisted(() => vi.fn(() => Promise.resolve({})))
 vi.mock('./api.js', () => ({ api: apiMock }))
 
-const { REMINDER_OPTIONS, reminderLabel, buttonState, capacityText, timeRange, dayChips, conflictMessages, intensityLabel, classesApi } = await import('./classes.js')
+const { REMINDER_OPTIONS, reminderLabel, buttonState, capacityText, timeRange, dayChips, conflictMessages, intensityLabel, googleCalendarUrl, classesApi } = await import('./classes.js')
 
 describe('etiquetas', () => {
   it('recordatorios, cupo, horario e intensidad', () => {
@@ -20,6 +20,13 @@ describe('etiquetas', () => {
       { date: '2026-10-05', label: 'Hoy' }, { date: '2026-10-06', label: 'Mañana' },
       { date: '2026-10-07', label: 'Mié 7' }, { date: '2026-10-08', label: 'Jue 8' }
     ])
+  })
+
+  it('Google Calendar: evento con hora local del gym, sala y profe; cruza la medianoche', () => {
+    const url = new URL(googleCalendarUrl({ name: 'Spinning', date: '2026-10-05', start: '19:00', end: '19:45', room: 'Sala 2', teacherName: 'Caro' }, 'America/Argentina/Buenos_Aires'))
+    expect(url.origin + url.pathname).toBe('https://calendar.google.com/calendar/render')
+    expect(Object.fromEntries(url.searchParams)).toEqual({ action: 'TEMPLATE', text: 'Spinning', dates: '20261005T190000/20261005T194500', ctz: 'America/Argentina/Buenos_Aires', location: 'Sala 2', details: 'Con Caro' })
+    expect(new URL(googleCalendarUrl({ name: 'Yoga', date: '2026-10-05', start: '23:30', end: '00:15' })).searchParams.get('dates')).toBe('20261005T233000/20261006T001500')
   })
 
   it('avisos de superposición: primero los que bloquean', () => {
