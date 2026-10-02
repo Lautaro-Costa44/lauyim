@@ -193,6 +193,15 @@ function Settings({ onChange, close }) {
       {num('cancelHours', t('Cancelar sin que cuente como tardía (horas antes)'), 0, 48, t('Después cuenta como cancelación tardía.'))}
       {num('waitlistCutoffMin', t('La lista de espera sube gente hasta (minutos antes)'), 0, 720, t('Después ya no se avisa a nadie que entró.'))}
     </div>
+    <SwitchRow value={s.afterPush.on} label={t('Aviso después de la clase')} help={t('Push a quien no contestó si fue, unos minutos después de que termina.')} onToggle={v => set({ afterPush: { ...s.afterPush, on: v } })} />
+    {s.afterPush.on && <label className="member-field"><span className="member-field-l">{t('Minutos después del fin')}</span>
+      <input className="input" type="number" inputMode="numeric" min={0} max={180} value={s.afterPush.minutes} onChange={e => set({ afterPush: { ...s.afterPush, minutes: Number(e.target.value) } })} /></label>}
+    <SwitchRow value={s.penalty.on} label={t('Penalizar ausencias')} help={t('Con muchas ausencias (y cancelaciones tardías) el socio no puede reservar por unos días. El staff lo puede anotar igual.')} onToggle={v => set({ penalty: { ...s.penalty, on: v } })} />
+    {s.penalty.on && <div className="class-editor-row three">
+      <label className="member-field"><span className="member-field-l">{t('Ausencias')}</span><input className="input" type="number" min={1} max={10} value={s.penalty.absences} onChange={e => set({ penalty: { ...s.penalty, absences: Number(e.target.value) } })} /></label>
+      <label className="member-field"><span className="member-field-l">{t('En días')}</span><input className="input" type="number" min={7} max={90} value={s.penalty.windowDays} onChange={e => set({ penalty: { ...s.penalty, windowDays: Number(e.target.value) } })} /></label>
+      <label className="member-field"><span className="member-field-l">{t('Días sin reservar')}</span><input className="input" type="number" min={1} max={30} value={s.penalty.blockDays} onChange={e => set({ penalty: { ...s.penalty, blockDays: Number(e.target.value) } })} /></label>
+    </div>}
     <SwitchRow value={s.allowOverlap} label={t('Permitir clases en el mismo horario')}
       help={t('Dos clases chocan si coinciden en la hora y están en la misma sala, o si alguna no tiene sala. Apagado, no se pueden guardar; encendido, se avisa.')}
       onToggle={v => set({ allowOverlap: v })} />

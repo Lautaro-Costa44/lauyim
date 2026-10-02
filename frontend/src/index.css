@@ -2205,3 +2205,5 @@ button.wh-row{font:inherit;color:inherit;border:0;cursor:pointer}
 .class-stars{display:flex;gap:6px;justify-content:center}
 .class-star{font-size:30px;color:var(--label-3);padding:4px}
 .class-star.on{color:var(--orange)}
+.class-editor-row.three{grid-template-columns:1fr 1fr 1fr}
+.class-penalty{margin-bottom:10px}

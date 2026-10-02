@@ -16,7 +16,8 @@ export default function History() {
   const [selectedId, setSelectedId] = useState(null)
   const selected = desktop ? S.workouts.find(w => w.id === selectedId) : null
   const open = w => desktop ? setSelectedId(w.id) : workoutDetailSheet(w)
-  const data = { workouts: S.workouts, routines: S.routines, unit: S.unit }
+  const classesOn = useStore(s => !!s.config?.classes_available)
+  const data = { workouts: S.workouts, routines: S.routines, unit: S.unit, classesOn }
   return <>
     <div className="hdr"><button className="iconbtn" onClick={() => nav('/stats')} aria-label={t('Stats')}><Icon name="chevronLeft" /></button>
       <div style={{ flex: 1, marginLeft: 12 }}><h1>{t('History')}</h1><div className="sub">{t('{0} workouts', S.workouts.length)}</div></div></div>

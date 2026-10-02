@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 import { t } from '../lib/i18n.js'
 import { errorText } from '../lib/errors.js'
-import { buttonState, capacityText, timeRange, dayChips, classesApi } from '../lib/classes.js'
+import { buttonState, capacityText, timeRange, dayChips, shortDay, classesApi } from '../lib/classes.js'
 import { classSheet, classAction } from '../components/ClassSheet.jsx'
 import { Button } from '../components/ui.jsx'
 import Icon from '../components/Icon.jsx'
@@ -38,6 +38,9 @@ export default function Clases() {
   }
 
   return <div className="classes">
+    {data.penalty && <div className="access-warn small class-penalty" role="note">
+      {t('Por {0} ausencias en el último mes no podés reservar hasta el {1}.', data.penalty.count, shortDay(data.penalty.until))}
+    </div>}
     <div className="chips class-days" role="tablist" aria-label={t('Días')}>
       {chips.map(c => {
         const has = data.occurrences.some(o => o.date === c.date && !o.cancelled)

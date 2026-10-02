@@ -46,6 +46,9 @@ export const ERROR_TEXTS = {
   booking_started: 'La clase ya empezó.',
   booking_cancelled: 'Esa clase se suspendió.',
   class_not_cancelled: 'Solo se puede quitar de la vista una clase suspendida.',
+  booking_penalty: 'Por ausencias no podés reservar por unos días.',
+  attendance_closed: 'Ya no se puede cambiar la asistencia de esa clase.',
+  rating_closed: 'Ya no se puede calificar esa clase.',
   // passkeys e ingreso
   challenge_expired: 'La solicitud venció. Intentá de nuevo.',
   passkey_verify_failed: 'No se pudo verificar la passkey. Intentá de nuevo.',
