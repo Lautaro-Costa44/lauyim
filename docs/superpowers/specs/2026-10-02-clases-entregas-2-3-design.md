@@ -167,3 +167,40 @@ Cada una con su plan, tests primero y prueba en dev antes de mergear.
 
 - Elegir lugar en la clase, racha de clases, planes de cuota por cantidad de clases.
 - Comentarios escritos en la calificación.
+
+## Agregados después del spec (misma rama, aprobados en chat el 2026-10-02)
+
+- **Tarjeta de Inicio:** la próxima clase es un ticket con el color de la clase (día, número y hora).
+  A menos de 24 h muestra la cuenta regresiva y el cupo. "Mis clases" abre la lista de reservas.
+  Una suspensión aparece como un aviso que se puede cerrar.
+- **Sin reservas:** las clases del primer día que todavía tienen algo por delante, en una fila que
+  se desliza. Cuántas entran depende del ancho (container query). Con una sola clase, se muestra
+  en un renglón con la profe y la sala.
+- **Varios días:**
+  - "Fija" es un chip por cada día de la clase (`GET /api/classes` trae `slots`).
+  - "Anotarme a todas esta semana" llama a `POST /api/classes/book-week`. Reserva las fechas
+    abiertas de los próximos 7 días; las que están llenas van a la lista de espera.
+- **Textos de los avisos:**
+  - Estilo: vos, sin rayas, un emoji como mucho, y el título dice qué pasó.
+  - El recordatorio del día nombra la rutina.
+  - El cambio de profe dice quién la daba antes.
+  - La lista de espera dice el número de lugar.
+  - La penalización dice desde cuándo se puede volver a reservar.
+- **La profe y su clase:**
+  - La profe de una fecha no se anota a la clase que da (`own_class`).
+  - Si le quedó una reserva de antes, el scheduler la cancela (`dropTeacherBookings`) y entra la
+    primera de la lista de espera.
+  - Esa reserva no cuenta para el cupo, la lista, las estadísticas ni "¿Fuiste?".
+- **Mensaje a los anotados:** `POST /api/admin/classes/sessions/message`.
+  - Hasta 200 letras y 3 mensajes por fecha y persona del staff (`noticeOnce` con `message1..3`).
+  - La lista de espera es opcional.
+  - No se puede mandar a una fecha que terminó o se suspendió.
+- **Vista de la profe en la app de socio:**
+  - En Inicio, la próxima clase que da y las otras de ese día, sin botones.
+  - Tocar la clase abre su hoja: cuántos hay, cuánto falta, quiénes vienen y qué se trabaja.
+  - La rueda abre la hoja de la fecha del panel (`components/TeacherClass.jsx`).
+  - En Plan → Clases, sus clases muestran "La das vos" y la rueda.
+- **Sin cupo:** interruptor "Cupo limitado" en el editor. Apagado es `capacity: null`, que se
+  guarda como 0; `capOf` lo trata como infinito.
+  - Se anota quien quiera, sin lista de espera.
+  - No cuenta para la ocupación.
