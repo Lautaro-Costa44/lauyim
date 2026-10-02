@@ -116,6 +116,26 @@ export function runAfterClass({ send, now = clockNow() } = {}) {
   return resolved;
 }
 
+// La profe no ocupa lugar en la clase que da: si quedó anotada (se anotó antes de que la pusieran
+// de profe, o de antes de esta regla), se le cancela la reserva y entra la primera de la lista.
+// -> cuántas canceló.
+export function dropTeacherBookings({ send = () => {}, now = clockNow() } = {}) {
+  const settings = classSettingsNow();
+  if (!settings.enabled) return 0;
+  const occs = loadOccurrences(now.date, settings.bookAheadDays + 1).filter(o => o.sessionId && o.teacherUserId && !o.cancelled && minutesLeft(o, now) > 0);
+  if (!occs.length) return 0;
+  const bySession = new Map(occs.map(o => [o.sessionId, o]));
+  let dropped = 0;
+  for (const b of cdb.getBookingsForSessions([...bySession.keys()])) {
+    const occ = bySession.get(b.sessionId);
+    if (!teachesOcc(occ, b.userId) || !['booked', 'waitlist'].includes(b.status)) continue;
+    const out = cdb.cancelAndPromote({ bookingId: b.id, kind: 'cancelled', promote: b.status === 'booked' && canPromote({ occ, now, settings }), capacity: occ.type.capacity });
+    if (out.promoted) send(out.promoted.userId, classChangePush('promoted', { name: occ.type.name, date: occ.date, today: now.date, start: occ.start, sessionId: occ.sessionId }));
+    dropped++;
+  }
+  return dropped;
+}
+
 // Recordatorios que tocan ahora (reservas de hoy y mañana). Si varios llegaron juntos, uno solo; el
 // texto dice lo que falta de verdad. -> cuántos mandó.
 export function sendClassReminders({ send, now = clockNow() } = {}) {
@@ -518,7 +538,7 @@ export function classRoutes(d) {
     const slots = cdb.getClassSlots().filter(sl => live.has(sl.classId)).map(sl => ({ ...sl, recurring: fixed.has(sl.id) }));
     json(res, 200, {
       enabled: true, today, from, days, tz: d.gymTz(), settings: publicSettings(s), reminderDefaults: memberReminderDefaults(user.id), penalty: penaltyNow(user.id, today), slots,
-      occurrences: occs.map(o => ({ ...memberView(o, counts[o.sessionId], mine.get(o.sessionId), fixed.has(o.slotId), bookingState({ occ: o, now: clock, settings: s })), teaching: teachesOcc(o, user.id) }))
+      occurrences: occs.map(o => ({ ...memberView(o, counts[o.sessionId], teachesOcc(o, user.id) ? null : mine.get(o.sessionId), fixed.has(o.slotId), bookingState({ occ: o, now: clock, settings: s })), teaching: teachesOcc(o, user.id) }))
     });
   },
   'POST /api/classes/book': async (req, res) => {

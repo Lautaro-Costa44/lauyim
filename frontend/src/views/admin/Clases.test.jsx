@@ -226,12 +226,18 @@ describe('mensaje a los anotados', () => {
     await unmount()
   })
 
-  it('sin permiso o sin anotados no aparece', async () => {
+  it('sin permiso no aparece; sin anotados se ve apagado y dice por qué', async () => {
     apiMock.mockImplementation(url => url.startsWith('/api/admin/classes/session?') ? Promise.resolve(detail({ canMessage: false })) : Promise.resolve({}))
     sessionSheet(occ(), { canManage: false, users: [], teachers: [] })
-    const { host, unmount } = await openLastSheet()
-    expect(button(host, 'Mandar un mensaje a los anotados')).toBeFalsy()
-    await unmount()
+    let sheet = await openLastSheet()
+    expect(button(sheet.host, 'Mandar un mensaje a los anotados')).toBeFalsy()
+    await sheet.unmount()
+    apiMock.mockImplementation(url => url.startsWith('/api/admin/classes/session?') ? Promise.resolve(detail({ booked: [], waitlist: [] })) : Promise.resolve({}))
+    sessionSheet(occ(), { canManage: false, users: [], teachers: [] })
+    sheet = await openLastSheet()
+    expect(button(sheet.host, 'Mandar un mensaje a los anotados').disabled).toBe(true)
+    expect(sheet.host.textContent).toContain('Cuando alguien se anote, le vas a poder escribir.')
+    await sheet.unmount()
   })
 
   it('anotar a mano no ofrece a la profe de esa fecha', async () => {

@@ -75,3 +75,16 @@ test('reserva fija: reserva sola la fecha que está en la ventana', async () => 
   await tick();
   assert.equal(cdb.getUserBookings('beto', { from: tomorrow }).length, 1);
 });
+
+test('la profe anotada a la clase que da: el tick le cancela la reserva y entra la primera de la lista', async () => {
+  const tomorrow = addDays(clock.date, 1);
+  const yoga = cdb.saveClassType({ name: 'Yoga', color: '#30d158', icon: 'yoga', description: '', durationMin: 60, capacity: 1, teacherUserId: 'owner', teacherName: '', room: 'Sala 3', logMode: 'muscles', log: { muscles: ['core'], intensity: 'low' } });
+  const s = cdb.ensureClassSession({ classId: yoga.id, slotId: null, date: tomorrow, start: '10:00' });
+  const own = cdb.bookOrWaitlist({ sessionId: s.id, userId: 'owner', capacity: 1 }).booking;
+  const wait = cdb.bookOrWaitlist({ sessionId: s.id, userId: 'beto', capacity: 1 }).booking;
+  assert.equal(wait.status, 'waitlist');
+  const sent = await tick();
+  assert.equal(cdb.getBooking(own.id).status, 'cancelled');
+  assert.equal(cdb.getBooking(wait.id).status, 'booked');
+  assert.deepEqual(sent.filter(m => m.userId === 'beto').map(m => m.payload.title), ['¡Entraste a Yoga!']);
+});

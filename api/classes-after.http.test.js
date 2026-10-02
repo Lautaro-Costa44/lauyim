@@ -130,6 +130,9 @@ test('la profe no se anota a la clase que da y no cuenta en la asistencia', asyn
   assert.deepEqual([r.status, r.body.error], [409, 'own_class']);
   const mine = (await call('profe', 'GET', `/api/classes?from=${tomorrow}&days=1`)).body.occurrences.find(o => o.slotId === tomorrowSlot.id);
   assert.equal(mine.teaching, true);
+  // Su reserva vieja no le aparece como propia (Inicio no la muestra como "Tu próxima clase").
+  const old = (await call('profe', 'GET', `/api/classes?from=${yesterday}&days=1`)).body.occurrences.find(o => o.sessionId === session.id);
+  assert.deepEqual([old.teaching, old.myBooking, old.booked], [true, null, 3]);
   assert.deepEqual((await call('profe', 'POST', '/api/classes/book-week', { classId: spinning.id })).body, { booked: 0, waitlist: 0 });
   const add = await call('owner', 'POST', '/api/admin/classes/sessions/add', { slotId: tomorrowSlot.id, date: tomorrow, userId: 'profe' });
   assert.deepEqual([add.status, add.body.error], [409, 'own_class']);

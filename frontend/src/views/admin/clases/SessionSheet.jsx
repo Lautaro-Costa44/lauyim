@@ -99,9 +99,13 @@ function SessionDetail({ occ: initial, canManage, users, teachers, onChange, clo
       <div className="small dim">{t('Esta fecha está suspendida: los anotados ya recibieron el aviso.')}</div>
       <Button variant="danger" icon="trash" onClick={hide}>{t('Quitar de la vista')}</Button>
     </div>}
-    {detail?.canMessage && detail.booked.length + detail.waitlist.length > 0 && (mode === 'message'
+    {/* Siempre a la vista para la profe: sin anotados, apagado y con el motivo. */}
+    {detail?.canMessage && (mode === 'message'
       ? <MessageForm occ={occ} detail={detail} onDone={() => setMode(null)} />
-      : !mode && <div className="class-session-actions"><Button variant="tinted" icon="bell" onClick={() => setMode('message')}>{t('Mandar un mensaje a los anotados')}</Button></div>)}
+      : !mode && <div className="class-session-actions">
+          <Button variant="tinted" icon="bell" disabled={detail.booked.length + detail.waitlist.length === 0} onClick={() => setMode('message')}>{t('Mandar un mensaje a los anotados')}</Button>
+          {detail.booked.length + detail.waitlist.length === 0 && <div className="small dim">{t('Cuando alguien se anote, le vas a poder escribir.')}</div>}
+        </div>)}
     {!occ.cancelled && <div className="class-session-actions">
       {occ.canBook && (mode === 'add'
         ? <div className="member-form">
