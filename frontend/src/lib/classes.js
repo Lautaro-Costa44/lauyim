@@ -86,3 +86,45 @@ export const classesApi = {
   settings: () => api('/api/owner/classes/settings'),
   saveSettings: body => put('/api/owner/classes/settings', body),
 }
+
+// ---- tarjeta de Inicio ----
+
+// Fecha y hora del gimnasio -> milisegundos (zona del gimnasio; sin zona, la del celular).
+export function zonedToEpoch(date, time, tz) {
+  const [y, m, d] = date.split('-').map(Number)
+  const [hh, mm] = time.split(':').map(Number)
+  if (!tz) return new Date(y, m - 1, d, hh, mm).getTime()
+  const guess = Date.UTC(y, m - 1, d, hh, mm)
+  const parts = new Intl.DateTimeFormat('en-CA', { timeZone: tz, hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }).formatToParts(new Date(guess))
+  const g = type => Number(parts.find(p => p.type === type).value)
+  return guess - (Date.UTC(g('year'), g('month') - 1, g('day'), g('hour'), g('minute')) - guess)
+}
+
+// Inicio y fin de una fecha de clase en milisegundos.
+export function occTimes(occ, tz) {
+  const start = zonedToEpoch(occ.date, occ.start, tz)
+  return { start, end: start + (occ.durationMin || 60) * 60000 }
+}
+
+const pad2 = n => String(n).padStart(2, '0')
+// Cuánto falta: { mode, label }. mode: 'days' (24 h o más), 'hours' (menos de 24 h), 'minutes'
+// (menos de 1 h, con segundos), 'live' (en curso) o 'over'.
+export function countdown(startMs, endMs, nowMs) {
+  const left = startMs - nowMs
+  if (nowMs >= endMs) return { mode: 'over', label: '' }
+  if (left <= 0) return { mode: 'live', label: 'En curso' }
+  const s = Math.floor(left / 1000), m = Math.floor(s / 60), h = Math.floor(m / 60), d = Math.floor(h / 24)
+  if (h >= 24) return { mode: 'days', label: d === 1 ? 'en 1 día' : `en ${d} días` }
+  if (h >= 1) return { mode: 'hours', label: `${h} h ${pad2(m % 60)} min` }
+  return { mode: 'minutes', label: `${pad2(m)}:${pad2(s % 60)}` }
+}
+
+// Lo que ve la tarjeta de Inicio: la próxima reserva activa que no terminó y las suspendidas que
+// todavía no se avisaron (dismissed: claves ya cerradas).
+export function homeClasses(occurrences, nowMs, tz, dismissed = []) {
+  const mine = (occurrences || []).filter(o => o.myBooking)
+  const upcoming = mine.filter(o => !o.cancelled && ['booked', 'waitlist'].includes(o.myBooking.status) && occTimes(o, tz).end > nowMs)
+    .sort((a, b) => occTimes(a, tz).start - occTimes(b, tz).start)
+  const suspended = mine.filter(o => o.cancelled && occTimes(o, tz).end > nowMs && !dismissed.includes(o.key))
+  return { next: upcoming[0] || null, upcoming, suspended }
+}

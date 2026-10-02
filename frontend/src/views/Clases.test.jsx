@@ -13,7 +13,7 @@ const { useStore } = await import('../store/useStore.js')
 const { useUI } = await import('../store/useUI.js')
 const { setLang } = await import('../lib/i18n.js')
 const { default: Clases } = await import('./Clases.jsx')
-const { default: HomeClassCard, nextBooked } = await import('../components/HomeClassCard.jsx')
+const { default: HomeClassCard } = await import('../components/HomeClassCard.jsx')
 const { classSheet, classRemindersSheet, calendarChoiceSheet } = await import('../components/ClassSheet.jsx')
 
 const TODAY = '2026-10-05'
@@ -141,15 +141,75 @@ describe('hoja de la clase y recordatorios', () => {
 })
 
 describe('Inicio', () => {
-  it('sin reservas: "Ver clases"; con reserva: la próxima', async () => {
+  // Hora fija: 2026-10-05 12:00 en Buenos Aires (15:00 UTC); la clase de las 19:00 empieza en 7 h.
+  const NOW = Date.parse('2026-10-05T15:00:00Z')
+  const withTz = () => ({ ...listBody(), tz: 'America/Argentina/Buenos_Aires' })
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval'] }); vi.setSystemTime(NOW)
+    try { localStorage.removeItem('lauyim_class_suspended_seen') } catch {}
+    apiMock.mockImplementation(url => url.startsWith('/api/classes') ? Promise.resolve(withTz()) : Promise.resolve({}))
+  })
+  afterEach(() => { vi.useRealTimers() })
+
+  it('sin reservas: invita a anotarse', async () => {
     await mount(<HomeClassCard />)
-    expect(container.textContent).toContain('Ver clases')
-    await act(async () => { root.unmount() }); container.remove()
-    occurrences = [occ({ myBooking: { id: 'b1', status: 'booked', reminders: [60] } })]
+    expect(container.textContent).toContain('Anotate a una clase')
+  })
+
+  it('ticket con día, número y hora; a menos de 24 h, la cuenta regresiva y el cupo', async () => {
+    occurrences = [occ({ myBooking: { id: 'b1', status: 'booked', reminders: [60] }, booked: 9 })]
     await mount(<HomeClassCard />)
-    expect(container.textContent).toContain('Tu próxima clase')
-    expect(container.textContent).toContain('Spinning · Hoy 19:00')
+    const date = container.querySelector('.class-ticket-date').textContent
+    expect(date).toBe('LUN519:00')
+    expect(container.querySelector('.class-ticket-name').textContent).toBe('Spinning')
     expect(container.textContent).toContain('Anotado')
+    expect(container.querySelector('.class-ticket-clock').textContent).toContain('7 h 00 min')
+    expect(container.textContent).toContain('9/12 lugares ocupados')
+    expect(container.querySelector('.class-ticket-bar span').style.width).toBe('75%')
+  })
+
+  it('con más de 24 h: "en N días" sin cuenta regresiva; cambio de horario a la vista', async () => {
+    occurrences = [occ({ date: '2026-10-08', key: 'k', movedFrom: '18:00', myBooking: { id: 'b1', status: 'waitlist', waitlistPos: 2 } })]
+    await mount(<HomeClassCard />)
+    expect(container.querySelector('.class-ticket-count')).toBeNull()
+    expect(container.textContent).toContain('en 3 días')
+    expect(container.textContent).toContain('En espera (n.º 2)')
+    expect(container.textContent).toContain('Cambió de horario (era 18:00)')
+  })
+
+  it('el reloj corre: en la última hora con segundos', async () => {
+    occurrences = [occ({ start: '12:30', end: '13:15', myBooking: { id: 'b1', status: 'booked' } })]
+    await mount(<HomeClassCard />)
+    expect(container.querySelector('.class-ticket-clock').textContent).toContain('30:00')
+    await act(async () => { vi.advanceTimersByTime(65000) })
+    expect(container.querySelector('.class-ticket-clock').textContent).toContain('28:55')
+  })
+
+  it('suspendida: aviso que se cierra y no vuelve', async () => {
+    occurrences = [occ({ key: 'sus', cancelled: true, myBooking: { id: 'b1', status: 'cancelled' } })]
+    await mount(<HomeClassCard />)
+    expect(container.querySelector('.class-suspended').textContent).toContain('Se suspendió Spinning')
+    await act(async () => { container.querySelector('.class-suspended button').click() })
+    expect(container.querySelector('.class-suspended')).toBeNull()
+    expect(JSON.parse(localStorage.getItem('lauyim_class_suspended_seen'))).toEqual(['sus'])
+  })
+
+  it('"Mis clases" lista las próximas reservas y las suspendidas', async () => {
+    occurrences = [
+      occ({ myBooking: { id: 'b1', status: 'booked' } }),
+      occ({ key: 'k2', date: '2026-10-06', name: 'GAP', myBooking: { id: 'b2', status: 'waitlist', waitlistPos: 1 } }),
+      occ({ key: 'k3', date: '2026-10-07', name: 'Pilates', cancelled: true, myBooking: { id: 'b3', status: 'cancelled' } })
+    ]
+    await mount(<HomeClassCard />)
+    await act(async () => { container.querySelector('.class-ticket-more').click() })
+    const sheet = useUI.getState().sheets.at(-1)
+    const host = document.createElement('div'); document.body.appendChild(host)
+    const r = createRoot(host)
+    await act(async () => { r.render(<MemoryRouter>{sheet.render(() => {})}</MemoryRouter>) })
+    expect([...host.querySelectorAll('.my-class-row .tt')].map(e => e.textContent)).toEqual(['Spinning', 'GAP', 'Pilates'])
+    expect(host.textContent).toContain('Suspendida')
+    expect(host.textContent).toContain('Ver todas las clases')
+    await act(async () => r.unmount()); host.remove()
   })
 
   it('no aparece sin clases en el gimnasio', async () => {
@@ -157,9 +217,5 @@ describe('Inicio', () => {
     await mount(<HomeClassCard />)
     expect(container.textContent).toBe('')
     expect(apiMock).not.toHaveBeenCalled()
-  })
-
-  it('nextBooked ignora las empezadas, canceladas y la lista cancelada', () => {
-    expect(nextBooked([occ({ state: 'started', myBooking: { status: 'booked' } }), occ({ myBooking: { status: 'cancelled' } }), occ({ key: 'x', myBooking: { status: 'waitlist' } })]).key).toBe('x')
   })
 })

@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest'
 const apiMock = vi.hoisted(() => vi.fn(() => Promise.resolve({})))
 vi.mock('./api.js', () => ({ api: apiMock }))
 
-const { REMINDER_OPTIONS, reminderLabel, buttonState, capacityText, timeRange, dayChips, conflictMessages, intensityLabel, googleCalendarUrl, classesApi } = await import('./classes.js')
+const { REMINDER_OPTIONS, reminderLabel, buttonState, capacityText, timeRange, dayChips, conflictMessages, intensityLabel, googleCalendarUrl, classesApi, zonedToEpoch, countdown, homeClasses } = await import('./classes.js')
 
 describe('etiquetas', () => {
   it('recordatorios, cupo, horario e intensidad', () => {
@@ -67,5 +67,41 @@ describe('classesApi', () => {
     expect(apiMock).toHaveBeenLastCalledWith('/api/admin/classes/session?sessionId=x1')
     await classesApi.session({ sessionId: null, slotId: 's1', date: '2026-10-05' })
     expect(apiMock).toHaveBeenLastCalledWith('/api/admin/classes/session?slotId=s1&date=2026-10-05')
+  })
+})
+
+describe('tarjeta de Inicio', () => {
+  const TZ = 'America/Argentina/Buenos_Aires'
+  it('hora del gimnasio en milisegundos', () => {
+    expect(new Date(zonedToEpoch('2026-10-05', '10:00', TZ)).toISOString()).toBe('2026-10-05T13:00:00.000Z')
+  })
+
+  it('cuenta regresiva: días, horas, minutos con segundos, en curso y terminada', () => {
+    const start = Date.parse('2026-10-05T13:00:00Z'), end = start + 3600000
+    const at = iso => countdown(start, end, Date.parse(iso))
+    expect(at('2026-10-02T12:00:00Z')).toEqual({ mode: 'days', label: 'en 3 días' })
+    expect(at('2026-10-04T12:00:00Z')).toEqual({ mode: 'days', label: 'en 1 día' })
+    expect(at('2026-10-04T13:00:01Z')).toEqual({ mode: 'hours', label: '23 h 59 min' })
+    expect(at('2026-10-05T11:46:00Z')).toEqual({ mode: 'hours', label: '1 h 14 min' })
+    expect(at('2026-10-05T12:45:55Z')).toEqual({ mode: 'minutes', label: '14:05' })
+    expect(at('2026-10-05T13:10:00Z')).toEqual({ mode: 'live', label: 'En curso' })
+    expect(at('2026-10-05T14:00:00Z').mode).toBe('over')
+  })
+
+  it('próxima reserva, la lista y las suspendidas sin avisar', () => {
+    const base = { durationMin: 60, cancelled: false }
+    const occs = [
+      { ...base, key: 'a', date: '2026-10-07', start: '19:00', myBooking: { status: 'waitlist' } },
+      { ...base, key: 'b', date: '2026-10-05', start: '10:00', myBooking: { status: 'booked' } },
+      { ...base, key: 'c', date: '2026-10-06', start: '10:00', myBooking: { status: 'cancelled' } },
+      { ...base, key: 'd', date: '2026-10-06', start: '08:00', cancelled: true, myBooking: { status: 'cancelled' } },
+      { ...base, key: 'e', date: '2026-10-06', start: '09:00', myBooking: null }
+    ]
+    const now = Date.parse('2026-10-05T12:00:00Z')
+    const r = homeClasses(occs, now, TZ)
+    expect([r.next.key, r.upcoming.map(o => o.key), r.suspended.map(o => o.key)]).toEqual(['b', ['b', 'a'], ['d']])
+    expect(homeClasses(occs, now, TZ, ['d']).suspended).toEqual([])
+    // En curso sigue siendo la próxima hasta que termina.
+    expect(homeClasses(occs, Date.parse('2026-10-05T13:30:00Z'), TZ).next.key).toBe('b')
   })
 })
