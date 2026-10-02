@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useStore, healthOff } from '../store/useStore.js'
-import { effectiveRoutine, effectiveRoutineId, streakWeeks, lastBW, setsDoneActive } from '../lib/history.js'
+import { effectiveRoutine, effectiveRoutineId, streakWeeks, weeklyTarget, lastBW, setsDoneActive } from '../lib/history.js'
 import { fmtNum, fmtDate, todayISO, isoOf, weekKey, DAYS } from '../lib/format.js'
 import { t, dateLocale } from '../lib/i18n.js'
 import { bwSheet, goalSheet, dayOverrideSheet, calendarSheet, startFlow, bwDeltaColor, confirmSheet } from '../sheets.jsx'
@@ -14,6 +14,10 @@ import { api } from '../lib/api.js'
 import ProgramPicker, { programsOf } from '../components/ProgramPicker.jsx'
 import { cachedBranding } from '../lib/branding.js'
 import HomeClassCard from '../components/HomeClassCard.jsx'
+import { useMyClasses } from '../components/useMyClasses.js'
+import { classesByDate, classOverlap } from '../lib/classes.js'
+import { isClassWorkout } from '../lib/workout-history.js'
+import { loadOfRoutine, MUSCLE_NAME } from '../lib/muscles.js'
 
 
 // Home = what to do now + a quick glance. Deep charts & history live in Stats.
@@ -28,6 +32,8 @@ export default function Home() {
   const [presetData, setPresetData] = useState(null)
   useEffect(() => { if (S.routines.length === 0) api('/api/presets').then(setPresetData).catch(() => {}) }, [S.routines.length])
   const [weekOffset, setWeekOffset] = useState(0)
+  // Clases del socio (reservadas y hechas) por fecha: el punto de clase en la semana y "Hoy".
+  const myClasses = useMyClasses()
 
   useEffect(() => {
     if (user && !S.onboardingCompletado) {
@@ -44,23 +50,38 @@ export default function Home() {
 
   const monday = new Date(today); monday.setDate(today.getDate() - ((today.getDay() + 6) % 7) + weekOffset * 7)
   const doneDays = new Set(S.workouts.map(w => w.d))
+  const classDays = classesByDate(myClasses?.occurrences, S.workouts)
   // The last session logged for today, if any — what the row below reports instead of asking
   // you to start the one you already did. Last wins, so a second session names itself.
-  const doneToday = S.workouts.filter(w => w.d === todayISO()).at(-1) || null
+  // Una clase no reemplaza la rutina planeada: con rutina, solo un entreno que no sea clase la da
+  // por hecha; sin rutina, la clase hecha es lo de hoy.
+  const todayWorkouts = S.workouts.filter(w => w.d === todayISO())
+  const doneToday = todayWorkouts.filter(w => !isClassWorkout(w)).at(-1) || (routine ? null : todayWorkouts.at(-1)) || null
+  // Las clases de hoy que no son la que ya se muestra como hecha, y si cargan lo mismo que la rutina.
+  const classesToday = (classDays[todayISO()] || []).filter(c => !doneToday || c.workout?.id !== doneToday.id)
+  const pendingRoutine = routine && !doneToday && !S.active ? routine : null
+  const overlap = pendingRoutine ? classesToday.map(c => ({ c, slugs: classOverlap(c.occ?.log?.muscles || c.workout?.muscleLoad?.muscles, loadOfRoutine(pendingRoutine)) })).find(x => x.slugs.length) : null
+  const muscleList = slugs => { const names = slugs.slice(0, 2).map(s => t(MUSCLE_NAME[s] || s).toLowerCase()); return names.length > 1 ? t('{0} y {1}', names[0], names[1]) : names[0] }
   const strip = []
   for (let i = 0; i < 7; i++) {
     const d = new Date(monday); d.setDate(monday.getDate() + i)
     const iso = isoOf(d)
     const eff = effectiveRoutineId(S, iso), ovr = S.dayPlan[iso] !== undefined, done = doneDays.has(iso)
     const dot = done ? ' done' : ovr && eff ? ' ovr' : eff ? ' plan' : ''
+    const cls = classDays[iso]?.[0]
     strip.push(<div key={i} className={'wday' + (iso === todayISO() ? ' today' : '')} onClick={() => dayOverrideSheet(iso)}>
-      <div className="lbl">{t(DAYS[d.getDay()])}</div><div className="num">{d.getDate()}</div><div className={'dot' + dot} /></div>)
+      <div className="lbl">{t(DAYS[d.getDay()])}</div><div className="num">{d.getDate()}</div>
+      <div className="dots"><div className={'dot' + dot} />{cls && <div className="dot cls" style={{ background: cls.color || 'var(--acc)' }} title={cls.name} />}</div></div>)
   }
   const sunday = new Date(monday); sunday.setDate(monday.getDate() + 6)
   const wkLabel = weekOffset === 0 ? t('This week') : `${monday.getDate()} ${monday.toLocaleDateString(dateLocale(), { month: 'short' })} – ${sunday.getDate()} ${sunday.toLocaleDateString(dateLocale(), { month: 'short' })}`
 
-  const wThisWeek = S.workouts.filter(w => weekKey(w.d) === weekKey(todayISO())).length
-  const plannedPerWeek = Object.keys(S.week).filter(k => S.week[k]).length
+  const thisWeek = S.workouts.filter(w => weekKey(w.d) === weekKey(todayISO()))
+  const wThisWeek = thisWeek.length
+  const classesThisWeek = thisWeek.filter(isClassWorkout).length
+  // El mismo objetivo que la racha (con grupos de rutinas); las clases cuentan como entrenos.
+  const thisMonday = new Date(today); thisMonday.setDate(today.getDate() - ((today.getDay() + 6) % 7))
+  const plannedPerWeek = weeklyTarget(S, thisMonday)
   const bwPoints = S.bodyweight.slice(-30).map(b => ({ t: b.t || new Date(b.d).getTime(), y: b.w, d: b.d }))
 
   // today's session shown right under the week strip
@@ -110,6 +131,11 @@ export default function Home() {
             <div className="ttl">{S.active ? t('{0} — in progress', S.active.name)
               : doneToday ? (doneToday.name ? t('{0} — done', doneToday.name) : t('Workout done'))
               : routine ? routine.name : t('Rest day')}{todayOvr && routine && !doneToday ? ' · ' + t('rescheduled') : ''}</div>
+            {classesToday.length > 0 && <div className="today-classes small">
+              <span className="muted">{routine || doneToday ? t('También hoy:') : t('Hoy:')}</span>{' '}
+              {classesToday.map((c, i) => <span key={c.key} className="today-class">{i > 0 && ', '}<i style={{ background: c.color || 'var(--acc)' }} />{c.name}{c.start ? ' ' + c.start : ''}{c.done ? ' ✓' : ''}</span>)}
+            </div>}
+            {overlap && <div className="today-overlap small">{t('{0} también trabaja {1}.', overlap.c.name, muscleList(overlap.slugs))}</div>}
           </div>
         </div>
         {S.active ? <span className="tag" style={{ color: 'var(--orange)', background: 'color-mix(in srgb,var(--orange) 16%,transparent)' }}>{t('Resume')}</span>
@@ -192,7 +218,7 @@ export default function Home() {
             <Icon name="flame" style={{ color: 'var(--orange)' }} />
             {t('{0} week streak', streakWeeks(S))}
           </div>
-          <div className="muted small" style={{ marginTop: 2 }}>{wThisWeek}{plannedPerWeek ? ' / ' + plannedPerWeek : ''} {t('this week')} · {t(S.workouts.length === 1 ? '{0} workout total' : '{0} workouts total', S.workouts.length)}</div>
+          <div className="muted small" style={{ marginTop: 2 }}>{wThisWeek}{plannedPerWeek ? ' / ' + plannedPerWeek : ''} {t('this week')}{classesThisWeek ? ' · ' + (classesThisWeek === 1 ? t('1 clase') : t('{0} clases', classesThisWeek)) : ''} · {t(S.workouts.length === 1 ? '{0} workout total' : '{0} workouts total', S.workouts.length)}</div>
         </div>
         <Icon name="calendar" className="chev" style={{ fontSize: 20 }} />
       </div>

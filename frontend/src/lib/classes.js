@@ -277,3 +277,35 @@ export function liveClasses(occurrences, nowMs, tz) {
   return (occurrences || []).filter(o => !o.cancelled && o.myBooking && ['booked', 'attended'].includes(o.myBooking.status)
     && occTimes(o, tz).start <= nowMs && nowMs < occTimes(o, tz).end)
 }
+
+// ---- las clases en la semana, el calendario y la hoja del día ----
+
+// Clases por fecha: las reservadas (anotado o en espera) y las hechas (entrenos de tipo clase, con
+// el color de su reserva si está en el listado). -> { 'YYYY-MM-DD': [{ key, name, color, start, done, occ, workout }] }
+export function classesByDate(occurrences, workouts) {
+  const out = {}
+  const add = (date, item) => (out[date] = out[date] || []).push(item)
+  const byBooking = new Map((occurrences || []).filter(o => o.myBooking).map(o => [o.myBooking.id, o]))
+  for (const w of workouts || []) {
+    if (w?.kind !== 'class') continue
+    const occ = byBooking.get(w.classBookingId)
+    add(w.d, { key: w.id, name: w.name, color: occ?.color || null, start: occ?.start || null, done: true, occ: occ || null, workout: w })
+  }
+  const logged = new Set((workouts || []).filter(w => w?.kind === 'class').map(w => w.classBookingId))
+  for (const o of occurrences || []) {
+    if (o.cancelled || !o.myBooking || !['booked', 'waitlist', 'attended'].includes(o.myBooking.status) || logged.has(o.myBooking.id)) continue
+    add(o.date, { key: o.key, name: o.name, color: o.color, start: o.start, done: false, waitlist: o.myBooking.status === 'waitlist', occ: o, workout: null })
+  }
+  for (const list of Object.values(out)) list.sort((a, b) => String(a.start || '').localeCompare(String(b.start || '')))
+  return out
+}
+
+// Músculos que la clase comparte con lo que la rutina carga fuerte (al menos la mitad de su músculo
+// más cargado). routineLoad: { slug: carga } (loadOfRoutine). -> slugs, de más a menos cargado.
+export function classOverlap(classMuscles, routineLoad) {
+  const max = Math.max(0, ...Object.values(routineLoad || {}))
+  if (!max) return []
+  const strong = Object.entries(routineLoad).filter(([, v]) => v >= max / 2).sort((a, b) => b[1] - a[1]).map(([slug]) => slug)
+  const mine = new Set(classMuscles || [])
+  return strong.filter(slug => mine.has(slug))
+}
