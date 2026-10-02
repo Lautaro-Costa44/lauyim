@@ -88,3 +88,20 @@ test('la profe anotada a la clase que da: el tick le cancela la reserva y entra 
   assert.equal(cdb.getBooking(wait.id).status, 'booked');
   assert.deepEqual(sent.filter(m => m.userId === 'beto').map(m => m.payload.title), ['¡Entraste a Yoga!']);
 });
+
+test('aviso a la profe: una vez, con cuántos hay; apagado o suspendida, nada', async () => {
+  const at = addMinutes(clock.time, 45);
+  const type = (name, teacherUserId) => cdb.saveClassType({ name, color: '#30d158', icon: 'boxing', description: '', durationMin: 60, capacity: 10, teacherUserId, teacherName: '', room: 'Sala 4', logMode: 'muscles', log: { muscles: ['core'], intensity: 'high' } });
+  const box = cdb.ensureClassSession({ classId: type('Box', 'caro').id, slotId: null, date: clock.date, start: at });
+  cdb.bookOrWaitlist({ sessionId: box.id, userId: 'ana', capacity: 10 });
+  cdb.ensureClassSession({ classId: type('Off', 'dani').id, slotId: null, date: clock.date, start: at });
+  cdb.setTeacherReminder('dani', 0);
+  const sus = cdb.ensureClassSession({ classId: type('Sus', 'beto').id, slotId: null, date: clock.date, start: at });
+  cdb.updateClassSession(sus.id, { cancelled: true });
+  const teach = list => list.filter(m => m.payload.tag.startsWith('class-teach-'));
+  const sent = teach(await tick());
+  assert.deepEqual(sent.map(m => m.userId), ['caro']);
+  assert.match(sent[0].payload.title, /^Box en 4[45] minutos$/);
+  assert.equal(sent[0].payload.body, '1 anotado');
+  assert.deepEqual(teach(await tick()), []);
+});

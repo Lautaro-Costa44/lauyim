@@ -203,3 +203,14 @@ test('ajustes de clases: solo el owner, con validación; /api/config dice si est
   assert.equal((await call('owner', 'POST', '/api/admin/classes/types/archive', { id: yoga.id })).status, 200);
   assert.ok(!(await call('owner', 'GET', '/api/admin/classes/types')).body.types.some(t => t.name === 'Yoga'));
 });
+
+test('la reserva de un socio vista por el staff (historial en la ficha)', async () => {
+  const spin = (await call('owner', 'GET', `/api/admin/classes/calendar?from=${day}&days=1`)).body.occurrences.find(o => o.name === 'Pilates');
+  const detail = await call('owner', 'GET', `/api/admin/classes/session?sessionId=${spin.sessionId}`);
+  const b = detail.body.booked[0];
+  const r = await call('recep', 'GET', `/api/admin/classes/booking?id=${b.bookingId}`);
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal(r.body.occurrence.name, 'Pilates');
+  assert.equal((await call('socio1', 'GET', `/api/admin/classes/booking?id=${b.bookingId}`)).status, 403);
+  assert.equal((await call('owner', 'GET', '/api/admin/classes/booking?id=nada')).status, 404);
+});

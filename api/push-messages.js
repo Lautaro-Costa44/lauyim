@@ -125,3 +125,10 @@ export function classAfterPush({ name, date, sessionId }) {
 export function classMessagePush({ name, date, today, start, sender, text, sessionId }) {
   return { title: `${name} ${dayRef(date, today)} a las ${start}`, body: `${sender}: ${text}`, tag: `class-msg-${sessionId}`, data: { redirectUrl: `/#/plan/clases?d=${date}` } };
 }
+
+// Aviso a la profe antes de su clase: "Spinning en 1 hora" / "8 anotados · 2 en espera".
+export function teacherReminderPush({ name, date, minutes, booked, waitlist, sessionId }) {
+  const body = !booked && !waitlist ? 'Todavía no se anotó nadie.'
+    : `${booked === 1 ? '1 anotado' : `${booked} anotados`}${waitlist ? ` · ${waitlist} en espera` : ''}`;
+  return { title: `${name} ${inMinutes(minutes)}`, body, tag: `class-teach-${sessionId}`, data: { redirectUrl: `/#/plan/clases?d=${date}` } };
+}

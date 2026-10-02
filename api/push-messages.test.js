@@ -132,3 +132,12 @@ test('mensaje de la profe a los anotados: título con la clase, cuerpo con quié
   const p = classMessagePush({ name: 'Spinning', date: '2026-10-06', today: '2026-10-05', start: '10:00', sender: 'Caro', text: 'Traigan toalla', sessionId: 'x1' });
   assert.deepEqual(p, { title: 'Spinning de mañana a las 10:00', body: 'Caro: Traigan toalla', tag: 'class-msg-x1', data: { redirectUrl: '/#/plan/clases?d=2026-10-06' } });
 });
+
+test('aviso a la profe antes de su clase', async () => {
+  const { teacherReminderPush } = await import('./push-messages.js');
+  const base = { name: 'Spinning', date: '2026-10-05', start: '19:00', minutes: 60, booked: 8, waitlist: 2, sessionId: 'x1' };
+  assert.deepEqual(teacherReminderPush(base), { title: 'Spinning en 1 hora', body: '8 anotados · 2 en espera', tag: 'class-teach-x1', data: { redirectUrl: '/#/plan/clases?d=2026-10-05' } });
+  assert.equal(teacherReminderPush({ ...base, booked: 1, waitlist: 0 }).body, '1 anotado');
+  assert.equal(teacherReminderPush({ ...base, booked: 0, waitlist: 0 }).body, 'Todavía no se anotó nadie.');
+  assert.equal(teacherReminderPush({ ...base, minutes: 30 }).title, 'Spinning en 30 minutos');
+});

@@ -12,6 +12,8 @@ export function migrateClasses(db) {
   // Entrega 2: el socio contestó "¿Fuiste?" y la clase ya está en su historial.
   try { db.exec('ALTER TABLE class_bookings ADD COLUMN answered_at TEXT;'); } catch {}
   try { db.exec('ALTER TABLE class_bookings ADD COLUMN logged INTEGER NOT NULL DEFAULT 0;'); } catch {}
+  // Entrega 4: minutos antes de sus clases en que la profe recibe el aviso (null: 60; 0: apagado).
+  try { db.exec('ALTER TABLE class_prefs ADD COLUMN teacher_reminder INTEGER;'); } catch {}
 }
 
 function migrateClassTables(db) {
@@ -357,6 +359,17 @@ export const removeRecurring = (slotId, userId) => getDatabase().prepare('DELETE
 export function getClassReminderDefaults(userId) {
   const row = getDatabase().prepare('SELECT reminders FROM class_prefs WHERE user_id = ?').get(userId);
   return row ? parse(row.reminders, null) : null;
+}
+
+// Aviso a la profe antes de sus clases: minutos (0 apagado). Sin elegir, 1 hora.
+export function getTeacherReminder(userId) {
+  const row = getDatabase().prepare('SELECT teacher_reminder FROM class_prefs WHERE user_id = ?').get(userId);
+  return row?.teacher_reminder ?? 60;
+}
+
+export function setTeacherReminder(userId, minutes) {
+  getDatabase().prepare("INSERT INTO class_prefs (user_id, teacher_reminder) VALUES (?, ?) ON CONFLICT(user_id) DO UPDATE SET teacher_reminder = excluded.teacher_reminder")
+    .run(userId, minutes);
 }
 
 export function setClassReminderDefaults(userId, reminders) {

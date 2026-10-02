@@ -157,6 +157,14 @@ const minutesUntil = (occ, now) => stamp(occ.date, occ.start) - stamp(now.date, 
 // Minutos que faltan para que empiece una fecha (negativo si ya empezó).
 export const minutesLeft = minutesUntil;
 
+// Aviso a la profe antes de su clase: minutos posibles (0 apagado) y si ya toca (faltan `minutes`
+// o menos y todavía no empezó).
+export const TEACHER_REMINDER_OPTIONS = [0, 30, 60, 120];
+export const teacherReminderDue = ({ occ, now, minutes }) => {
+  const left = minutesUntil(occ, now);
+  return minutes > 0 && left > 0 && left <= minutes;
+};
+
 // Fechas de clases en [from, from + days): las del horario semanal (de las clases no archivadas)
 // más las sesiones guardadas, que pisan a la calculada del mismo bloque y fecha (cambio de hora,
 // de profe, cancelada) o son clases sueltas (sin bloque). userNames: { userId: nombre } para las

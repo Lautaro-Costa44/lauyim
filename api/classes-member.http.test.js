@@ -192,3 +192,19 @@ test('clase sin cupo: todos reservan, nadie queda en lista de espera', async () 
   const occ = (await list('ana', day, 1)).occurrences.find(o => o.slotId === yogaSlot.id);
   assert.deepEqual([occ.capacity, occ.booked, occ.waitlist], [null, 4, 0]);
 });
+
+test('aviso a la profe: el ajuste se guarda solo con valores posibles', async () => {
+  assert.equal((await list('caro')).teacherReminder, 60);
+  assert.equal((await call('caro', 'PUT', '/api/classes/teacher-reminder', { minutes: 45 })).status, 400);
+  assert.equal((await call('caro', 'PUT', '/api/classes/teacher-reminder', { minutes: 0 })).status, 200);
+  assert.equal((await list('caro')).teacherReminder, 0);
+});
+
+test('la reserva propia para el historial: fuente, calificación y si se puede calificar', async () => {
+  const mine = (await list('eva')).occurrences.find(o => o.slotId === yogaSlot.id && o.myBooking);
+  const r = await call('eva', 'GET', `/api/classes/booking?id=${mine.myBooking.id}`);
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.deepEqual({ status: r.body.booking.status, rating: r.body.booking.rating, canRate: r.body.booking.canRate, name: r.body.occurrence.name, room: r.body.occurrence.room, color: r.body.occurrence.color },
+    { status: 'booked', rating: null, canRate: false, name: 'Yoga', room: 'Sala 3', color: '#30d158' });
+  assert.equal((await call('ana', 'GET', `/api/classes/booking?id=${mine.myBooking.id}`)).status, 404);
+});

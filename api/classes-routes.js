@@ -4,12 +4,13 @@
 import {
   CLASS_DEFAULTS, REMINDER_OPTIONS, classSettingsOf, validateClassSettings, validateClassType, validateSlot,
   addMinutes, addDays, weekdayOf, occurrencesBetween, overlapConflicts, conflictText, bookingState, cancelKind, canPromote, remindersDue, minutesLeft, buildIcs,
-  canAsk, resolveAttendance, canTakeAttendance, canRate, afterPushDue, classWorkout, classStats, penaltyOf, capOf
+  canAsk, resolveAttendance, canTakeAttendance, canRate, afterPushDue, classWorkout, classStats, penaltyOf, capOf,
+  TEACHER_REMINDER_OPTIONS, teacherReminderDue
 } from './classes.js';
 import * as cdb from './classes-db.js';
 import { getAllUsers, getUserById, getAdminSetting, setAdminSetting, getDatabase } from './database.js';
 import { gymClock, getBillingSettings } from './billing.js';
-import { classChangePush, classReminderPush, classAfterPush, classMessagePush } from './push-messages.js';
+import { classChangePush, classReminderPush, classAfterPush, classMessagePush, teacherReminderPush } from './push-messages.js';
 
 export const CLASS_SETTINGS_KEY = 'classes';
 const CHECK_WEEKS = 8;          // superposición de un bloque semanal: contra las próximas 8 semanas
@@ -134,6 +135,38 @@ export function dropTeacherBookings({ send = () => {}, now = clockNow() } = {}) 
     dropped++;
   }
   return dropped;
+}
+
+// Aviso a cada profe con cuenta antes de sus clases de hoy y mañana (los minutos que eligió; 1 hora
+// si no eligió), una sola vez por fecha, con cuántos hay anotados. -> cuántos mandó.
+export function sendTeacherReminders({ send, now = clockNow() } = {}) {
+  if (!classSettingsNow().enabled) return 0;
+  const occs = loadOccurrences(now.date, 2).filter(o => o.teacherUserId && !o.cancelled && minutesLeft(o, now) > 0);
+  if (!occs.length) return 0;
+  const bookings = cdb.getBookingsForSessions(occs.map(o => o.sessionId).filter(Boolean));
+  let sent = 0;
+  for (const occ of occs) {
+    const teacher = getUserById(occ.teacherUserId);
+    if (!teacher || teacher.disabled) continue;
+    const minutes = cdb.getTeacherReminder(teacher.id);
+    if (!teacherReminderDue({ occ, now, minutes }) || !cdb.noticeOnce(teacher.id, occ.key, 'teacher_reminder')) continue;
+    const mine = bookings.filter(b => b.sessionId === occ.sessionId && b.userId !== teacher.id);
+    send(teacher.id, teacherReminderPush({
+      name: occ.type.name, date: occ.date, minutes: minutesLeft(occ, now), sessionId: occ.sessionId || occ.key,
+      booked: mine.filter(b => b.status === 'booked').length, waitlist: mine.filter(b => b.status === 'waitlist').length
+    }));
+    sent++;
+  }
+  return sent;
+}
+
+// Una reserva con su fecha, para el detalle de la clase en el historial (socio o staff).
+function bookingDetail(b, occ, now) {
+  return {
+    booking: { id: b.id, status: b.status, source: b.attendanceSource, rating: b.rating, canRate: canRate({ occ, booking: b, now }) },
+    occurrence: { name: occ.type.name, color: occ.type.color, icon: occ.type.icon, date: occ.date, start: occ.start, end: occ.end,
+      teacherName: occ.teacherName, room: occ.room, logMode: occ.type.logMode, log: occ.type.log }
+  };
 }
 
 // Recordatorios que tocan ahora (reservas de hoy y mañana). Si varios llegaron juntos, uno solo; el
@@ -487,6 +520,15 @@ export function classRoutes(d) {
   },
   // La profe (o quien gestiona todas) le escribe a quienes están anotados a una fecha; si quiere,
   // también a la lista de espera. Hasta MESSAGES_PER_DATE por fecha y persona, y no a una que pasó.
+  // La reserva de un socio con su fecha (detalle de la clase en el historial de la ficha).
+  'GET /api/admin/classes/booking': async (req, res) => {
+    const user = d.requireAdmin(req, res); if (!user) return;
+    const b = cdb.getBookingWithSession(new URL(req.url, 'http://x').searchParams.get('id'));
+    const occ = b ? occOfSession(b.session) : null;
+    if (!occ) return json(res, 404, { error: 'not_found' });
+    if (!canSee(user, occ)) return json(res, 403, { error: 'forbidden' });
+    json(res, 200, bookingDetail(b, occ, now()));
+  },
   'POST /api/admin/classes/sessions/message': async (req, res) => {
     const user = d.requireAdmin(req, res); if (!user) return;
     const body = await readBody(req);
@@ -538,7 +580,7 @@ export function classRoutes(d) {
     const live = new Set(cdb.getClassTypes().filter(tp => !tp.archived).map(tp => tp.id));
     const slots = cdb.getClassSlots().filter(sl => live.has(sl.classId)).map(sl => ({ ...sl, recurring: fixed.has(sl.id) }));
     json(res, 200, {
-      enabled: true, today, from, days, tz: d.gymTz(), settings: publicSettings(s), reminderDefaults: memberReminderDefaults(user.id), penalty: penaltyNow(user.id, today), slots,
+      enabled: true, today, from, days, tz: d.gymTz(), settings: publicSettings(s), reminderDefaults: memberReminderDefaults(user.id), teacherReminder: cdb.getTeacherReminder(user.id), penalty: penaltyNow(user.id, today), slots,
       occurrences: occs.map(o => ({ ...memberView(o, counts[o.sessionId], teachesOcc(o, user.id) ? null : mine.get(o.sessionId), fixed.has(o.slotId), bookingState({ occ: o, now: clock, settings: s })), teaching: teachesOcc(o, user.id) }))
     });
   },
@@ -644,6 +686,20 @@ export function classRoutes(d) {
   },
 
   // "¿Fuiste?" por contestar (ask) y clases presentes que faltan en el historial (log).
+  'GET /api/classes/booking': async (req, res) => {
+    const user = member(req, res); if (!user) return;
+    const b = cdb.getBookingWithSession(new URL(req.url, 'http://x').searchParams.get('id'));
+    const occ = b && b.userId === user.id ? occOfSession(b.session) : null;
+    if (!occ) return json(res, 404, { error: 'not_found' });
+    json(res, 200, bookingDetail(b, occ, now()));
+  },
+  'PUT /api/classes/teacher-reminder': async (req, res) => {
+    const user = member(req, res); if (!user) return;
+    const { minutes } = await readBody(req);
+    if (!TEACHER_REMINDER_OPTIONS.includes(minutes)) return json(res, 400, { error: 'validation_error', message: 'Elegí 0, 30, 60 o 120 minutos' });
+    cdb.setTeacherReminder(user.id, minutes);
+    json(res, 200, { teacherReminder: minutes });
+  },
   'GET /api/classes/pending': async (req, res) => {
     const user = member(req, res); if (!user) return;
     const clock = now();
