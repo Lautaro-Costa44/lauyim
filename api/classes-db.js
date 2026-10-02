@@ -227,6 +227,7 @@ const bookingFromRow = r => r && ({
   id: r.id, sessionId: r.session_id, userId: r.user_id, status: r.status, waitlistPos: r.waitlist_pos ?? null,
   reminders: parse(r.reminders, [60]), remindersSent: parse(r.reminders_sent, []), recurringId: r.recurring_id || null,
   addedBy: r.added_by || null, attendanceSource: r.attendance_source || null, rating: r.rating ?? null,
+  answeredAt: r.answered_at || null, logged: !!r.logged,
   createdAt: r.created_at, updatedAt: r.updated_at
 });
 // Reserva con su fecha (filas de un JOIN con class_sessions, columnas s_*).
@@ -262,14 +263,14 @@ export function getBookingsInRange({ from, to, statuses }) {
     .all(from, to, ...statuses).map(withSession);
 }
 
-const BOOKING_COLUMNS = { status: 'status', waitlistPos: 'waitlist_pos', reminders: 'reminders', remindersSent: 'reminders_sent', attendanceSource: 'attendance_source', rating: 'rating' };
+const BOOKING_COLUMNS = { status: 'status', waitlistPos: 'waitlist_pos', reminders: 'reminders', remindersSent: 'reminders_sent', attendanceSource: 'attendance_source', rating: 'rating', answeredAt: 'answered_at', logged: 'logged' };
 
 export function updateBooking(id, patch) {
   const sets = ['updated_at = ?'], values = [nowIso()];
   for (const [key, column] of Object.entries(BOOKING_COLUMNS)) {
     if (!(key in patch)) continue;
     sets.push(`${column} = ?`);
-    values.push(Array.isArray(patch[key]) ? JSON.stringify(patch[key]) : patch[key] ?? null);
+    values.push(Array.isArray(patch[key]) ? JSON.stringify(patch[key]) : typeof patch[key] === 'boolean' ? (patch[key] ? 1 : 0) : patch[key] ?? null);
   }
   getDatabase().prepare(`UPDATE class_bookings SET ${sets.join(', ')} WHERE id = ?`).run(...values, id);
   return getBooking(id);
@@ -369,4 +370,20 @@ export function setClassReminderDefaults(userId, reminders) {
 export function noticeOnce(userId, sessionKey, kind) {
   return getDatabase().prepare('INSERT OR IGNORE INTO class_notices (user_id, session_key, kind, sent_at) VALUES (?, ?, ?, ?)')
     .run(userId, sessionKey, kind, nowIso()).changes > 0;
+}
+
+// ---- asistencia y penalización ----
+
+// ¿Registró Ingreso Físico ese día? (tabla attendance de database.js)
+export const hasCheckin = (userId, date) => !!getDatabase().prepare('SELECT 1 FROM attendance WHERE user_id = ? AND date = ? LIMIT 1').get(userId, date);
+
+// Fechas de sus ausencias y cancelaciones tardías desde `from` (excluido).
+export function absenceDates(userId, from) {
+  return getDatabase().prepare(`SELECT s.date FROM class_bookings b JOIN class_sessions s ON s.id = b.session_id
+    WHERE b.user_id = ? AND b.status IN ('absent', 'late_cancel') AND s.date > ? ORDER BY s.date`).all(userId, from).map(r => r.date);
+}
+
+// Reservas de un socio en [from, to) con su fecha.
+export function getUserBookingsBetween(userId, from, to) {
+  return getDatabase().prepare(`${JOIN_SESSION} WHERE b.user_id = ? AND s.date >= ? AND s.date < ? ORDER BY s.date, s.start`).all(userId, from, to).map(withSession);
 }
