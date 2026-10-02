@@ -2164,7 +2164,15 @@ button.wh-row{font:inherit;color:inherit;border:0;cursor:pointer}
 .class-strip{display:flex;gap:8px;overflow-x:auto;scroll-snap-type:x mandatory;scroll-padding:0 14px;padding:0 14px 2px;scrollbar-width:none;overscroll-behavior-x:contain}
 .class-strip::-webkit-scrollbar{display:none}
 .class-mini{flex:1 0 calc((100% - 16px) / 2.5);min-width:0;scroll-snap-align:start;display:flex;flex-direction:column;gap:2px;text-align:left;color:inherit;
-  background:var(--surface-2);border-radius:12px;border-top:3px solid var(--c);padding:10px 12px}
+  position:relative;overflow:hidden;background:var(--surface-2);border-radius:12px;padding:13px 12px 10px}
+/* La franja del color: arriba en la fila; a la izquierda cuando hay una sola (en renglón). */
+.class-mini::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:var(--c)}
+.class-mini-body{display:flex;flex-direction:column;gap:2px;min-width:0}
+.class-strip.solo .class-mini{flex-direction:row;align-items:center;gap:14px;padding:12px 12px 12px 18px}
+.class-strip.solo .class-mini::before{right:auto;bottom:0;width:4px;height:auto}
+.class-strip.solo .class-mini-time{font-size:20px;min-width:56px}
+.class-strip.solo .class-mini-body{flex:1}
+.class-strip.solo .chev{color:var(--label-3)}
 .class-mini:active{background:var(--surface-3)}
 .class-mini-time{font-weight:700;font-variant-numeric:tabular-nums}
 .class-mini-name{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}

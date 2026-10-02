@@ -213,14 +213,20 @@ function ClassStrip({ date, items, opts, onAll }) {
       <span className="grow ttl">{title}</span>
       <button type="button" className="class-strip-all" onClick={onAll}>{t('Ver todas')} <Icon name="chevronRight" /></button>
     </div>
-    <div className="class-strip" role="list">
+    {/* Una sola: en renglón, con profe y sala, en lugar de una tarjetita estirada. */}
+    <div className={'class-strip' + (items.length === 1 ? ' solo' : '')} role="list">
       {items.map(o => {
         const [text, ...args] = o.state === 'started' ? ['En curso'] : spotsText(o)
+        const solo = items.length === 1
         return <button key={o.key} type="button" role="listitem" className={'class-mini' + (text === 'Lista de espera' ? ' full' : '')} style={{ '--c': o.color }}
           onClick={() => classSheet(o, opts)} aria-label={t('Ver {0}', o.name)}>
           <span className="class-mini-time">{o.start}</span>
-          <span className="class-mini-name">{o.name}</span>
-          <span className="class-mini-spots">{t(text, ...args)}</span>
+          <span className="class-mini-body">
+            <span className="class-mini-name">{o.name}</span>
+            {solo && (o.teacherName || o.room) && <span className="class-mini-spots">{[o.teacherName && t('con {0}', o.teacherName), o.room].filter(Boolean).join(' · ')}</span>}
+            <span className="class-mini-spots">{t(text, ...args)}</span>
+          </span>
+          {solo && <Icon name="chevronRight" className="chev" />}
         </button>
       })}
     </div>

@@ -204,6 +204,14 @@ describe('Inicio', () => {
     expect(container.textContent).not.toContain('Anotate a una clase')
   })
 
+  it('sin reservas y una sola clase: en renglón, con profe y sala', async () => {
+    occurrences = [occ({ key: 's1:2026-10-06', date: '2026-10-06' })]
+    await mount(<HomeClassCard />)
+    expect(container.querySelector('.class-strip-head').textContent).toContain('Clases de mañana')
+    expect(container.querySelector('.class-strip').classList.contains('solo')).toBe(true)
+    expect(container.querySelector('.class-mini').textContent).toBe('19:00Spinningcon Caro · Sala 2Quedan 9')
+  })
+
   it('sin reservas ni clases por delante: invita a anotarse', async () => {
     occurrences = []
     await mount(<HomeClassCard />)
