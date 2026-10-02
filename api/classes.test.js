@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import {
   canAsk, resolveAttendance, canTakeAttendance, canRate, afterPushDue, zonedToEpoch, classWorkout, classStats, penaltyOf,
   CLASS_DEFAULTS, REMINDER_OPTIONS, MUSCLE_SLUGS, classSettingsOf, validateClassSettings, validateClassType, validateSlot,
-  capOf, teacherReminderDue, TEACHER_REMINDER_OPTIONS, validateClosure, addMinutes, occurrencesBetween, overlapConflicts, conflictText, bookingState, cancelKind, canPromote, remindersDue, buildIcs
+  capOf, teacherReminderDue, TEACHER_REMINDER_OPTIONS, validateClosure, periodRange, planUsed, addMinutes, occurrencesBetween, overlapConflicts, conflictText, bookingState, cancelKind, canPromote, remindersDue, buildIcs
 } from './classes.js';
 
 const spinning = { id: 'spin', name: 'Spinning', color: '#ff9f0a', icon: 'bike', description: '', durationMin: 45, capacity: 12, teacherUserId: null, teacherName: 'Caro', room: 'Sala 2', logMode: 'muscles', log: { muscles: ['quadriceps'], intensity: 'high' }, archived: false };
@@ -291,4 +291,15 @@ test('cierres: validación y las fechas de adentro quedan suspendidas con el mot
   assert.deepEqual(occs.map(o => [o.date, o.cancelled, o.closed || null]), [['2026-10-05', false, null], ['2026-10-12', true, 'Feriado'], ['2026-10-19', false, null]].slice(0, 2));
   const noReason = occurrencesBetween({ types: [type], slots, from: '2026-10-12', days: 1, closures: [{ id: 'k', from: '2026-10-12', to: '2026-10-12', reason: '' }] });
   assert.equal(noReason[0].closed, 'Cerrado');
+});
+
+test('límite por plan: semana de lunes a domingo, mes calendario, y qué cuenta', () => {
+  assert.deepEqual(periodRange('2026-10-04', 'week'), { from: '2026-09-28', to: '2026-10-05' });   // domingo
+  assert.deepEqual(periodRange('2026-10-05', 'week'), { from: '2026-10-05', to: '2026-10-12' });   // lunes
+  assert.deepEqual(periodRange('2026-10-31', 'month'), { from: '2026-10-01', to: '2026-11-01' });
+  assert.deepEqual(periodRange('2026-12-15', 'month'), { from: '2026-12-01', to: '2027-01-01' });
+  const b = (date, status) => ({ status, session: { date } });
+  const bookings = [b('2026-10-05', 'booked'), b('2026-10-06', 'waitlist'), b('2026-10-07', 'late_cancel'), b('2026-10-08', 'cancelled'), b('2026-10-09', 'attended'), b('2026-10-12', 'booked')];
+  assert.equal(planUsed(bookings, periodRange('2026-10-07', 'week')), 4);
+  assert.equal(planUsed(bookings, periodRange('2026-10-07', 'month')), 5);
 });

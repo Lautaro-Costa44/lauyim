@@ -849,10 +849,19 @@ function parsePlanBody(body, partial) {
     if (typeof body.active !== 'boolean') return { error: 'active debe ser true o false' };
     out.active = body.active;
   }
+  // Clases incluidas: null (libre) o de 1 a 31 por semana o por mes.
+  if (body.classLimit !== undefined) {
+    if (body.classLimit === null) { out.classLimit = null; out.classPeriod = null; }
+    else {
+      if (!Number.isInteger(body.classLimit) || body.classLimit < 1 || body.classLimit > 31) return { error: 'Las clases incluidas van de 1 a 31' };
+      if (!['week', 'month'].includes(body.classPeriod)) return { error: 'Elegí si las clases son por semana o por mes' };
+      out.classLimit = body.classLimit; out.classPeriod = body.classPeriod;
+    }
+  }
   return { value: out };
 }
 
-const planSummary = plan => `${plan.name} · $${plan.price} · ${plan.durationDays} días${plan.active === false ? ' · inactivo' : ''}`;
+const planSummary = plan => `${plan.name} · $${plan.price} · ${plan.durationDays} días${plan.classLimit ? ` · ${plan.classLimit} clases por ${plan.classPeriod === 'month' ? 'mes' : 'semana'}` : ''}${plan.active === false ? ' · inactivo' : ''}`;
 const userIdFromPath = req => decodeURIComponent(new URL(req.url, 'http://x').pathname.split('/')[4] || '');
 
 // Plan + vencimiento a asignar (PUT billing y alta de ficha). body.planId null quita el plan.

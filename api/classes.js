@@ -424,3 +424,23 @@ export function penaltyOf({ dates, today, penalty }) {
   const until = addDays(recent[recent.length - 1], penalty.blockDays);
   return until > today ? { count: recent.length, until } : null;
 }
+
+// ---- límite de clases por plan (entrega 4) ----
+
+// Estados que consumen una clase del plan (la cancelación a tiempo la devuelve).
+export const PLAN_COUNTED = ['booked', 'waitlist', 'attended', 'absent', 'late_cancel'];
+
+// Período de una fecha: la semana de lunes a domingo o el mes calendario. -> { from, to } (to sin incluir).
+export function periodRange(date, period) {
+  if (period === 'month') {
+    const y = +date.slice(0, 4), m = +date.slice(5, 7);
+    const pad = n => String(n).padStart(2, '0');
+    return { from: `${y}-${pad(m)}-01`, to: m === 12 ? `${y + 1}-01-01` : `${y}-${pad(m + 1)}-01` };
+  }
+  const from = addDays(date, -((weekdayOf(date) + 6) % 7));
+  return { from, to: addDays(from, 7) };
+}
+
+// Clases usadas en un período. bookings: con su sesión ({ status, session: { date } }).
+export const planUsed = (bookings, { from, to }) =>
+  bookings.filter(b => PLAN_COUNTED.includes(b.status) && b.session.date >= from && b.session.date < to).length;

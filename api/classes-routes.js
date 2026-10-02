@@ -5,11 +5,11 @@ import {
   CLASS_DEFAULTS, REMINDER_OPTIONS, classSettingsOf, validateClassSettings, validateClassType, validateSlot,
   addMinutes, addDays, weekdayOf, occurrencesBetween, overlapConflicts, conflictText, bookingState, cancelKind, canPromote, remindersDue, minutesLeft, buildIcs,
   canAsk, resolveAttendance, canTakeAttendance, canRate, afterPushDue, classWorkout, classStats, penaltyOf, capOf,
-  TEACHER_REMINDER_OPTIONS, teacherReminderDue, validateClosure
+  TEACHER_REMINDER_OPTIONS, teacherReminderDue, validateClosure, periodRange, planUsed
 } from './classes.js';
 import * as cdb from './classes-db.js';
-import { getAllUsers, getUserById, getAdminSetting, setAdminSetting, getDatabase } from './database.js';
-import { gymClock, getBillingSettings } from './billing.js';
+import { getAllUsers, getUserById, getAdminSetting, setAdminSetting, getDatabase, getMemberBilling, getPlanById } from './database.js';
+import { gymClock, getBillingSettings, isBillingEnabled } from './billing.js';
 import { classChangePush, classReminderPush, classAfterPush, classMessagePush, teacherReminderPush, closurePush, penaltyResetPush } from './push-messages.js';
 
 export const CLASS_SETTINGS_KEY = 'classes';
@@ -62,6 +62,22 @@ export function penaltyNow(userId, today = clockNow().date) {
   return penaltyOf({ dates, today, penalty });
 }
 
+// Clases incluidas en el plan del socio: solo con Cuotas prendido y un plan con límite. -> { limit, period } o null.
+export function planLimitOf(userId) {
+  if (!isBillingEnabled(getDatabase())) return null;
+  const planId = getMemberBilling(userId)?.planId;
+  const plan = planId ? getPlanById(planId) : null;
+  return plan?.classLimit ? { limit: plan.classLimit, period: plan.classPeriod || 'week' } : null;
+}
+
+// Cuántas usó en el período de `date`. -> { limit, period, used } o null (sin límite).
+export function planCheck(userId, date) {
+  const plan = planLimitOf(userId);
+  if (!plan) return null;
+  const range = periodRange(date, plan.period);
+  return { ...plan, used: planUsed(cdb.getUserBookingsBetween(userId, range.from, range.to), range) };
+}
+
 // Reserva sola las fechas abiertas de las reservas fijas (todas, o las de un bloque o un socio).
 // Una fecha que el socio ya tuvo (aunque la haya cancelado) no se vuelve a reservar. send(userId,
 // payload): aviso si quedó en la lista de espera. -> cuántas reservó.
@@ -90,6 +106,12 @@ export function materializeRecurring({ slotId, userId, send = () => {}, now = cl
       }
       const session = occ.sessionId ? cdb.getClassSession(occ.sessionId) : cdb.ensureClassSession({ classId: occ.classId, slotId: occ.slotId, date: occ.date, start: occ.start });
       if (cdb.getBookingsForSessions([session.id]).some(b => b.userId === r.userId)) continue;
+      // Sin lugar en el plan esa semana o ese mes: no se reserva y se avisa una vez.
+      const plan = planCheck(r.userId, occ.date);
+      if (plan && plan.used >= plan.limit) {
+        if (cdb.noticeOnce(r.userId, occ.key, 'plan_limit')) send(r.userId, classChangePush('plan_limit', { name: occ.type.name, date: occ.date, today: now.date, start: occ.start, limit: plan.limit, period: plan.period, sessionId: session.id }));
+        continue;
+      }
       const { booking } = cdb.bookOrWaitlist({ sessionId: session.id, userId: r.userId, capacity: capOf(occ.type), reminders: memberReminderDefaults(r.userId), recurringId: r.id });
       count++;
       if (booking.status === 'waitlist') send(r.userId, classChangePush('waitlisted', { name: occ.type.name, date: occ.date, today: now.date, start: occ.start, waitlistPos: booking.waitlistPos, sessionId: session.id }));
@@ -514,7 +536,9 @@ export function classRoutes(d) {
     const { booking } = cdb.bookOrWaitlist({ sessionId: session.id, userId: person.id, capacity: capOf(occ.type), reminders: memberReminderDefaults(person.id), addedBy: user.id, force: true });
     d.audit(req, 'classes.booking.add', { user, target: person, msg: `${occ.type.name} ${occ.date} ${occ.start}` });
     notify([person.id], 'added', { ...occ, sessionId: session.id });
-    json(res, 200, { booking });
+    // El staff puede pasar el límite del plan; el panel lo avisa.
+    const plan = planCheck(person.id, occ.date);
+    json(res, 200, { booking, overLimit: !!plan && plan.used > plan.limit, planLimit: plan });
   },
 
   // La profe (o quien gestiona todas) toma o corrige la lista: pisa respuestas e ingreso físico.
@@ -691,7 +715,19 @@ export function classRoutes(d) {
     // Los días de cada clase, para elegir cuáles son fijos desde la hoja de la clase.
     const live = new Set(cdb.getClassTypes().filter(tp => !tp.archived).map(tp => tp.id));
     const slots = cdb.getClassSlots().filter(sl => live.has(sl.classId)).map(sl => ({ ...sl, recurring: fixed.has(sl.id) }));
+    // Límite del plan: lo usado en cada período (semana o mes) que toca la ventana, por su inicio.
+    const plan = planLimitOf(user.id);
+    let planLimit = null;
+    if (plan) {
+      const used = {};
+      for (let i = 0; i < days; i++) {
+        const range = periodRange(addDays(from, i), plan.period);
+        if (!(range.from in used)) used[range.from] = planUsed(cdb.getUserBookingsBetween(user.id, range.from, range.to), range);
+      }
+      planLimit = { ...plan, used };
+    }
     json(res, 200, {
+      planLimit,
       enabled: true, today, from, days, closures: cdb.getClosures({ from, to: addDays(from, days - 1) }), tz: d.gymTz(), settings: publicSettings(s), reminderDefaults: memberReminderDefaults(user.id), teacherReminder: cdb.getTeacherReminder(user.id), penalty: penaltyNow(user.id, today), slots,
       occurrences: occs.map(o => ({ ...memberView(o, counts[o.sessionId], teachesOcc(o, user.id) ? null : mine.get(o.sessionId), fixed.has(o.slotId), bookingState({ occ: o, now: clock, settings: s })), teaching: teachesOcc(o, user.id) }))
     });
@@ -710,6 +746,10 @@ export function classRoutes(d) {
     const punished = penaltyNow(user.id);
     if (punished) return json(res, 403, { error: 'booking_penalty', until: punished.until, count: punished.count });
     const session = occ.sessionId ? cdb.getClassSession(occ.sessionId) : cdb.ensureClassSession({ classId: occ.classId, slotId: occ.slotId, date: occ.date, start: occ.start });
+    // Límite del plan (semana o mes de esa fecha); repetir una reserva activa no choca con él.
+    const already = cdb.getBookingsForSessions([session.id]).some(b => b.userId === user.id && ['booked', 'waitlist'].includes(b.status));
+    const plan = already ? null : planCheck(user.id, occ.date);
+    if (plan && plan.used >= plan.limit) return json(res, 403, { error: 'plan_limit', ...plan });
     const { booking } = cdb.bookOrWaitlist({ sessionId: session.id, userId: user.id, capacity: capOf(occ.type), reminders: memberReminderDefaults(user.id) });
     json(res, 200, { booking: bookingView(booking) });
   },
@@ -729,6 +769,9 @@ export function classRoutes(d) {
     for (const occ of loadOccurrences(clock.date, 7)) {
       if (occ.classId !== type.id || teachesOcc(occ, user.id) || bookingState({ occ, now: clock, settings: s }) !== 'open') continue;
       const session = occ.sessionId ? cdb.getClassSession(occ.sessionId) : cdb.ensureClassSession({ classId: occ.classId, slotId: occ.slotId, date: occ.date, start: occ.start });
+      const already = cdb.getBookingsForSessions([session.id]).some(b => b.userId === user.id && ['booked', 'waitlist'].includes(b.status));
+      const plan = already ? null : planCheck(user.id, occ.date);
+      if (plan && plan.used >= plan.limit) { out.limited = (out.limited || 0) + 1; continue; }   // sin lugar en el plan
       const { booking, created } = cdb.bookOrWaitlist({ sessionId: session.id, userId: user.id, capacity: capOf(occ.type), reminders: memberReminderDefaults(user.id) });
       if (created) out[booking.status === 'booked' ? 'booked' : 'waitlist']++;
     }

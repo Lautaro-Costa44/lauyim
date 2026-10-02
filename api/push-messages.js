@@ -97,7 +97,7 @@ export function classReminderPush({ name, date, today, start, movedFrom, teacher
 // Avisos de una fecha de clase: moved | teacher | cancelled | promoted | waitlisted | added |
 // fee_blocked | penalty_blocked. prevTeacher: la profe de antes (teacher); waitlistPos: el lugar en
 // la lista de espera (waitlisted); until: desde cuándo puede volver a reservar (penalty_blocked).
-export function classChangePush(kind, { name, date, today, start, movedFrom, teacher, prevTeacher, waitlistPos, until, sessionId }) {
+export function classChangePush(kind, { name, date, today, start, movedFrom, teacher, prevTeacher, waitlistPos, until, limit, period, sessionId }) {
   const ref = dayRef(date, today);
   const at = `${name} ${ref} a las ${start}`;
   const teacherBody = teacher
@@ -112,6 +112,7 @@ export function classChangePush(kind, { name, date, today, start, movedFrom, tea
     staff_cancelled: [`Se canceló tu lugar en ${name}`, `El gimnasio canceló tu lugar ${ref} a las ${start}. Si fue un error, avisá en recepción.`],
     added: [`Te anotaron a ${name}`, `Tenés lugar ${dayWord(date, today)} a las ${start}. Si no podés ir, cancelala desde la app.`],
     fee_blocked: ['No pudimos anotarte', `Tu reserva fija de ${name} ${ref} no se hizo porque tu cuota está vencida. Regularizala en recepción.`],
+    plan_limit: ['No pudimos anotarte', `Tu reserva fija de ${name} ${ref} no se hizo: tu plan incluye ${limit === 1 ? '1 clase' : `${limit} clases`} por ${period === 'month' ? 'mes' : 'semana'} y ${period === 'month' ? 'ese mes' : 'esa semana'} ya ${limit === 1 ? 'la tenés' : `tenés ${limit}`}.`],
     penalty_blocked: ['No pudimos anotarte', `Tu reserva fija de ${name} ${ref} no se hizo por las ausencias.${until ? ` Podés volver a reservar desde el ${ddmm(until)}.` : ''}`]
   }[kind];
   return { title: text[0], body: text[1], ...classData(date, sessionId) };

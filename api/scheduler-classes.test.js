@@ -114,3 +114,25 @@ test('día cerrado: la reserva fija no reserva esa fecha', async () => {
   await tick();
   assert.deepEqual(cdb.getUserBookings('dani', { from: later }).filter(b => b.session.start === '11:00'), []);
 });
+
+test('límite del plan: la reserva fija no pasa el límite y avisa una vez', async () => {
+  const plan = db.createPlan({ name: 'Una por semana', price: 1, durationDays: 30, classLimit: 1, classPeriod: 'week' });
+  db.createUser({ id: 'fija', name: 'fija' });
+  db.setMemberBilling('fija', { planId: plan.id, dueDate: addDays(clock.date, 20) });
+  const wd = d => weekdayOf(addDays(clock.date, d));
+  // Dos días de la misma semana (lunes a domingo), dentro de la ventana.
+  const monday = date => addDays(date, -((weekdayOf(date) + 6) % 7));
+  // El día +2 está cerrado por el test anterior: se saltea.
+  const offsets = [1, 3, 4, 5, 6].filter(n => monday(addDays(clock.date, n)) === monday(addDays(clock.date, 1)));
+  const [a, b] = offsets.slice(0, 2);
+  if (b === undefined) return;   // la semana termina mañana: no hay dos días para probar
+  const s1 = cdb.saveClassSlot({ classId: spinning.id, weekday: wd(a), start: '06:00' });
+  const s2 = cdb.saveClassSlot({ classId: spinning.id, weekday: wd(b), start: '06:30' });
+  cdb.addRecurring(s1.id, 'fija');
+  cdb.addRecurring(s2.id, 'fija');
+  const sent = (await tick()).filter(m => m.userId === 'fija');
+  const mine = cdb.getUserBookings('fija', { from: clock.date }).filter(x => ['booked', 'waitlist'].includes(x.status));
+  assert.equal(mine.length, 1);
+  assert.deepEqual(sent.map(m => m.payload.title), ['No pudimos anotarte']);
+  assert.deepEqual((await tick()).filter(m => m.userId === 'fija'), []);
+});

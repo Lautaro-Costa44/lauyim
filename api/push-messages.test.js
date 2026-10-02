@@ -160,3 +160,11 @@ test('avisos desde la ficha: el staff canceló tu lugar y levantó la penalizaci
   assert.deepEqual([p.title, p.body], ['Se canceló tu lugar en Spinning', 'El gimnasio canceló tu lugar de hoy a las 19:00. Si fue un error, avisá en recepción.']);
   assert.deepEqual(penaltyResetPush(), { title: 'Ya podés volver a reservar clases', body: 'El gimnasio levantó tu penalización por ausencias.', tag: 'class-penalty', data: { redirectUrl: '/#/plan/clases' } });
 });
+
+test('reserva fija sin lugar en el plan', async () => {
+  const { classChangePush } = await import('./push-messages.js');
+  const p = classChangePush('plan_limit', { name: 'Spinning', date: '2026-10-05', today: '2026-10-02', start: '19:00', sessionId: 'x', limit: 2, period: 'week' });
+  assert.deepEqual([p.title, p.body], ['No pudimos anotarte', 'Tu reserva fija de Spinning del lunes 5 no se hizo: tu plan incluye 2 clases por semana y esa semana ya tenés 2.']);
+  assert.equal(classChangePush('plan_limit', { name: 'GAP', date: '2026-10-05', today: '2026-10-02', start: '19:00', sessionId: 'x', limit: 1, period: 'month' }).body,
+    'Tu reserva fija de GAP del lunes 5 no se hizo: tu plan incluye 1 clase por mes y ese mes ya la tenés.');
+});

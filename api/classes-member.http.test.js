@@ -24,9 +24,11 @@ const db = await import('./database.js');
 const cdb = await import('./classes-db.js');
 db.initDatabase();
 db.createUser({ id: 'owner', name: 'Dueña', created: Date.now() });
-for (const id of ['ana', 'beto', 'caro', 'eva', 'moroso']) db.createUser({ id, name: id === 'ana' ? 'Ana Pérez' : id, created: Date.now() });
+for (const id of ['ana', 'beto', 'caro', 'eva', 'lim', 'moroso']) db.createUser({ id, name: id === 'ana' ? 'Ana Pérez' : id, created: Date.now() });
 const plan = db.createPlan({ name: 'Mensual', price: 20000, durationDays: 30 });
+const onePerWeek = db.createPlan({ name: '1 por semana', price: 10000, durationDays: 30, classLimit: 1, classPeriod: 'week' });
 for (const [id, due] of [['ana', 20], ['beto', 20], ['caro', 20], ['eva', 20], ['moroso', -10]]) db.setMemberBilling(id, { planId: plan.id, dueDate: addDays(today, due) });
+db.setMemberBilling('lim', { planId: onePerWeek.id, dueDate: addDays(today, 20) });
 const spinning = cdb.saveClassType({ name: 'Spinning', color: '#ff9f0a', icon: 'bike', description: 'Pedaleo', durationMin: 45, capacity: 1, teacherUserId: null, teacherName: 'Caro', room: 'Sala 2', logMode: 'muscles', log: { muscles: ['quadriceps'], intensity: 'high' } });
 const slot = cdb.saveClassSlot({ classId: spinning.id, weekday: weekdayOf(day), start: '19:00' });
 const otherSlot = cdb.saveClassSlot({ classId: spinning.id, weekday: weekdayOf(addDays(today, 3)), start: '08:00' });
@@ -219,4 +221,26 @@ test('día cerrado: no se reserva y la lista trae el cierre', async () => {
   assert.deepEqual([occ.cancelled, occ.closed, occ.state], [true, 'Feriado', 'cancelled']);
   const r = await call('ana', 'POST', '/api/classes/book', { slotId: otherSlot.id, date: closed });
   assert.deepEqual([r.status, r.body.error], [409, 'booking_cancelled']);
+});
+
+test('límite del plan: bloquea al llegar, la cancelación a tiempo devuelve la clase y el staff puede pasarlo', async () => {
+  const yogaOcc = async uid => (await list(uid, day, 1)).occurrences.find(o => o.slotId === yogaSlot.id);
+  const first = await call('lim', 'POST', '/api/classes/book', { slotId: slot.id, date: day });
+  assert.equal(first.status, 200, JSON.stringify(first.body));
+  const blocked = await call('lim', 'POST', '/api/classes/book', { slotId: yogaSlot.id, date: day });
+  assert.deepEqual([blocked.status, blocked.body.error, blocked.body.limit, blocked.body.period, blocked.body.used], [403, 'plan_limit', 1, 'week', 1]);
+  // Repetir la que ya tiene no choca con el límite.
+  assert.equal((await call('lim', 'POST', '/api/classes/book', { slotId: slot.id, date: day })).status, 200);
+  const data = await list('lim', day, 1);
+  assert.deepEqual([data.planLimit.limit, data.planLimit.period, Object.values(data.planLimit.used)], [1, 'week', [1]]);
+  // Cancela a tiempo: le vuelve la clase.
+  await call('lim', 'POST', '/api/classes/cancel', { bookingId: first.body.booking.id });
+  assert.equal((await call('lim', 'POST', '/api/classes/book', { slotId: yogaSlot.id, date: day })).status, 200);
+  assert.equal((await yogaOcc('lim')).myBooking.status, 'booked');
+  // El staff lo anota igual y el panel se entera.
+  const add = await call('owner', 'POST', '/api/admin/classes/sessions/add', { slotId: slot.id, date: day, userId: 'lim' });
+  assert.equal(add.status, 200, JSON.stringify(add.body));
+  assert.deepEqual([add.body.overLimit, add.body.planLimit?.limit], [true, 1]);
+  // Sin límite en el plan, nada cambia.
+  assert.equal((await list('ana', day, 1)).planLimit, null);
 });
