@@ -132,3 +132,18 @@ export function teacherReminderPush({ name, date, minutes, booked, waitlist, ses
     : `${booked === 1 ? '1 anotado' : `${booked} anotados`}${waitlist ? ` · ${waitlist} en espera` : ''}`;
   return { title: `${name} ${inMinutes(minutes)}`, body, tag: `class-teach-${sessionId}`, data: { redirectUrl: `/#/plan/clases?d=${date}` } };
 }
+
+// Cierre del gimnasio: un aviso por persona con sus clases suspendidas. items: [{ name, start, date }].
+const MONTH_DAY = date => `${Number(date.slice(8, 10))}/${Number(date.slice(5, 7))}`;
+export function closurePush({ from, to, today, reason, items }) {
+  const oneDay = from === to;
+  const ref = dayRef(from, today);
+  const title = !oneDay ? `Sin clases del ${MONTH_DAY(from)} al ${MONTH_DAY(to)}`
+    : ref === 'de hoy' ? 'Hoy no hay clases' : ref === 'de mañana' ? 'Mañana no hay clases' : `El ${ref.replace(/^del /, '')} no hay clases`;
+  const list = items.map(i => `${i.name} ${i.start}`);
+  const joined = list.length > 1 ? `${list.slice(0, -1).join(', ')} y ${list.at(-1)}` : list[0];
+  const what = oneDay
+    ? `${items.length > 1 ? 'Se suspendieron' : 'Se suspendió'} ${joined}; tu lugar quedó liberado.`
+    : items.length > 1 ? `Se suspendieron tus ${items.length} reservas.` : `Se suspendió tu reserva de ${items[0].name} ${dayRef(items[0].date, today)}.`;
+  return { title, body: reason ? `${reason}. ${what}` : what, tag: `class-closure-${from}`, data: { redirectUrl: `/#/plan/clases?d=${from}` } };
+}

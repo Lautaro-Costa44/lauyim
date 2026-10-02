@@ -14,6 +14,17 @@ export function migrateClasses(db) {
   try { db.exec('ALTER TABLE class_bookings ADD COLUMN logged INTEGER NOT NULL DEFAULT 0;'); } catch {}
   // Entrega 4: minutos antes de sus clases en que la profe recibe el aviso (null: 60; 0: apagado).
   try { db.exec('ALTER TABLE class_prefs ADD COLUMN teacher_reminder INTEGER;'); } catch {}
+  // Entrega 4: el staff levantó la penalización (las ausencias de ese día o antes no cuentan).
+  try { db.exec('ALTER TABLE class_prefs ADD COLUMN penalty_reset_at TEXT;'); } catch {}
+  // Entrega 4: días en que el gimnasio cierra (feriado, vacaciones): sus fechas quedan suspendidas.
+  db.exec(`CREATE TABLE IF NOT EXISTS class_closures (
+    id TEXT PRIMARY KEY,
+    from_date TEXT NOT NULL,
+    to_date TEXT NOT NULL,
+    reason TEXT NOT NULL DEFAULT '',
+    created_by TEXT,
+    created_at TEXT NOT NULL
+  );`);
 }
 
 function migrateClassTables(db) {
@@ -399,4 +410,39 @@ export function absenceDates(userId, from) {
 // Reservas de un socio en [from, to) con su fecha.
 export function getUserBookingsBetween(userId, from, to) {
   return getDatabase().prepare(`${JOIN_SESSION} WHERE b.user_id = ? AND s.date >= ? AND s.date < ? ORDER BY s.date, s.start`).all(userId, from, to).map(withSession);
+}
+
+// ---- cierres del gimnasio ----
+
+const closureFromRow = r => r && ({ id: r.id, from: r.from_date, to: r.to_date, reason: r.reason || '', createdBy: r.created_by || null, createdAt: r.created_at });
+
+// Los cierres que tocan [from, to] (fechas incluidas). Sin rango, todos.
+export function getClosures({ from, to } = {}) {
+  const db = getDatabase();
+  const rows = from && to
+    ? db.prepare('SELECT * FROM class_closures WHERE to_date >= ? AND from_date <= ? ORDER BY from_date').all(from, to)
+    : db.prepare('SELECT * FROM class_closures ORDER BY from_date').all();
+  return rows.map(closureFromRow);
+}
+
+export const getClosure = id => closureFromRow(getDatabase().prepare('SELECT * FROM class_closures WHERE id = ?').get(id));
+
+export function addClosure({ from, to, reason = '', createdBy = null }) {
+  const id = newId('k');
+  getDatabase().prepare('INSERT INTO class_closures (id, from_date, to_date, reason, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?)')
+    .run(id, from, to, reason, createdBy, nowIso());
+  return getClosure(id);
+}
+
+export const deleteClosure = id => getDatabase().prepare('DELETE FROM class_closures WHERE id = ?').run(id).changes > 0;
+
+// ---- penalización levantada por el staff ----
+
+export function getPenaltyReset(userId) {
+  return getDatabase().prepare('SELECT penalty_reset_at FROM class_prefs WHERE user_id = ?').get(userId)?.penalty_reset_at || null;
+}
+
+export function setPenaltyReset(userId, date) {
+  getDatabase().prepare('INSERT INTO class_prefs (user_id, penalty_reset_at) VALUES (?, ?) ON CONFLICT(user_id) DO UPDATE SET penalty_reset_at = excluded.penalty_reset_at')
+    .run(userId, date);
 }

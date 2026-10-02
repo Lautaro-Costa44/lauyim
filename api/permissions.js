@@ -151,6 +151,10 @@ export const ROUTE_PERMISSIONS = Object.freeze({
   'POST /api/admin/classes/sessions/attendance': ['classes.attendance', 'classes.manage'],
   'POST /api/admin/classes/sessions/message': ['classes.attendance', 'classes.manage'],
   'GET /api/admin/classes/booking': ['classes.attendance', 'classes.view_all'],
+  'GET /api/admin/classes/closures': ['classes.attendance', 'classes.view_all'],
+  'GET /api/admin/classes/closures/preview': 'classes.manage',
+  'POST /api/admin/classes/closures': 'classes.manage',
+  'POST /api/admin/classes/closures/delete': 'classes.manage',
   'GET /api/admin/classes/stats': ['classes.attendance', 'classes.view_all'],
   // Staff
   'GET /api/admin/roles': 'roles.assign',

@@ -208,3 +208,15 @@ test('la reserva propia para el historial: fuente, calificación y si se puede c
     { status: 'booked', rating: null, canRate: false, name: 'Yoga', room: 'Sala 3', color: '#30d158' });
   assert.equal((await call('ana', 'GET', `/api/classes/booking?id=${mine.myBooking.id}`)).status, 404);
 });
+
+test('día cerrado: no se reserva y la lista trae el cierre', async () => {
+  const closed = addDays(today, 3);   // el día de otherSlot
+  const made = await call('owner', 'POST', '/api/admin/classes/closures', { from: closed, to: closed, reason: 'Feriado' });
+  assert.equal(made.status, 200, JSON.stringify(made.body));
+  const data = await list('ana', closed, 1);
+  assert.deepEqual(data.closures.map(c => [c.from, c.reason]), [[closed, 'Feriado']]);
+  const occ = data.occurrences.find(o => o.slotId === otherSlot.id);
+  assert.deepEqual([occ.cancelled, occ.closed, occ.state], [true, 'Feriado', 'cancelled']);
+  const r = await call('ana', 'POST', '/api/classes/book', { slotId: otherSlot.id, date: closed });
+  assert.deepEqual([r.status, r.body.error], [409, 'booking_cancelled']);
+});

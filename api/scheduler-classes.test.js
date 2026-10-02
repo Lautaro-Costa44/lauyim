@@ -105,3 +105,12 @@ test('aviso a la profe: una vez, con cuántos hay; apagado o suspendida, nada', 
   assert.equal(sent[0].payload.body, '1 anotado');
   assert.deepEqual(teach(await tick()), []);
 });
+
+test('día cerrado: la reserva fija no reserva esa fecha', async () => {
+  const later = addDays(clock.date, 2);
+  const slot3 = cdb.saveClassSlot({ classId: spinning.id, weekday: weekdayOf(later), start: '11:00' });
+  cdb.addClosure({ from: later, to: later, reason: 'Feriado' });
+  cdb.addRecurring(slot3.id, 'dani');
+  await tick();
+  assert.deepEqual(cdb.getUserBookings('dani', { from: later }).filter(b => b.session.start === '11:00'), []);
+});

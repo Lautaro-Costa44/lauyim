@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import {
   canAsk, resolveAttendance, canTakeAttendance, canRate, afterPushDue, zonedToEpoch, classWorkout, classStats, penaltyOf,
   CLASS_DEFAULTS, REMINDER_OPTIONS, MUSCLE_SLUGS, classSettingsOf, validateClassSettings, validateClassType, validateSlot,
-  capOf, teacherReminderDue, TEACHER_REMINDER_OPTIONS, addMinutes, occurrencesBetween, overlapConflicts, conflictText, bookingState, cancelKind, canPromote, remindersDue, buildIcs
+  capOf, teacherReminderDue, TEACHER_REMINDER_OPTIONS, validateClosure, addMinutes, occurrencesBetween, overlapConflicts, conflictText, bookingState, cancelKind, canPromote, remindersDue, buildIcs
 } from './classes.js';
 
 const spinning = { id: 'spin', name: 'Spinning', color: '#ff9f0a', icon: 'bike', description: '', durationMin: 45, capacity: 12, teacherUserId: null, teacherName: 'Caro', room: 'Sala 2', logMode: 'muscles', log: { muscles: ['quadriceps'], intensity: 'high' }, archived: false };
@@ -272,4 +272,23 @@ test('aviso a la profe: cuando faltan los minutos elegidos o menos, antes de que
   assert.equal(teacherReminderDue({ occ, now: at('19:00'), minutes: 60 }), false);
   assert.equal(teacherReminderDue({ occ, now: at('18:30'), minutes: 0 }), false);
   assert.deepEqual(TEACHER_REMINDER_OPTIONS, [0, 30, 60, 120]);
+});
+
+test('cierres: validación y las fechas de adentro quedan suspendidas con el motivo', () => {
+  const today = '2026-10-05';
+  assert.deepEqual(validateClosure({ from: '2026-10-12', to: '2026-10-12', reason: ' Feriado ' }, { today }).value, { from: '2026-10-12', to: '2026-10-12', reason: 'Feriado' });
+  assert.equal(validateClosure({ from: '2026-10-04', to: '2026-10-04' }, { today }).field, 'from');            // pasado
+  assert.equal(validateClosure({ from: '2026-10-12', to: '2026-10-10' }, { today }).field, 'to');              // al revés
+  assert.equal(validateClosure({ from: '2026-10-06', to: '2026-11-06' }, { today }).field, 'to');              // más de 31 días
+  assert.equal(validateClosure({ from: '2026-10-12', to: '2026-10-12', reason: 'x'.repeat(41) }, { today }).field, 'reason');
+  const existing = [{ id: 'c1', from: '2026-10-10', to: '2026-10-14' }];
+  assert.equal(validateClosure({ from: '2026-10-14', to: '2026-10-16' }, { today, existing }).error, 'closure_overlap');
+  assert.ok(validateClosure({ from: '2026-10-15', to: '2026-10-16' }, { today, existing }).value);
+
+  const type = { id: 'c', name: 'Spinning', durationMin: 45, capacity: 10, archived: false };
+  const slots = [{ id: 's', classId: 'c', weekday: 1, start: '19:00' }];                                     // lunes
+  const occs = occurrencesBetween({ types: [type], slots, from: '2026-10-05', days: 14, closures: [{ id: 'k', from: '2026-10-12', to: '2026-10-12', reason: 'Feriado' }] });
+  assert.deepEqual(occs.map(o => [o.date, o.cancelled, o.closed || null]), [['2026-10-05', false, null], ['2026-10-12', true, 'Feriado'], ['2026-10-19', false, null]].slice(0, 2));
+  const noReason = occurrencesBetween({ types: [type], slots, from: '2026-10-12', days: 1, closures: [{ id: 'k', from: '2026-10-12', to: '2026-10-12', reason: '' }] });
+  assert.equal(noReason[0].closed, 'Cerrado');
 });

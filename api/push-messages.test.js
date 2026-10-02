@@ -141,3 +141,15 @@ test('aviso a la profe antes de su clase', async () => {
   assert.equal(teacherReminderPush({ ...base, booked: 0, waitlist: 0 }).body, 'Todavía no se anotó nadie.');
   assert.equal(teacherReminderPush({ ...base, minutes: 30 }).title, 'Spinning en 30 minutos');
 });
+
+test('cierre del gimnasio: un aviso por persona con sus clases', async () => {
+  const { closurePush } = await import('./push-messages.js');
+  const one = closurePush({ from: '2026-10-12', to: '2026-10-12', today: '2026-10-05', reason: 'Feriado', items: [{ name: 'Spinning', start: '19:00' }, { name: 'GAP', start: '20:30' }] });
+  assert.deepEqual([one.title, one.body], ['El lunes 12 no hay clases', 'Feriado. Se suspendieron Spinning 19:00 y GAP 20:30; tu lugar quedó liberado.']);
+  assert.deepEqual(one.data, { redirectUrl: '/#/plan/clases?d=2026-10-12' });
+  const single = closurePush({ from: '2026-10-06', to: '2026-10-06', today: '2026-10-05', reason: '', items: [{ name: 'Spinning', start: '19:00' }] });
+  assert.deepEqual([single.title, single.body], ['Mañana no hay clases', 'Se suspendió Spinning 19:00; tu lugar quedó liberado.']);
+  const range = closurePush({ from: '2027-01-02', to: '2027-01-15', today: '2026-12-20', reason: 'Vacaciones', items: Array.from({ length: 6 }, () => ({ name: 'Spinning', start: '19:00' })) });
+  assert.deepEqual([range.title, range.body], ['Sin clases del 2/1 al 15/1', 'Vacaciones. Se suspendieron tus 6 reservas.']);
+  assert.equal(closurePush({ from: '2027-01-02', to: '2027-01-15', today: '2026-12-20', reason: '', items: [{ name: 'GAP', start: '20:30', date: '2027-01-04' }] }).body, 'Se suspendió tu reserva de GAP del lunes 4.');
+});
