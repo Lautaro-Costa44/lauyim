@@ -13,6 +13,7 @@ import { startTourA } from '../lib/onboarding.js'
 import { api } from '../lib/api.js'
 import ProgramPicker, { programsOf } from '../components/ProgramPicker.jsx'
 import { cachedBranding } from '../lib/branding.js'
+import HomeClassCard from '../components/HomeClassCard.jsx'
 
 
 // Home = what to do now + a quick glance. Deep charts & history live in Stats.
@@ -117,6 +118,8 @@ export default function Home() {
           : <Icon name="plus" className="chev" />}
       </div>
     </div>
+
+    <HomeClassCard />
 
     {mostrarBienvenida && (
       <div className="card" data-tour="welcome">

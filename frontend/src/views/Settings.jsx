@@ -80,6 +80,7 @@ function ClaimDeviceSheet({ close }) {
 import { pushSupported, enablePush, disablePush, sendTestPush } from '../lib/push.js'
 import { wakeLockSupported } from '../lib/wakelock.js'
 import { errorText } from '../lib/errors.js'
+import { classesApi, reminderLabel, REMINDER_OPTIONS as CLASS_REMINDER_OPTIONS } from '../lib/classes.js'
 import { confirmSheet, importFromApp, equipmentProfileSheet } from '../sheets.jsx'
 import { routinesFromPresets, presetSourceFor, addPresetCustomExercises } from '../lib/starter.js'
 import { programsOf, fetchProgramToApply, programUnavailableMessage } from '../components/ProgramPicker.jsx'
@@ -649,7 +650,32 @@ function effortHelpSheet() {
 }
 
 function NotificationsCard({ S, update, toast }) {
-  return <PushCard S={S} update={update} toast={toast} />
+  return <>
+    <PushCard S={S} update={update} toast={toast} />
+    <ClassReminderDefaults toast={toast} />
+  </>
+}
+
+// Recordatorios de entrada para las reservas de clases nuevas (cada reserva se puede cambiar
+// después desde su hoja). Solo con clases en el gimnasio.
+function ClassReminderDefaults({ toast }) {
+  const on = useStore(s => !!s.config?.classes_available)
+  const [chosen, setChosen] = useState(null)
+  useEffect(() => { if (on) classesApi.list().then(d => setChosen(d.reminderDefaults || [60])).catch(() => {}) }, [on])
+  if (!on || !chosen) return null
+  const save = async next => {
+    setChosen(next)
+    try { await classesApi.setReminderDefaults(next) } catch (e) { toast(errorText(e, t('No se pudo guardar'))) }
+  }
+  const toggle = m => save(chosen.includes(m) ? chosen.filter(x => x !== m) : CLASS_REMINDER_OPTIONS.filter(x => x === m || chosen.includes(x)))
+  return <Section title={t('Recordatorios de clases')} footer={t('Los que se ponen solos al anotarte a una clase. En cada reserva los podés cambiar.')}>
+    <div className="lrow" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 10, paddingTop: 13, paddingBottom: 14 }}>
+      <div className="chips class-reminders" role="group" aria-label={t('Recordatorios de clases')}>
+        {CLASS_REMINDER_OPTIONS.map(m => <button key={m} type="button" className={'chip' + (chosen.includes(m) ? ' on' : '')} aria-pressed={chosen.includes(m)} onClick={() => toggle(m)}>{t('{0} antes', reminderLabel(m))}</button>)}
+        <button type="button" className={'chip' + (!chosen.length ? ' on' : '')} aria-pressed={!chosen.length} onClick={() => save([])}>{t('Sin recordatorio')}</button>
+      </div>
+    </div>
+  </Section>
 }
 
 function PushCard({ S, update, toast }) {

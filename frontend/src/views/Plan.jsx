@@ -12,12 +12,16 @@ import Icon from '../components/Icon.jsx'
 import { Button, Segmented } from '../components/ui.jsx'
 import { glyphOf, DEFAULT_GLYPH } from '../lib/glyphs.js'
 import Library from './Library.jsx'
+import Clases from './Clases.jsx'
 import { errorText } from '../lib/errors.js'
 
 export default function Plan() {
   const nav = useNavigate()
   const loc = useLocation()
   const exercisesTab = loc.pathname === '/plan/ejercicios'
+  // Clases del gimnasio: tercera pestaña si el módulo está prendido y hay clases cargadas.
+  const classesOn = useStore(s => !!s.config?.classes_available)
+  const classesTab = classesOn && loc.pathname === '/plan/clases'
   const S = useStore(s => s.S)
   const update = useStore(s => s.update)
   const toast = useUI(s => s.toast)
@@ -100,11 +104,11 @@ export default function Plan() {
     </div>
     <Segmented
       className="plan-tabs"
-      value={exercisesTab ? 'exercises' : 'routine'}
-      onChange={tab => nav(tab === 'exercises' ? '/plan/ejercicios' : '/plan')}
-      options={[{ value: 'routine', label: t('Routine') }, { value: 'exercises', label: t('Exercises') }]}
+      value={classesTab ? 'classes' : exercisesTab ? 'exercises' : 'routine'}
+      onChange={tab => nav(tab === 'exercises' ? '/plan/ejercicios' : tab === 'classes' ? '/plan/clases' : '/plan')}
+      options={[{ value: 'routine', label: t('Routine') }, { value: 'exercises', label: t('Exercises') }, ...(classesOn ? [{ value: 'classes', label: t('Clases') }] : [])]}
     />
-    {exercisesTab ? <div className="plan-exercises"><Library /></div> : <div className="cols"><div>
+    {classesTab ? <Clases /> : exercisesTab ? <div className="plan-exercises"><Library /></div> : <div className="cols"><div>
       <h4 className="sec">{t('Week schedule')}</h4>
       <div className="list" style={{ display: 'flex', flexDirection: 'column' }}>
         {[1, 2, 3, 4, 5, 6, 0].map(d => {

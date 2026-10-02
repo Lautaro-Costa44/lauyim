@@ -373,7 +373,8 @@ export function classRoutes(d) {
     const occ = body.sessionId ? occOfSession(cdb.getClassSession(body.sessionId)) : (isDate(body.date) ? occOfKey(body.date, `${body.slotId}:${body.date}`) : null);
     if (!occ || occ.type.archived) return json(res, 404, { error: 'not_found' });
     const state = bookingState({ occ, now: now(), settings: s });
-    if (state !== 'open') return json(res, 409, { error: 'booking_' + state });
+    const STATE_ERRORS = { not_yet: 'booking_not_yet', started: 'booking_started', cancelled: 'booking_cancelled' };
+    if (state !== 'open') return json(res, 409, { error: STATE_ERRORS[state] });
     const session = occ.sessionId ? cdb.getClassSession(occ.sessionId) : cdb.ensureClassSession({ classId: occ.classId, slotId: occ.slotId, date: occ.date, start: occ.start });
     const { booking } = cdb.bookOrWaitlist({ sessionId: session.id, userId: user.id, capacity: occ.type.capacity, reminders: memberReminderDefaults(user.id) });
     json(res, 200, { booking: bookingView(booking) });

@@ -45,7 +45,8 @@ const occQuery = occ => occ.sessionId ? `sessionId=${encodeURIComponent(occ.sess
 
 export const classesApi = {
   // socio
-  list: (from, days) => api(`/api/classes?from=${from}&days=${days}`),
+  // Sin rango: desde hoy, los días de la ventana de reserva.
+  list: (from, days) => api(from ? `/api/classes?from=${from}&days=${days}` : '/api/classes'),
   book: ({ slotId, date, sessionId }) => post('/api/classes/book', { slotId, date, sessionId }),
   cancel: bookingId => post('/api/classes/cancel', { bookingId }),
   setReminders: (bookingId, reminders) => put('/api/classes/reminders', { bookingId, reminders }),

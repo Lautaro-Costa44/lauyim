@@ -38,6 +38,13 @@ export const ERROR_TEXTS = {
   account_pending: 'Tu cuenta todavía no fue habilitada.',
   account_not_active: 'La cuenta no está activa.',
   membership_blocked: 'Tu cuota está vencida. Pasá por recepción.',
+  // clases
+  class_overlap: 'Ya hay otra clase en ese horario.',
+  class_cancelled: 'Esa clase se suspendió.',
+  classes_disabled: 'El gimnasio no tiene clases por ahora.',
+  booking_not_yet: 'Todavía no se puede reservar esa clase.',
+  booking_started: 'La clase ya empezó.',
+  booking_cancelled: 'Esa clase se suspendió.',
   // passkeys e ingreso
   challenge_expired: 'La solicitud venció. Intentá de nuevo.',
   passkey_verify_failed: 'No se pudo verificar la passkey. Intentá de nuevo.',
