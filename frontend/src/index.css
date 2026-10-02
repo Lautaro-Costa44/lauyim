@@ -2209,7 +2209,7 @@ button.wh-row{font:inherit;color:inherit;border:0;cursor:pointer}
 .class-closed-banner{display:flex;align-items:center;gap:8px;padding:10px 12px;margin-bottom:8px;border-radius:12px;background:color-mix(in srgb,var(--red) 12%,transparent);font-weight:600}
 .class-closed-banner svg,.class-closed-banner .ico{color:var(--red)}
 .class-closed-day{display:flex;flex-direction:column;align-items:center;gap:8px}.class-closed-day svg,.class-closed-day .ico{width:28px;height:28px;color:var(--red)}
-.chip.closed{color:var(--red)}.chip.closed svg,.chip.closed .ico{width:12px;height:12px;margin-right:3px;vertical-align:-1px}
+.chip.closed{display:inline-flex;align-items:center;gap:4px}.chip.closed:not(.on){color:var(--red)}.chip.closed svg,.chip.closed .ico{width:12px;height:12px;flex:none}
 .class-closure{display:flex;flex-direction:column;gap:12px}
 .class-closure .chips{margin-bottom:8px}
 .class-closure-preview{display:flex;gap:8px;align-items:flex-start;padding:10px 12px;border-radius:12px;background:var(--surface-2)}
@@ -2221,6 +2221,7 @@ button.wh-row{font:inherit;color:inherit;border:0;cursor:pointer}
 .member-classes-tiles b{font-size:18px;font-variant-numeric:tabular-nums}.member-classes-tiles span{font-size:12px;color:var(--label-2)}
 .member-classes-penalty{display:flex;align-items:center;gap:6px}
 .member-classes .sec{margin:6px 0 0}
+#app .member-classes .list{display:flex;flex-direction:column}
 .member-classes-cancel{color:var(--red)}
 .member-classes-fixed{border-left:3px solid var(--c)}
 .class-week-body{position:relative}

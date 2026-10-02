@@ -57,7 +57,11 @@ function Closure({ today, onChange, close }) {
       {!preview ? t('Calculando…')
         : preview.error ? preview.error
         : preview.classes === 0 ? t('No hay clases esos días. Igual queda cerrado.')
-        : t('Se suspenden {0} y le avisamos a {1}.', preview.classes === 1 ? t('1 clase') : t('{0} clases', preview.classes), preview.people === 1 ? t('1 persona') : t('{0} personas', preview.people))}
+        : (() => {
+          const people = preview.people === 0 ? null : preview.people === 1 ? t('1 persona') : t('{0} personas', preview.people)
+          const classes = preview.classes === 1 ? t('Se suspende 1 clase') : t('Se suspenden {0} clases', preview.classes)
+          return people ? t('{0} y le avisamos a {1}.', classes, people) : t('{0}. No hay nadie anotado.', classes)
+        })()}
     </div>
     <Button variant="danger" icon="lock" disabled={!ready || busy} onClick={save}>{preview?.people ? t('Cerrar y avisar') : t('Cerrar')}</Button>
     <Button variant="ghost" className="dim" onClick={close}>{t('Cancel')}</Button>
