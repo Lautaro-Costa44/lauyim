@@ -814,7 +814,7 @@ const countPendingAccounts = () => getAllUsers().filter(u => !u.disabled && isAc
 // vinculación de dispositivos y push (el aviso de cuota tiene que poder llegarle), endpoints
 // públicos y todo /api/admin y /api/owner.
 const MEMBERSHIP_GATED = new Set([
-  'POST /api/classes/book', 'POST /api/classes/recurring',
+  'POST /api/classes/book', 'POST /api/classes/book-week', 'POST /api/classes/recurring',
   'GET /api/data', 'PUT /api/data', 'POST /api/data/sync', 'POST /api/activity', 'GET /api/presets', 'POST /api/presets/apply',
   'GET /api/alimentos/buscar',
   'POST /api/comidas', 'POST /api/comidas/grupo', 'GET /api/comidas', 'GET /api/comidas/historial',

@@ -227,7 +227,8 @@ export function runSchedulerTick({ now = Date.now(), sendToUser = sendPushToUser
                 if (stateRow && stateRow.lang) lang = stateRow.lang;
               } catch {}
 
-              const payload = dayReminderPush(lang, null);
+              const routine = (state.routines || []).find(r => String(r.id) === String(routineId)) || null;
+              const payload = dayReminderPush(lang, routine);
               sendToUser(u.user_id, payload).then(res => {
                 // A reminder is considered sent only when at least one subscription
                 // accepted it. This keeps a transient push outage retryable.

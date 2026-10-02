@@ -15,7 +15,7 @@ const { runSchedulerTick } = await import('./scheduler.js');
 const TODAY = '2026-09-24';
 const at = hhmm => Date.parse(`${TODAY}T${hhmm}:00Z`);        // gym_tz UTC: hora del gym = UTC
 let sent;
-const sendToUser = async (userId, payload) => { sent.push({ userId, tag: payload.tag }); return { sent: 1, subCount: 1 }; };
+const sendToUser = async (userId, payload) => { sent.push({ userId, tag: payload.tag, title: payload.title }); return { sent: 1, subCount: 1 }; };
 const tick = async hhmm => {
   runSchedulerTick({ now: at(hhmm), sendToUser });
   await new Promise(resolve => setTimeout(resolve, 10));      // deja guardar el dedupe
@@ -103,4 +103,13 @@ test('cuenta pendiente de aprobación: ningún aviso (vencimiento ni manual) has
   await tick('13:01');
   assert.deepEqual(tags('pendPlan'), ['billing-due']);
   assert.deepEqual(tags('pendFee'), ['gym-fee']);
+});
+
+test('recordatorio de entrenamiento: nombra la rutina que toca hoy', async () => {
+  db.createUser({ id: 'trainer', name: 'trainer' });
+  db.createSubscription({ endpoint: 'https://push.invalid/trainer', userId: 'trainer', keys: { p256dh: 'x', auth: 'x' } });
+  db.saveUserState('trainer', { routines: [{ id: 'r1', name: 'Piernas', ex: [] }], week: { 4: 'r1' }, workouts: [] });   // TODAY es jueves
+  db.getDatabase().prepare(`INSERT INTO reminder_settings (user_id, "on", time, tz) VALUES ('trainer', 1, '07:00', 'UTC')`).run();
+  await tick('07:00');
+  assert.deepEqual(sent.filter(s => s.userId === 'trainer').map(s => s.title), ['Hoy toca Piernas 🏋️']);
 });

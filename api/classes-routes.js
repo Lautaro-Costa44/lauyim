@@ -74,14 +74,14 @@ export function materializeRecurring({ slotId, userId, send = () => {}, now = cl
         continue;
       }
       if (punished) {
-        if (cdb.noticeOnce(r.userId, occ.key, 'penalty_blocked')) send(r.userId, classChangePush('penalty_blocked', { name: occ.type.name, date: occ.date, today: now.date, start: occ.start, sessionId: occ.sessionId || occ.key }));
+        if (cdb.noticeOnce(r.userId, occ.key, 'penalty_blocked')) send(r.userId, classChangePush('penalty_blocked', { name: occ.type.name, date: occ.date, today: now.date, start: occ.start, until: punished.until, sessionId: occ.sessionId || occ.key }));
         continue;
       }
       const session = occ.sessionId ? cdb.getClassSession(occ.sessionId) : cdb.ensureClassSession({ classId: occ.classId, slotId: occ.slotId, date: occ.date, start: occ.start });
       if (cdb.getBookingsForSessions([session.id]).some(b => b.userId === r.userId)) continue;
       const { booking } = cdb.bookOrWaitlist({ sessionId: session.id, userId: r.userId, capacity: occ.type.capacity, reminders: memberReminderDefaults(r.userId), recurringId: r.id });
       count++;
-      if (booking.status === 'waitlist') send(r.userId, classChangePush('waitlisted', { name: occ.type.name, date: occ.date, today: now.date, start: occ.start, sessionId: session.id }));
+      if (booking.status === 'waitlist') send(r.userId, classChangePush('waitlisted', { name: occ.type.name, date: occ.date, today: now.date, start: occ.start, waitlistPos: booking.waitlistPos, sessionId: session.id }));
     }
   }
   return count;
@@ -381,7 +381,7 @@ export function classRoutes(d) {
         const teacherName = teacherUserId ? null : String(body.teacherName || '').trim().slice(0, 40) || null;
         cdb.updateClassSession(session.id, { teacherUserId, teacherName });
         const fresh = occOfSession(cdb.getClassSession(session.id));
-        notify(activeUsers(session.id), 'teacher', fresh);
+        notify(activeUsers(session.id), 'teacher', fresh, { prevTeacher: occ.teacherName });
         changes.push(`con ${fresh.teacherName || 'otra profe'}`);
       }
     }
@@ -479,8 +479,11 @@ export function classRoutes(d) {
     const mine = new Map(cdb.getUserBookings(user.id, { from }).map(b => [b.sessionId, b]));
     const fixed = new Set(cdb.getRecurring({ userId: user.id }).map(r => r.slotId));
     const clock = now();
+    // Los días de cada clase, para elegir cuáles son fijos desde la hoja de la clase.
+    const live = new Set(cdb.getClassTypes().filter(tp => !tp.archived).map(tp => tp.id));
+    const slots = cdb.getClassSlots().filter(sl => live.has(sl.classId)).map(sl => ({ ...sl, recurring: fixed.has(sl.id) }));
     json(res, 200, {
-      enabled: true, today, from, days, tz: d.gymTz(), settings: publicSettings(s), reminderDefaults: memberReminderDefaults(user.id), penalty: penaltyNow(user.id, today),
+      enabled: true, today, from, days, tz: d.gymTz(), settings: publicSettings(s), reminderDefaults: memberReminderDefaults(user.id), penalty: penaltyNow(user.id, today), slots,
       occurrences: occs.map(o => memberView(o, counts[o.sessionId], mine.get(o.sessionId), fixed.has(o.slotId), bookingState({ occ: o, now: clock, settings: s })))
     });
   },
@@ -499,6 +502,27 @@ export function classRoutes(d) {
     const session = occ.sessionId ? cdb.getClassSession(occ.sessionId) : cdb.ensureClassSession({ classId: occ.classId, slotId: occ.slotId, date: occ.date, start: occ.start });
     const { booking } = cdb.bookOrWaitlist({ sessionId: session.id, userId: user.id, capacity: occ.type.capacity, reminders: memberReminderDefaults(user.id) });
     json(res, 200, { booking: bookingView(booking) });
+  },
+  // "Anotarme a todas esta semana": cada fecha abierta de la clase en los próximos 7 días; las
+  // llenas, a la lista de espera. Las que ya tiene no se tocan. -> cuántas reservó y cuántas en espera.
+  'POST /api/classes/book-week': async (req, res) => {
+    const user = member(req, res); if (!user) return;
+    const s = settings();
+    if (!s.enabled) return json(res, 409, { error: 'classes_disabled' });
+    const { classId } = await readBody(req);
+    const type = cdb.getClassType(classId);
+    if (!type || type.archived) return json(res, 404, { error: 'not_found' });
+    const punished = penaltyNow(user.id);
+    if (punished) return json(res, 403, { error: 'booking_penalty', until: punished.until, count: punished.count });
+    const clock = now();
+    const out = { booked: 0, waitlist: 0 };
+    for (const occ of loadOccurrences(clock.date, 7)) {
+      if (occ.classId !== type.id || bookingState({ occ, now: clock, settings: s }) !== 'open') continue;
+      const session = occ.sessionId ? cdb.getClassSession(occ.sessionId) : cdb.ensureClassSession({ classId: occ.classId, slotId: occ.slotId, date: occ.date, start: occ.start });
+      const { booking, created } = cdb.bookOrWaitlist({ sessionId: session.id, userId: user.id, capacity: occ.type.capacity, reminders: memberReminderDefaults(user.id) });
+      if (created) out[booking.status === 'booked' ? 'booked' : 'waitlist']++;
+    }
+    json(res, 200, out);
   },
   'POST /api/classes/cancel': async (req, res) => {
     const user = member(req, res); if (!user) return;

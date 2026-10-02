@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest'
 const apiMock = vi.hoisted(() => vi.fn(() => Promise.resolve({})))
 vi.mock('./api.js', () => ({ api: apiMock }))
 
-const { REMINDER_OPTIONS, reminderLabel, buttonState, capacityText, timeRange, dayChips, conflictMessages, intensityLabel, googleCalendarUrl, classesApi, zonedToEpoch, countdown, homeClasses } = await import('./classes.js')
+const { REMINDER_OPTIONS, reminderLabel, buttonState, capacityText, timeRange, dayChips, conflictMessages, intensityLabel, googleCalendarUrl, classesApi, zonedToEpoch, countdown, homeClasses, classSlotChips, weekBookable, bookWeekText } = await import('./classes.js')
 
 describe('etiquetas', () => {
   it('recordatorios, cupo, horario e intensidad', () => {
@@ -103,5 +103,35 @@ describe('tarjeta de Inicio', () => {
     expect(homeClasses(occs, now, TZ, ['d']).suspended).toEqual([])
     // En curso sigue siendo la próxima hasta que termina.
     expect(homeClasses(occs, Date.parse('2026-10-05T13:30:00Z'), TZ).next.key).toBe('b')
+  })
+})
+
+describe('varios días de una clase', () => {
+  it('chips de "Fija": solo esa clase, de lunes a domingo', () => {
+    const slots = [
+      { id: 'd', classId: 'c1', weekday: 0, start: '10:00', recurring: false },
+      { id: 'v', classId: 'c1', weekday: 5, start: '19:30', recurring: true },
+      { id: 'x', classId: 'c2', weekday: 1, start: '08:00' },
+      { id: 'l', classId: 'c1', weekday: 1, start: '19:00' }
+    ]
+    expect(classSlotChips(slots, 'c1').map(s => [s.id, s.label, s.recurring])).toEqual([['l', 'Lun 19:00', false], ['v', 'Vie 19:30', true], ['d', 'Dom 10:00', false]])
+    expect(classSlotChips(undefined, 'c1')).toEqual([])
+  })
+
+  it('fechas para "Anotarme a todas": abiertas, de esa clase, sin reserva y en los próximos 7 días', () => {
+    const o = (key, extra) => ({ key, classId: 'c1', date: '2026-10-06', state: 'open', cancelled: false, myBooking: null, ...extra })
+    const occs = [
+      o('ok'), o('full'), o('other', { classId: 'c2' }), o('late', { date: '2026-10-12' }), o('far', { date: '2026-10-13' }),
+      o('mine', { myBooking: { status: 'booked' } }), o('wait', { myBooking: { status: 'waitlist' } }), o('again', { myBooking: { status: 'cancelled' } }),
+      o('started', { state: 'started' }), o('sus', { cancelled: true, state: 'cancelled' })
+    ]
+    expect(weekBookable(occs, 'c1', '2026-10-06').map(x => x.key)).toEqual(['ok', 'full', 'late', 'again'])
+  })
+
+  it('aviso después de anotarse a todas', () => {
+    expect(bookWeekText({ booked: 3, waitlist: 0 })).toEqual(['Te anotaste a {0}', '3 fechas'])
+    expect(bookWeekText({ booked: 0, waitlist: 1 })).toEqual(['Quedaste en lista de espera en {0}', '1 fecha'])
+    expect(bookWeekText({ booked: 2, waitlist: 1 })).toEqual(['Te anotaste a {0} y quedaste en espera en {1}', '2 fechas', '1 fecha'])
+    expect(bookWeekText({ booked: 0, waitlist: 0 })).toEqual(['Ya estabas en todas'])
   })
 })

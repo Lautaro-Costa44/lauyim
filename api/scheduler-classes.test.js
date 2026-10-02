@@ -59,8 +59,8 @@ test('recordatorio: una vez, con lo que falta de verdad; ni canceladas ni lista 
   const first = await tick();
   assert.deepEqual(first.map(s => s.userId).sort(), ['ana', 'caro']);
   const toAna = first.find(s => s.userId === 'ana').payload;
-  assert.equal(toAna.title, `Spinning · ${start}`);
-  assert.match(toAna.body, /^Hoy con Caro, en Sala 2\. Empieza en (29|30) minutos\.$/);
+  assert.match(toAna.title, /^Spinning empieza en (29|30) minutos$/);
+  assert.equal(toAna.body, `Hoy a las ${start} con Caro, en Sala 2.`);
   assert.deepEqual(cdb.getBooking(ana.id).remindersSent, [60]);
   assert.deepEqual(await tick(), []);
 });

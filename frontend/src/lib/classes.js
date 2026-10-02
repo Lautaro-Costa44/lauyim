@@ -63,6 +63,7 @@ export const classesApi = {
   setReminders: (bookingId, reminders) => put('/api/classes/reminders', { bookingId, reminders }),
   setReminderDefaults: reminders => put('/api/classes/reminder-defaults', { reminders }),
   recurring: (slotId, on) => post(on ? '/api/classes/recurring' : '/api/classes/recurring/delete', { slotId }),
+  bookWeek: classId => post('/api/classes/book-week', { classId }),
   icsUrl: bookingId => `/api/classes/ics?booking=${encodeURIComponent(bookingId)}`,
   pending: () => api('/api/classes/pending'),
   answer: (bookingId, attended, rating) => post('/api/classes/attendance', { bookingId, attended, rating }),
@@ -127,4 +128,30 @@ export function homeClasses(occurrences, nowMs, tz, dismissed = []) {
     .sort((a, b) => occTimes(a, tz).start - occTimes(b, tz).start)
   const suspended = mine.filter(o => o.cancelled && occTimes(o, tz).end > nowMs && !dismissed.includes(o.key))
   return { next: upcoming[0] || null, upcoming, suspended }
+}
+
+// ---- varios días de una clase ----
+
+// Días de la clase para "Fija", de lunes a domingo: [{ id, weekday, start, recurring, label: 'Lun 19:00' }].
+export function classSlotChips(slots, classId) {
+  const mondayFirst = wd => (wd + 6) % 7
+  return (slots || []).filter(s => s.classId === classId)
+    .sort((a, b) => mondayFirst(a.weekday) - mondayFirst(b.weekday) || a.start.localeCompare(b.start))
+    .map(s => ({ id: s.id, weekday: s.weekday, start: s.start, recurring: !!s.recurring, label: `${WEEKDAYS_SHORT[s.weekday]} ${s.start}` }))
+}
+
+// Fechas de la clase en los próximos 7 días que se pueden reservar y todavía no tiene.
+export function weekBookable(occurrences, classId, today) {
+  const end = addDays(today, 7)
+  return (occurrences || []).filter(o => o.classId === classId && o.state === 'open' && !o.cancelled && o.date < end
+    && !(o.myBooking && ['booked', 'waitlist'].includes(o.myBooking.status)))
+}
+
+// Aviso después de "Anotarme a todas": [texto, ...valores] para t().
+export function bookWeekText({ booked, waitlist }) {
+  const n = k => k === 1 ? '1 fecha' : `${k} fechas`
+  if (!booked && !waitlist) return ['Ya estabas en todas']
+  if (!waitlist) return ['Te anotaste a {0}', n(booked)]
+  if (!booked) return ['Quedaste en lista de espera en {0}', n(waitlist)]
+  return ['Te anotaste a {0} y quedaste en espera en {1}', n(booked), n(waitlist)]
 }

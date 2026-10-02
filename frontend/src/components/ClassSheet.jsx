@@ -1,20 +1,20 @@
 // Hoja de una clase para el socio (Plan → Clases, tarjeta de Inicio): qué se trabaja, anotarse o
-// cancelar, "Todas las semanas", recordatorios y "Agregar a mi calendario". Y la hoja
-// "Recordatorios para esta clase".
-import { useState } from 'react'
+// cancelar, "Anotarme a todas esta semana", "Fija" (los días que se reservan solos), recordatorios
+// y "Agregar a mi calendario". Y la hoja "Recordatorios para esta clase".
+import { useEffect, useState } from 'react'
 import { useUI } from '../store/useUI.js'
 import { useStore } from '../store/useStore.js'
 import { t, exerciseNameFor } from '../lib/i18n.js'
 import { errorText } from '../lib/errors.js'
 import { EXIDX } from '../lib/exercises.js'
-import { REMINDER_OPTIONS, reminderLabel, buttonState, capacityText, timeRange, intensityLabel, shortDay, weekdayOf, googleCalendarUrl, classesApi } from '../lib/classes.js'
+import { REMINDER_OPTIONS, reminderLabel, buttonState, capacityText, timeRange, intensityLabel, shortDay, googleCalendarUrl, classesApi, classSlotChips, weekBookable, bookWeekText } from '../lib/classes.js'
 import { IS_APPLE } from '../lib/api.js'
-import { Button, Switch } from './ui.jsx'
+import { Button } from './ui.jsx'
 import BodyMap from './BodyMap.jsx'
 import Icon from './Icon.jsx'
 
 const ui = () => useUI.getState()
-const WEEKDAY_NAMES = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado']
+const WEEKDAY_PLURAL = ['domingos', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábados']
 
 // "Hoy", "Mañana" o "Mié 7".
 export function dayLabel(date, today) {
@@ -61,29 +61,51 @@ async function cancelBooking(occ, { cancelHours, onChange, close }) {
 function ClassDetail({ occ: initial, today, tz, cancelHours, onChange, close }) {
   const [occ, setOcc] = useState(initial)
   const [busy, setBusy] = useState(false)
+  // Los días de la clase (para "Fija") y las fechas de esta semana que todavía puede reservar.
+  const [week, setWeek] = useState({ slots: [], bookable: [] })
   const body = useStore(s => s.S?.body) || 'male'
   const state = buttonState(occ)
   const mine = occ.myBooking && ['booked', 'waitlist'].includes(occ.myBooking.status) ? occ.myBooking : null
+  // La ventana de reserva trae la semana; una fecha fuera de ella se busca sola.
+  const load = async () => {
+    try {
+      const data = await classesApi.list()
+      setWeek({ slots: classSlotChips(data.slots, occ.classId), bookable: weekBookable(data.occurrences, occ.classId, data.today) })
+      const fresh = data.occurrences.find(o => o.key === occ.key) || (await classesApi.list(occ.date, 1)).occurrences.find(o => o.key === occ.key)
+      if (fresh) setOcc(fresh)
+    } catch { /* queda lo que había */ }
+  }
+  useEffect(() => { load() }, [])
   const refresh = async () => {
     onChange && onChange()
-    try {
-      const data = await classesApi.list(occ.date, 1)
-      const fresh = data.occurrences.find(o => o.key === occ.key)
-      if (fresh) setOcc(fresh)
-    } catch { /* la lista se recarga igual */ }
+    await load()
   }
   const primary = async () => {
     setBusy(true)
     await classAction(occ, { cancelHours, onChange: refresh })
     setBusy(false)
   }
-  const toggleRecurring = async on => {
+  const bookWeek = async () => {
+    setBusy(true)
     try {
-      const r = await classesApi.recurring(occ.slotId, on)
-      ui().toast(on ? t('Te anotamos todas las semanas') : t('Ya no te anotamos todas las semanas'))
-      if (on && r.booked) await refresh(); else setOcc(o => ({ ...o, recurring: on }))
-    } catch (e) { ui().toast(errorText(e, t('No se pudo guardar'))) }
+      const [text, ...args] = bookWeekText(await classesApi.bookWeek(occ.classId))
+      ui().toast(t(text, ...args))
+      await refresh()
+    } catch (e) { ui().toast(errorText(e, t('No se pudo anotar'))) }
+    setBusy(false)
   }
+  const toggleFixed = async slot => {
+    const on = !slot.recurring
+    const mark = value => setWeek(w => ({ ...w, slots: w.slots.map(s => s.id === slot.id ? { ...s, recurring: value } : s) }))
+    mark(on)
+    try {
+      await classesApi.recurring(slot.id, on)
+      const days = t(WEEKDAY_PLURAL[slot.weekday])
+      ui().toast(on ? t('Te anotamos solos todos los {0} a las {1}', days, slot.start) : t('Ya no te anotamos los {0} a las {1}', days, slot.start))
+      await refresh()
+    } catch (e) { mark(!on); ui().toast(errorText(e, t('No se pudo guardar'))) }
+  }
+  const otherDates = week.bookable.filter(o => o.key !== occ.key)
   const log = occ.log || {}
   return <div className="class-sheet">
     <div className="class-sheet-head">
@@ -115,9 +137,17 @@ function ClassDetail({ occ: initial, today, tz, cancelHours, onChange, close }) 
       {mine && <div className="muted small class-sheet-status">{mine.status === 'waitlist' ? t('Estás n.º {0} en la lista de espera.', mine.waitlistPos) : t('Tenés tu lugar.')}</div>}
     </div>
 
-    {occ.slotId && <div className="branding-lock">
-      <div><div>{t('Todas las semanas')}</div><div className="small dim">{t('Te anotamos solos en cada {0} a las {1}.', t(WEEKDAY_NAMES[weekdayOf(occ.date)]), occ.movedFrom || occ.start)}</div></div>
-      <Switch checked={!!occ.recurring} onChange={toggleRecurring} label={t('Todas las semanas')} />
+    {otherDates.length > 0 && <div className="class-week">
+      <Button variant="tinted" icon="calendar" disabled={busy} onClick={bookWeek}>{t('Anotarme a todas esta semana')}</Button>
+      <div className="small dim">{week.bookable.map(o => `${dayLabel(o.date, today)} ${o.start}`).join(' · ')}</div>
+    </div>}
+
+    {week.slots.length > 0 && <div className="class-fixed">
+      <div>{t('Fija')}</div>
+      <div className="small dim">{t('Marcá los días y te anotamos solos cada semana.')}</div>
+      <div className="chips" role="group" aria-label={t('Días fijos')}>
+        {week.slots.map(s => <button key={s.id} type="button" className={'chip' + (s.recurring ? ' on' : '')} aria-pressed={s.recurring} onClick={() => toggleFixed(s)}>{s.label}</button>)}
+      </div>
     </div>}
 
     {mine && <div className="class-sheet-links">

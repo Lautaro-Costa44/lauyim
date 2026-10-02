@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { dayReminderPush, gymFeePush, restTimerPush, testPush } from './push-messages.js';
+import { billingDuePush, dayReminderPush, gymFeePush, restTimerPush, testPush } from './push-messages.js';
 
 test('localizes every server-generated notification in Spanish', () => {
   assert.deepEqual(restTimerPush('es'), {
@@ -10,31 +10,50 @@ test('localizes every server-generated notification in Spanish', () => {
   });
   assert.deepEqual(testPush('es'), {
     title: 'lauyim',
-    body: 'Notificación de prueba ✅ — así se muestran las alertas.',
+    body: 'Así te van a llegar los avisos ✅',
     tag: 'test',
   });
-  assert.deepEqual(dayReminderPush('es', { name: 'Rutina A', emoji: '💪' }), {
-    title: '💪 Rutina A hoy',
-    body: 'Está en tu plan — vamos 💪',
+  assert.deepEqual(dayReminderPush('es', { name: 'Piernas', emoji: 'dumbbell' }), {
+    title: 'Hoy toca Piernas 🏋️',
+    body: 'Está en tu plan. ¡Vamos!',
     tag: 'day-reminder',
   });
+  assert.equal(dayReminderPush('es', null).title, 'Hoy toca entrenar 🏋️');
 });
 
 test('keeps the existing English copy as the fallback', () => {
-  assert.equal(dayReminderPush('en', null).title, 'Workout planned today');
+  assert.deepEqual(dayReminderPush('en', { name: 'Legs' }), { title: 'Legs today 🏋️', body: "It's on your plan. Let's go!", tag: 'day-reminder' });
+  assert.equal(dayReminderPush('en', null).title, 'Workout day 🏋️');
   assert.equal(restTimerPush('unknown').title, 'Descanso terminado 💪');
-  assert.equal(testPush(undefined).body, 'Notificación de prueba ✅ — así se muestran las alertas.');
+  assert.equal(testPush(undefined).body, 'Así te van a llegar los avisos ✅');
+  assert.equal(testPush('en').body, 'This is how your alerts will look ✅');
+});
+
+test('ningún aviso usa rayas ni el tú, y lleva un emoji como mucho', async () => {
+  const mod = await import('./push-messages.js');
+  const base = { name: 'Spinning', date: '2026-10-05', today: '2026-10-05', start: '19:00', movedFrom: '18:00', teacher: 'Caro', prevTeacher: 'Juli', room: 'Sala 2', minutes: 60, sessionId: 'x', waitlistPos: 2, until: '2026-10-12' };
+  const all = [
+    mod.restTimerPush('es'), mod.testPush('es'), mod.dayReminderPush('es', { name: 'A' }), mod.dayReminderPush('es', null),
+    mod.gymFeePush('es', 'monthly'), mod.billingDuePush('es', 0), mod.billingDuePush('es', 3), mod.classReminderPush(base), mod.classAfterPush(base),
+    ...['moved', 'teacher', 'cancelled', 'promoted', 'waitlisted', 'added', 'fee_blocked', 'penalty_blocked'].map(k => mod.classChangePush(k, base))
+  ];
+  for (const p of all) {
+    const text = `${p.title} ${p.body}`;
+    assert.doesNotMatch(text, /—|–/, text);
+    assert.doesNotMatch(text, /\b(Recuerda|Paga|Renueva)\b/, text);
+    assert.ok([...text.matchAll(/\p{Extended_Pictographic}/gu)].length <= 1, text);
+  }
 });
 
 test('localizes gym-fee reminders and preserves their frequency', () => {
   assert.deepEqual(gymFeePush('es', 'bimonthly'), {
     title: 'Cuota del gimnasio',
-    body: 'Recuerda pagar tu cuota bimensual.',
+    body: 'Recordá pagar tu cuota bimensual.',
     tag: 'gym-fee',
   });
   assert.deepEqual(gymFeePush('es', 'quarterly'), {
     title: 'Cuota del gimnasio',
-    body: 'Recuerda pagar tu cuota trimestral.',
+    body: 'Recordá pagar tu cuota trimestral.',
     tag: 'gym-fee',
   });
   assert.deepEqual(gymFeePush('en', 'quarterly'), {
@@ -49,39 +68,61 @@ test('localizes gym-fee reminders and preserves their frequency', () => {
   });
 });
 
-test('recordatorio de clase: título con nombre y hora; profe, sala y cuánto falta', async () => {
+test('vencimiento de la cuota: el título dice cuándo vence', () => {
+  assert.deepEqual(billingDuePush('es', 0), { title: 'Tu cuota vence hoy', body: 'Renovala en recepción para seguir entrenando.', tag: 'billing-due' });
+  assert.equal(billingDuePush('es', 1).title, 'Tu cuota vence mañana');
+  assert.equal(billingDuePush('es', 3).title, 'Tu cuota vence en 3 días');
+  assert.equal(billingDuePush('en', 0).title, 'Your membership is due today');
+  assert.equal(billingDuePush('en', 2).body, 'Renew it at the front desk to keep training.');
+});
+
+test('recordatorio de clase: el título dice cuánto falta; día, hora, profe y sala', async () => {
   const { classReminderPush } = await import('./push-messages.js');
   const base = { name: 'Spinning', date: '2026-10-05', today: '2026-10-05', start: '19:00', movedFrom: null, teacher: 'Caro', room: 'Sala 2', minutes: 60, sessionId: 'x1' };
   assert.deepEqual(classReminderPush(base), {
-    title: 'Spinning · 19:00', body: 'Hoy con Caro, en Sala 2. Empieza en 1 hora.', tag: 'class-x1',
+    title: 'Spinning empieza en 1 hora', body: 'Hoy a las 19:00 con Caro, en Sala 2.', tag: 'class-x1',
     data: { redirectUrl: '/#/plan/clases?d=2026-10-05' }
   });
-  assert.equal(classReminderPush({ ...base, room: '', minutes: 15 }).body, 'Hoy con Caro. Empieza en 15 minutos.');
-  assert.equal(classReminderPush({ ...base, teacher: '', minutes: 120 }).body, 'Hoy, en Sala 2. Empieza en 2 horas.');
-  assert.equal(classReminderPush({ ...base, teacher: '', room: '', minutes: 30 }).body, 'Hoy. Empieza en 30 minutos.');
-  assert.equal(classReminderPush({ ...base, minutes: 90 }).body, 'Hoy con Caro, en Sala 2. Empieza en 1 h 30 min.');
-  assert.equal(classReminderPush({ ...base, start: '01:00', date: '2026-10-06', minutes: 300 }).body, 'Mañana con Caro, en Sala 2. Empieza en 5 horas.');
-  assert.equal(classReminderPush({ ...base, start: '20:00', movedFrom: '19:00' }).body, 'Hoy cambió a las 20:00. Empieza en 1 hora.');
+  assert.equal(classReminderPush({ ...base, minutes: 15 }).title, 'Spinning empieza en 15 minutos');
+  assert.equal(classReminderPush({ ...base, minutes: 120 }).title, 'Spinning empieza en 2 horas');
+  assert.equal(classReminderPush({ ...base, minutes: 90 }).title, 'Spinning empieza en 1 h 30 min');
+  assert.equal(classReminderPush({ ...base, room: '' }).body, 'Hoy a las 19:00 con Caro.');
+  assert.equal(classReminderPush({ ...base, teacher: '' }).body, 'Hoy a las 19:00, en Sala 2.');
+  assert.equal(classReminderPush({ ...base, teacher: '', room: '' }).body, 'Hoy a las 19:00.');
+  assert.equal(classReminderPush({ ...base, start: '01:00', date: '2026-10-06', minutes: 300 }).body, 'Mañana a las 01:00 con Caro, en Sala 2.');
+  // Cambio de horario: lo dice y no pierde profe ni sala.
+  assert.equal(classReminderPush({ ...base, start: '20:00', movedFrom: '19:00' }).body, 'Hoy a las 20:00 (cambió, era a las 19:00) con Caro, en Sala 2.');
 });
 
-test('avisos de cambios de una clase', async () => {
+test('avisos de cambios de una clase: el título dice qué pasó', async () => {
   const { classChangePush } = await import('./push-messages.js');
   const base = { name: 'Spinning', date: '2026-10-05', today: '2026-10-05', start: '20:00', movedFrom: '19:00', teacher: 'Juli', sessionId: 'x1' };
-  assert.equal(classChangePush('moved', base).body, 'Spinning de hoy pasa a las 20:00 (era a las 19:00).');
+  const moved = classChangePush('moved', base);
+  assert.deepEqual([moved.title, moved.body], ['Cambio de horario: Spinning', 'Spinning de hoy pasa a las 20:00 (era a las 19:00).']);
   assert.equal(classChangePush('moved', { ...base, date: '2026-10-07' }).body, 'Spinning del miércoles 7 pasa a las 20:00 (era a las 19:00).');
-  assert.equal(classChangePush('teacher', base).body, 'Spinning de hoy lo da Juli.');
-  assert.equal(classChangePush('cancelled', base).body, 'Spinning de hoy se suspende.');
-  assert.equal(classChangePush('promoted', base).body, 'Entraste a Spinning de hoy a las 20:00: se liberó un lugar.');
-  assert.equal(classChangePush('waitlisted', base).body, 'Spinning de hoy está llena: quedaste en la lista de espera.');
-  assert.equal(classChangePush('cancelled', base).title, 'Spinning · 20:00');
-  assert.deepEqual(classChangePush('cancelled', base).data, { redirectUrl: '/#/plan/clases?d=2026-10-05' });
+  const teacher = classChangePush('teacher', { ...base, prevTeacher: 'Caro' });
+  assert.deepEqual([teacher.title, teacher.body], ['Cambio de profe: Spinning', 'Spinning de hoy a las 20:00 lo da Juli en lugar de Caro.']);
+  assert.equal(classChangePush('teacher', base).body, 'Spinning de hoy a las 20:00 lo da Juli.');
+  assert.equal(classChangePush('teacher', { ...base, teacher: null, prevTeacher: 'Caro' }).body, 'Spinning de hoy a las 20:00 ya no lo da Caro.');
+  const cancelled = classChangePush('cancelled', base);
+  assert.deepEqual([cancelled.title, cancelled.body], ['Se suspendió Spinning', 'Spinning de hoy a las 20:00 no se da. Tu lugar quedó liberado.']);
+  const promoted = classChangePush('promoted', base);
+  assert.deepEqual([promoted.title, promoted.body], ['¡Entraste a Spinning!', 'Se liberó un lugar para hoy a las 20:00. Si no podés ir, cancelala así entra otra persona.']);
+  const waitlisted = classChangePush('waitlisted', { ...base, waitlistPos: 3 });
+  assert.deepEqual([waitlisted.title, waitlisted.body], ['Lista de espera: Spinning', 'Spinning de hoy a las 20:00 está llena. Quedaste n.º 3 en la lista de espera; si se libera un lugar, te avisamos.']);
+  assert.equal(classChangePush('waitlisted', base).body, 'Spinning de hoy a las 20:00 está llena. Quedaste en la lista de espera; si se libera un lugar, te avisamos.');
+  assert.deepEqual(cancelled.data, { redirectUrl: '/#/plan/clases?d=2026-10-05' });
+  assert.equal(cancelled.tag, 'class-x1');
 });
 
 test('avisos de clases: anotado a mano, cuota vencida, penalización y después de la clase', async () => {
   const { classChangePush, classAfterPush } = await import('./push-messages.js');
   const base = { name: 'Spinning', date: '2026-10-06', today: '2026-10-05', start: '19:00', sessionId: 'x1' };
-  assert.equal(classChangePush('added', base).body, 'Te anotaron a Spinning de mañana a las 19:00.');
-  assert.equal(classChangePush('fee_blocked', { ...base, date: '2026-10-09' }).body, 'No te anotamos a Spinning del viernes 9: tu cuota está vencida. Regularizala en recepción.');
-  assert.match(classChangePush('penalty_blocked', base).body, /^No te anotamos a Spinning de mañana: por ausencias/);
-  assert.deepEqual(classAfterPush(base), { title: '¿Fuiste a Spinning?', body: 'Contanos y sumala a tu historial.', tag: 'class-x1', data: { redirectUrl: '/#/plan/clases?d=2026-10-06' } });
+  const added = classChangePush('added', base);
+  assert.deepEqual([added.title, added.body], ['Te anotaron a Spinning', 'Tenés lugar mañana a las 19:00. Si no podés ir, cancelala desde la app.']);
+  const fee = classChangePush('fee_blocked', { ...base, date: '2026-10-09' });
+  assert.deepEqual([fee.title, fee.body], ['No pudimos anotarte', 'Tu reserva fija de Spinning del viernes 9 no se hizo porque tu cuota está vencida. Regularizala en recepción.']);
+  const penalty = classChangePush('penalty_blocked', { ...base, until: '2026-10-12' });
+  assert.deepEqual([penalty.title, penalty.body], ['No pudimos anotarte', 'Tu reserva fija de Spinning de mañana no se hizo por las ausencias. Podés volver a reservar desde el 12/10.']);
+  assert.deepEqual(classAfterPush(base), { title: '¿Fuiste a Spinning?', body: 'Tocá para sumarla a tu historial y calificarla.', tag: 'class-x1', data: { redirectUrl: '/#/plan/clases?d=2026-10-06' } });
 });

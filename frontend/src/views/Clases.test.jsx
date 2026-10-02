@@ -24,7 +24,8 @@ const occ = (extra = {}) => ({
   state: 'open', recurring: false, myBooking: null, ...extra
 })
 let occurrences
-const listBody = () => ({ enabled: true, today: TODAY, from: TODAY, days: 3, settings: { bookAheadDays: 3, cancelHours: 2 }, reminderDefaults: [60], occurrences })
+const SLOTS = [{ id: 's3', classId: 'c1', weekday: 3, start: '08:00', recurring: true }, { id: 's1', classId: 'c1', weekday: 1, start: '19:00', recurring: false }]
+const listBody = () => ({ enabled: true, today: TODAY, from: TODAY, days: 3, settings: { bookAheadDays: 3, cancelHours: 2 }, reminderDefaults: [60], slots: SLOTS, occurrences })
 
 let container, root
 const tick = () => act(async () => { await new Promise(r => setTimeout(r, 10)) })
@@ -51,6 +52,7 @@ beforeEach(async () => {
   occurrences = [occ(), occ({ key: 's2:' + TODAY, slotId: 's2', start: '08:00', end: '08:45', name: 'Funcional', booked: 12, capacity: 12 }), occ({ key: 's1:2026-10-06', date: '2026-10-06' })]
   apiMock.mockReset()
   apiMock.mockImplementation((url, opts) => {
+    if (url === '/api/classes/book-week') return Promise.resolve({ booked: 2, waitlist: 1 })
     if (url.startsWith('/api/classes/book')) return Promise.resolve({ booking: { id: 'b1', status: 'booked', waitlistPos: null, reminders: [60] } })
     if (url.startsWith('/api/classes/reminders')) return Promise.resolve({ booking: { id: 'b1', status: 'booked', reminders: JSON.parse(opts.body).reminders } })
     if (url.startsWith('/api/classes')) return Promise.resolve(listBody())
@@ -91,14 +93,52 @@ describe('Plan → Clases', () => {
 })
 
 describe('hoja de la clase y recordatorios', () => {
-  it('anotado: cancelar, todas las semanas, recordatorios y calendario', async () => {
-    classSheet(occ({ myBooking: { id: 'b1', status: 'booked', waitlistPos: null, reminders: [60] } }), { today: TODAY })
+  it('anotado: cancelar, fija, recordatorios y calendario', async () => {
+    occurrences[0] = occ({ myBooking: { id: 'b1', status: 'booked', waitlistPos: null, reminders: [60] } })
+    classSheet(occurrences[0], { today: TODAY })
     const { host, unmount } = await openLastSheet()
     expect(host.textContent).toContain('Cancelar mi lugar')
-    expect(host.textContent).toContain('Todas las semanas')
+    await act(async () => { await new Promise(r => setTimeout(r, 10)) })
+    expect(host.textContent).toContain('Fija')
     expect(host.textContent).toContain('Recordatorios: 1 h')
     expect([...host.querySelectorAll('button')].some(b => b.textContent.trim() === 'Agregar a mi calendario')).toBe(true)
     expect(host.textContent).toContain('Intensidad: Alta')
+    await unmount(); host.remove()
+  })
+
+  it('"Fija": un chip por día de la clase; tocarlo lo agrega o lo saca', async () => {
+    classSheet(occ(), { today: TODAY })
+    const { host, unmount } = await openLastSheet()
+    await act(async () => { await new Promise(r => setTimeout(r, 10)) })
+    const chips = [...host.querySelectorAll('.class-fixed .chip')]
+    expect(chips.map(c => [c.textContent, c.getAttribute('aria-pressed')])).toEqual([['Lun 19:00', 'false'], ['Mié 08:00', 'true']])
+    await act(async () => { chips[0].click() })
+    await act(async () => { await new Promise(r => setTimeout(r, 10)) })
+    expect(apiMock).toHaveBeenCalledWith('/api/classes/recurring', { method: 'POST', body: JSON.stringify({ slotId: 's1' }) })
+    expect(useUI.getState().toastMsg).toBe('Te anotamos solos todos los lunes a las 19:00')
+    await act(async () => { [...host.querySelectorAll('.class-fixed .chip')][1].click() })
+    expect(apiMock).toHaveBeenCalledWith('/api/classes/recurring/delete', { method: 'POST', body: JSON.stringify({ slotId: 's3' }) })
+    await unmount(); host.remove()
+  })
+
+  it('"Anotarme a todas esta semana": las fechas que faltan y un aviso con lo que pasó', async () => {
+    classSheet(occ(), { today: TODAY })
+    const { host, unmount } = await openLastSheet()
+    await act(async () => { await new Promise(r => setTimeout(r, 10)) })
+    expect(host.querySelector('.class-week .small').textContent).toBe('Hoy 19:00 · Hoy 08:00 · Mañana 19:00')
+    await act(async () => { [...host.querySelectorAll('button')].find(b => b.textContent.trim() === 'Anotarme a todas esta semana').click() })
+    await act(async () => { await new Promise(r => setTimeout(r, 10)) })
+    expect(apiMock).toHaveBeenCalledWith('/api/classes/book-week', { method: 'POST', body: JSON.stringify({ classId: 'c1' }) })
+    expect(useUI.getState().toastMsg).toBe('Te anotaste a 2 fechas y quedaste en espera en 1 fecha')
+    await unmount(); host.remove()
+  })
+
+  it('sin otras fechas esta semana, no ofrece anotarse a todas', async () => {
+    occurrences = [occ()]
+    classSheet(occ(), { today: TODAY })
+    const { host, unmount } = await openLastSheet()
+    await act(async () => { await new Promise(r => setTimeout(r, 10)) })
+    expect(host.querySelector('.class-week')).toBeNull()
     await unmount(); host.remove()
   })
 

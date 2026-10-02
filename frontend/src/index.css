@@ -2141,6 +2141,10 @@ button.wh-row{font:inherit;color:inherit;border:0;cursor:pointer}
 .class-sheet-map .bodymap{max-width:300px;width:100%}
 .class-sheet-actions{display:flex;flex-direction:column;gap:6px;margin:16px 0 4px}
 .class-sheet-links{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+.class-week{display:flex;flex-direction:column;gap:6px;margin-top:12px}
+.class-week .small{text-align:center}
+.class-fixed{margin-top:16px;padding:12px 14px;border-radius:14px;background:var(--surface-2)}
+.class-fixed .chips{margin-top:10px}
 .class-reminders{flex-wrap:wrap}
 .home-class{display:flex;align-items:center;gap:10px}
 .home-class .grow{min-width:0}

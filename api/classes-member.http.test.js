@@ -24,9 +24,9 @@ const db = await import('./database.js');
 const cdb = await import('./classes-db.js');
 db.initDatabase();
 db.createUser({ id: 'owner', name: 'Dueña', created: Date.now() });
-for (const id of ['ana', 'beto', 'caro', 'moroso']) db.createUser({ id, name: id === 'ana' ? 'Ana Pérez' : id, created: Date.now() });
+for (const id of ['ana', 'beto', 'caro', 'eva', 'moroso']) db.createUser({ id, name: id === 'ana' ? 'Ana Pérez' : id, created: Date.now() });
 const plan = db.createPlan({ name: 'Mensual', price: 20000, durationDays: 30 });
-for (const [id, due] of [['ana', 20], ['beto', 20], ['caro', 20], ['moroso', -10]]) db.setMemberBilling(id, { planId: plan.id, dueDate: addDays(today, due) });
+for (const [id, due] of [['ana', 20], ['beto', 20], ['caro', 20], ['eva', 20], ['moroso', -10]]) db.setMemberBilling(id, { planId: plan.id, dueDate: addDays(today, due) });
 const spinning = cdb.saveClassType({ name: 'Spinning', color: '#ff9f0a', icon: 'bike', description: 'Pedaleo', durationMin: 45, capacity: 1, teacherUserId: null, teacherName: 'Caro', room: 'Sala 2', logMode: 'muscles', log: { muscles: ['quadriceps'], intensity: 'high' } });
 const slot = cdb.saveClassSlot({ classId: spinning.id, weekday: weekdayOf(day), start: '19:00' });
 const otherSlot = cdb.saveClassSlot({ classId: spinning.id, weekday: weekdayOf(addDays(today, 3)), start: '08:00' });
@@ -157,4 +157,26 @@ test('recordatorios de entrada: se guardan y las reservas nuevas los usan', asyn
   assert.deepEqual((await list('caro')).reminderDefaults, [120, 15]);
   const r = await call('caro', 'POST', '/api/classes/book', { slotId: slot.id, date: day });
   assert.deepEqual(r.body.booking.reminders, [120, 15]);
+});
+
+test('los días de cada clase vienen con la lista, marcados si son fijos', async () => {
+  await call('eva', 'POST', '/api/classes/recurring', { slotId: otherSlot.id });
+  const slots = (await list('eva')).slots.filter(s => s.classId === spinning.id);
+  assert.deepEqual(slots.map(s => [s.id, s.start, s.recurring]).sort(), [[otherSlot.id, '08:00', true], [slot.id, '19:00', false]].sort());
+  assert.equal(slots.find(s => s.id === slot.id).weekday, weekdayOf(day));
+  await call('eva', 'POST', '/api/classes/recurring/delete', { slotId: otherSlot.id });
+});
+
+test('anotarme a todas esta semana: cada fecha abierta de la clase, las llenas a la lista de espera', async () => {
+  assert.equal((await call('eva', 'POST', '/api/classes/book-week', { classId: 'nada' })).status, 404);
+  assert.equal((await call('moroso', 'POST', '/api/classes/book-week', { classId: spinning.id })).status, 403);
+  const r = await call('eva', 'POST', '/api/classes/book-week', { classId: spinning.id });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  // Los dos bloques caen una vez en los próximos 7 días; la otra fecha ya la tenía (fija).
+  const mine = (await list('eva')).occurrences.filter(o => o.classId === spinning.id && ['booked', 'waitlist'].includes(o.myBooking?.status));
+  assert.deepEqual(mine.map(o => o.slotId).sort(), [otherSlot.id, slot.id].sort());
+  assert.equal(r.body.booked + r.body.waitlist, mine.filter(o => o.slotId === slot.id).length);
+  assert.equal(mine.find(o => o.slotId === slot.id).myBooking.status, 'waitlist');   // cupo 1, lleno
+  // Repetirlo no duplica nada.
+  assert.deepEqual((await call('eva', 'POST', '/api/classes/book-week', { classId: spinning.id })).body, { booked: 0, waitlist: 0 });
 });
