@@ -70,6 +70,7 @@ export default function AdminClases() {
           {canCreate && <Button size="sm" variant="primary" icon="plus" onClick={() => editType(null)}>{t('Nueva clase')}</Button>}
           {canCreate && editable.length > 0 && <Button size="sm" icon="calendar" onClick={() => looseClassSheet({ types: editable, today: data.today, onChange: reload })}>{t('Clase suelta')}</Button>}
           {editable.length > 0 && <Button size="sm" icon="list" onClick={listTypes}>{canManage ? t('Clases') : t('Mis clases')}</Button>}
+          <Button size="sm" icon="chart" onClick={classStatsSheet}>{t('Estadísticas')}</Button>
           {user?.owner && <Button size="sm" icon="gear" onClick={() => classSettingsSheet({ onChange: reload })}>{t('Ajustes')}</Button>}
         </div>
       </div>
@@ -163,3 +164,43 @@ function TypeList({ types, onEdit, onArchived, close }) {
     <Button variant="ghost" className="dim" onClick={close}>{t('Cerrar')}</Button>
   </div>
 }
+
+// Estadísticas de clases: por clase, por profe y por bloque (4 o 12 semanas). Las calificaciones
+// son promedios de quienes calificaron.
+const WEEKDAY_SHORT = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb']
+function StatsView({ close }) {
+  const [weeks, setWeeks] = useState(4)
+  const [data, setData] = useState(null)
+  useEffect(() => { setData(null); classesApi.stats(weeks).then(setData).catch(e => ui().toast(errorText(e, t('Failed to load')))) }, [weeks])
+  const rating = r => r.rating == null ? t('Sin calificaciones') : `★ ${r.rating} (${r.ratings})`
+  return <div className="class-stats-view">
+    <h3>{t('Estadísticas de clases')}</h3>
+    <div className="chips" role="group">{[4, 12].map(w => <button key={w} type="button" className={'chip nocap' + (weeks === w ? ' on' : '')} onClick={() => setWeeks(w)}>{t('{0} semanas', w)}</button>)}</div>
+    {!data ? <div className="dim small">{t('Loading…')}</div> : <>
+      <h4 className="sec">{t('Por clase')}</h4>
+      {data.classes.length === 0 ? <div className="dim small">{t('Todavía no hay clases dadas en este período.')}</div>
+        : <div className="list">{data.classes.map(c => <div key={c.classId} className="item">
+            <span className="class-dot" style={{ background: c.color }} aria-hidden="true" />
+            <div className="grow"><div className="tt">{c.name}</div>
+              <div className="ss">{[t('{0} fechas', c.sessions), t('{0}% ocupación', c.occupancy), t('{0} presentes', c.present), t('{0} ausentes', c.absent), t('{0} tardías', c.lateCancels)].join(' · ')}</div></div>
+            <span className="tag nocap">{rating(c)}</span>
+          </div>)}</div>}
+      {data.teachers.length > 0 && <>
+        <h4 className="sec">{t('Por profe')}</h4>
+        <div className="list">{data.teachers.map(p => <div key={p.name} className="item">
+          <div className="grow"><div className="tt">{p.name}</div><div className="ss">{[t('{0} clases', p.sessions), t('{0}% ocupación', p.occupancy)].join(' · ')}</div></div>
+          <span className="tag nocap">{rating(p)}</span>
+        </div>)}</div>
+      </>}
+      {data.slots.length > 0 && <>
+        <h4 className="sec">{t('Por día y hora')}</h4>
+        <div className="class-slot-stats">{data.slots.map(s => <div key={s.weekday + s.start} className="class-slot-stat" style={{ '--occ': s.occupancy / 100 }}>
+          <b>{WEEKDAY_SHORT[s.weekday]} {s.start}</b><span>{s.occupancy}%{s.withWaitlist ? ' · ' + t('lista de espera {0}', s.withWaitlist) : ''}</span>
+        </div>)}</div>
+      </>}
+    </>}
+    <div style={{ height: 10 }} />
+    <Button variant="ghost" className="dim" onClick={close}>{t('Cerrar')}</Button>
+  </div>
+}
+export const classStatsSheet = () => ui().openSheet(close => <StatsView close={close} />, { kind: 'panel' })
