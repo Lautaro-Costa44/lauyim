@@ -73,10 +73,19 @@ function SessionDetail({ occ: initial, canManage, users, teachers, onChange, clo
       {occ.room && <span><Icon name="house" /> {occ.room}</span>}
     </div>
 
-    <h4 className="sec">{t('Anotados')}</h4>
-    {!detail ? <div className="dim small">{t('Loading…')}</div>
-      : detail.booked.length === 0 ? <div className="dim small">{t('Nadie anotado todavía.')}</div>
-      : <div className="list">{detail.booked.map(p => <div key={p.bookingId} className="item"><div className="grow"><div className="tt">{p.name}</div></div>{p.addedBy && <span className="tag nocap">{t('a mano')}</span>}</div>)}</div>}
+    {/* Tomando lista, la lista de Presente / Ausente reemplaza a esta. */}
+    {mode !== 'roll' && <>
+      <h4 className="sec">{t('Anotados')}</h4>
+      {!detail ? <div className="dim small">{t('Loading…')}</div>
+        : detail.booked.length === 0 ? <div className="dim small">{t('Nadie anotado todavía.')}</div>
+        : <div className="list">{detail.booked.map(p => <div key={p.bookingId} className="item">
+            <div className="grow"><div className="tt">{p.name}</div></div>
+            {p.addedBy && <span className="tag nocap">{t('a mano')}</span>}
+            {p.status === 'attended' && <span className="tag nocap class-tag-present">{t('Presente')}</span>}
+            {p.status === 'absent' && <span className="tag nocap class-tag-absent">{t('Ausente')}</span>}
+          </div>)}</div>}
+    </>}
+    {mode === 'roll' && <h4 className="sec">{t('Tomar lista')}</h4>}
     {detail?.waitlist?.length > 0 && <>
       <h4 className="sec">{t('Lista de espera')}</h4>
       <div className="list">{detail.waitlist.map(p => <div key={p.bookingId} className="item"><span className="tag">{p.pos}</span><div className="grow"><div className="tt">{p.name}</div></div></div>)}</div>

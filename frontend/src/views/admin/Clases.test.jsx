@@ -176,3 +176,23 @@ describe('editor', () => {
     await unmount()
   })
 })
+
+describe('tomar lista', () => {
+  it('al tomar lista no se duplica: la lista de anotados se reemplaza por Presente / Ausente', async () => {
+    apiMock.mockImplementation(url => {
+      if (url.startsWith('/api/admin/classes/session?')) return Promise.resolve({ occurrence: occ(), canTakeAttendance: true, attendanceTaken: false, booked: [{ bookingId: 'b1', userId: 'ana', name: 'Ana', status: 'booked' }, { bookingId: 'b2', userId: 'beto', name: 'Beto', status: 'booked' }], waitlist: [] })
+      return Promise.resolve({ ok: true })
+    })
+    sessionSheet(occ(), { canManage: true, users: [], teachers: [] })
+    const { host, unmount } = await openLastSheet()
+    const names = () => [...host.querySelectorAll('.tt')].map(e => e.textContent)
+    expect(names()).toEqual(['Ana', 'Beto'])
+    await act(async () => { button(host, 'Tomar lista').click() })
+    expect(names()).toEqual(['Ana', 'Beto'])
+    expect(host.textContent).not.toContain('Anotados')
+    await act(async () => { button(host, 'Guardar lista').click() })
+    await tick()
+    expect(apiMock).toHaveBeenCalledWith('/api/admin/classes/sessions/attendance', { method: 'POST', body: JSON.stringify({ sessionId: 'x1', present: ['ana', 'beto'], absent: [] }) })
+    await unmount()
+  })
+})

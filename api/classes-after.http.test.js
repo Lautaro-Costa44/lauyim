@@ -115,3 +115,8 @@ test('penalización: prendida, quien faltó de más no reserva y ve hasta cuánd
   assert.equal((await call('caro', 'GET', '/api/classes')).body.penalty.until, addDays(yesterday, 7));
   assert.equal((await call('ana', 'POST', '/api/classes/book', { slotId: tomorrowSlot.id, date: addDays(today, 1) })).status, 200);
 });
+
+test('después de tomar lista el cupo sigue contando a presentes y ausentes', async () => {
+  const cal = (await call('owner', 'GET', `/api/admin/classes/calendar?from=${yesterday}&days=1`)).body;
+  assert.equal(cal.occurrences.find(o => o.sessionId === session.id).booked, 3);
+});

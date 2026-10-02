@@ -276,7 +276,7 @@ export function updateBooking(id, patch) {
   return getBooking(id);
 }
 
-export const countBooked = sessionId => Number(getDatabase().prepare("SELECT COUNT(*) AS n FROM class_bookings WHERE session_id = ? AND status = 'booked'").get(sessionId).n);
+export const countBooked = sessionId => Number(getDatabase().prepare("SELECT COUNT(*) AS n FROM class_bookings WHERE session_id = ? AND status IN ('booked', 'attended', 'absent')").get(sessionId).n);
 
 // Reserva (o lista de espera) en una transacción, así dos socios no se quedan con el último lugar.
 // Si ya tiene una activa, la devuelve (created: false). force: el staff anota aunque esté lleno.
@@ -284,7 +284,7 @@ export function bookOrWaitlist({ sessionId, userId, capacity, reminders = [60], 
   return inTransaction(db => {
     const existing = db.prepare('SELECT * FROM class_bookings WHERE session_id = ? AND user_id = ?').get(sessionId, userId);
     if (existing && ['booked', 'waitlist'].includes(existing.status)) return { booking: bookingFromRow(existing), created: false };
-    const booked = Number(db.prepare("SELECT COUNT(*) AS n FROM class_bookings WHERE session_id = ? AND status = 'booked'").get(sessionId).n);
+    const booked = Number(db.prepare("SELECT COUNT(*) AS n FROM class_bookings WHERE session_id = ? AND status IN ('booked', 'attended', 'absent')").get(sessionId).n);
     const full = booked >= capacity && !force;
     const pos = full ? Number(db.prepare("SELECT COALESCE(MAX(waitlist_pos), 0) AS n FROM class_bookings WHERE session_id = ? AND status = 'waitlist'").get(sessionId).n) + 1 : null;
     const status = full ? 'waitlist' : 'booked';
@@ -312,7 +312,7 @@ export function cancelAndPromote({ bookingId, kind, promote, capacity }) {
     db.prepare('UPDATE class_bookings SET status = ?, waitlist_pos = NULL, updated_at = ? WHERE id = ?').run(kind, now, bookingId);
     let promoted = null;
     if (promote && row.status === 'booked') {
-      const booked = Number(db.prepare("SELECT COUNT(*) AS n FROM class_bookings WHERE session_id = ? AND status = 'booked'").get(row.session_id).n);
+      const booked = Number(db.prepare("SELECT COUNT(*) AS n FROM class_bookings WHERE session_id = ? AND status IN ('booked', 'attended', 'absent')").get(row.session_id).n);
       const first = booked < capacity && db.prepare("SELECT * FROM class_bookings WHERE session_id = ? AND status = 'waitlist' ORDER BY waitlist_pos, rowid LIMIT 1").get(row.session_id);
       if (first) {
         db.prepare("UPDATE class_bookings SET status = 'booked', waitlist_pos = NULL, updated_at = ? WHERE id = ?").run(now, first.id);

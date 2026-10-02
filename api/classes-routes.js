@@ -193,7 +193,7 @@ export function classRoutes(d) {
     const map = {};
     for (const b of cdb.getBookingsForSessions(ids)) {
       const c = map[b.sessionId] ||= { booked: 0, waitlist: 0, lateCancels: 0 };
-      if (b.status === 'booked') c.booked++;
+      if (['booked', 'attended', 'absent'].includes(b.status)) c.booked++;
       else if (b.status === 'waitlist') c.waitlist++;
       else if (b.status === 'late_cancel') c.lateCancels++;
     }
