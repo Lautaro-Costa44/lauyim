@@ -117,7 +117,7 @@ export default function AdminLayout() {
       {!online || unreachable ? <div className="empty" role="status">
         <div className="ico"><Icon name="wifiOff" /></div>
         {t('Esta sección requiere conexión a internet')}
-        <br /><span className="dim small">{t('Se actualiza sola cuando vuelva la conexión.')}</span>
+        <br /><span className="dim small">{t('Se actualiza cuando vuelva la conexión.')}</span>
       </div> : <AdminContext.Provider value={ctx}>
         <Suspense fallback={<div className="page-loading" aria-busy="true" />}>
           <Routes>

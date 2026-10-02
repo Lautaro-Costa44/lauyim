@@ -47,6 +47,8 @@ describe('botón de una clase', () => {
     expect(buttonState({ ...occ, state: 'cancelled' })).toMatchObject({ key: 'cancelled', label: 'Suspendida', disabled: true })
     expect(buttonState({ ...occ, state: 'started' })).toMatchObject({ key: 'started', disabled: true })
     expect(buttonState({ ...occ, state: 'not_yet' })).toMatchObject({ key: 'not_yet', label: 'Todavía no abre', disabled: true })
+    // La profe no se anota a la clase que da.
+    expect(buttonState({ ...occ, teaching: true })).toMatchObject({ key: 'teaching', label: 'La das vos', disabled: true })
     // Ya empezó pero estoy anotado: se ve "Anotado".
     expect(buttonState({ ...occ, state: 'started', myBooking: { status: 'booked' } }).key).toBe('booked')
   })

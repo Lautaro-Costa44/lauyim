@@ -668,7 +668,7 @@ function ClassReminderDefaults({ toast }) {
     try { await classesApi.setReminderDefaults(next) } catch (e) { toast(errorText(e, t('No se pudo guardar'))) }
   }
   const toggle = m => save(chosen.includes(m) ? chosen.filter(x => x !== m) : CLASS_REMINDER_OPTIONS.filter(x => x === m || chosen.includes(x)))
-  return <Section title={t('Recordatorios de clases')} footer={t('Los que se ponen solos al anotarte a una clase. En cada reserva los podés cambiar.')}>
+  return <Section title={t('Recordatorios de clases')} footer={t('Se ponen al anotarte a una clase. En cada reserva los podés cambiar.')}>
     <div className="lrow" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 10, paddingTop: 13, paddingBottom: 14 }}>
       <div className="chips class-reminders" role="group" aria-label={t('Recordatorios de clases')}>
         {CLASS_REMINDER_OPTIONS.map(m => <button key={m} type="button" className={'chip' + (chosen.includes(m) ? ' on' : '')} aria-pressed={chosen.includes(m)} onClick={() => toggle(m)}>{t('{0} antes', reminderLabel(m))}</button>)}

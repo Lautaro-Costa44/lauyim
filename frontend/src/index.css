@@ -2145,6 +2145,7 @@ button.wh-row{font:inherit;color:inherit;border:0;cursor:pointer}
 .class-week .small{text-align:center}
 .class-fixed{margin-top:16px;padding:12px 14px;border-radius:14px;background:var(--surface-2)}
 .class-fixed .chips{margin-top:10px}
+.class-message .class-message-count{text-align:right;margin-top:-2px}
 .class-reminders{flex-wrap:wrap}
 .home-class{display:flex;align-items:center;gap:10px}
 .home-class .grow{min-width:0}

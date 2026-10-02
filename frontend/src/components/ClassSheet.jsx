@@ -1,5 +1,5 @@
 // Hoja de una clase para el socio (Plan → Clases, tarjeta de Inicio): qué se trabaja, anotarse o
-// cancelar, "Anotarme a todas esta semana", "Fija" (los días que se reservan solos), recordatorios
+// cancelar, "Anotarme a todas esta semana", "Fija" (los días que se reservan cada semana), recordatorios
 // y "Agregar a mi calendario". Y la hoja "Recordatorios para esta clase".
 import { useEffect, useState } from 'react'
 import { useUI } from '../store/useUI.js'
@@ -101,7 +101,7 @@ function ClassDetail({ occ: initial, today, tz, cancelHours, onChange, close }) 
     try {
       await classesApi.recurring(slot.id, on)
       const days = t(WEEKDAY_PLURAL[slot.weekday])
-      ui().toast(on ? t('Te anotamos solos todos los {0} a las {1}', days, slot.start) : t('Ya no te anotamos los {0} a las {1}', days, slot.start))
+      ui().toast(on ? t('Te anotamos todos los {0} a las {1}', days, slot.start) : t('Ya no te anotamos los {0} a las {1}', days, slot.start))
       await refresh()
     } catch (e) { mark(!on); ui().toast(errorText(e, t('No se pudo guardar'))) }
   }
@@ -144,7 +144,7 @@ function ClassDetail({ occ: initial, today, tz, cancelHours, onChange, close }) 
 
     {week.slots.length > 0 && <div className="class-fixed">
       <div>{t('Fija')}</div>
-      <div className="small dim">{t('Marcá los días y te anotamos solos cada semana.')}</div>
+      <div className="small dim">{t('Marcá los días y te anotamos cada semana.')}</div>
       <div className="chips" role="group" aria-label={t('Días fijos')}>
         {week.slots.map(s => <button key={s.id} type="button" className={'chip' + (s.recurring ? ' on' : '')} aria-pressed={s.recurring} onClick={() => toggleFixed(s)}>{s.label}</button>)}
       </div>

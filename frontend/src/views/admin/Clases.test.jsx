@@ -196,3 +196,49 @@ describe('tomar lista', () => {
     await unmount()
   })
 })
+
+describe('mensaje a los anotados', () => {
+  const detail = extra => ({ occurrence: occ(), canMessage: true, booked: [{ bookingId: 'b1', userId: 'ana', name: 'Ana', status: 'booked' }], waitlist: [{ bookingId: 'b2', userId: 'cami', name: 'Cami', pos: 1 }], ...extra })
+  it('la profe escribe, elige si va a la lista de espera y se manda como push', async () => {
+    apiMock.mockImplementation(url => {
+      if (url.startsWith('/api/admin/classes/session?')) return Promise.resolve(detail())
+      if (url === '/api/admin/classes/sessions/message') return Promise.resolve({ sent: 2, left: 2 })
+      return Promise.resolve({ ok: true })
+    })
+    sessionSheet(occ(), { canManage: false, users: [], teachers: [] })
+    const { host, unmount } = await openLastSheet()
+    await act(async () => { button(host, 'Mandar un mensaje a los anotados').click() })
+    expect(button(host, 'Mandar').disabled).toBe(true)
+    const area = host.querySelector('textarea')
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(area, 'Traigan toalla')
+      area.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+    expect(host.textContent).toContain('14/200')
+    expect(host.textContent).toContain('Les llega como notificación a 1 persona, con tu nombre.')
+    await act(async () => { host.querySelector('.class-message [role="switch"], .class-message input[type="checkbox"]').click() })
+    expect(host.textContent).toContain('a 2 personas')
+    await act(async () => { button(host, 'Mandar').click() })
+    await tick()
+    expect(apiMock).toHaveBeenCalledWith('/api/admin/classes/sessions/message', { method: 'POST', body: JSON.stringify({ sessionId: 'x1', slotId: 's1', date: TODAY, text: 'Traigan toalla', waitlist: true }) })
+    expect(useUI.getState().toastMsg).toBe('Mensaje enviado a 2 personas')
+    expect(host.querySelector('textarea')).toBeNull()
+    await unmount()
+  })
+
+  it('sin permiso o sin anotados no aparece', async () => {
+    apiMock.mockImplementation(url => url.startsWith('/api/admin/classes/session?') ? Promise.resolve(detail({ canMessage: false })) : Promise.resolve({}))
+    sessionSheet(occ(), { canManage: false, users: [], teachers: [] })
+    const { host, unmount } = await openLastSheet()
+    expect(button(host, 'Mandar un mensaje a los anotados')).toBeFalsy()
+    await unmount()
+  })
+
+  it('anotar a mano no ofrece a la profe de esa fecha', async () => {
+    sessionSheet(occ(), { canManage: true, users: [{ id: 'profe', name: 'Caro' }, { id: 'beto', name: 'Beto' }], teachers: [] })
+    const { host, unmount } = await openLastSheet()
+    await act(async () => { button(host, 'Anotar a mano').click() })
+    expect([...host.querySelectorAll('.member-form .tt')].map(e => e.textContent)).toEqual(['Beto'])
+    await unmount()
+  })
+})

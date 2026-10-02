@@ -126,3 +126,9 @@ test('avisos de clases: anotado a mano, cuota vencida, penalización y después 
   assert.deepEqual([penalty.title, penalty.body], ['No pudimos anotarte', 'Tu reserva fija de Spinning de mañana no se hizo por las ausencias. Podés volver a reservar desde el 12/10.']);
   assert.deepEqual(classAfterPush(base), { title: '¿Fuiste a Spinning?', body: 'Tocá para sumarla a tu historial y calificarla.', tag: 'class-x1', data: { redirectUrl: '/#/plan/clases?d=2026-10-06' } });
 });
+
+test('mensaje de la profe a los anotados: título con la clase, cuerpo con quién y el texto', async () => {
+  const { classMessagePush } = await import('./push-messages.js');
+  const p = classMessagePush({ name: 'Spinning', date: '2026-10-06', today: '2026-10-05', start: '10:00', sender: 'Caro', text: 'Traigan toalla', sessionId: 'x1' });
+  assert.deepEqual(p, { title: 'Spinning de mañana a las 10:00', body: 'Caro: Traigan toalla', tag: 'class-msg-x1', data: { redirectUrl: '/#/plan/clases?d=2026-10-06' } });
+});

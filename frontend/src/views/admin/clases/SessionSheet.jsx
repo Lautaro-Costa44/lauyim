@@ -5,7 +5,7 @@ import { useUI } from '../../../store/useUI.js'
 import { t } from '../../../lib/i18n.js'
 import { errorText } from '../../../lib/errors.js'
 import { capacityText, timeRange, shortDay, classesApi } from '../../../lib/classes.js'
-import { Button, Segmented, Switch, TextField } from '../../../components/ui.jsx'
+import { Button, Segmented, Switch, TextArea, TextField } from '../../../components/ui.jsx'
 import Icon from '../../../components/Icon.jsx'
 
 const ui = () => useUI.getState()
@@ -14,7 +14,7 @@ const conflictToast = (e, fallback) => ui().toast(e?.data?.conflicts?.[0]?.text 
 function SessionDetail({ occ: initial, canManage, users, teachers, onChange, close }) {
   const [occ, setOcc] = useState(initial)
   const [detail, setDetail] = useState(null)
-  const [mode, setMode] = useState(null)   // 'add' | 'time' | 'teacher'
+  const [mode, setMode] = useState(null)   // 'add' | 'time' | 'teacher' | 'roll' | 'message'
   const [q, setQ] = useState('')
   const [time, setTime] = useState(initial.start)
   const [teacher, setTeacher] = useState(initial.teacherUserId || '')
@@ -57,7 +57,8 @@ function SessionDetail({ occ: initial, canManage, users, teachers, onChange, clo
     }
   }))
   const taken = new Set([...(detail?.booked || []), ...(detail?.waitlist || [])].map(p => p.userId))
-  const matches = (users || []).filter(u => !u.disabled && !taken.has(u.id) && (!q.trim() || u.name.toLowerCase().includes(q.trim().toLowerCase()))).slice(0, 8)
+  // La profe de la fecha no se anota a su propia clase.
+  const matches = (users || []).filter(u => !u.disabled && !taken.has(u.id) && u.id !== occ.teacherUserId && (!q.trim() || u.name.toLowerCase().includes(q.trim().toLowerCase()))).slice(0, 8)
 
   return <div className="class-session">
     <div className="class-sheet-head">
@@ -98,6 +99,9 @@ function SessionDetail({ occ: initial, canManage, users, teachers, onChange, clo
       <div className="small dim">{t('Esta fecha está suspendida: los anotados ya recibieron el aviso.')}</div>
       <Button variant="danger" icon="trash" onClick={hide}>{t('Quitar de la vista')}</Button>
     </div>}
+    {detail?.canMessage && detail.booked.length + detail.waitlist.length > 0 && (mode === 'message'
+      ? <MessageForm occ={occ} detail={detail} onDone={() => setMode(null)} />
+      : !mode && <div className="class-session-actions"><Button variant="tinted" icon="bell" onClick={() => setMode('message')}>{t('Mandar un mensaje a los anotados')}</Button></div>)}
     {!occ.cancelled && <div className="class-session-actions">
       {occ.canBook && (mode === 'add'
         ? <div className="member-form">
@@ -247,6 +251,40 @@ function RollCall({ detail, sessionId, onDone, onCancel }) {
     <div className="class-inline-buttons">
       <Button size="sm" variant="plain" onClick={onCancel}>{t('Cancel')}</Button>
       <Button size="sm" variant="primary" disabled={busy} onClick={save}>{t('Guardar lista')}</Button>
+    </div>
+  </div>
+}
+
+// Mensaje de la profe a los anotados de esta fecha (push). Hasta 3 por fecha; la lista de espera,
+// si quiere.
+const MESSAGE_MAX = 200
+function MessageForm({ occ, detail, onDone }) {
+  const [text, setText] = useState('')
+  const [waitlist, setWaitlist] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const count = detail.booked.length + (waitlist ? detail.waitlist.length : 0)
+  const send = async () => {
+    setBusy(true)
+    try {
+      const r = await classesApi.messageSession(occ, text.trim(), waitlist)
+      ui().toast(r.sent === 1 ? t('Mensaje enviado a 1 persona') : t('Mensaje enviado a {0} personas', r.sent))
+      onDone()
+    } catch (e) { ui().toast(errorText(e, t('No se pudo mandar'))) }
+    setBusy(false)
+  }
+  return <div className="class-session-actions class-message">
+    <h4 className="sec">{t('Mensaje a los anotados')}</h4>
+    <TextArea name="class-message" rows={3} maxLength={MESSAGE_MAX} value={text} onChange={e => setText(e.target.value)}
+      placeholder={t('Ej.: Traigan toalla y botella de agua.')} aria-label={t('Mensaje a los anotados')} />
+    <div className="small dim class-message-count">{text.length}/{MESSAGE_MAX}</div>
+    {detail.waitlist.length > 0 && <div className="branding-lock">
+      <div>{t('También a la lista de espera ({0})', detail.waitlist.length)}</div>
+      <Switch checked={waitlist} onChange={setWaitlist} label={t('También a la lista de espera')} />
+    </div>}
+    <div className="small dim">{t('Les llega como notificación a {0}, con tu nombre.', count === 1 ? t('1 persona') : t('{0} personas', count))}</div>
+    <div className="class-inline-buttons">
+      <Button size="sm" variant="plain" onClick={onDone}>{t('Cancel')}</Button>
+      <Button size="sm" variant="primary" disabled={busy || !text.trim() || count === 0} onClick={send}>{t('Mandar')}</Button>
     </div>
   </div>
 }

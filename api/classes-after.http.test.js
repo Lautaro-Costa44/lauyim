@@ -30,6 +30,9 @@ const slot = cdb.saveClassSlot({ classId: spinning.id, weekday: weekdayOf(yester
 const session = cdb.ensureClassSession({ classId: spinning.id, slotId: slot.id, date: yesterday, start: '10:00' });
 const ids = {};
 for (const u of ['ana', 'beto', 'caro']) ids[u] = cdb.bookOrWaitlist({ sessionId: session.id, userId: u, capacity: 10 }).booking.id;
+// La profe quedó anotada a su propia clase (antes se podía): no cuenta para cupo, lista ni estadísticas.
+ids.profe = cdb.bookOrWaitlist({ sessionId: session.id, userId: 'profe', capacity: 10 }).booking.id;
+cdb.updateBooking(ids.profe, { status: 'attended', attendanceSource: 'member', rating: 1 });
 // Caro faltó tres veces en la última semana (para la penalización).
 for (let i = 2; i <= 4; i++) {
   const s = cdb.ensureClassSession({ classId: spinning.id, slotId: null, date: addDays(today, -i), start: '08:00' });
@@ -119,4 +122,39 @@ test('penalización: prendida, quien faltó de más no reserva y ve hasta cuánd
 test('después de tomar lista el cupo sigue contando a presentes y ausentes', async () => {
   const cal = (await call('owner', 'GET', `/api/admin/classes/calendar?from=${yesterday}&days=1`)).body;
   assert.equal(cal.occurrences.find(o => o.sessionId === session.id).booked, 3);
+});
+
+test('la profe no se anota a la clase que da y no cuenta en la asistencia', async () => {
+  const tomorrow = addDays(today, 1);
+  const r = await call('profe', 'POST', '/api/classes/book', { slotId: tomorrowSlot.id, date: tomorrow });
+  assert.deepEqual([r.status, r.body.error], [409, 'own_class']);
+  const mine = (await call('profe', 'GET', `/api/classes?from=${tomorrow}&days=1`)).body.occurrences.find(o => o.slotId === tomorrowSlot.id);
+  assert.equal(mine.teaching, true);
+  assert.deepEqual((await call('profe', 'POST', '/api/classes/book-week', { classId: spinning.id })).body, { booked: 0, waitlist: 0 });
+  const add = await call('owner', 'POST', '/api/admin/classes/sessions/add', { slotId: tomorrowSlot.id, date: tomorrow, userId: 'profe' });
+  assert.deepEqual([add.status, add.body.error], [409, 'own_class']);
+  // Su reserva vieja de ayer: ni en la lista, ni en "¿Fuiste?".
+  const detail = (await call('profe', 'GET', `/api/admin/classes/session?sessionId=${session.id}`)).body;
+  assert.ok(!detail.booked.some(p => p.userId === 'profe'));
+  assert.equal((await call('profe', 'GET', '/api/classes/pending')).body.log.length, 0);
+});
+
+test('mensaje de la profe: a los anotados (y a la lista de espera si quiere), con límite por fecha', async () => {
+  const tomorrow = addDays(today, 1);
+  const occ = (await call('owner', 'GET', `/api/admin/classes/calendar?from=${tomorrow}&days=1`)).body.occurrences.find(o => o.slotId === tomorrowSlot.id);
+  const body = extra => ({ sessionId: occ.sessionId, text: 'Traigan toalla', ...extra });
+  assert.equal((await call('ana', 'POST', '/api/admin/classes/sessions/message', body())).status, 403);
+  assert.equal((await call('profe', 'POST', '/api/admin/classes/sessions/message', body({ text: '   ' }))).status, 400);
+  assert.equal((await call('profe', 'POST', '/api/admin/classes/sessions/message', body({ text: 'x'.repeat(201) }))).status, 400);
+  const detail = (await call('profe', 'GET', `/api/admin/classes/session?sessionId=${occ.sessionId}`)).body;
+  assert.equal(detail.canMessage, true);
+  for (let i = 0; i < 3; i++) {
+    const r = await call('profe', 'POST', '/api/admin/classes/sessions/message', body({ waitlist: true }));
+    assert.deepEqual([r.status, r.body.sent], [200, 1], JSON.stringify(r.body));   // ana (la única anotada)
+  }
+  const limit = await call('profe', 'POST', '/api/admin/classes/sessions/message', body());
+  assert.deepEqual([limit.status, limit.body.error], [429, 'message_limit']);
+  // Una clase que ya pasó: no.
+  const old = await call('profe', 'POST', '/api/admin/classes/sessions/message', { sessionId: session.id, text: 'Gracias' });
+  assert.deepEqual([old.status, old.body.error], [409, 'class_over']);
 });

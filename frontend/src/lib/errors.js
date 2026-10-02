@@ -49,6 +49,10 @@ export const ERROR_TEXTS = {
   booking_penalty: 'Por ausencias no podés reservar por unos días.',
   attendance_closed: 'Ya no se puede cambiar la asistencia de esa clase.',
   rating_closed: 'Ya no se puede calificar esa clase.',
+  own_class: 'Esa clase la da esa persona: no se anota.',
+  class_over: 'Esa clase ya terminó o se suspendió.',
+  no_recipients: 'No hay nadie anotado para avisarle.',
+  message_limit: 'Ya mandaste 3 mensajes para esta fecha.',
   // passkeys e ingreso
   challenge_expired: 'La solicitud venció. Intentá de nuevo.',
   passkey_verify_failed: 'No se pudo verificar la passkey. Intentá de nuevo.',

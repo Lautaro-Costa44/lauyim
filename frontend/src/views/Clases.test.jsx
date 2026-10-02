@@ -115,7 +115,7 @@ describe('hoja de la clase y recordatorios', () => {
     await act(async () => { chips[0].click() })
     await act(async () => { await new Promise(r => setTimeout(r, 10)) })
     expect(apiMock).toHaveBeenCalledWith('/api/classes/recurring', { method: 'POST', body: JSON.stringify({ slotId: 's1' }) })
-    expect(useUI.getState().toastMsg).toBe('Te anotamos solos todos los lunes a las 19:00')
+    expect(useUI.getState().toastMsg).toBe('Te anotamos todos los lunes a las 19:00')
     await act(async () => { [...host.querySelectorAll('.class-fixed .chip')][1].click() })
     expect(apiMock).toHaveBeenCalledWith('/api/classes/recurring/delete', { method: 'POST', body: JSON.stringify({ slotId: 's3' }) })
     await unmount(); host.remove()

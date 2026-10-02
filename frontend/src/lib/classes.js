@@ -38,7 +38,8 @@ export function googleCalendarUrl(occ, tz) {
 export const conflictMessages = result => result ? [...(result.blocking || []), ...(result.warnings || [])].map(c => c.text) : []
 
 // Botón de una fecha para el socio: { key, label, disabled }. Una reserva cancelada no cuenta.
-export function buttonState({ state, booked, capacity, myBooking }) {
+export function buttonState({ state, booked, capacity, myBooking, teaching }) {
+  if (teaching) return { key: 'teaching', label: 'La das vos', disabled: true }
   const mine = myBooking && ['booked', 'waitlist'].includes(myBooking.status) ? myBooking : null
   if (mine?.status === 'booked') return { key: 'booked', label: 'Anotado', disabled: false }
   if (mine?.status === 'waitlist') return { key: 'waiting', label: `En espera (n.º ${mine.waitlistPos})`, disabled: false }
@@ -80,6 +81,7 @@ export const classesApi = {
   overlapCheck: body => post('/api/admin/classes/overlap-check', body),
   calendar: (from, days) => api(`/api/admin/classes/calendar?from=${from}&days=${days}`),
   session: occ => api(`/api/admin/classes/session?${occQuery(occ)}`),
+  messageSession: (occ, text, waitlist) => post('/api/admin/classes/sessions/message', { sessionId: occ.sessionId, slotId: occ.slotId, date: occ.date, text, waitlist }),
   addToSession: (occ, userId) => post('/api/admin/classes/sessions/add', { sessionId: occ.sessionId, slotId: occ.slotId, date: occ.date, userId }),
   changeSession: body => post('/api/admin/classes/sessions/change', body),
   hideSession: sessionId => post('/api/admin/classes/sessions/hide', { sessionId }),

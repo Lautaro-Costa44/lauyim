@@ -120,3 +120,8 @@ export function classChangePush(kind, { name, date, today, start, movedFrom, tea
 export function classAfterPush({ name, date, sessionId }) {
   return { title: `¿Fuiste a ${name}?`, body: 'Tocá para sumarla a tu historial y calificarla.', ...classData(date, sessionId) };
 }
+
+// Mensaje de la profe a los anotados: "Spinning de mañana a las 10:00" / "Caro: Traigan toalla".
+export function classMessagePush({ name, date, today, start, sender, text, sessionId }) {
+  return { title: `${name} ${dayRef(date, today)} a las ${start}`, body: `${sender}: ${text}`, tag: `class-msg-${sessionId}`, data: { redirectUrl: `/#/plan/clases?d=${date}` } };
+}
