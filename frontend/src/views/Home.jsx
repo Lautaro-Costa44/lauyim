@@ -118,7 +118,11 @@ export default function Home() {
   return <div className="narrow">
     <div className="hdr">
       <div><h1>{user ? t('Hi {0}', user.name) : (brand?.appName || 'lauyim')}</h1><div className="sub">{today.toLocaleDateString(dateLocale(), { weekday: 'long', day: 'numeric', month: 'long' })}</div></div>
-      <button className="iconbtn" data-tour="settings-btn" onClick={() => nav('/settings')} aria-label={t('Settings')}><Icon name="gear" /></button>
+      <div className="hdr-actions">
+        {/* Quien tiene un rol con acceso al panel: atajo al lado de la rueda (el ícono de Ajustes). */}
+        {user?.admin && <button className="iconbtn" onClick={() => nav('/admin')} aria-label={t('Admin dashboard')} title={t('Admin dashboard')}><Icon name="wrench" /></button>}
+        <button className="iconbtn" data-tour="settings-btn" onClick={() => nav('/settings')} aria-label={t('Settings')}><Icon name="gear" /></button>
+      </div>
     </div>
 
     {/* Tu semana: progreso, racha (la llama abre su hoja), los días con sus íconos y Hoy. */}

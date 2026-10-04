@@ -152,6 +152,15 @@ describe('clases en las vistas', () => {
     await streak.unmount()
   })
 
+  it('atajo al panel de administración: solo para quien tiene acceso', async () => {
+    await mount(<Home />)
+    expect(container.querySelector('[aria-label="Panel de administración"]')).toBeNull()
+    await act(async () => root.unmount()); container.remove()
+    useStore.setState({ user: { id: 'profe', admin: true } })
+    await mount(<Home />)
+    expect(container.querySelector('[aria-label="Panel de administración"]')).toBeTruthy()
+  })
+
   it('calendario: punto de clase en el día', async () => {
     calendarSheet(TODAY)
     const { host, unmount } = await openLastSheet()
