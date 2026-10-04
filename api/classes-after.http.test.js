@@ -23,8 +23,9 @@ const db = await import('./database.js');
 const cdb = await import('./classes-db.js');
 db.initDatabase();
 db.createUser({ id: 'owner', name: 'Dueña', created: Date.now() });
-for (const id of ['profe', 'ana', 'beto', 'caro']) db.createUser({ id, name: id, created: Date.now() });
+for (const id of ['profe', 'ana', 'beto', 'caro', 'recep']) db.createUser({ id, name: id, created: Date.now() });
 db.setUserRole('profe', 'coach');
+db.setUserRole('recep', 'coach');
 const spinning = cdb.saveClassType({ name: 'Spinning', color: '#ff9f0a', icon: 'bike', description: '', durationMin: 45, capacity: 10, teacherUserId: 'profe', teacherName: '', room: 'Sala 2', logMode: 'muscles', log: { muscles: ['quadriceps'], intensity: 'high' } });
 const slot = cdb.saveClassSlot({ classId: spinning.id, weekday: weekdayOf(yesterday), start: '10:00' });
 const session = cdb.ensureClassSession({ classId: spinning.id, slotId: slot.id, date: yesterday, start: '10:00' });
@@ -33,11 +34,13 @@ for (const u of ['ana', 'beto', 'caro']) ids[u] = cdb.bookOrWaitlist({ sessionId
 // La profe quedó anotada a su propia clase (antes se podía): no cuenta para cupo, lista ni estadísticas.
 ids.profe = cdb.bookOrWaitlist({ sessionId: session.id, userId: 'profe', capacity: 10 }).booking.id;
 cdb.updateBooking(ids.profe, { status: 'attended', attendanceSource: 'member', rating: 1 });
-// Caro faltó tres veces en la última semana (para la penalización).
+// Caro faltó tres veces en la última semana (para la penalización); recep (del staff) también.
 for (let i = 2; i <= 4; i++) {
   const s = cdb.ensureClassSession({ classId: spinning.id, slotId: null, date: addDays(today, -i), start: '08:00' });
-  const { booking } = cdb.bookOrWaitlist({ sessionId: s.id, userId: 'caro', capacity: 10 });
-  cdb.updateBooking(booking.id, { status: 'absent', attendanceSource: 'timeout' });
+  for (const userId of ['caro', 'recep']) {
+    const { booking } = cdb.bookOrWaitlist({ sessionId: s.id, userId, capacity: 10 });
+    cdb.updateBooking(booking.id, { status: 'absent', attendanceSource: 'timeout' });
+  }
 }
 // Una clase en curso (empezó hace 10 minutos), con Ana anotada.
 const clockNow = gymClock(Date.now(), 'America/Argentina/Buenos_Aires');
@@ -122,6 +125,12 @@ test('penalización: prendida, quien faltó de más no reserva y ve hasta cuánd
   assert.deepEqual([r.status, r.body.error, r.body.count], [403, 'booking_penalty', 4]);
   assert.equal((await call('caro', 'GET', '/api/classes')).body.penalty.until, addDays(yesterday, 7));
   assert.equal((await call('ana', 'POST', '/api/classes/book', { slotId: tomorrowSlot.id, date: addDays(today, 1) })).status, 200);
+  // El staff no se penaliza, aunque haya faltado lo mismo.
+  assert.equal((await call('recep', 'GET', '/api/classes')).body.penalty, null);
+  assert.equal((await call('owner', 'GET', '/api/admin/classes/member?userId=recep')).body.penalty, null);
+  const staff = await call('recep', 'POST', '/api/classes/book', { slotId: tomorrowSlot.id, date: addDays(today, 1) });
+  assert.equal(staff.status, 200, JSON.stringify(staff.body));
+  assert.equal((await call('recep', 'POST', '/api/classes/cancel', { bookingId: staff.body.booking.id })).status, 200);
 });
 
 test('después de tomar lista el cupo sigue contando a presentes y ausentes', async () => {

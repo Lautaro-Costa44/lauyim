@@ -55,14 +55,15 @@ const occOfSession = session => session ? occOfKey(session.date, session.slotId 
 
 // Lo que server.js le pasa a classRoutes y usan también las reservas fijas y los recordatorios del
 // scheduler (sin server, en los tests del scheduler, nadie está bloqueado). La zona es la de cuotas.
-let deps = { isMembershipBlocked: () => false, gymTz: () => getBillingSettings(getDatabase()).gym_tz };
+let deps = { isMembershipBlocked: () => false, isStaff: () => false, gymTz: () => getBillingSettings(getDatabase()).gym_tz };
 export const classClock = (ms = Date.now()) => gymClock(ms, deps.gymTz());
 const clockNow = classClock;
 
-// Penalización vigente del socio (o null).
+// Penalización vigente del socio (o null). El staff no se penaliza: sus ausencias no lo bloquean.
 export function penaltyNow(userId, today = clockNow().date) {
   const penalty = classSettingsNow().penalty;
   if (!penalty.on) return null;
+  if (deps.isStaff(getUserById(userId))) return null;
   // Si el staff la levantó, las ausencias de ese día o antes no cuentan.
   const reset = cdb.getPenaltyReset(userId);
   const dates = cdb.absenceDates(userId, addDays(today, -penalty.windowDays)).filter(date => !reset || date > reset);
@@ -224,9 +225,9 @@ export function sendClassReminders({ send, now = clockNow() } = {}) {
 }
 
 export function classRoutes(d) {
-  // d: { json, readBody, readSession, requireAdmin, requireOwner, audit, sendPush, can, gymTz, isMembershipBlocked, isInactiveAccount }
+  // d: { json, readBody, readSession, requireAdmin, requireOwner, audit, sendPush, can, gymTz, isMembershipBlocked, isStaff, isInactiveAccount }
   const { json, readBody } = d;
-  deps = { isMembershipBlocked: d.isMembershipBlocked, gymTz: d.gymTz };
+  deps = { isMembershipBlocked: d.isMembershipBlocked, isStaff: d.isStaff || (() => false), gymTz: d.gymTz };
   const now = () => gymClock(Date.now(), d.gymTz());
   const settings = classSettingsNow;
   const notify = (userIds, kind, occ, extra = {}) => {

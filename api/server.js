@@ -4421,7 +4421,7 @@ const routes = {
     json(res, 200, { ok: true });
   },
   // Clases grupales (classes-routes.js).
-  ...classRoutes({ json, readBody, readSession, requireAdmin, requireOwner, audit, sendPush, can, isMembershipBlocked, isInactiveAccount, gymTz: () => billingSettingsNow().gym_tz }),
+  ...classRoutes({ json, readBody, readSession, requireAdmin, requireOwner, audit, sendPush, can, isMembershipBlocked, isStaff: user => !!user && isStaff(user), isInactiveAccount, gymTz: () => billingSettingsNow().gym_tz }),
 };
 
 http.createServer(async (req, res) => {
