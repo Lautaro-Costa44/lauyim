@@ -44,8 +44,12 @@ case "\$1" in
   listremotes) printf 'gcrypt: crypt\ngplain: drive\n' ;;
   copy) mkdir -p "\$(p "\$3")"; if [[ -f "\$2" ]]; then cp "\$2" "\$(p "\$3")/"; else cp "\$(p "\$2")" "\$3/"; fi ;;
   delete) echo "\$@" >> "$T/rclone-delete.log" ;;
-  lsf) ls "\$(p "\$2")" ;;
-  lsl) ls -l "\$(p "\$2")" ;;
+  lsf|lsl)
+    cmd="\$1"; dir="\$(p "\$2")"; shift 2; pat='*'
+    while [[ \$# -gt 0 ]]; do [[ "\$1" == --include ]] && { pat="\$2"; shift; }; shift; done
+    [[ -d "\$dir" ]] || exit 0
+    (cd "\$dir" && find . -type f -name "\$pat" | sed 's|^\./||' | sort | while read -r f; do
+      [[ "\$cmd" == lsl ]] && echo "1 2026-01-01 00:00:00 \$f" || echo "\$f"; done) ;;
 esac
 STUB
 chmod +x "$T/bin/"*
@@ -58,14 +62,34 @@ msg="$(BACKUP_REMOTE=gplain:lauyim bash "$ROOT/scripts/backup.sh" 2>&1)"; rc=$?
 [[ $rc -eq 2 && "$msg" == *"no crypt"* ]] && ok "remote no crypt rechazado" || ko "remote no crypt ($rc: $msg)"
 # 3. Remote inexistente.
 BACKUP_REMOTE=nada:x bash "$ROOT/scripts/backup.sh" 2>/dev/null; [[ $? -eq 2 ]] && ok "remote inexistente sale con 2" || ko "remote inexistente"
-# 4. Backup bueno.
-BACKUP_REMOTE=gcrypt:lauyim bash "$ROOT/scripts/backup.sh"; rc=$?
-pkg="$(ls "$T/remote/lauyim/prod/" 2>/dev/null | head -1)"
+# 4. Backup bueno, un miércoles: solo a daily/.
+BACKUP_DATE=2026-10-07 BACKUP_REMOTE=gcrypt:lauyim bash "$ROOT/scripts/backup.sh"; rc=$?
+pkg="$(ls "$T/remote/lauyim/prod/daily/" 2>/dev/null | head -1)"
 if [[ $rc -eq 0 && "$pkg" == prod_*.tar.gz ]]; then
-  files="$(tar -tzf "$T/remote/lauyim/prod/$pkg" | sed 's|^[^/]*/||' | sort | tr '\n' ' ')"
+  files="$(tar -tzf "$T/remote/lauyim/prod/daily/$pkg" | sed 's|^[^/]*/||' | sort | tr '\n' ' ')"
   [[ "$files" == " MANIFEST.sha256 audit.log gym.db secret vapid.json " ]] && ok "paquete completo" || ko "contenido del paquete: $files"
-  grep -q -- "--min-age 7d" "$T/rclone-delete.log" && ok "rotación después de subir" || ko "rotación"
+  [[ ! -d "$T/remote/lauyim/prod/weekly" && ! -d "$T/remote/lauyim/prod/monthly" ]] && ok "un miércoles no hay semanal ni mensual" || ko "miércoles con semanal o mensual"
+  grep -q -- "lauyim/prod/daily --min-age 7d" "$T/rclone-delete.log" && ok "rotación de los diarios (7 días)" || ko "rotación diaria: $(cat "$T/rclone-delete.log")"
+  grep -q -- "lauyim/prod --min-age 7d" "$T/rclone-delete.log" && ok "los paquetes viejos de la raíz rotan como diarios" || ko "rotación de la raíz"
+  # Sin --max-depth 1, la rotación de la raíz entraría a weekly/ y monthly/ y los borraría a los 7 días.
+  [[ "$(grep -c -- "--max-depth 1" "$T/rclone-delete.log")" == "$(wc -l < "$T/rclone-delete.log")" ]] && ok "cada rotación se queda en su carpeta" || ko "rotación sin --max-depth 1"
 else ko "backup bueno ($rc)"; fi
+# 4b. Un lunes: también a weekly/ (rota a las 4 semanas). Un día 1: también a monthly/ (6 meses).
+rm -f "$T/rclone-delete.log"
+BACKUP_DATE=2026-10-05 BACKUP_REMOTE=gcrypt:lauyim bash "$ROOT/scripts/backup.sh"; rc=$?
+[[ $rc -eq 0 && -n "$(ls "$T/remote/lauyim/prod/weekly/" 2>/dev/null)" && ! -d "$T/remote/lauyim/prod/monthly" ]] \
+  && grep -q -- "lauyim/prod/weekly --min-age 28d" "$T/rclone-delete.log" && ok "lunes: copia semanal y rotación de 28 días" || ko "lunes ($rc: $(cat "$T/rclone-delete.log"))"
+rm -f "$T/rclone-delete.log"
+BACKUP_DATE=2026-10-01 BACKUP_REMOTE=gcrypt:lauyim bash "$ROOT/scripts/backup.sh"; rc=$?
+[[ $rc -eq 0 && -n "$(ls "$T/remote/lauyim/prod/monthly/" 2>/dev/null)" ]] \
+  && grep -q -- "lauyim/prod/monthly --min-age 186d" "$T/rclone-delete.log" && ok "día 1: copia mensual y rotación de 6 meses" || ko "día 1 ($rc: $(cat "$T/rclone-delete.log"))"
+# 4c. BACKUP_KEEP_WEEKLY=0 apaga las semanales; un valor inválido es un error de configuración.
+rm -rf "$T/remote/lauyim/prod/weekly"
+BACKUP_KEEP_WEEKLY=0 BACKUP_DATE=2026-10-05 BACKUP_REMOTE=gcrypt:lauyim bash "$ROOT/scripts/backup.sh"; rc=$?
+[[ $rc -eq 0 && ! -d "$T/remote/lauyim/prod/weekly" ]] && ok "BACKUP_KEEP_WEEKLY=0 no guarda semanales" || ko "KEEP_WEEKLY=0 ($rc)"
+BACKUP_KEEP_MONTHLY=x BACKUP_REMOTE=gcrypt:lauyim bash "$ROOT/scripts/backup.sh" 2>/dev/null; [[ $? -eq 2 ]] && ok "BACKUP_KEEP_MONTHLY inválido sale con 2" || ko "KEEP_MONTHLY inválido"
+BACKUP_DATE=2026-10-05 BACKUP_REMOTE=gcrypt:lauyim bash "$ROOT/scripts/backup.sh"
+pkg="daily/$(ls "$T/remote/lauyim/prod/daily/" | sort | tail -1)"
 [[ -z "$(ls "$T/c/tmp")" ]] && ok "sin temporales en el contenedor" || ko "quedaron temporales en el contenedor"
 # 5. Contenedor caído: código 1.
 BACKUP_INSTANCES="prod|otro" BACKUP_REMOTE=gcrypt:lauyim bash "$ROOT/scripts/backup.sh" 2>/dev/null; [[ $? -eq 1 ]] && ok "contenedor caído sale con 1" || ko "contenedor caído"
@@ -78,13 +102,19 @@ msg="$(BACKUP_REMOTE=gcrypt:lauyim bash "$ROOT/scripts/backup.sh" 2>&1)"; rc=$?
 [[ $rc -eq 3 && "$msg" == *"rclone copy"*"403"* && ! -f "$T/rclone-delete.log" ]] && ok "rclone falla: código 3, mensaje y sin rotación" || ko "rclone falla ($rc: $msg)"
 mv "$T/bin/rclone.real" "$T/bin/rclone"
 
-# 7. Restore del último paquete.
+# 7. Restore del último paquete (el más nuevo de daily/, weekly/, monthly/ y la raíz).
+cp "$T/remote/lauyim/prod/$pkg" "$T/remote/lauyim/prod/prod_2026-01-01_02-00-00.tar.gz"
+list="$(BACKUP_REMOTE=gcrypt:lauyim bash "$ROOT/scripts/restore.sh" --list prod 2>&1)"
+[[ "$list" == *daily/prod_* && "$list" == *weekly/prod_* && "$list" == *monthly/prod_* && "$list" == *" prod_2026-01-01"* ]] && ok "--list muestra las tres carpetas y la raíz" || ko "--list: $list"
 cd "$T"
 BACKUP_REMOTE=gcrypt:lauyim bash "$ROOT/scripts/restore.sh" --instance prod --target "$T/restored" > /dev/null 2>"$T/restore.err"; rc=$?
 if [[ $rc -eq 0 ]] && cmp -s "$T/restored/secret" "$T/c/data/secret" && cmp -s "$T/restored/vapid.json" "$T/c/data/vapid.json"; then
   n="$(node -e "const {DatabaseSync}=require('node:sqlite');console.log(new DatabaseSync('$T/restored/gym.db').prepare('select count(*) n from users').get().n)" 2>/dev/null)"
   [[ "$n" == 1 ]] && ok "restore completo" || ko "restore: gym.db sin datos"
 else ko "restore ($rc: $(cat "$T/restore.err"))"; fi
+# 7b. --file con carpeta.
+BACKUP_REMOTE=gcrypt:lauyim bash "$ROOT/scripts/restore.sh" --instance prod --file "$pkg" --target "$T/restored-b" > /dev/null 2>&1 \
+  && cmp -s "$T/restored-b/secret" "$T/c/data/secret" && ok "--file daily/<paquete>" || ko "--file con carpeta"
 # 8. Destino no vacío sin --force.
 BACKUP_REMOTE=gcrypt:lauyim bash "$ROOT/scripts/restore.sh" --instance prod --target "$T/restored" > /dev/null 2>&1; [[ $? -eq 2 ]] && ok "destino no vacío rechazado" || ko "destino no vacío"
 # 9. Paquete alterado: sha256 no coincide.

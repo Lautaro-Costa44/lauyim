@@ -4,8 +4,8 @@
 # restaurar producción es un paso manual (docs/backup-restore.md).
 #
 # Uso:
-#   restore.sh --list <instancia>                          lista los paquetes del remote
-#   restore.sh --instance <instancia> [--file <paquete>]   baja el último (o el indicado) y lo restaura
+#   restore.sh --list <instancia>                          lista los paquetes del remote (daily/, weekly/, monthly/)
+#   restore.sh --instance <instancia> [--file <paquete>]   baja el último (o el indicado, ej. weekly/<paquete>)
 #   restore.sh --package <archivo.tar.gz>                  restaura un paquete ya descargado
 # Opciones:
 #   --target <dir>  destino (default: ./restore-test-data). Tiene que estar vacío o no existir.
@@ -67,6 +67,7 @@ if [[ "$MODE" != local ]]; then
 fi
 
 if [[ "$MODE" == list ]]; then
+  # Sin --max-depth: lista daily/, weekly/, monthly/ y los paquetes viejos sueltos en la raíz.
   rclone lsl "$SRC" --include "${INSTANCE}_*.tar.gz" || die 3 "rclone lsl ${SRC} falló."
   exit 0
 fi
@@ -76,15 +77,16 @@ trap 'rm -rf "$WORK"' EXIT
 
 if [[ "$MODE" == remote ]]; then
   if [[ "$FILE" == latest ]]; then
-    # Los nombres llevan la fecha (instancia_AAAA-MM-DD_HH-MM-SS): el último en orden es el más nuevo.
-    FILE="$(rclone lsf "$SRC" --files-only --include "${INSTANCE}_*.tar.gz" | sort | tail -n 1)" \
-      || die 3 "rclone lsf ${SRC} falló."
+    # Los nombres llevan la fecha (instancia_AAAA-MM-DD_HH-MM-SS): el último en orden es el más nuevo,
+    # en cualquiera de las carpetas (se ordena por el nombre, no por la carpeta).
+    list="$(rclone lsf "$SRC" -R --files-only --include "${INSTANCE}_*.tar.gz")" || die 3 "rclone lsf ${SRC} falló."
+    FILE="$(printf '%s\n' "$list" | awk -F/ 'NF { print $NF "\t" $0 }' | sort | tail -n 1 | cut -f2)"
     [[ -n "$FILE" ]] || die 1 "no hay paquetes de ${INSTANCE} en ${SRC}."
   fi
-  [[ "$FILE" =~ ^[A-Za-z0-9._-]+\.tar\.gz$ ]] || die 2 "nombre de paquete inválido: ${FILE}"
+  [[ "$FILE" =~ ^((daily|weekly|monthly)/)?[A-Za-z0-9._-]+\.tar\.gz$ ]] || die 2 "nombre de paquete inválido: ${FILE}"
   echo "Bajando ${SRC}/${FILE}…"
   rclone copy "${SRC}/${FILE}" "$WORK" || die 3 "rclone copy ${SRC}/${FILE} falló."
-  PACKAGE="${WORK}/${FILE}"
+  PACKAGE="${WORK}/${FILE##*/}"
 fi
 
 [[ -f "$PACKAGE" ]] || die 2 "no existe el paquete ${PACKAGE}."

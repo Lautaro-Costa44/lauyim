@@ -101,10 +101,21 @@ Recién con el paso 1 terminado y probado (1.3):
 |---|---|---|
 | `BACKUP_REMOTE` | — (obligatoria) | destino, ej. `gdrive-crypt:lauyim`. Cada instancia va en su carpeta (`…/prod`, `…/dev`) |
 | `BACKUP_INSTANCES` | `prod\|lauyim-api-1 dev\|lauyim-dev-api-1` | `nombre\|contenedor` separados por espacio. Un gym nuevo = una entrada más |
-| `BACKUP_RETENTION_DAYS` | `7` | se borran del remote los paquetes de más días, solo después de una subida buena |
+| `BACKUP_KEEP_DAILY` | `7` | días que se guardan los diarios (`BACKUP_RETENTION_DAYS`, el nombre viejo, sigue andando) |
+| `BACKUP_KEEP_WEEKLY` | `4` | semanas que se guardan las copias de los lunes (`0` = no se guardan) |
+| `BACKUP_KEEP_MONTHLY` | `6` | meses que se guardan las copias de los días 1 (`0` = no se guardan) |
 | `BACKUP_LOG_FILE` | `backup.log` junto al script | log |
 | `BACKUP_ALLOW_UNENCRYPTED` | — | `1` permite un remote que no es crypt (no usar con datos reales) |
 | `BACKUP_PING_URL` | — | URL de un check de healthchecks.io: avisa inicio y código de salida con el log de la corrida (`docs/monitoreo.md`) |
+
+**Qué se guarda:** cada noche el paquete va a `<instancia>/daily/`; los lunes, también a
+`<instancia>/weekly/`; los días 1, también a `<instancia>/monthly/`. Con los valores por defecto
+quedan 7 diarios, 4 semanales y 6 mensuales (unas 17 copias por instancia): un problema que se
+nota a las dos semanas o a los tres meses todavía tiene una copia buena de antes. Cada carpeta rota
+por su cuenta, solo después de una subida buena. Los paquetes de antes de esta separación (sueltos
+en `<instancia>/`) rotan como diarios y desaparecen solos a los 7 días. El aviso de privacidad dice
+que las copias se guardan hasta 6 meses: si se cambia `BACKUP_KEEP_MONTHLY`, cambiar también ese
+texto.
 
 Códigos de salida: `0` ok · `1` falló el dump de alguna instancia (contenedor caído, integridad,
 archivo faltante) · `2` configuración (falta la variable, rclone, el remote, o no es crypt) ·
@@ -126,10 +137,10 @@ Hacerlo **al menos una vez por mes**: un backup que nunca se restauró no es un 
 cd ~/hub/lauyim                     # la copia del repo con docker-compose.restore-test.yml
 export BACKUP_REMOTE=gdrive-crypt:lauyim
 
-scripts/restore.sh --list prod      # paquetes disponibles
+scripts/restore.sh --list prod      # paquetes disponibles (daily/, weekly/, monthly/)
 scripts/restore.sh --instance prod  # baja el último, verifica sha256 + integrity_check,
                                     # y lo deja en ./restore-test-data
-# o uno puntual:  scripts/restore.sh --instance prod --file prod_2026-09-26_02-00-00.tar.gz
+# o uno puntual:  scripts/restore.sh --instance prod --file weekly/prod_2026-09-28_02-00-00.tar.gz
 # o uno ya bajado: scripts/restore.sh --package ~/prod_….tar.gz
 
 docker compose -f docker-compose.restore-test.yml -p restore-test up -d

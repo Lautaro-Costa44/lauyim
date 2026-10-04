@@ -6,7 +6,10 @@
 # Variables:
 #   BACKUP_REMOTE            obligatorio. Remote de rclone de destino, ej. gdrive-crypt:lauyim
 #   BACKUP_INSTANCES         "nombre|contenedor ..." (default: "prod|lauyim-api-1 dev|lauyim-dev-api-1")
-#   BACKUP_RETENTION_DAYS    días que se conservan en el remote (default 7)
+#   BACKUP_KEEP_DAILY        días que se conservan los diarios (default 7; BACKUP_RETENTION_DAYS, el
+#                            nombre viejo, sigue andando)
+#   BACKUP_KEEP_WEEKLY       semanas que se conservan las copias de los lunes (default 4; 0 = no se guardan)
+#   BACKUP_KEEP_MONTHLY      meses que se conservan las copias de los días 1 (default 6; 0 = no se guardan)
 #   BACKUP_LOG_FILE          log (default: backup.log junto a este script)
 #   BACKUP_ALLOW_UNENCRYPTED 1 = permitir un remote que no es crypt (no recomendado: hay DNIs y secretos)
 #   BACKUP_PING_URL          opcional. URL de un check de healthchecks.io (https://hc-ping.com/<uuid>):
@@ -19,6 +22,10 @@
 # Códigos de salida: 0 ok · 1 falló el dump/empaquetado de alguna instancia
 #                    2 configuración inválida · 3 falló rclone (subida o rotación)
 #
+# Remote: <BACKUP_REMOTE>/<instancia>/daily/, weekly/ y monthly/. Cada noche el paquete va a daily/;
+# los lunes, también a weekly/; los días 1, también a monthly/. Cada carpeta rota por su cuenta. Los
+# paquetes de antes de esta separación (sueltos en <instancia>/) rotan como diarios.
+#
 # Cron (crontab -e del usuario que corre docker):
 #   0 2 * * * BACKUP_REMOTE=gdrive-crypt:lauyim BACKUP_PING_URL=https://hc-ping.com/<uuid> /home/lauyyii/hub/scripts/backup.sh
 set -u -o pipefail
@@ -27,7 +34,11 @@ umask 077
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LOG_FILE="${BACKUP_LOG_FILE:-${SCRIPT_DIR}/backup.log}"
 REMOTE="${BACKUP_REMOTE:-}"
-RETENTION_DAYS="${BACKUP_RETENTION_DAYS:-7}"
+KEEP_DAILY="${BACKUP_KEEP_DAILY:-${BACKUP_RETENTION_DAYS:-7}}"
+KEEP_WEEKLY="${BACKUP_KEEP_WEEKLY:-4}"
+KEEP_MONTHLY="${BACKUP_KEEP_MONTHLY:-6}"
+# Fecha de la corrida para decidir semanal y mensual (BACKUP_DATE=AAAA-MM-DD solo para los tests).
+RUN_DATE="${BACKUP_DATE:-$(date '+%Y-%m-%d')}"
 PING_URL="${BACKUP_PING_URL:-}"
 read -r -a INSTANCES <<< "${BACKUP_INSTANCES:-prod|lauyim-api-1 dev|lauyim-dev-api-1}"
 TIMESTAMP="$(date '+%Y-%m-%d_%H-%M-%S')"
@@ -78,8 +89,16 @@ check_config() {
     error "BACKUP_REMOTE='$REMOTE' no es un remote de rclone (tiene que ser nombre:ruta)."
     return 1
   fi
-  if ! [[ "$RETENTION_DAYS" =~ ^[1-9][0-9]*$ ]]; then
-    error "BACKUP_RETENTION_DAYS='$RETENTION_DAYS' tiene que ser un entero positivo."
+  if ! [[ "$KEEP_DAILY" =~ ^[1-9][0-9]*$ ]]; then
+    error "BACKUP_KEEP_DAILY='$KEEP_DAILY' tiene que ser un entero positivo."
+    return 1
+  fi
+  if ! [[ "$KEEP_WEEKLY" =~ ^[0-9]+$ && "$KEEP_MONTHLY" =~ ^[0-9]+$ ]]; then
+    error "BACKUP_KEEP_WEEKLY='$KEEP_WEEKLY' y BACKUP_KEEP_MONTHLY='$KEEP_MONTHLY' tienen que ser enteros (0 = no se guardan)."
+    return 1
+  fi
+  if ! date -d "$RUN_DATE" '+%u' > /dev/null 2>&1; then
+    error "BACKUP_DATE='$RUN_DATE' no es una fecha."
     return 1
   fi
   if ! command -v rclone > /dev/null 2>&1; then
@@ -179,7 +198,7 @@ if [[ "${1:-}" == --check ]]; then
       echo "AVISO: ${entry%%|*}: el contenedor ${container} no está corriendo" >&2
     fi
   done
-  echo "ok: remote ${REMOTE}, retención ${RETENTION_DAYS} días"
+  echo "ok: remote ${REMOTE}, se guardan ${KEEP_DAILY} diarios, ${KEEP_WEEKLY} semanales y ${KEEP_MONTHLY} mensuales"
   [[ -n "$PING_URL" ]] && echo "ok: avisos a healthchecks configurados (--check no manda ningún ping)"
   exit 0
 elif [[ $# -gt 0 ]]; then
@@ -195,6 +214,12 @@ check_config || { log "===== Backup abortado (configuración) ====="; finish "$E
 
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/lauyim-backup.XXXXXX")" || { error "mktemp falló."; finish "$EXIT_DUMP"; }
 trap 'rm -rf "$WORK"' EXIT
+
+# Carpetas de esta corrida: siempre daily; los lunes, weekly; los días 1, monthly.
+TIERS=(daily)
+[[ "$KEEP_WEEKLY" -gt 0 && "$(date -d "$RUN_DATE" '+%u')" == 1 ]] && TIERS+=(weekly)
+[[ "$KEEP_MONTHLY" -gt 0 && "$(date -d "$RUN_DATE" '+%d')" == 01 ]] && TIERS+=(monthly)
+log "copias de hoy: ${TIERS[*]}"
 
 status=0
 for entry in "${INSTANCES[@]}"; do
@@ -221,22 +246,32 @@ for entry in "${INSTANCES[@]}"; do
   rm -rf "$dir"
   log "${instance}: paquete $(du -h "$pkg" | cut -f1) listo."
 
-  if ! out="$(rclone copy "$pkg" "$dest" 2>&1)"; then
-    error "${instance}: rclone copy a ${dest} falló; no se rota el remote. ${out}"
-    status=$EXIT_RCLONE
-    rm -f "$pkg"
-    continue
-  fi
+  uploaded=1
+  for tier in "${TIERS[@]}"; do
+    if ! out="$(rclone copy "$pkg" "${dest}/${tier}" 2>&1)"; then
+      error "${instance}: rclone copy a ${dest}/${tier} falló; no se rota el remote. ${out}"
+      status=$EXIT_RCLONE
+      uploaded=0
+      break
+    fi
+    log "${instance}: subido a ${dest}/${tier}/${pkg_name}.tar.gz."
+  done
   rm -f "$pkg"
-  log "${instance}: subido a ${dest}/${pkg_name}.tar.gz."
+  [[ $uploaded -eq 1 ]] || continue
 
-  # Rotación solo después de una subida buena: si el remote falla, lo viejo se queda.
-  if ! out="$(rclone delete "$dest" --min-age "${RETENTION_DAYS}d" --include "${instance}_*.tar.gz" 2>&1)"; then
-    error "${instance}: la rotación en ${dest} falló. ${out}"
-    status=$EXIT_RCLONE
-  else
-    log "${instance}: rotación hecha (más de ${RETENTION_DAYS} días)."
-  fi
+  # Rotación solo después de una subida buena: si el remote falla, lo viejo se queda. Cada carpeta
+  # por su cuenta y sin bajar a subcarpetas (--max-depth 1): la de la raíz (paquetes de antes de
+  # daily/) entraría si no a weekly/ y monthly/.
+  for rot in "daily|${KEEP_DAILY}" "|${KEEP_DAILY}" "weekly|$((KEEP_WEEKLY * 7))" "monthly|$((KEEP_MONTHLY * 31))"; do
+    folder="${rot%%|*}"; days="${rot#*|}"
+    [[ "$days" -gt 0 ]] || continue
+    target="$dest"; [[ -n "$folder" ]] && target="${dest}/${folder}"
+    if ! out="$(rclone delete "$target" --min-age "${days}d" --max-depth 1 --include "${instance}_*.tar.gz" 2>&1)"; then
+      error "${instance}: la rotación en ${target} falló. ${out}"
+      status=$EXIT_RCLONE
+    fi
+  done
+  log "${instance}: rotación hecha (${KEEP_DAILY} diarios, ${KEEP_WEEKLY} semanales, ${KEEP_MONTHLY} mensuales)."
 done
 
 log "===== Backup terminado (código ${status}) ====="
