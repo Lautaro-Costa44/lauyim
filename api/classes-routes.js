@@ -4,18 +4,26 @@
 import {
   CLASS_DEFAULTS, REMINDER_OPTIONS, classSettingsOf, validateClassSettings, validateClassType, validateSlot,
   addMinutes, addDays, weekdayOf, occurrencesBetween, overlapConflicts, conflictText, bookingState, cancelKind, canPromote, remindersDue, minutesLeft, buildIcs,
-  canAsk, resolveAttendance, canTakeAttendance, canRate, afterPushDue, classWorkout, classStats, penaltyOf, capOf
+  canAsk, resolveAttendance, canTakeAttendance, canRate, afterPushDue, classWorkout, classStats, penaltyOf, capOf,
+  TEACHER_REMINDER_OPTIONS, teacherReminderDue, validateClosure, periodRange, planUsed
 } from './classes.js';
 import * as cdb from './classes-db.js';
-import { getAllUsers, getUserById, getAdminSetting, setAdminSetting, getDatabase } from './database.js';
-import { gymClock, getBillingSettings } from './billing.js';
-import { classChangePush, classReminderPush, classAfterPush, classMessagePush } from './push-messages.js';
+import { getAllUsers, getUserById, getAdminSetting, setAdminSetting, getDatabase, getMemberBilling, getPlanById } from './database.js';
+import { gymClock, getBillingSettings, isBillingEnabled } from './billing.js';
+import { classChangePush, classReminderPush, classAfterPush, classMessagePush, teacherReminderPush, closurePush, penaltyResetPush } from './push-messages.js';
 
 export const CLASS_SETTINGS_KEY = 'classes';
 const CHECK_WEEKS = 8;          // superposición de un bloque semanal: contra las próximas 8 semanas
 const MAX_RANGE_DAYS = 42;
 const isDate = v => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) && !Number.isNaN(Date.parse(v + 'T00:00:00Z'));
 const isTime = v => typeof v === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(v);
+// Textos del registro de actividad: "Spinning · vie 2/10 19:00", "los miércoles 08:00".
+const AUDIT_WEEKDAYS = ['domingos', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábados'];
+const AUDIT_DAYS = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'];
+const auditDay = date => `${AUDIT_DAYS[weekdayOf(date)]} ${Number(date.slice(8, 10))}/${Number(date.slice(5, 7))}`;
+const auditOcc = occ => `${occ.type.name} · ${auditDay(occ.date)} ${occ.start}`;
+const auditCount = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+const auditRange = ({ from, to }) => auditDay(from) + (to !== from ? ' al ' + auditDay(to) : '');
 const MESSAGE_MAX = 200;        // largo de un mensaje de la profe
 const MESSAGES_PER_DATE = 3;    // mensajes por fecha y por persona del staff
 
@@ -38,7 +46,8 @@ export function loadOccurrences(from, days) {
   const userNames = Object.fromEntries(getAllUsers().map(u => [u.id, u.name]));
   return occurrencesBetween({
     types: cdb.getClassTypes({ includeArchived: true }), slots: cdb.getClassSlots(),
-    sessions: cdb.getClassSessions({ from, to: addDays(from, days) }), from, days, userNames
+    sessions: cdb.getClassSessions({ from, to: addDays(from, days) }), from, days, userNames,
+    closures: cdb.getClosures({ from, to: addDays(from, days - 1) })
   });
 }
 const occOfKey = (date, key) => loadOccurrences(date, 1).find(o => o.key === key) || null;
@@ -46,15 +55,35 @@ const occOfSession = session => session ? occOfKey(session.date, session.slotId 
 
 // Lo que server.js le pasa a classRoutes y usan también las reservas fijas y los recordatorios del
 // scheduler (sin server, en los tests del scheduler, nadie está bloqueado). La zona es la de cuotas.
-let deps = { isMembershipBlocked: () => false, gymTz: () => getBillingSettings(getDatabase()).gym_tz };
+let deps = { isMembershipBlocked: () => false, isStaff: () => false, gymTz: () => getBillingSettings(getDatabase()).gym_tz };
 export const classClock = (ms = Date.now()) => gymClock(ms, deps.gymTz());
 const clockNow = classClock;
 
-// Penalización vigente del socio (o null).
+// Penalización vigente del socio (o null). El staff no se penaliza: sus ausencias no lo bloquean.
 export function penaltyNow(userId, today = clockNow().date) {
   const penalty = classSettingsNow().penalty;
   if (!penalty.on) return null;
-  return penaltyOf({ dates: cdb.absenceDates(userId, addDays(today, -penalty.windowDays)), today, penalty });
+  if (deps.isStaff(getUserById(userId))) return null;
+  // Si el staff la levantó, las ausencias de ese día o antes no cuentan.
+  const reset = cdb.getPenaltyReset(userId);
+  const dates = cdb.absenceDates(userId, addDays(today, -penalty.windowDays)).filter(date => !reset || date > reset);
+  return penaltyOf({ dates, today, penalty });
+}
+
+// Clases incluidas en el plan del socio: solo con Cuotas prendido y un plan con límite. -> { limit, period } o null.
+export function planLimitOf(userId) {
+  if (!isBillingEnabled(getDatabase())) return null;
+  const planId = getMemberBilling(userId)?.planId;
+  const plan = planId ? getPlanById(planId) : null;
+  return plan?.classLimit ? { limit: plan.classLimit, period: plan.classPeriod || 'week' } : null;
+}
+
+// Cuántas usó en el período de `date`. -> { limit, period, used } o null (sin límite).
+export function planCheck(userId, date) {
+  const plan = planLimitOf(userId);
+  if (!plan) return null;
+  const range = periodRange(date, plan.period);
+  return { ...plan, used: planUsed(cdb.getUserBookingsBetween(userId, range.from, range.to), range) };
 }
 
 // Reserva sola las fechas abiertas de las reservas fijas (todas, o las de un bloque o un socio).
@@ -85,6 +114,12 @@ export function materializeRecurring({ slotId, userId, send = () => {}, now = cl
       }
       const session = occ.sessionId ? cdb.getClassSession(occ.sessionId) : cdb.ensureClassSession({ classId: occ.classId, slotId: occ.slotId, date: occ.date, start: occ.start });
       if (cdb.getBookingsForSessions([session.id]).some(b => b.userId === r.userId)) continue;
+      // Sin lugar en el plan esa semana o ese mes: no se reserva y se avisa una vez.
+      const plan = planCheck(r.userId, occ.date);
+      if (plan && plan.used >= plan.limit) {
+        if (cdb.noticeOnce(r.userId, occ.key, 'plan_limit')) send(r.userId, classChangePush('plan_limit', { name: occ.type.name, date: occ.date, today: now.date, start: occ.start, limit: plan.limit, period: plan.period, sessionId: session.id }));
+        continue;
+      }
       const { booking } = cdb.bookOrWaitlist({ sessionId: session.id, userId: r.userId, capacity: capOf(occ.type), reminders: memberReminderDefaults(r.userId), recurringId: r.id });
       count++;
       if (booking.status === 'waitlist') send(r.userId, classChangePush('waitlisted', { name: occ.type.name, date: occ.date, today: now.date, start: occ.start, waitlistPos: booking.waitlistPos, sessionId: session.id }));
@@ -136,6 +171,38 @@ export function dropTeacherBookings({ send = () => {}, now = clockNow() } = {}) 
   return dropped;
 }
 
+// Aviso a cada profe con cuenta antes de sus clases de hoy y mañana (los minutos que eligió; 1 hora
+// si no eligió), una sola vez por fecha, con cuántos hay anotados. -> cuántos mandó.
+export function sendTeacherReminders({ send, now = clockNow() } = {}) {
+  if (!classSettingsNow().enabled) return 0;
+  const occs = loadOccurrences(now.date, 2).filter(o => o.teacherUserId && !o.cancelled && minutesLeft(o, now) > 0);
+  if (!occs.length) return 0;
+  const bookings = cdb.getBookingsForSessions(occs.map(o => o.sessionId).filter(Boolean));
+  let sent = 0;
+  for (const occ of occs) {
+    const teacher = getUserById(occ.teacherUserId);
+    if (!teacher || teacher.disabled) continue;
+    const minutes = cdb.getTeacherReminder(teacher.id);
+    if (!teacherReminderDue({ occ, now, minutes }) || !cdb.noticeOnce(teacher.id, occ.key, 'teacher_reminder')) continue;
+    const mine = bookings.filter(b => b.sessionId === occ.sessionId && b.userId !== teacher.id);
+    send(teacher.id, teacherReminderPush({
+      name: occ.type.name, date: occ.date, minutes: minutesLeft(occ, now), sessionId: occ.sessionId || occ.key,
+      booked: mine.filter(b => b.status === 'booked').length, waitlist: mine.filter(b => b.status === 'waitlist').length
+    }));
+    sent++;
+  }
+  return sent;
+}
+
+// Una reserva con su fecha, para el detalle de la clase en el historial (socio o staff).
+function bookingDetail(b, occ, now) {
+  return {
+    booking: { id: b.id, status: b.status, source: b.attendanceSource, rating: b.rating, canRate: canRate({ occ, booking: b, now }) },
+    occurrence: { name: occ.type.name, color: occ.type.color, icon: occ.type.icon, date: occ.date, start: occ.start, end: occ.end,
+      teacherName: occ.teacherName, room: occ.room, logMode: occ.type.logMode, log: occ.type.log }
+  };
+}
+
 // Recordatorios que tocan ahora (reservas de hoy y mañana). Si varios llegaron juntos, uno solo; el
 // texto dice lo que falta de verdad. -> cuántos mandó.
 export function sendClassReminders({ send, now = clockNow() } = {}) {
@@ -158,9 +225,9 @@ export function sendClassReminders({ send, now = clockNow() } = {}) {
 }
 
 export function classRoutes(d) {
-  // d: { json, readBody, readSession, requireAdmin, requireOwner, audit, sendPush, can, gymTz, isMembershipBlocked, isInactiveAccount }
+  // d: { json, readBody, readSession, requireAdmin, requireOwner, audit, sendPush, can, gymTz, isMembershipBlocked, isStaff, isInactiveAccount }
   const { json, readBody } = d;
-  deps = { isMembershipBlocked: d.isMembershipBlocked, gymTz: d.gymTz };
+  deps = { isMembershipBlocked: d.isMembershipBlocked, isStaff: d.isStaff || (() => false), gymTz: d.gymTz };
   const now = () => gymClock(Date.now(), d.gymTz());
   const settings = classSettingsNow;
   const notify = (userIds, kind, occ, extra = {}) => {
@@ -170,6 +237,21 @@ export function classRoutes(d) {
     }
   };
   const activeUsers = sessionId => cdb.getBookingsForSessions([sessionId]).filter(b => ['booked', 'waitlist'].includes(b.status)).map(b => b.userId);
+  // Lo que afecta un cierre: las fechas que todavía se dan en esos días y, por persona con reserva
+  // activa, sus fechas (la profe que da la clase no cuenta).
+  const closureImpact = ({ from, to }) => {
+    const days = Math.round((Date.parse(to) - Date.parse(from)) / 86400000) + 1;
+    const occs = loadOccurrences(from, days).filter(o => !o.cancelled);
+    const bySession = new Map(occs.filter(o => o.sessionId).map(o => [o.sessionId, o]));
+    const people = new Map();
+    for (const b of cdb.getBookingsForSessions([...bySession.keys()])) {
+      const occ = bySession.get(b.sessionId);
+      if (!['booked', 'waitlist'].includes(b.status) || teachesOcc(occ, b.userId)) continue;
+      if (!people.has(b.userId)) people.set(b.userId, []);
+      people.get(b.userId).push(occ);
+    }
+    return { occs, people };
+  };
   // Permisos de clases (permissions.js): todas (manage), las suyas (own), ver todas (view_all),
   // anotar socios en cualquiera (book_members) y tomar lista en las suyas (attendance).
   const has = (user, ...codes) => codes.some(c => d.can(user, c));
@@ -210,7 +292,7 @@ export function classRoutes(d) {
 
   const occView = (occ, counts, user) => ({
     key: occ.key, classId: occ.classId, slotId: occ.slotId, sessionId: occ.sessionId, date: occ.date, start: occ.start, end: occ.end,
-    movedFrom: occ.movedFrom, teacherUserId: occ.teacherUserId, teacherName: occ.teacherName, room: occ.room, cancelled: occ.cancelled,
+    movedFrom: occ.movedFrom, teacherUserId: occ.teacherUserId, teacherName: occ.teacherName, room: occ.room, cancelled: occ.cancelled, closed: occ.closed || null,
     name: occ.type.name, color: occ.type.color, icon: occ.type.icon, capacity: occ.type.capacity,
     booked: counts?.booked || 0, waitlist: counts?.waitlist || 0,
     ...(user ? { editable: editableOcc(user, occ), canBook: canBookInto(user, occ) } : {})
@@ -236,6 +318,26 @@ export function classRoutes(d) {
   };
   // Fechas guardadas de hoy en adelante de un bloque o de una clase.
   const futureOccs = pick => loadOccurrences(now().date, MAX_RANGE_DAYS).filter(o => o.sessionId && !o.cancelled && pick(o));
+  // Sacar del horario (un día de la semana, la clase entera o una clase suelta): las fechas que
+  // todavía no empezaron se suspenden con aviso a los anotados y dejan de verse (no quedan como
+  // "Suspendida": esa clase ya no existe). Las pasadas quedan para el historial. -> a cuántos avisó.
+  const upcomingOf = pick => { const clock = now(); return loadOccurrences(clock.date, MAX_RANGE_DAYS).filter(o => o.sessionId && pick(o) && minutesLeft(o, clock) > 0); };
+  const peopleOf = occs => new Set(cdb.getBookingsForSessions(occs.map(o => o.sessionId))
+    .filter(b => ['booked', 'waitlist'].includes(b.status) && !teachesOcc(occs.find(o => o.sessionId === b.sessionId), b.userId)).map(b => b.userId));
+  const retire = occs => {
+    const notified = new Set();
+    for (const occ of occs) {
+      if (!occ.cancelled) {
+        cdb.updateClassSession(occ.sessionId, { cancelled: true });
+        const users = cdb.cancelSessionBookings(occ.sessionId).filter(uid => !teachesOcc(occ, uid));
+        notify(users, 'cancelled', occ);
+        users.forEach(uid => notified.add(uid));
+      }
+      cdb.updateClassSession(occ.sessionId, { hidden: true });
+    }
+    return notified.size;
+  };
+  const dropRecurring = slotId => { for (const r of cdb.getRecurring({ slotId })) cdb.removeRecurring(slotId, r.userId); };
 
   // Socio con sesión y cuenta activa.
   const member = (req, res) => {
@@ -245,10 +347,10 @@ export function classRoutes(d) {
     return user;
   };
   const publicSettings = s => ({ bookAheadDays: s.bookAheadDays, cancelHours: s.cancelHours });
-  const bookingView = b => b && ({ id: b.id, status: b.status, waitlistPos: b.waitlistPos, reminders: b.reminders });
+  const bookingView = b => b && ({ id: b.id, status: b.status, waitlistPos: b.waitlistPos, reminders: b.reminders, suspended: b.status === 'cancelled' && b.attendanceSource === 'suspended' });
   const memberView = (occ, counts, mine, recurring, state) => ({
     key: occ.key, classId: occ.classId, slotId: occ.slotId, sessionId: occ.sessionId, date: occ.date, start: occ.start, end: occ.end,
-    movedFrom: occ.movedFrom, teacherName: occ.teacherName, room: occ.room, cancelled: occ.cancelled,
+    movedFrom: occ.movedFrom, teacherName: occ.teacherName, room: occ.room, cancelled: occ.cancelled, closed: occ.closed || null,
     name: occ.type.name, color: occ.type.color, icon: occ.type.icon, description: occ.type.description, durationMin: occ.type.durationMin,
     logMode: occ.type.logMode, log: occ.type.log, capacity: occ.type.capacity,
     booked: counts?.booked || 0, waitlist: counts?.waitlist || 0, state, recurring, myBooking: mine ? bookingView(mine) : null
@@ -293,11 +395,11 @@ export function classRoutes(d) {
     const type = cdb.getClassType(id);
     if (!type) return json(res, 404, { error: 'not_found' });
     if (!editableType(user, type)) return json(res, 403, NOT_YOURS);
-    for (const occ of futureOccs(o => o.classId === id)) cancelOcc(occ);
+    const notified = retire(upcomingOf(o => o.classId === id));
     cdb.archiveClassType(id);
-    for (const slot of cdb.getClassSlots({ classId: id })) for (const r of cdb.getRecurring({ slotId: slot.id })) cdb.removeRecurring(slot.id, r.userId);
+    for (const slot of cdb.getClassSlots({ classId: id })) dropRecurring(slot.id);
     d.audit(req, 'classes.type.archive', { user, msg: type.name });
-    json(res, 200, { ok: true });
+    json(res, 200, { ok: true, notified });
   },
   'POST /api/admin/classes/slots/save': async (req, res) => {
     const user = d.requireAdmin(req, res); if (!user) return;
@@ -323,7 +425,7 @@ export function classRoutes(d) {
       }
     }
     const slot = cdb.saveClassSlot({ id: current?.id, classId: type.id, weekday, start });
-    d.audit(req, 'classes.slot.save', { user, msg: `${type.name} ${weekday} ${start}` });
+    d.audit(req, 'classes.slot.save', { user, msg: `${type.name} · los ${AUDIT_WEEKDAYS[weekday]} ${start}` });
     json(res, 200, { slot, warnings: conflicts.warnings });
   },
   'POST /api/admin/classes/slots/delete': async (req, res) => {
@@ -332,10 +434,39 @@ export function classRoutes(d) {
     const slot = cdb.getClassSlot(id);
     if (!slot) return json(res, 404, { error: 'not_found' });
     if (!editableType(user, cdb.getClassType(slot.classId))) return json(res, 403, NOT_YOURS);
-    for (const occ of futureOccs(o => o.slotId === id)) cancelOcc(occ);
+    const notified = retire(upcomingOf(o => o.slotId === id));
+    dropRecurring(id);
     cdb.deleteClassSlot(id);
-    d.audit(req, 'classes.slot.delete', { user, msg: `${cdb.getClassType(slot.classId)?.name || ''} ${slot.weekday} ${slot.start}` });
-    json(res, 200, { ok: true });
+    d.audit(req, 'classes.slot.delete', { user, msg: `${cdb.getClassType(slot.classId)?.name || ''} · los ${AUDIT_WEEKDAYS[slot.weekday]} ${slot.start}` });
+    json(res, 200, { ok: true, notified });
+  },
+  // Qué afecta sacar del horario un día de la semana (slotId) o la clase entera: fechas próximas y
+  // personas anotadas, para la confirmación.
+  'GET /api/admin/classes/retire-preview': async (req, res) => {
+    const user = d.requireAdmin(req, res); if (!user) return;
+    const q = new URL(req.url, 'http://x').searchParams;
+    const slot = cdb.getClassSlot(q.get('slotId'));
+    const type = cdb.getClassType(slot ? slot.classId : q.get('classId'));
+    if (!type) return json(res, 404, { error: 'not_found' });
+    if (!editableType(user, type)) return json(res, 403, NOT_YOURS);
+    const count = pick => { const occs = upcomingOf(pick).filter(o => !o.cancelled); return { dates: occs.length, people: peopleOf(occs).size }; };
+    json(res, 200, {
+      slot: slot ? { id: slot.id, weekday: slot.weekday, start: slot.start, ...count(o => o.slotId === slot.id) } : null,
+      class: { id: type.id, name: type.name, slots: cdb.getClassSlots({ classId: type.id }).length, ...count(o => o.classId === type.id) }
+    });
+  },
+  // Eliminar una clase suelta: se suspende con aviso y deja de verse, en un paso. (Una fecha de una
+  // clase semanal se suspende; para sacarla del horario está slots/delete.)
+  'POST /api/admin/classes/sessions/delete': async (req, res) => {
+    const user = d.requireAdmin(req, res); if (!user) return;
+    const { sessionId } = await readBody(req);
+    const occ = occOfSession(cdb.getClassSession(sessionId));
+    if (!occ) return json(res, 404, { error: 'not_found' });
+    if (!editableOcc(user, occ)) return json(res, 403, NOT_YOURS);
+    if (occ.slotId) return json(res, 409, { error: 'not_loose', message: 'Es una clase semanal: suspendé el día o sacala del horario' });
+    const notified = retire([occ]);
+    d.audit(req, 'classes.session.delete', { user, msg: auditOcc(occ) });
+    json(res, 200, { ok: true, notified });
   },
   'POST /api/admin/classes/overlap-check': async (req, res) => {
     const user = d.requireAdmin(req, res); if (!user) return;
@@ -365,7 +496,7 @@ export function classRoutes(d) {
     const limited = live.filter(o => o.type.capacity != null);   // las sin cupo no tienen ocupación
     const occupancy = limited.length ? Math.round(100 * limited.reduce((n, o) => n + Math.min(1, (counts[o.sessionId]?.booked || 0) / o.type.capacity), 0) / limited.length) : 0;
     json(res, 200, {
-      today, from, days, canManage, canOwn: has(user, 'classes.own'), canBook: has(user, 'classes.book_members'), settings: settings(),
+      today, from, days, closures: cdb.getClosures({ from, to: addDays(from, days - 1) }), canManage, canOwn: has(user, 'classes.own'), canBook: has(user, 'classes.book_members'), settings: settings(),
       occurrences: occs.map(o => occView(o, counts[o.sessionId], user)),
       summary: { classes: live.length, occupancy, lateCancels: sum('lateCancels'), waitlist: sum('waitlist') }
     });
@@ -383,7 +514,7 @@ export function classRoutes(d) {
       const conflicts = conflictsFor({ type: withTeacherName(type), start: body.start, date: body.date });
       if (conflicts.blocking.length) return json(res, 409, { error: 'class_overlap', conflicts: conflicts.blocking, warnings: conflicts.warnings });
       const session = cdb.ensureClassSession({ classId: type.id, slotId: null, date: body.date, start: body.start });
-      d.audit(req, 'classes.session.change', { user, msg: `${type.name} ${body.date} ${body.start} (suelta)` });
+      d.audit(req, 'classes.session.change', { user, msg: `${type.name} · ${auditDay(body.date)} ${body.start} (suelta)` });
       return json(res, 200, { occurrence: occView(occOfSession(session), null, user), warnings: conflicts.warnings });
     }
     let occ = body.sessionId ? occOfSession(cdb.getClassSession(body.sessionId)) : (isDate(body.date) ? occOfKey(body.date, `${body.slotId}:${body.date}`) : null);
@@ -415,7 +546,7 @@ export function classRoutes(d) {
         changes.push(`con ${fresh.teacherName || 'otra profe'}`);
       }
     }
-    d.audit(req, 'classes.session.change', { user, msg: `${occ.type.name} ${occ.date} ${changes.join(', ')}` });
+    d.audit(req, 'classes.session.change', { user, msg: `${occ.type.name} · ${auditDay(occ.date)}: ${changes.join(', ')}` });
     json(res, 200, { occurrence: occView(occOfSession(cdb.getClassSession(session.id)), countsBySession([occ])[session.id], user) });
   },
   // Una fecha suspendida se puede sacar del calendario (de todos: staff y socios).
@@ -428,7 +559,7 @@ export function classRoutes(d) {
     if (!editableOcc(user, occ)) return json(res, 403, NOT_YOURS);
     if (!occ.cancelled) return json(res, 409, { error: 'class_not_cancelled' });
     cdb.updateClassSession(session.id, { hidden: true });
-    d.audit(req, 'classes.session.hide', { user, msg: `${occ.type.name} ${occ.date} ${occ.start}` });
+    d.audit(req, 'classes.session.hide', { user, msg: auditOcc(occ) });
     json(res, 200, { ok: true });
   },
   'GET /api/admin/classes/session': async (req, res) => {
@@ -460,9 +591,11 @@ export function classRoutes(d) {
     if (teachesOcc(occ, person.id)) return json(res, 409, { error: 'own_class', message: 'Es quien da la clase' });
     const session = occ.sessionId ? cdb.getClassSession(occ.sessionId) : cdb.ensureClassSession({ classId: occ.classId, slotId: occ.slotId, date: occ.date, start: occ.start });
     const { booking } = cdb.bookOrWaitlist({ sessionId: session.id, userId: person.id, capacity: capOf(occ.type), reminders: memberReminderDefaults(person.id), addedBy: user.id, force: true });
-    d.audit(req, 'classes.booking.add', { user, target: person, msg: `${occ.type.name} ${occ.date} ${occ.start}` });
+    d.audit(req, 'classes.booking.add', { user, target: person, msg: auditOcc(occ) });
     notify([person.id], 'added', { ...occ, sessionId: session.id });
-    json(res, 200, { booking });
+    // El staff puede pasar el límite del plan; el panel lo avisa.
+    const plan = planCheck(person.id, occ.date);
+    json(res, 200, { booking, overLimit: !!plan && plan.used > plan.limit, planLimit: plan });
   },
 
   // La profe (o quien gestiona todas) toma o corrige la lista: pisa respuestas e ingreso físico.
@@ -478,15 +611,25 @@ export function classRoutes(d) {
     let changed = 0;
     for (const b of cdb.getBookingsForSessions([session.id])) {
       if (!want.has(b.userId) || teachesOcc(occ, b.userId) || !['booked', 'attended', 'absent'].includes(b.status)) continue;
-      cdb.updateBooking(b.id, { status: want.get(b.userId), attendanceSource: 'teacher' });
+      // Ausente no califica: si había calificado (dijo que fue), se borra.
+      cdb.updateBooking(b.id, { status: want.get(b.userId), attendanceSource: 'teacher', ...(want.get(b.userId) === 'absent' ? { rating: null } : {}) });
       changed++;
     }
     cdb.updateClassSession(session.id, { attendanceTaken: true });
-    d.audit(req, 'classes.attendance', { user, msg: `${occ.type.name} ${occ.date} ${occ.start}: ${present.length} presentes, ${absent.length} ausentes` });
+    d.audit(req, 'classes.attendance', { user, msg: `${auditOcc(occ)}: ${auditCount(present.length, 'presente', 'presentes')}, ${auditCount(absent.length, 'ausente', 'ausentes')}` });
     json(res, 200, { ok: true, changed });
   },
   // La profe (o quien gestiona todas) le escribe a quienes están anotados a una fecha; si quiere,
   // también a la lista de espera. Hasta MESSAGES_PER_DATE por fecha y persona, y no a una que pasó.
+  // La reserva de un socio con su fecha (detalle de la clase en el historial de la ficha).
+  'GET /api/admin/classes/booking': async (req, res) => {
+    const user = d.requireAdmin(req, res); if (!user) return;
+    const b = cdb.getBookingWithSession(new URL(req.url, 'http://x').searchParams.get('id'));
+    const occ = b ? occOfSession(b.session) : null;
+    if (!occ) return json(res, 404, { error: 'not_found' });
+    if (!canSee(user, occ)) return json(res, 403, { error: 'forbidden' });
+    json(res, 200, bookingDetail(b, occ, now()));
+  },
   'POST /api/admin/classes/sessions/message': async (req, res) => {
     const user = d.requireAdmin(req, res); if (!user) return;
     const body = await readBody(req);
@@ -505,8 +648,101 @@ export function classRoutes(d) {
     if (!slot) return json(res, 429, { error: 'message_limit' });
     const payload = classMessagePush({ name: occ.type.name, date: occ.date, today: now().date, start: occ.start, sender: user.name, text, sessionId: occ.sessionId });
     for (const uid of new Set(to)) d.sendPush(uid, payload).catch(() => {});
-    d.audit(req, 'classes.message', { user, msg: `${occ.type.name} ${occ.date} ${occ.start} a ${to.length}: ${text}` });
+    d.audit(req, 'classes.message', { user, msg: `${auditOcc(occ)} · a ${auditCount(to.length, 'persona', 'personas')}: ${text}` });
     json(res, 200, { sent: new Set(to).size, left: MESSAGES_PER_DATE - slot });
+  },
+  // ---- ficha del socio ----
+  // Sus próximas reservas, los días fijos, el último mes (30 días) y la penalización vigente.
+  'GET /api/admin/classes/member': async (req, res) => {
+    const user = d.requireAdmin(req, res); if (!user) return;
+    const userId = new URL(req.url, 'http://x').searchParams.get('userId');
+    if (!getUserById(userId)) return json(res, 404, { error: 'not_found' });
+    const clock = now();
+    const today = clock.date;
+    const bySession = new Map(loadOccurrences(today, MAX_RANGE_DAYS).filter(o => o.sessionId).map(o => [o.sessionId, o]));
+    const upcoming = cdb.getUserBookingsBetween(userId, today, addDays(today, MAX_RANGE_DAYS))
+      .filter(b => ['booked', 'waitlist'].includes(b.status))
+      .map(b => ({ b, occ: bySession.get(b.sessionId) }))
+      .filter(({ occ }) => occ && !occ.cancelled && minutesLeft(occ, clock) + occ.type.durationMin > 0)
+      .map(({ b, occ }) => ({ bookingId: b.id, name: occ.type.name, color: occ.type.color, date: occ.date, start: occ.start, status: b.status, waitlistPos: b.waitlistPos }));
+    const fixed = cdb.getRecurring({ userId }).map(r => {
+      const slot = cdb.getClassSlot(r.slotId);
+      const type = slot && cdb.getClassType(slot.classId);
+      return type && !type.archived ? { slotId: slot.id, name: type.name, color: type.color, weekday: slot.weekday, start: slot.start } : null;
+    }).filter(Boolean).sort((a, b) => ((a.weekday + 6) % 7) - ((b.weekday + 6) % 7) || a.start.localeCompare(b.start));
+    const past = cdb.getUserBookingsBetween(userId, addDays(today, -30), today);
+    const count = status => past.filter(b => b.status === status).length;
+    const present = count('attended'), absent = count('absent');
+    json(res, 200, {
+      upcoming, fixed, penalty: penaltyNow(userId, today),
+      month: { present, absent, late: count('late_cancel'), rate: present + absent ? Math.round(100 * present / (present + absent)) : null },
+      canCancel: has(user, 'classes.book_members'), canReset: isManager(user), cancelHours: settings().cancelHours
+    });
+  },
+  // El staff cancela una reserva desde la ficha: a tiempo (sin penalización), sube la primera de la
+  // lista de espera y se le avisa al socio.
+  'POST /api/admin/classes/member/cancel': async (req, res) => {
+    const user = d.requireAdmin(req, res); if (!user) return;
+    const { bookingId } = await readBody(req);
+    const b = cdb.getBookingWithSession(bookingId);
+    const occ = b && ['booked', 'waitlist'].includes(b.status) ? occOfSession(b.session) : null;
+    if (!occ) return json(res, 404, { error: 'not_found' });
+    const clock = now();
+    const out = cdb.cancelAndPromote({ bookingId: b.id, kind: 'cancelled', promote: b.status === 'booked' && canPromote({ occ, now: clock, settings: settings() }), capacity: capOf(occ.type) });
+    notify([b.userId], 'staff_cancelled', occ);
+    if (out.promoted) notify([out.promoted.userId], 'promoted', occ);
+    d.audit(req, 'classes.booking.cancel', { user, target: getUserById(b.userId), msg: auditOcc(occ) });
+    json(res, 200, { ok: true });
+  },
+  // Levantar la penalización: desde hoy, las ausencias anteriores no cuentan.
+  'POST /api/admin/classes/member/penalty-reset': async (req, res) => {
+    const user = d.requireAdmin(req, res); if (!user) return;
+    const { userId } = await readBody(req);
+    const person = getUserById(userId);
+    if (!person) return json(res, 404, { error: 'not_found' });
+    cdb.setPenaltyReset(person.id, now().date);
+    d.sendPush(person.id, penaltyResetPush()).catch(() => {});
+    d.audit(req, 'classes.penalty.reset', { user, target: person, msg: 'Penalización por ausencias levantada' });
+    json(res, 200, { ok: true });
+  },
+
+  // ---- cierres del gimnasio (feriado, vacaciones) ----
+  'GET /api/admin/classes/closures': async (req, res) => {
+    const user = d.requireAdmin(req, res); if (!user) return;
+    json(res, 200, { closures: cdb.getClosures().filter(c => c.to >= now().date) });
+  },
+  'GET /api/admin/classes/closures/preview': async (req, res) => {
+    const user = d.requireAdmin(req, res); if (!user) return;
+    const q = new URL(req.url, 'http://x').searchParams;
+    const v = validateClosure({ from: q.get('from'), to: q.get('to') }, { today: now().date });
+    if (v.error) return json(res, 400, v);
+    const { occs, people } = closureImpact(v.value);
+    json(res, 200, { classes: occs.length, people: people.size });
+  },
+  'POST /api/admin/classes/closures': async (req, res) => {
+    const user = d.requireAdmin(req, res); if (!user) return;
+    const today = now().date;
+    const v = validateClosure(await readBody(req), { today, existing: cdb.getClosures() });
+    if (v.error) return json(res, v.error === 'closure_overlap' ? 409 : 400, v);
+    const { occs, people } = closureImpact(v.value);
+    // Las reservas se cancelan (sin promover a nadie); las fechas no se suspenden una por una: al
+    // reabrir, vuelven.
+    for (const occ of occs) if (occ.sessionId) cdb.cancelSessionBookings(occ.sessionId);
+    const closure = cdb.addClosure({ ...v.value, createdBy: user.id });
+    for (const [uid, items] of people) {
+      d.sendPush(uid, closurePush({ ...v.value, today, items: items.map(o => ({ name: o.type.name, start: o.start, date: o.date })) })).catch(() => {});
+    }
+    d.audit(req, 'classes.closure.add', { user, msg: `${auditRange(v.value)}${v.value.reason ? ' · ' + v.value.reason : ''}: ${auditCount(occs.length, 'clase', 'clases')}, ${auditCount(people.size, 'persona', 'personas')}` });
+    json(res, 200, { closure, notified: people.size, classes: occs.length });
+  },
+  'POST /api/admin/classes/closures/delete': async (req, res) => {
+    const user = d.requireAdmin(req, res); if (!user) return;
+    const { id } = await readBody(req);
+    const closure = cdb.getClosure(id);
+    if (!closure) return json(res, 404, { error: 'not_found' });
+    cdb.deleteClosure(id);
+    d.audit(req, 'classes.closure.delete', { user, msg: auditRange(closure) + (closure.reason ? ' · ' + closure.reason : '') });
+    json(res, 200, { ok: true });
   },
   'GET /api/admin/classes/stats': async (req, res) => {
     const user = d.requireAdmin(req, res); if (!user) return;
@@ -537,8 +773,20 @@ export function classRoutes(d) {
     // Los días de cada clase, para elegir cuáles son fijos desde la hoja de la clase.
     const live = new Set(cdb.getClassTypes().filter(tp => !tp.archived).map(tp => tp.id));
     const slots = cdb.getClassSlots().filter(sl => live.has(sl.classId)).map(sl => ({ ...sl, recurring: fixed.has(sl.id) }));
+    // Límite del plan: lo usado en cada período (semana o mes) que toca la ventana, por su inicio.
+    const plan = planLimitOf(user.id);
+    let planLimit = null;
+    if (plan) {
+      const used = {};
+      for (let i = 0; i < days; i++) {
+        const range = periodRange(addDays(from, i), plan.period);
+        if (!(range.from in used)) used[range.from] = planUsed(cdb.getUserBookingsBetween(user.id, range.from, range.to), range);
+      }
+      planLimit = { ...plan, used };
+    }
     json(res, 200, {
-      enabled: true, today, from, days, tz: d.gymTz(), settings: publicSettings(s), reminderDefaults: memberReminderDefaults(user.id), penalty: penaltyNow(user.id, today), slots,
+      planLimit,
+      enabled: true, today, from, days, closures: cdb.getClosures({ from, to: addDays(from, days - 1) }), tz: d.gymTz(), settings: publicSettings(s), reminderDefaults: memberReminderDefaults(user.id), teacherReminder: cdb.getTeacherReminder(user.id), penalty: penaltyNow(user.id, today), slots,
       occurrences: occs.map(o => ({ ...memberView(o, counts[o.sessionId], teachesOcc(o, user.id) ? null : mine.get(o.sessionId), fixed.has(o.slotId), bookingState({ occ: o, now: clock, settings: s })), teaching: teachesOcc(o, user.id) }))
     });
   },
@@ -556,6 +804,10 @@ export function classRoutes(d) {
     const punished = penaltyNow(user.id);
     if (punished) return json(res, 403, { error: 'booking_penalty', until: punished.until, count: punished.count });
     const session = occ.sessionId ? cdb.getClassSession(occ.sessionId) : cdb.ensureClassSession({ classId: occ.classId, slotId: occ.slotId, date: occ.date, start: occ.start });
+    // Límite del plan (semana o mes de esa fecha); repetir una reserva activa no choca con él.
+    const already = cdb.getBookingsForSessions([session.id]).some(b => b.userId === user.id && ['booked', 'waitlist'].includes(b.status));
+    const plan = already ? null : planCheck(user.id, occ.date);
+    if (plan && plan.used >= plan.limit) return json(res, 403, { error: 'plan_limit', ...plan });
     const { booking } = cdb.bookOrWaitlist({ sessionId: session.id, userId: user.id, capacity: capOf(occ.type), reminders: memberReminderDefaults(user.id) });
     json(res, 200, { booking: bookingView(booking) });
   },
@@ -575,6 +827,9 @@ export function classRoutes(d) {
     for (const occ of loadOccurrences(clock.date, 7)) {
       if (occ.classId !== type.id || teachesOcc(occ, user.id) || bookingState({ occ, now: clock, settings: s }) !== 'open') continue;
       const session = occ.sessionId ? cdb.getClassSession(occ.sessionId) : cdb.ensureClassSession({ classId: occ.classId, slotId: occ.slotId, date: occ.date, start: occ.start });
+      const already = cdb.getBookingsForSessions([session.id]).some(b => b.userId === user.id && ['booked', 'waitlist'].includes(b.status));
+      const plan = already ? null : planCheck(user.id, occ.date);
+      if (plan && plan.used >= plan.limit) { out.limited = (out.limited || 0) + 1; continue; }   // sin lugar en el plan
       const { booking, created } = cdb.bookOrWaitlist({ sessionId: session.id, userId: user.id, capacity: capOf(occ.type), reminders: memberReminderDefaults(user.id) });
       if (created) out[booking.status === 'booked' ? 'booked' : 'waitlist']++;
     }
@@ -644,21 +899,39 @@ export function classRoutes(d) {
   },
 
   // "¿Fuiste?" por contestar (ask) y clases presentes que faltan en el historial (log).
+  'GET /api/classes/booking': async (req, res) => {
+    const user = member(req, res); if (!user) return;
+    const b = cdb.getBookingWithSession(new URL(req.url, 'http://x').searchParams.get('id'));
+    const occ = b && b.userId === user.id ? occOfSession(b.session) : null;
+    if (!occ) return json(res, 404, { error: 'not_found' });
+    json(res, 200, bookingDetail(b, occ, now()));
+  },
+  'PUT /api/classes/teacher-reminder': async (req, res) => {
+    const user = member(req, res); if (!user) return;
+    const { minutes } = await readBody(req);
+    if (!TEACHER_REMINDER_OPTIONS.includes(minutes)) return json(res, 400, { error: 'validation_error', message: 'Elegí 0, 30, 60 o 120 minutos' });
+    cdb.setTeacherReminder(user.id, minutes);
+    json(res, 200, { teacherReminder: minutes });
+  },
   'GET /api/classes/pending': async (req, res) => {
     const user = member(req, res); if (!user) return;
     const clock = now();
     const from = addDays(clock.date, -8);
     const mine = cdb.getUserBookingsBetween(user.id, from, addDays(clock.date, 1));
     const occs = new Map(loadOccurrences(from, 9).filter(o => o.sessionId).map(o => [o.sessionId, o]));
-    const ask = [], log = [];
+    const ask = [], log = [], unlog = [];
     for (const b of mine) {
+      // Ya sumada al historial y después corregida (la profe la pasó a ausente): se saca.
+      if (b.logged && b.status !== 'attended') { unlog.push(b.id); continue; }
       const occ = occs.get(b.sessionId);
       if (!occ || occ.cancelled || teachesOcc(occ, user.id)) continue;
+      // En curso: aunque la profe ya haya tomado lista, se suma recién cuando termina.
+      if (minutesLeft(occ, clock) + occ.type.durationMin > 0) continue;
       const info = { bookingId: b.id, name: occ.type.name, color: occ.type.color, icon: occ.type.icon, date: occ.date, start: occ.start, teacherName: occ.teacherName, rated: b.rating != null, canRate: canRate({ occ, booking: b, now: clock }) };
       if (canAsk({ occ, booking: b, attendanceTaken: b.session.attendanceTaken, now: clock })) ask.push(info);
       else if (b.status === 'attended' && !b.logged) log.push({ ...info, source: b.attendanceSource, workout: classWorkout({ occ, bookingId: b.id, tz: d.gymTz() }) });
     }
-    json(res, 200, { ask, log });
+    json(res, 200, { ask, log, unlog });
   },
   'POST /api/classes/attendance': async (req, res) => {
     const user = member(req, res); if (!user) return;
@@ -675,10 +948,11 @@ export function classRoutes(d) {
   },
   'POST /api/classes/logged': async (req, res) => {
     const user = member(req, res); if (!user) return;
-    const { bookingId } = await readBody(req);
+    // logged: false cuando la app la sacó del historial (la corrigieron a ausente).
+    const { bookingId, logged = true } = await readBody(req);
     const b = cdb.getBooking(bookingId);
     if (!b || b.userId !== user.id) return json(res, 404, { error: 'not_found' });
-    cdb.updateBooking(b.id, { logged: true });
+    cdb.updateBooking(b.id, { logged: logged !== false });
     json(res, 200, { ok: true });
   },
   'POST /api/classes/rating': async (req, res) => {

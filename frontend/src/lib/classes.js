@@ -39,7 +39,7 @@ export function googleCalendarUrl(occ, tz) {
 export const conflictMessages = result => result ? [...(result.blocking || []), ...(result.warnings || [])].map(c => c.text) : []
 
 // Botón de una fecha para el socio: { key, label, disabled }. Una reserva cancelada no cuenta.
-export function buttonState({ state, booked, capacity, myBooking, teaching }) {
+export function buttonState({ state, booked, capacity, myBooking, teaching, planFull }) {
   if (teaching) return { key: 'teaching', label: 'La das vos', disabled: true }
   const mine = myBooking && ['booked', 'waitlist'].includes(myBooking.status) ? myBooking : null
   if (mine?.status === 'booked') return { key: 'booked', label: 'Anotado', disabled: false }
@@ -47,6 +47,7 @@ export function buttonState({ state, booked, capacity, myBooking, teaching }) {
   if (state === 'cancelled') return { key: 'cancelled', label: 'Suspendida', disabled: true }
   if (state === 'started') return { key: 'started', label: 'Empezó', disabled: true }
   if (state === 'not_yet') return { key: 'not_yet', label: 'Todavía no abre', disabled: true }
+  if (planFull) return { key: 'plan', label: 'Límite del plan', disabled: true }
   if (capacity != null && booked >= capacity) return { key: 'waitlist', label: 'Lista de espera', disabled: false }
   return { key: 'book', label: 'Anotarme', disabled: false }
 }
@@ -59,17 +60,22 @@ const occQuery = occ => occ.sessionId ? `sessionId=${encodeURIComponent(occ.sess
 export const classesApi = {
   // socio
   // Sin rango: desde hoy, los días de la ventana de reserva.
-  list: (from, days) => api(from ? `/api/classes?from=${from}&days=${days}` : '/api/classes'),
+  // Con límite en el plan, las fechas de semanas (o meses) ya completos vienen marcadas (planFull).
+  list: (from, days) => api(from ? `/api/classes?from=${from}&days=${days}` : '/api/classes')
+    .then(d => d?.planLimit ? { ...d, occurrences: markPlanFull(d.occurrences, d.planLimit) } : d),
   book: ({ slotId, date, sessionId }) => post('/api/classes/book', { slotId, date, sessionId }),
   cancel: bookingId => post('/api/classes/cancel', { bookingId }),
   setReminders: (bookingId, reminders) => put('/api/classes/reminders', { bookingId, reminders }),
   setReminderDefaults: reminders => put('/api/classes/reminder-defaults', { reminders }),
   recurring: (slotId, on) => post(on ? '/api/classes/recurring' : '/api/classes/recurring/delete', { slotId }),
   bookWeek: classId => post('/api/classes/book-week', { classId }),
+  booking: id => api(`/api/classes/booking?id=${encodeURIComponent(id)}`),
+  setTeacherReminder: minutes => put('/api/classes/teacher-reminder', { minutes }),
   icsUrl: bookingId => `/api/classes/ics?booking=${encodeURIComponent(bookingId)}`,
   pending: () => api('/api/classes/pending'),
   answer: (bookingId, attended, rating) => post('/api/classes/attendance', { bookingId, attended, rating }),
   logged: bookingId => post('/api/classes/logged', { bookingId }),
+  unlogged: bookingId => post('/api/classes/logged', { bookingId, logged: false }),
   rate: (bookingId, rating) => post('/api/classes/rating', { bookingId, rating }),
   takeAttendance: (sessionId, present, absent) => post('/api/admin/classes/sessions/attendance', { sessionId, present, absent }),
   stats: weeks => api(`/api/admin/classes/stats?weeks=${weeks}`),
@@ -82,10 +88,20 @@ export const classesApi = {
   overlapCheck: body => post('/api/admin/classes/overlap-check', body),
   calendar: (from, days) => api(`/api/admin/classes/calendar?from=${from}&days=${days}`),
   session: occ => api(`/api/admin/classes/session?${occQuery(occ)}`),
+  adminBooking: id => api(`/api/admin/classes/booking?id=${encodeURIComponent(id)}`),
+  closures: () => api('/api/admin/classes/closures'),
+  closurePreview: (from, to) => api(`/api/admin/classes/closures/preview?from=${from}&to=${to}`),
+  addClosure: body => post('/api/admin/classes/closures', body),
+  deleteClosure: id => post('/api/admin/classes/closures/delete', { id }),
+  member: userId => api(`/api/admin/classes/member?userId=${encodeURIComponent(userId)}`),
+  cancelForMember: bookingId => post('/api/admin/classes/member/cancel', { bookingId }),
+  resetPenalty: userId => post('/api/admin/classes/member/penalty-reset', { userId }),
   messageSession: (occ, text, waitlist) => post('/api/admin/classes/sessions/message', { sessionId: occ.sessionId, slotId: occ.slotId, date: occ.date, text, waitlist }),
   addToSession: (occ, userId) => post('/api/admin/classes/sessions/add', { sessionId: occ.sessionId, slotId: occ.slotId, date: occ.date, userId }),
   changeSession: body => post('/api/admin/classes/sessions/change', body),
   hideSession: sessionId => post('/api/admin/classes/sessions/hide', { sessionId }),
+  deleteSession: sessionId => post('/api/admin/classes/sessions/delete', { sessionId }),
+  retirePreview: ({ slotId, classId }) => api(`/api/admin/classes/retire-preview?${slotId ? `slotId=${encodeURIComponent(slotId)}` : `classId=${encodeURIComponent(classId)}`}`),
   // owner
   settings: () => api('/api/owner/classes/settings'),
   saveSettings: body => put('/api/owner/classes/settings', body),
@@ -129,7 +145,8 @@ export function homeClasses(occurrences, nowMs, tz, dismissed = []) {
   const mine = (occurrences || []).filter(o => o.myBooking)
   const upcoming = mine.filter(o => !o.cancelled && ['booked', 'waitlist'].includes(o.myBooking.status) && occTimes(o, tz).end > nowMs)
     .sort((a, b) => occTimes(a, tz).start - occTimes(b, tz).start)
-  const suspended = mine.filter(o => o.cancelled && occTimes(o, tz).end > nowMs && !dismissed.includes(o.key))
+  // Solo las que canceló la suspensión (o un cierre); no las que el socio ya había cancelado.
+  const suspended = mine.filter(o => o.cancelled && o.myBooking.suspended && occTimes(o, tz).end > nowMs && !dismissed.includes(o.key))
   return { next: upcoming[0] || null, upcoming, suspended }
 }
 
@@ -146,7 +163,7 @@ export function classSlotChips(slots, classId) {
 // Fechas de la clase en los próximos 7 días que se pueden reservar y todavía no tiene.
 export function weekBookable(occurrences, classId, today) {
   const end = addDays(today, 7)
-  return (occurrences || []).filter(o => o.classId === classId && o.state === 'open' && !o.cancelled && o.date < end
+  return (occurrences || []).filter(o => o.classId === classId && o.state === 'open' && !o.cancelled && !o.planFull && o.date < end
     && !(o.myBooking && ['booked', 'waitlist'].includes(o.myBooking.status)))
 }
 
@@ -184,4 +201,114 @@ export function homeStrip(occurrences, nowMs, tz) {
     .sort((a, b) => occTimes(a, tz).start - occTimes(b, tz).start)
   const date = open[0]?.date || null
   return { date, items: date ? open.filter(o => o.date === date) : [] }
+}
+
+// Cómo quedó presente en una clase (detalle del historial). staff: dicho desde la ficha.
+export function attendanceSourceLabel(source, staff = false) {
+  if (source === 'teacher') return 'La profe tomó lista'
+  if (source === 'checkin') return staff ? 'Ingresó al gimnasio' : 'Ingresaste al gimnasio'
+  if (source === 'member') return staff ? 'Dijo que fue' : 'Dijiste que fuiste'
+  return null
+}
+
+// ---- compartir la lista ----
+
+// "Ana Pérez" -> "Ana P." (cuida los datos al compartir en grupos con otros socios).
+export function shortName(name) {
+  const words = String(name || '').trim().split(/\s+/).filter(Boolean)
+  if (words.length < 2) return words[0] || ''
+  return `${words[0]} ${words.at(-1)[0].toUpperCase()}.`
+}
+
+// Texto de la lista de una fecha para compartir (WhatsApp, etc.). full: nombre completo. Con la
+// lista tomada, cada anotado lleva ✓ (presente) o ✗ (ausente).
+export function shareListText({ occ, booked = [], waitlist = [], full = false }) {
+  const name = p => full ? p.name : shortName(p.name)
+  const mark = p => p.status === 'attended' ? ' ✓' : p.status === 'absent' ? ' ✗' : ''
+  const count = occ.capacity == null ? `${booked.length}` : `${booked.length}/${occ.capacity}`
+  const lines = [[occ.name, `${shortDay(occ.date)}/${Number(occ.date.slice(5, 7))}`, occ.start, occ.room].filter(Boolean).join(' · ')]
+  if (occ.teacherName) lines.push(`Profe: ${occ.teacherName}`)
+  lines.push('', `Anotados (${count}):`)
+  if (!booked.length) lines.push('Todavía no hay nadie anotado.')
+  booked.forEach((p, i) => lines.push(`${i + 1}. ${name(p)}${mark(p)}`))
+  if (waitlist.length) {
+    lines.push('', 'En espera:')
+    waitlist.forEach((p, i) => lines.push(`${i + 1}. ${name(p)}`))
+  }
+  return lines.join('\n')
+}
+
+// ---- cierres del gimnasio ----
+
+const dm = date => `${Number(date.slice(8, 10))}/${Number(date.slice(5, 7))}`
+// "Lun 12/10" o "2/1 al 15/1".
+export const closureLabel = c => c.from === c.to ? `${shortDay(c.from)}/${Number(c.from.slice(5, 7))}` : `${dm(c.from)} al ${dm(c.to)}`
+// El cierre que toca una fecha (o null).
+export const closureOn = (closures, date) => (closures || []).find(c => c.from <= date && date <= c.to) || null
+
+// ---- límite de clases por plan ----
+
+// Inicio del período de una fecha: el lunes de su semana o el día 1 de su mes.
+export const periodStart = (date, period) => period === 'month' ? date.slice(0, 8) + '01' : addDays(date, -((weekdayOf(date) + 6) % 7))
+const usedIn = (planLimit, date) => planLimit.used?.[periodStart(date, planLimit.period)] ?? 0
+
+// Marca planFull en las fechas sin reserva propia de un período ya completo.
+export function markPlanFull(occurrences, planLimit) {
+  if (!planLimit) return occurrences
+  return (occurrences || []).map(o => {
+    const mine = o.myBooking && ['booked', 'waitlist'].includes(o.myBooking.status)
+    return !mine && !o.teaching && usedIn(planLimit, o.date) >= planLimit.limit ? { ...o, planFull: true } : o
+  })
+}
+
+// La línea de Plan → Clases para el día elegido: [texto, ...valores] para t(), o null sin límite.
+export function planLine(planLimit, date, today) {
+  if (!planLimit) return null
+  const { limit, period } = planLimit
+  const left = Math.max(0, limit - usedIn(planLimit, date))
+  const same = periodStart(date, period) === periodStart(today, period)
+  const when = period === 'month' ? (same ? 'este mes' : 'ese mes') : (same ? 'esta semana' : 'esa semana')
+  if (!left) return limit === 1 ? ['Ya usaste tu clase de {0}', when] : ['Ya usaste tus {0} clases de {1}', limit, when]
+  return limit === 1 ? ['Te queda 1 clase {0}', when] : ['Te quedan {0} de {1} clases {2}', left, limit, when]
+}
+
+// El límite en palabras: "2 clases por semana".
+export const planLimitLabel = ({ limit, period }) => `${limit === 1 ? '1 clase' : `${limit} clases`} por ${period === 'month' ? 'mes' : 'semana'}`
+
+// Clases reservadas (o ya marcadas presentes) que están en curso ahora: el renglón "Ahora" del historial.
+export function liveClasses(occurrences, nowMs, tz) {
+  return (occurrences || []).filter(o => !o.cancelled && o.myBooking && ['booked', 'attended'].includes(o.myBooking.status)
+    && occTimes(o, tz).start <= nowMs && nowMs < occTimes(o, tz).end)
+}
+
+// ---- las clases en la semana, el calendario y la hoja del día ----
+
+// Clases por fecha: las reservadas (anotado o en espera) y las hechas (entrenos de tipo clase, con
+// el color de su reserva si está en el listado). -> { 'YYYY-MM-DD': [{ key, name, color, start, done, occ, workout }] }
+export function classesByDate(occurrences, workouts) {
+  const out = {}
+  const add = (date, item) => (out[date] = out[date] || []).push(item)
+  const byBooking = new Map((occurrences || []).filter(o => o.myBooking).map(o => [o.myBooking.id, o]))
+  for (const w of workouts || []) {
+    if (w?.kind !== 'class') continue
+    const occ = byBooking.get(w.classBookingId)
+    add(w.d, { key: w.id, name: w.name, color: occ?.color || null, start: occ?.start || null, done: true, occ: occ || null, workout: w })
+  }
+  const logged = new Set((workouts || []).filter(w => w?.kind === 'class').map(w => w.classBookingId))
+  for (const o of occurrences || []) {
+    if (o.cancelled || !o.myBooking || !['booked', 'waitlist', 'attended'].includes(o.myBooking.status) || logged.has(o.myBooking.id)) continue
+    add(o.date, { key: o.key, name: o.name, color: o.color, start: o.start, done: false, waitlist: o.myBooking.status === 'waitlist', occ: o, workout: null })
+  }
+  for (const list of Object.values(out)) list.sort((a, b) => String(a.start || '').localeCompare(String(b.start || '')))
+  return out
+}
+
+// Músculos que la clase comparte con lo que la rutina carga fuerte (al menos la mitad de su músculo
+// más cargado). routineLoad: { slug: carga } (loadOfRoutine). -> slugs, de más a menos cargado.
+export function classOverlap(classMuscles, routineLoad) {
+  const max = Math.max(0, ...Object.values(routineLoad || {}))
+  if (!max) return []
+  const strong = Object.entries(routineLoad).filter(([, v]) => v >= max / 2).sort((a, b) => b[1] - a[1]).map(([slug]) => slug)
+  const mine = new Set(classMuscles || [])
+  return strong.filter(slug => mine.has(slug))
 }

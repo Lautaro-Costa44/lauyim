@@ -24,9 +24,11 @@ const db = await import('./database.js');
 const cdb = await import('./classes-db.js');
 db.initDatabase();
 db.createUser({ id: 'owner', name: 'Dueña', created: Date.now() });
-for (const id of ['ana', 'beto', 'caro', 'eva', 'moroso']) db.createUser({ id, name: id === 'ana' ? 'Ana Pérez' : id, created: Date.now() });
+for (const id of ['ana', 'beto', 'caro', 'eva', 'lim', 'moroso']) db.createUser({ id, name: id === 'ana' ? 'Ana Pérez' : id, created: Date.now() });
 const plan = db.createPlan({ name: 'Mensual', price: 20000, durationDays: 30 });
+const onePerWeek = db.createPlan({ name: '1 por semana', price: 10000, durationDays: 30, classLimit: 1, classPeriod: 'week' });
 for (const [id, due] of [['ana', 20], ['beto', 20], ['caro', 20], ['eva', 20], ['moroso', -10]]) db.setMemberBilling(id, { planId: plan.id, dueDate: addDays(today, due) });
+db.setMemberBilling('lim', { planId: onePerWeek.id, dueDate: addDays(today, 20) });
 const spinning = cdb.saveClassType({ name: 'Spinning', color: '#ff9f0a', icon: 'bike', description: 'Pedaleo', durationMin: 45, capacity: 1, teacherUserId: null, teacherName: 'Caro', room: 'Sala 2', logMode: 'muscles', log: { muscles: ['quadriceps'], intensity: 'high' } });
 const slot = cdb.saveClassSlot({ classId: spinning.id, weekday: weekdayOf(day), start: '19:00' });
 const otherSlot = cdb.saveClassSlot({ classId: spinning.id, weekday: weekdayOf(addDays(today, 3)), start: '08:00' });
@@ -191,4 +193,64 @@ test('clase sin cupo: todos reservan, nadie queda en lista de espera', async () 
   }
   const occ = (await list('ana', day, 1)).occurrences.find(o => o.slotId === yogaSlot.id);
   assert.deepEqual([occ.capacity, occ.booked, occ.waitlist], [null, 4, 0]);
+});
+
+test('aviso a la profe: el ajuste se guarda solo con valores posibles', async () => {
+  assert.equal((await list('caro')).teacherReminder, 60);
+  assert.equal((await call('caro', 'PUT', '/api/classes/teacher-reminder', { minutes: 45 })).status, 400);
+  assert.equal((await call('caro', 'PUT', '/api/classes/teacher-reminder', { minutes: 0 })).status, 200);
+  assert.equal((await list('caro')).teacherReminder, 0);
+});
+
+test('la reserva propia para el historial: fuente, calificación y si se puede calificar', async () => {
+  const mine = (await list('eva')).occurrences.find(o => o.slotId === yogaSlot.id && o.myBooking);
+  const r = await call('eva', 'GET', `/api/classes/booking?id=${mine.myBooking.id}`);
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.deepEqual({ status: r.body.booking.status, rating: r.body.booking.rating, canRate: r.body.booking.canRate, name: r.body.occurrence.name, room: r.body.occurrence.room, color: r.body.occurrence.color },
+    { status: 'booked', rating: null, canRate: false, name: 'Yoga', room: 'Sala 3', color: '#30d158' });
+  assert.equal((await call('ana', 'GET', `/api/classes/booking?id=${mine.myBooking.id}`)).status, 404);
+});
+
+test('día cerrado: no se reserva y la lista trae el cierre', async () => {
+  const closed = addDays(today, 3);   // el día de otherSlot
+  const made = await call('owner', 'POST', '/api/admin/classes/closures', { from: closed, to: closed, reason: 'Feriado' });
+  assert.equal(made.status, 200, JSON.stringify(made.body));
+  const data = await list('ana', closed, 1);
+  assert.deepEqual(data.closures.map(c => [c.from, c.reason]), [[closed, 'Feriado']]);
+  const occ = data.occurrences.find(o => o.slotId === otherSlot.id);
+  assert.deepEqual([occ.cancelled, occ.closed, occ.state], [true, 'Feriado', 'cancelled']);
+  const r = await call('ana', 'POST', '/api/classes/book', { slotId: otherSlot.id, date: closed });
+  assert.deepEqual([r.status, r.body.error], [409, 'booking_cancelled']);
+});
+
+test('límite del plan: bloquea al llegar, la cancelación a tiempo devuelve la clase y el staff puede pasarlo', async () => {
+  const yogaOcc = async uid => (await list(uid, day, 1)).occurrences.find(o => o.slotId === yogaSlot.id);
+  const first = await call('lim', 'POST', '/api/classes/book', { slotId: slot.id, date: day });
+  assert.equal(first.status, 200, JSON.stringify(first.body));
+  const blocked = await call('lim', 'POST', '/api/classes/book', { slotId: yogaSlot.id, date: day });
+  assert.deepEqual([blocked.status, blocked.body.error, blocked.body.limit, blocked.body.period, blocked.body.used], [403, 'plan_limit', 1, 'week', 1]);
+  // Repetir la que ya tiene no choca con el límite.
+  assert.equal((await call('lim', 'POST', '/api/classes/book', { slotId: slot.id, date: day })).status, 200);
+  const data = await list('lim', day, 1);
+  assert.deepEqual([data.planLimit.limit, data.planLimit.period, Object.values(data.planLimit.used)], [1, 'week', [1]]);
+  // Cancela a tiempo: le vuelve la clase.
+  await call('lim', 'POST', '/api/classes/cancel', { bookingId: first.body.booking.id });
+  assert.equal((await call('lim', 'POST', '/api/classes/book', { slotId: yogaSlot.id, date: day })).status, 200);
+  assert.equal((await yogaOcc('lim')).myBooking.status, 'booked');
+  // El staff lo anota igual y el panel se entera.
+  const add = await call('owner', 'POST', '/api/admin/classes/sessions/add', { slotId: slot.id, date: day, userId: 'lim' });
+  assert.equal(add.status, 200, JSON.stringify(add.body));
+  assert.deepEqual([add.body.overLimit, add.body.planLimit?.limit], [true, 1]);
+  // Sin límite en el plan, nada cambia.
+  assert.equal((await list('ana', day, 1)).planLimit, null);
+});
+
+test('suspensión: el aviso en la app es solo para quien estaba anotado (no para quien ya había cancelado)', async () => {
+  const yogaOf = async uid => (await list(uid, day, 1)).occurrences.find(o => o.slotId === yogaSlot.id)
+  const anaBooking = (await yogaOf('ana')).myBooking
+  assert.equal((await call('ana', 'POST', '/api/classes/cancel', { bookingId: anaBooking.id })).status, 200)
+  const r = await call('owner', 'POST', '/api/admin/classes/sessions/change', { slotId: yogaSlot.id, date: day, cancelled: true })
+  assert.equal(r.status, 200, JSON.stringify(r.body))
+  assert.deepEqual([(await yogaOf('ana')).myBooking.status, (await yogaOf('ana')).myBooking.suspended], ['cancelled', false])
+  assert.deepEqual([(await yogaOf('beto')).myBooking.status, (await yogaOf('beto')).myBooking.suspended], ['cancelled', true])
 });

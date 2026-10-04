@@ -265,6 +265,9 @@ export function initDatabase() {
   }
   migrateRoles(db);
   migrateClasses(db);
+  // Clases incluidas en el plan (entrega 4 de clases): null es libre; 'week' o 'month'.
+  try { db.exec('ALTER TABLE plans ADD COLUMN class_limit INTEGER;'); } catch {}
+  try { db.exec('ALTER TABLE plans ADD COLUMN class_period TEXT;'); } catch {}
 
   // Migración defensiva: asegurar que existan todas las columnas de la encuesta en bases de datos existentes
   const columnsToAdd = [
@@ -2306,6 +2309,8 @@ const planFromRow = row => row ? {
   name: row.name,
   price: row.price,
   durationDays: row.duration_days,
+  classLimit: row.class_limit ?? null,
+  classPeriod: row.class_limit ? row.class_period || 'week' : null,
   active: row.active === 1,
   created: row.created_at,
   updated: row.updated_at
@@ -2319,22 +2324,26 @@ export function getPlanById(id) {
   return planFromRow(getDatabase().prepare('SELECT * FROM plans WHERE id = ?').get(id));
 }
 
-export function createPlan({ name, price, durationDays }) {
+export function createPlan({ name, price, durationDays, classLimit = null, classPeriod = null }) {
   const now = Date.now();
   const { lastInsertRowid } = getDatabase().prepare(`
-    INSERT INTO plans (name, price, duration_days, active, created_at, updated_at) VALUES (?, ?, ?, 1, ?, ?)
-  `).run(name, price, durationDays, now, now);
+    INSERT INTO plans (name, price, duration_days, class_limit, class_period, active, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 1, ?, ?)
+  `).run(name, price, durationDays, classLimit, classLimit ? classPeriod : null, now, now);
   return getPlanById(Number(lastInsertRowid));
 }
 
 // Parche parcial: solo cambia los campos presentes. Los planes no se borran.
-export function updatePlan(id, { name, price, durationDays, active }) {
+export function updatePlan(id, { name, price, durationDays, active, classLimit, classPeriod }) {
   const fields = [];
   const values = [];
   if (name !== undefined) { fields.push('name = ?'); values.push(name); }
   if (price !== undefined) { fields.push('price = ?'); values.push(price); }
   if (durationDays !== undefined) { fields.push('duration_days = ?'); values.push(durationDays); }
   if (active !== undefined) { fields.push('active = ?'); values.push(active ? 1 : 0); }
+  if (classLimit !== undefined) {
+    fields.push('class_limit = ?', 'class_period = ?');
+    values.push(classLimit, classLimit ? classPeriod || 'week' : null);
+  }
   if (fields.length) {
     fields.push('updated_at = ?'); values.push(Date.now());
     getDatabase().prepare(`UPDATE plans SET ${fields.join(', ')} WHERE id = ?`).run(...values, id);

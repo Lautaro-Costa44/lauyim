@@ -115,8 +115,8 @@ describe('hoja de la fecha', () => {
 })
 
 describe('fecha suspendida', () => {
-  it('quien la puede editar la quita de la vista; sin permiso, no hay botón', async () => {
-    sessionOcc = occ({ cancelled: true })
+  it('suelta: quien la puede editar la quita de la vista; sin permiso, no hay botón', async () => {
+    sessionOcc = occ({ cancelled: true, slotId: null })
     sessionSheet(sessionOcc, { canManage: true, users: [], teachers: [], onChange: vi.fn() })
     let sheet = await openLastSheet()
     expect(button(sheet.host, 'Quitar de la vista')).toBeTruthy()
@@ -133,7 +133,7 @@ describe('fecha suspendida', () => {
     expect(apiMock).toHaveBeenCalledWith('/api/admin/classes/sessions/hide', { method: 'POST', body: JSON.stringify({ sessionId: 'x1' }) })
     await act(async () => r.unmount()); host.remove()
     await sheet.unmount()
-    sessionOcc = occ({ cancelled: true, editable: false })
+    sessionOcc = occ({ cancelled: true, editable: false, slotId: null })
     sessionSheet(sessionOcc, { canManage: false, users: [], teachers: [] })
     sheet = await openLastSheet()
     expect(button(sheet.host, 'Quitar de la vista')).toBeFalsy()
@@ -260,5 +260,129 @@ describe('mensaje a los anotados', () => {
     await act(async () => { button(host, 'Anotar a mano').click() })
     expect([...host.querySelectorAll('.member-form .tt')].map(e => e.textContent)).toEqual(['Beto'])
     await unmount()
+  })
+})
+
+describe('compartir la lista', () => {
+  const detail = { occurrence: occ(), canMessage: true, booked: [{ bookingId: 'b1', userId: 'ana', name: 'Ana Pérez', status: 'booked' }], waitlist: [] }
+  beforeEach(() => {
+    try { localStorage.removeItem('lauyim_share_names') } catch {}
+    apiMock.mockImplementation(url => url.startsWith('/api/admin/classes/session?') ? Promise.resolve(detail) : Promise.resolve({}))
+  })
+  afterEach(() => { delete navigator.share })
+
+  it('desde la hoja de la fecha: vista previa con inicial; cambia a nombre completo y lo recuerda; comparte', async () => {
+    const shared = vi.fn(() => Promise.resolve())
+    navigator.share = shared
+    sessionSheet(occ(), { canManage: false, users: [], teachers: [] })
+    let sheet = await openLastSheet()
+    await act(async () => { button(sheet.host, 'Compartir lista').click() })
+    await sheet.unmount()
+    sheet = await openLastSheet()
+    const preview = () => sheet.host.querySelector('.class-share-preview').textContent
+    expect(preview()).toContain('1. Ana P.')
+    await act(async () => { button(sheet.host, 'Nombre completo').click() })
+    expect(preview()).toContain('1. Ana Pérez')
+    expect(localStorage.getItem('lauyim_share_names')).toBe('full')
+    await act(async () => { button(sheet.host, 'Compartir').click() })
+    expect(shared).toHaveBeenCalledWith({ text: expect.stringContaining('Anotados (1/12):') })
+    await sheet.unmount()
+  })
+
+  it('sin compartir del sistema (PC): copia y ofrece abrir WhatsApp', async () => {
+    const writeText = vi.fn(() => Promise.resolve())
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } })
+    const { shareListSheet } = await import('./clases/SessionSheet.jsx')
+    shareListSheet(occ(), detail)
+    const sheet = await openLastSheet()
+    await act(async () => { button(sheet.host, 'Compartir').click() })
+    expect(writeText).toHaveBeenCalled()
+    expect(sheet.host.querySelector('a[href^="https://wa.me/?text="]')).toBeTruthy()
+    await sheet.unmount()
+  })
+})
+
+describe('cerrar el gimnasio', () => {
+  it('hoja: vista previa con clases y personas; cerrar y avisar', async () => {
+    apiMock.mockImplementation((url, opts) => {
+      if (url.startsWith('/api/admin/classes/closures/preview')) return Promise.resolve({ classes: 7, people: 42 })
+      if (url === '/api/admin/classes/closures' && opts?.method === 'POST') return Promise.resolve({ closure: { id: 'k1' }, notified: 42, classes: 7 })
+      return Promise.resolve({})
+    })
+    const { closureSheet } = await import('./clases/ClosureSheet.jsx')
+    const onChange = vi.fn()
+    closureSheet({ today: TODAY, onChange })
+    const { host, unmount } = await openLastSheet()
+    await act(async () => { await new Promise(r => setTimeout(r, 300)) })
+    expect(apiMock).toHaveBeenCalledWith('/api/admin/classes/closures/preview?from=2026-10-08&to=2026-10-08')
+    expect(host.querySelector('.class-closure-preview').textContent).toContain('Se suspenden 7 clases y le avisamos a 42 personas.')
+    await act(async () => { button(host, 'Vacaciones').click() })
+    await act(async () => { button(host, 'Cerrar y avisar').click() })
+    await tick()
+    expect(apiMock).toHaveBeenCalledWith('/api/admin/classes/closures', { method: 'POST', body: JSON.stringify({ from: '2026-10-08', to: '2026-10-08', reason: 'Vacaciones' }) })
+    expect(useUI.getState().toastMsg).toBe('Gimnasio cerrado: avisamos a 42 personas')
+    expect(onChange).toHaveBeenCalled()
+    await unmount()
+  })
+
+  it('panel: próximos cierres con Reabrir y el día cerrado marcado', async () => {
+    const closures = [{ id: 'k1', from: '2026-10-12', to: '2026-10-12', reason: 'Feriado' }]
+    apiMock.mockImplementation(url => {
+      if (url === '/api/admin/classes/closures') return Promise.resolve({ closures })
+      if (url.startsWith('/api/admin/classes/calendar')) return Promise.resolve({ ...calendar(), closures: [{ id: 'k2', from: '2026-10-07', to: '2026-10-07', reason: 'Feriado' }] })
+      if (url === '/api/admin/classes/types') return Promise.resolve({ types: [], slots: [], teachers: [], canManage: true, canOwn: true, settings: {} })
+      return Promise.resolve({})
+    })
+    await mount(<AdminClases />)
+    expect(container.querySelector('.class-closure-row').textContent).toContain('Cerrado · Lun 12/10 · Feriado')
+    expect(button(container, 'Reabrir')).toBeTruthy()
+    expect(button(container, 'Cerrar el gimnasio')).toBeTruthy()
+    expect(container.querySelector('.class-week-head span.closed').textContent).toBe('Mié 7')
+  })
+})
+
+describe('eliminar una clase', () => {
+  const confirmLast = async () => {
+    for (let i = 0; i < 100 && !useUI.getState().sheets.at(-1)?.render; i++) await tick()
+    return openLastSheet()
+  }
+  it('semanal suspendida: sin "Quitar de la vista"; "Eliminar del horario" pregunta solo ese día o toda la clase', async () => {
+    sessionOcc = occ({ cancelled: true })
+    apiMock.mockImplementation((url, opts) => {
+      if (url.startsWith('/api/admin/classes/session?')) return Promise.resolve({ occurrence: sessionOcc, booked: [], waitlist: [] })
+      if (url.startsWith('/api/admin/classes/retire-preview')) return Promise.resolve({ slot: { id: 's1', weekday: 3, start: '19:00', dates: 2, people: 5 }, class: { id: 'c1', name: 'Spinning', slots: 2, dates: 4, people: 9 } })
+      return Promise.resolve({ ok: true, notified: 5 })
+    })
+    sessionSheet(sessionOcc, { canManage: true, users: [], teachers: [], onChange: vi.fn() })
+    const sheet = await openLastSheet()
+    expect(button(sheet.host, 'Quitar de la vista')).toBeFalsy()
+    const n = useUI.getState().sheets.length
+    await act(async () => { button(sheet.host, 'Eliminar del horario').click() })
+    for (let i = 0; i < 100 && useUI.getState().sheets.length === n; i++) await tick()
+    const retire = await confirmLast()
+    expect(retire.host.textContent).toContain('Spinning deja de darse los miércoles 19:00.')
+    expect(retire.host.textContent).toContain('Se borran 2 fechas y le avisamos a 5 personas.')
+    await act(async () => { button(retire.host, 'Toda la clase').click() })
+    expect(retire.host.textContent).toContain('Se borran 4 fechas y le avisamos a 9 personas.')
+    await act(async () => { button(retire.host, 'Solo los miércoles 19:00').click() })
+    await act(async () => { button(retire.host, 'Eliminar').click() })
+    await tick()
+    expect(apiMock).toHaveBeenCalledWith('/api/admin/classes/slots/delete', { method: 'POST', body: JSON.stringify({ id: 's1' }) })
+    await retire.unmount(); await sheet.unmount()
+  })
+
+  it('suelta: "Eliminar esta clase" (suspende con aviso y la saca, en un paso)', async () => {
+    sessionOcc = occ({ slotId: null })
+    sessionSheet(sessionOcc, { canManage: true, users: [], teachers: [], onChange: vi.fn() })
+    const sheet = await openLastSheet()
+    expect(button(sheet.host, 'Eliminar del horario')).toBeFalsy()
+    const n = useUI.getState().sheets.length
+    await act(async () => { button(sheet.host, 'Eliminar esta clase').click() })
+    for (let i = 0; i < 100 && useUI.getState().sheets.length === n; i++) await tick()
+    const confirm = await confirmLast()
+    await act(async () => { button(confirm.host, 'Eliminar').click() })
+    await tick()
+    expect(apiMock).toHaveBeenCalledWith('/api/admin/classes/sessions/delete', { method: 'POST', body: JSON.stringify({ sessionId: 'x1' }) })
+    await confirm.unmount(); await sheet.unmount()
   })
 })

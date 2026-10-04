@@ -16,7 +16,9 @@ import { MAX_ROUTINE_GROUPS, canAddGroup, validateGroupName, syncActiveGroupInSt
 import { errorText } from '../../lib/errors.js'
 import WorkoutHistoryList from '../../components/workout/WorkoutHistoryList.jsx'
 import WorkoutDetailView from '../../components/workout/WorkoutDetailView.jsx'
-import { weekAdherence } from '../../lib/workout-history.js'
+import ClassWorkoutDetail from '../../components/workout/ClassWorkoutDetail.jsx'
+import ClassesMemberCard from './members/ClassesCard.jsx'
+import { weekAdherence, isClassWorkout } from '../../lib/workout-history.js'
 import { can } from '../../lib/permissions.js'
 import { RoleTag, RolePickSheet } from './roles-common.jsx'
 
@@ -748,6 +750,7 @@ export function UserDetail({ id, billingEnabled = true, users, openUser, onChang
   const [reloadKey, setReloadKey] = useState(0)
   const showUser = openUser || (otherId => openSheet(c => <UserDetail id={otherId} billingEnabled={billingEnabled} users={users} onChanged={onChanged} close={c} />))
   const currentUser = useStore(s => s.user)
+  const classesOn = useStore(s => !!s.config?.classes_available)
   useEffect(() => { api('/api/admin/user?id=' + encodeURIComponent(id)).then(setD).catch(e => toast(errorText(e))) }, [id, reloadKey])
   if (!d) return <div className="muted small">{t('Loading…')}</div>
   const u = d.user
@@ -770,7 +773,8 @@ export function UserDetail({ id, billingEnabled = true, users, openUser, onChang
   // Historial del socio: el mismo detalle que ve él, en solo lectura y como panel (centrado en
   // tablet y escritorio, hoja en el celular). Su unidad y sus nombres de ejercicios propios.
   const historyData = { workouts: d.workouts, routines: d.routines, unit: d.unit, names: d.names || {} }
-  const openWorkout = w => openSheet(() => <WorkoutDetailView w={w} data={historyData} showBw={d.healthConsent !== 'declined'} note={w.note || null} />, { kind: 'panel' })
+  const openWorkout = w => openSheet(() => isClassWorkout(w) ? <ClassWorkoutDetail w={w} staff />
+    : <WorkoutDetailView w={w} data={historyData} showBw={d.healthConsent !== 'declined'} note={w.note || null} />, { kind: 'panel' })
   // Ficha without a passkey: nothing to train or sync, so the training parts stay out.
   const hasApp = u.hasApp !== false
   // Desactivada o pendiente de aprobación. Quitar el rol de admin sigue permitido.
@@ -815,6 +819,7 @@ export function UserDetail({ id, billingEnabled = true, users, openUser, onChang
         código) se vuelven a montar y muestran la ficha y la cuota nuevas sin cambiar de socio. */}
     <FichaCard key={'ficha-' + reloadKey} user={{ ...u, hasApp }} users={users} openSheet={openSheet} openUser={showUser} onLink={merge} canEdit={allowed('members.edit')} />
     {billingEnabled !== false && allowed('fees.view') && <BillingSummaryCard key={'cuota-' + reloadKey} userId={u.id} userName={u.name} openSheet={openSheet} onChanged={onChanged} />}
+    {classesOn && (allowed('classes.view_all') || allowed('classes.book_members')) && <ClassesMemberCard key={'clases-' + reloadKey} userId={u.id} userName={u.name} />}
     {hasApp && d.healthConsent === 'declined' && <div className="small muted no-health-note">{t('Sin consentimiento de datos de salud: nutrición, lesiones y peso corporal no se muestran.')}</div>}
     {/* Cuenta no activa (desactivada o sin aprobar): ni rol de admin ni administrar nutrición o
         rutina hasta que se active. La API rechaza igual (409 account_not_active). */}

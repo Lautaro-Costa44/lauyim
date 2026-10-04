@@ -1,5 +1,6 @@
 /* lauyim-api — passkey (WebAuthn) auth + per-user state storage for lauyim
    SQLite storage via node:sqlite, signed session cookies.                  */
+import { auditCategory, AUDIT_CATEGORIES } from './audit-categories.js';
 import http from 'node:http';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
@@ -849,10 +850,19 @@ function parsePlanBody(body, partial) {
     if (typeof body.active !== 'boolean') return { error: 'active debe ser true o false' };
     out.active = body.active;
   }
+  // Clases incluidas: null (libre) o de 1 a 31 por semana o por mes.
+  if (body.classLimit !== undefined) {
+    if (body.classLimit === null) { out.classLimit = null; out.classPeriod = null; }
+    else {
+      if (!Number.isInteger(body.classLimit) || body.classLimit < 1 || body.classLimit > 31) return { error: 'Las clases incluidas van de 1 a 31' };
+      if (!['week', 'month'].includes(body.classPeriod)) return { error: 'Elegí si las clases son por semana o por mes' };
+      out.classLimit = body.classLimit; out.classPeriod = body.classPeriod;
+    }
+  }
   return { value: out };
 }
 
-const planSummary = plan => `${plan.name} · $${plan.price} · ${plan.durationDays} días${plan.active === false ? ' · inactivo' : ''}`;
+const planSummary = plan => `${plan.name} · $${plan.price} · ${plan.durationDays} días${plan.classLimit ? ` · ${plan.classLimit} clases por ${plan.classPeriod === 'month' ? 'mes' : 'semana'}` : ''}${plan.active === false ? ' · inactivo' : ''}`;
 const userIdFromPath = req => decodeURIComponent(new URL(req.url, 'http://x').pathname.split('/')[4] || '');
 
 // Plan + vencimiento a asignar (PUT billing y alta de ficha). body.planId null quita el plan.
@@ -4386,13 +4396,14 @@ const routes = {
     const limit = Math.max(1, Math.min(200, +q.get('limit') || 100));
     const before = +q.get('before') || Infinity;
     const cat = q.get('cat') || '';
-    let rows = auditKeep(auditLines()).reverse();
+    // Cada evento con su categoría (audit-categories.js): accesos, socios, cuotas, clases, … El
+    // filtro es una categoría o "fail" (los fallidos de cualquiera).
+    let rows = auditKeep(auditLines()).reverse().map(r => ({ ...r, cat: auditCategory(r.ev) }));
     if (cat === 'fail') rows = rows.filter(r => !r.ok);
-    else if (cat === 'admin') rows = rows.filter(r => String(r.ev).startsWith('admin.') || String(r.ev).startsWith('owner.'));
-    else if (cat) rows = rows.filter(r => String(r.ev).startsWith(cat + '.'));
+    else if (cat) rows = rows.filter(r => r.cat === cat);
     const page = rows.filter(r => r.id < before).slice(0, limit);
     json(res, 200, {
-      events: page,
+      events: page, categories: AUDIT_CATEGORIES,
       total: rows.length,
       nextBefore: page.length === limit ? page[page.length - 1].id : null,
       enabled: AUDIT_ON, ip_mode: AUDIT_IP,
@@ -4410,7 +4421,7 @@ const routes = {
     json(res, 200, { ok: true });
   },
   // Clases grupales (classes-routes.js).
-  ...classRoutes({ json, readBody, readSession, requireAdmin, requireOwner, audit, sendPush, can, isMembershipBlocked, isInactiveAccount, gymTz: () => billingSettingsNow().gym_tz }),
+  ...classRoutes({ json, readBody, readSession, requireAdmin, requireOwner, audit, sendPush, can, isMembershipBlocked, isStaff: user => !!user && isStaff(user), isInactiveAccount, gymTz: () => billingSettingsNow().gym_tz }),
 };
 
 http.createServer(async (req, res) => {

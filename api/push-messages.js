@@ -97,7 +97,7 @@ export function classReminderPush({ name, date, today, start, movedFrom, teacher
 // Avisos de una fecha de clase: moved | teacher | cancelled | promoted | waitlisted | added |
 // fee_blocked | penalty_blocked. prevTeacher: la profe de antes (teacher); waitlistPos: el lugar en
 // la lista de espera (waitlisted); until: desde cuándo puede volver a reservar (penalty_blocked).
-export function classChangePush(kind, { name, date, today, start, movedFrom, teacher, prevTeacher, waitlistPos, until, sessionId }) {
+export function classChangePush(kind, { name, date, today, start, movedFrom, teacher, prevTeacher, waitlistPos, until, limit, period, sessionId }) {
   const ref = dayRef(date, today);
   const at = `${name} ${ref} a las ${start}`;
   const teacherBody = teacher
@@ -109,8 +109,10 @@ export function classChangePush(kind, { name, date, today, start, movedFrom, tea
     cancelled: [`Se suspendió ${name}`, `${at} no se da. Tu lugar quedó liberado.`],
     promoted: [`¡Entraste a ${name}!`, `Se liberó un lugar para ${dayWord(date, today)} a las ${start}. Si no podés ir, cancelala así entra otra persona.`],
     waitlisted: ['Lista de espera: ' + name, `${at} está llena. Quedaste ${waitlistPos ? `n.º ${waitlistPos} ` : ''}en la lista de espera; si se libera un lugar, te avisamos.`],
+    staff_cancelled: [`Se canceló tu lugar en ${name}`, `El gimnasio canceló tu lugar ${ref} a las ${start}. Si fue un error, avisá en recepción.`],
     added: [`Te anotaron a ${name}`, `Tenés lugar ${dayWord(date, today)} a las ${start}. Si no podés ir, cancelala desde la app.`],
     fee_blocked: ['No pudimos anotarte', `Tu reserva fija de ${name} ${ref} no se hizo porque tu cuota está vencida. Regularizala en recepción.`],
+    plan_limit: ['No pudimos anotarte', `Tu reserva fija de ${name} ${ref} no se hizo: tu plan incluye ${limit === 1 ? '1 clase' : `${limit} clases`} por ${period === 'month' ? 'mes' : 'semana'} y ${period === 'month' ? 'ese mes' : 'esa semana'} ya ${limit === 1 ? 'la tenés' : `tenés ${limit}`}.`],
     penalty_blocked: ['No pudimos anotarte', `Tu reserva fija de ${name} ${ref} no se hizo por las ausencias.${until ? ` Podés volver a reservar desde el ${ddmm(until)}.` : ''}`]
   }[kind];
   return { title: text[0], body: text[1], ...classData(date, sessionId) };
@@ -124,4 +126,31 @@ export function classAfterPush({ name, date, sessionId }) {
 // Mensaje de la profe a los anotados: "Spinning de mañana a las 10:00" / "Caro: Traigan toalla".
 export function classMessagePush({ name, date, today, start, sender, text, sessionId }) {
   return { title: `${name} ${dayRef(date, today)} a las ${start}`, body: `${sender}: ${text}`, tag: `class-msg-${sessionId}`, data: { redirectUrl: `/#/plan/clases?d=${date}` } };
+}
+
+// Aviso a la profe antes de su clase: "Spinning en 1 hora" / "8 anotados · 2 en espera".
+export function teacherReminderPush({ name, date, minutes, booked, waitlist, sessionId }) {
+  const body = !booked && !waitlist ? 'Todavía no se anotó nadie.'
+    : `${booked === 1 ? '1 anotado' : `${booked} anotados`}${waitlist ? ` · ${waitlist} en espera` : ''}`;
+  return { title: `${name} ${inMinutes(minutes)}`, body, tag: `class-teach-${sessionId}`, data: { redirectUrl: `/#/plan/clases?d=${date}` } };
+}
+
+// Cierre del gimnasio: un aviso por persona con sus clases suspendidas. items: [{ name, start, date }].
+const MONTH_DAY = date => `${Number(date.slice(8, 10))}/${Number(date.slice(5, 7))}`;
+export function closurePush({ from, to, today, reason, items }) {
+  const oneDay = from === to;
+  const ref = dayRef(from, today);
+  const title = !oneDay ? `Sin clases del ${MONTH_DAY(from)} al ${MONTH_DAY(to)}`
+    : ref === 'de hoy' ? 'Hoy no hay clases' : ref === 'de mañana' ? 'Mañana no hay clases' : `El ${ref.replace(/^del /, '')} no hay clases`;
+  const list = items.map(i => `${i.name} ${i.start}`);
+  const joined = list.length > 1 ? `${list.slice(0, -1).join(', ')} y ${list.at(-1)}` : list[0];
+  const what = oneDay
+    ? `${items.length > 1 ? 'Se suspendieron' : 'Se suspendió'} ${joined}; tu lugar quedó liberado.`
+    : items.length > 1 ? `Se suspendieron tus ${items.length} reservas.` : `Se suspendió tu reserva de ${items[0].name} ${dayRef(items[0].date, today)}.`;
+  return { title, body: reason ? `${reason}. ${what}` : what, tag: `class-closure-${from}`, data: { redirectUrl: `/#/plan/clases?d=${from}` } };
+}
+
+// El staff levantó la penalización por ausencias.
+export function penaltyResetPush() {
+  return { title: 'Ya podés volver a reservar clases', body: 'El gimnasio levantó tu penalización por ausencias.', tag: 'class-penalty', data: { redirectUrl: '/#/plan/clases' } };
 }

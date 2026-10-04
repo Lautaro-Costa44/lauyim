@@ -6,6 +6,7 @@ import { guestAllowed } from '../lib/guest.js'
 import { deviceSubscription, isAccountEnded, wipeDeviceData } from '../lib/session-end.js'
 import { enqueueSync, takeSyncBatch, removeSync, deferSync, countSync, diffState, applySyncMappings } from '../lib/sync-queue.js'
 import { MAX_ROUTINE_GROUPS, canAddGroup, validateGroupName, createRoutineGroup, syncActiveGroupInState, addGroupToState, removeGroupFromState } from '../lib/routineGroups.js'
+import { stampWeekTargets } from '../lib/history.js'
 
 const KEY = 'gym_state_v1'
 export const DEF = {
@@ -316,6 +317,9 @@ export const useStore = create((set, get) => {
     verifySession,
     user: (() => { try { return JSON.parse(localStorage.getItem('gym_user')) || null } catch { return null } })(),
     ready: false,
+    // true cuando terminó el primer pull del servidor: lo que se suma solo al estado (las clases a las
+    // que fue) espera a esto, para que el pull no lo pise.
+    pulled: false,
     membershipBlocked: (() => { try { return localStorage.getItem(BLOCK_KEY) === '1' } catch { return false } })(),
     accountPending: (() => { try { return localStorage.getItem(PENDING_KEY) === '1' } catch { return false } })(),
     profilePrompt: null,
@@ -352,6 +356,7 @@ export const useStore = create((set, get) => {
       const before = clone(S)
       mut(S)
       markPlanStarted(S)
+      stampWeekTargets(before, S)      // el objetivo de la semana en cada entreno nuevo (racha)
       mirrorWeekIntoActiveGroup(S, before)
       persist(S, false)
       // Cambio local sin subir: marcado antes de que llegue a la cola (IndexedDB es asíncrono), para
@@ -623,6 +628,7 @@ export const useStore = create((set, get) => {
           // Pull after the queue is drained so a just-completed local change cannot be
           // replaced by the older full snapshot that was on the server before reload.
           await get().pullState()
+          set({ pulled: true })
         }
         // Re-stamp the reminder's timezone on every load — keeps it correct if you're travelling,
         // without needing to revisit Settings.

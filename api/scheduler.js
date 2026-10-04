@@ -6,7 +6,7 @@ import { getDatabase, getUserState, markDuePushSent } from './database.js';
 import { sendPushToSubscription } from './push-send.js';
 import { dayReminderPush, gymFeePush, billingDuePush } from './push-messages.js';
 import { getBillingSettings, gymClock, shouldSendDuePush, daysBetween, isBillingEnabled, getBillingNotifyHour } from './billing.js';
-import { materializeRecurring, sendClassReminders, runAfterClass, dropTeacherBookings, classClock } from './classes-routes.js';
+import { materializeRecurring, sendClassReminders, sendTeacherReminders, runAfterClass, dropTeacherBookings, classClock } from './classes-routes.js';
 
 // Avisos de cuota en vuelo (user_id:due_date). El envío es asíncrono y el tick corre cada
 // minuto: sin esto, un push lento se volvería a disparar antes de guardar push_sent_for_due.
@@ -142,8 +142,9 @@ function effectiveRoutineId(state, dateStr) {
   return state?.week?.[weekday] || null;
 }
 
+// Una clase hecha ese día no cuenta: la rutina del día sigue pendiente (decisión 2026-10-02).
 function hasWorkoutOnDate(state, dateStr) {
-  return (state?.workouts || []).some(workout => workout.d === dateStr);
+  return (state?.workouts || []).some(workout => workout.d === dateStr && workout.kind !== 'class');
 }
 
 // `now` y `sendToUser` solo se reemplazan en tests (hora del gym fija, envío sin red).
@@ -314,6 +315,7 @@ export function runSchedulerTick({ now = Date.now(), sendToUser = sendPushToUser
     dropTeacherBookings({ send, now: clock });
     materializeRecurring({ send, now: clock });
     sendClassReminders({ send, now: clock });
+    sendTeacherReminders({ send, now: clock });
     runAfterClass({ send, now: clock });
   } catch (err) {
     console.error('[Scheduler] Error en clases:', err);

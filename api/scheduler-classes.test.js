@@ -88,3 +88,51 @@ test('la profe anotada a la clase que da: el tick le cancela la reserva y entra 
   assert.equal(cdb.getBooking(wait.id).status, 'booked');
   assert.deepEqual(sent.filter(m => m.userId === 'beto').map(m => m.payload.title), ['¡Entraste a Yoga!']);
 });
+
+test('aviso a la profe: una vez, con cuántos hay; apagado o suspendida, nada', async () => {
+  const at = addMinutes(clock.time, 45);
+  const type = (name, teacherUserId) => cdb.saveClassType({ name, color: '#30d158', icon: 'boxing', description: '', durationMin: 60, capacity: 10, teacherUserId, teacherName: '', room: 'Sala 4', logMode: 'muscles', log: { muscles: ['core'], intensity: 'high' } });
+  const box = cdb.ensureClassSession({ classId: type('Box', 'caro').id, slotId: null, date: clock.date, start: at });
+  cdb.bookOrWaitlist({ sessionId: box.id, userId: 'ana', capacity: 10 });
+  cdb.ensureClassSession({ classId: type('Off', 'dani').id, slotId: null, date: clock.date, start: at });
+  cdb.setTeacherReminder('dani', 0);
+  const sus = cdb.ensureClassSession({ classId: type('Sus', 'beto').id, slotId: null, date: clock.date, start: at });
+  cdb.updateClassSession(sus.id, { cancelled: true });
+  const teach = list => list.filter(m => m.payload.tag.startsWith('class-teach-'));
+  const sent = teach(await tick());
+  assert.deepEqual(sent.map(m => m.userId), ['caro']);
+  assert.match(sent[0].payload.title, /^Box en 4[45] minutos$/);
+  assert.equal(sent[0].payload.body, '1 anotado');
+  assert.deepEqual(teach(await tick()), []);
+});
+
+test('día cerrado: la reserva fija no reserva esa fecha', async () => {
+  const later = addDays(clock.date, 2);
+  const slot3 = cdb.saveClassSlot({ classId: spinning.id, weekday: weekdayOf(later), start: '11:00' });
+  cdb.addClosure({ from: later, to: later, reason: 'Feriado' });
+  cdb.addRecurring(slot3.id, 'dani');
+  await tick();
+  assert.deepEqual(cdb.getUserBookings('dani', { from: later }).filter(b => b.session.start === '11:00'), []);
+});
+
+test('límite del plan: la reserva fija no pasa el límite y avisa una vez', async () => {
+  const plan = db.createPlan({ name: 'Una por semana', price: 1, durationDays: 30, classLimit: 1, classPeriod: 'week' });
+  db.createUser({ id: 'fija', name: 'fija' });
+  db.setMemberBilling('fija', { planId: plan.id, dueDate: addDays(clock.date, 20) });
+  const wd = d => weekdayOf(addDays(clock.date, d));
+  // Dos días de la misma semana (lunes a domingo), dentro de la ventana.
+  const monday = date => addDays(date, -((weekdayOf(date) + 6) % 7));
+  // El día +2 está cerrado por el test anterior: se saltea.
+  const offsets = [1, 3, 4, 5, 6].filter(n => monday(addDays(clock.date, n)) === monday(addDays(clock.date, 1)));
+  const [a, b] = offsets.slice(0, 2);
+  if (b === undefined) return;   // la semana termina mañana: no hay dos días para probar
+  const s1 = cdb.saveClassSlot({ classId: spinning.id, weekday: wd(a), start: '06:00' });
+  const s2 = cdb.saveClassSlot({ classId: spinning.id, weekday: wd(b), start: '06:30' });
+  cdb.addRecurring(s1.id, 'fija');
+  cdb.addRecurring(s2.id, 'fija');
+  const sent = (await tick()).filter(m => m.userId === 'fija');
+  const mine = cdb.getUserBookings('fija', { from: clock.date }).filter(x => ['booked', 'waitlist'].includes(x.status));
+  assert.equal(mine.length, 1);
+  assert.deepEqual(sent.map(m => m.payload.title), ['No pudimos anotarte']);
+  assert.deepEqual((await tick()).filter(m => m.userId === 'fija'), []);
+});

@@ -53,6 +53,9 @@ export const ERROR_TEXTS = {
   class_over: 'Esa clase ya terminó o se suspendió.',
   no_recipients: 'No hay nadie anotado para avisarle.',
   message_limit: 'Ya mandaste 3 mensajes para esta fecha.',
+  closure_overlap: 'Ya hay un cierre en esos días.',
+  plan_limit: 'Llegaste al límite de clases de tu plan.',
+  not_loose: 'Es una clase semanal: suspendé el día o sacala del horario.',
   // passkeys e ingreso
   challenge_expired: 'La solicitud venció. Intentá de nuevo.',
   passkey_verify_failed: 'No se pudo verificar la passkey. Intentá de nuevo.',

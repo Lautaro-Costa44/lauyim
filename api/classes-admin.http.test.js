@@ -203,3 +203,72 @@ test('ajustes de clases: solo el owner, con validación; /api/config dice si est
   assert.equal((await call('owner', 'POST', '/api/admin/classes/types/archive', { id: yoga.id })).status, 200);
   assert.ok(!(await call('owner', 'GET', '/api/admin/classes/types')).body.types.some(t => t.name === 'Yoga'));
 });
+
+test('la reserva de un socio vista por el staff (historial en la ficha)', async () => {
+  const spin = (await call('owner', 'GET', `/api/admin/classes/calendar?from=${day}&days=1`)).body.occurrences.find(o => o.name === 'Pilates');
+  const detail = await call('owner', 'GET', `/api/admin/classes/session?sessionId=${spin.sessionId}`);
+  const b = detail.body.booked[0];
+  const r = await call('recep', 'GET', `/api/admin/classes/booking?id=${b.bookingId}`);
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal(r.body.occurrence.name, 'Pilates');
+  assert.equal((await call('socio1', 'GET', `/api/admin/classes/booking?id=${b.bookingId}`)).status, 403);
+  assert.equal((await call('owner', 'GET', '/api/admin/classes/booking?id=nada')).status, 404);
+});
+
+test('cierre del gimnasio: vista previa, cierra con un aviso por persona, no se superpone y se reabre', async () => {
+  const next = dayAfter(day, 7);   // el mismo día de la semana que viene (hay Pilates y Spinning con su horario)
+  const cal = (await call('owner', 'GET', `/api/admin/classes/calendar?from=${next}&days=1`)).body.occurrences.filter(o => !o.cancelled);
+  assert.ok(cal.length >= 1);
+  for (const o of cal) await call('recep', 'POST', '/api/admin/classes/sessions/add', { slotId: o.slotId, date: next, userId: 'socio2' });
+  assert.equal((await call('recep', 'GET', `/api/admin/classes/closures/preview?from=${next}&to=${next}`)).status, 403);
+  const preview = await call('owner', 'GET', `/api/admin/classes/closures/preview?from=${next}&to=${next}`);
+  assert.deepEqual(preview.body, { classes: cal.length, people: 1 });
+  const made = await call('owner', 'POST', '/api/admin/classes/closures', { from: next, to: next, reason: 'Feriado' });
+  assert.equal(made.status, 200, JSON.stringify(made.body));
+  assert.deepEqual([made.body.notified, made.body.closure.reason], [1, 'Feriado']);
+  const after = (await call('owner', 'GET', `/api/admin/classes/calendar?from=${next}&days=1`)).body;
+  assert.ok(after.occurrences.every(o => o.cancelled && o.closed === 'Feriado'));
+  assert.deepEqual(after.closures.map(c => c.from), [next]);
+  assert.equal((await call('owner', 'POST', '/api/admin/classes/closures', { from: next, to: dayAfter(next, 1) })).body.error, 'closure_overlap');
+  assert.deepEqual((await call('recep', 'GET', '/api/admin/classes/closures')).body.closures.map(c => c.id), [made.body.closure.id]);
+  assert.equal((await call('owner', 'POST', '/api/admin/classes/closures/delete', { id: made.body.closure.id })).status, 200);
+  assert.ok((await call('owner', 'GET', `/api/admin/classes/calendar?from=${next}&days=1`)).body.occurrences.some(o => !o.cancelled));
+});
+
+test('eliminar del horario: un día de la semana o la clase entera; avisa, saca las fechas de la vista y borra las fijas', async () => {
+  const box = (await call('owner', 'POST', '/api/admin/classes/types/save', typeBody({ name: 'Box', room: 'Sala 7' }))).body.type;
+  const a = (await call('owner', 'POST', '/api/admin/classes/slots/save', { classId: box.id, weekday, start: '06:00' })).body.slot;
+  const b = (await call('owner', 'POST', '/api/admin/classes/slots/save', { classId: box.id, weekday: (weekday + 1) % 7, start: '06:00' })).body.slot;
+  assert.equal((await call('recep', 'POST', '/api/admin/classes/sessions/add', { slotId: a.id, date: day, userId: 'socio1' })).status, 200);
+  const preview = (await call('owner', 'GET', `/api/admin/classes/retire-preview?slotId=${a.id}`)).body;
+  assert.deepEqual([preview.slot.people, preview.slot.weekday, preview.slot.start, preview.class.slots], [1, weekday, '06:00', 2]);
+  assert.equal((await call('recep', 'POST', '/api/admin/classes/slots/delete', { id: a.id })).status, 403);
+  assert.equal((await call('owner', 'POST', '/api/admin/classes/slots/delete', { id: a.id })).status, 200);
+  // La fecha con anotados ya no aparece (ni suspendida) y la reserva quedó cancelada.
+  const cal = (await call('owner', 'GET', `/api/admin/classes/calendar?from=${day}&days=1`)).body.occurrences.filter(o => o.name === 'Box');
+  assert.deepEqual(cal, []);
+  // La clase entera: el otro día también desaparece.
+  assert.equal((await call('owner', 'POST', '/api/admin/classes/types/archive', { id: box.id })).status, 200);
+  const week = (await call('owner', 'GET', `/api/admin/classes/calendar?from=${today}&days=14`)).body.occurrences.filter(o => o.name === 'Box');
+  assert.deepEqual(week, []);
+  assert.ok(b.id);
+});
+
+test('eliminar una clase suelta: avisa y desaparece en un paso', async () => {
+  const loose = await call('owner', 'POST', '/api/admin/classes/sessions/change', { classId: spinning.id, date: dayAfter(day, 3), start: '23:00' });
+  const sessionId = loose.body.occurrence.sessionId;
+  await call('recep', 'POST', '/api/admin/classes/sessions/add', { sessionId, userId: 'socio2' });
+  assert.equal((await call('recep', 'POST', '/api/admin/classes/sessions/delete', { sessionId })).status, 403);
+  const r = await call('owner', 'POST', '/api/admin/classes/sessions/delete', { sessionId });
+  assert.deepEqual([r.status, r.body.notified], [200, 1]);
+  assert.ok(!(await call('owner', 'GET', `/api/admin/classes/calendar?from=${dayAfter(day, 3)}&days=1`)).body.occurrences.some(o => o.sessionId === sessionId));
+});
+
+test('registro de actividad: las acciones de clases con su categoría y el filtro', async () => {
+  const all = (await call('owner', 'GET', '/api/admin/audit?limit=200')).body;
+  assert.ok(all.categories.includes('classes'));
+  const classes = (await call('owner', 'GET', '/api/admin/audit?limit=200&cat=classes')).body.events;
+  assert.ok(classes.length > 0);
+  assert.ok(classes.every(e => e.cat === 'classes'));
+  assert.ok(classes.some(e => e.ev === 'classes.session.delete'));
+});

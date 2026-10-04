@@ -4,9 +4,10 @@ import { useEffect, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 import { t } from '../lib/i18n.js'
 import { errorText } from '../lib/errors.js'
-import { buttonState, capacityText, timeRange, dayChips, shortDay, classesApi } from '../lib/classes.js'
+import { buttonState, capacityText, timeRange, dayChips, shortDay, classesApi, closureOn, planLine } from '../lib/classes.js'
 import { classSheet, classAction } from '../components/ClassSheet.jsx'
 import { GearButton } from '../components/TeacherClass.jsx'
+import { shareMyClasses } from '../components/useMyClasses.js'
 import { Button } from '../components/ui.jsx'
 import Icon from '../components/Icon.jsx'
 
@@ -18,7 +19,7 @@ export default function Clases() {
   const [day, setDay] = useState(asked || null)
   const [busyKey, setBusyKey] = useState(null)
 
-  const load = () => classesApi.list().then(d => { setData(d); setError(null); setDay(cur => cur && d.occurrences.some(o => o.date === cur) ? cur : cur || d.today) })
+  const load = () => classesApi.list().then(d => { shareMyClasses(d); setData(d); setError(null); setDay(cur => cur && d.occurrences.some(o => o.date === cur) ? cur : cur || d.today) })
     .catch(e => setError(errorText(e, t('No se pudieron cargar las clases'))))
   useEffect(() => { load() }, [])
 
@@ -42,13 +43,22 @@ export default function Clases() {
     {data.penalty && <div className="access-warn small class-penalty" role="note">
       {t('Por {0} ausencias en el último mes no podés reservar hasta el {1}.', data.penalty.count, shortDay(data.penalty.until))}
     </div>}
+    {data.planLimit && (() => {
+      const [text, ...args] = planLine(data.planLimit, day, data.today)
+      return <div className="small muted class-plan-line" role="note"><Icon name="info" /> {t(text, ...args)}</div>
+    })()}
     <div className="chips class-days" role="tablist" aria-label={t('Días')}>
       {chips.map(c => {
         const has = data.occurrences.some(o => o.date === c.date && !o.cancelled)
-        return <button key={c.date} role="tab" aria-selected={c.date === day} className={'chip' + (c.date === day ? ' on' : '') + (has ? '' : ' dim')} onClick={() => setDay(c.date)}>{t(c.label)}</button>
+        const closed = closureOn(data.closures, c.date)
+        return <button key={c.date} role="tab" aria-selected={c.date === day} aria-label={closed ? t('{0}, cerrado', t(c.label)) : undefined}
+          className={'chip' + (c.date === day ? ' on' : '') + (has ? '' : ' dim') + (closed ? ' closed' : '')} onClick={() => setDay(c.date)}>
+          {closed && <Icon name="lock" />}{t(c.label)}</button>
       })}
     </div>
-    {ofDay.length === 0
+    {/* Día cerrado (feriado, vacaciones): el aviso en lugar de la lista. */}
+    {closureOn(data.closures, day) ? <div className="empty class-closed-day"><Icon name="lock" /><div>{t('El gimnasio está cerrado')}{closureOn(data.closures, day).reason ? ' · ' + closureOn(data.closures, day).reason : ''}</div></div>
+      : ofDay.length === 0
       ? <div className="empty">{t('No hay clases este día.')}</div>
       : <div className="list class-list">
           {ofDay.map(occ => {

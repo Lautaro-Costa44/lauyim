@@ -14,6 +14,7 @@ import { classSheet, dayLabel } from './ClassSheet.jsx'
 import { Button } from './ui.jsx'
 import Icon from './Icon.jsx'
 import { GearButton } from './TeacherClass.jsx'
+import { shareMyClasses } from './useMyClasses.js'
 
 const ui = () => useUI.getState()
 const WEEKDAY_SHORT = ['DOM', 'LUN', 'MAR', 'MIÉ', 'JUE', 'VIE', 'SÁB']
@@ -39,7 +40,7 @@ export default function HomeClassCard() {
   const on = useStore(s => !!s.config?.classes_available)
   const [data, setData] = useState(null)
   const [dismissed, setDismissed] = useState(readDismissed)
-  const load = () => classesApi.list().then(setData).catch(() => {})
+  const load = () => classesApi.list().then(d => { shareMyClasses(d); setData(d) }).catch(() => {})
   useEffect(() => {
     if (!on) return
     load()
@@ -64,7 +65,8 @@ export default function HomeClassCard() {
 
   const alerts = suspended.map(o => <div key={o.key} className="card class-suspended" role="alert">
     <Icon name="warning" />
-    <div className="grow"><b>{t('Se suspendió {0}', o.name)}</b><div className="small">{dayLabel(o.date, data.today)} {o.start}{o.teacherName ? ' · ' + t('con {0}', o.teacherName) : ''}</div></div>
+    {/* Suspendida por un cierre del gimnasio: el motivo en lugar de la profe. */}
+    <div className="grow"><b>{t('Se suspendió {0}', o.name)}</b><div className="small">{dayLabel(o.date, data.today)} {o.start}{o.closed ? ' · ' + t('Gimnasio cerrado: {0}', o.closed) : o.teacherName ? ' · ' + t('con {0}', o.teacherName) : ''}</div></div>
     <button type="button" className="iconbtn" aria-label={t('Cerrar aviso')} onClick={() => dismiss(o.key)}><Icon name="xmark" /></button>
   </div>)
 
@@ -139,7 +141,7 @@ function MyClasses({ upcoming: initialUpcoming, suspended: initialSuspended, opt
             <span className="tt">{o.name}</span>
             <span className="ss">{dayLabel(o.date, opts.today)} · {timeRange(o)}{o.teacherName ? ' · ' + t('con {0}', o.teacherName) : ''}</span>
           </span>
-          {o.cancelled ? <span className="tag nocap class-tag-absent">{t('Suspendida')}</span> : statusTag(o.myBooking)}
+          {o.cancelled ? <span className="tag nocap class-tag-absent">{o.closed ? t('Cerrado') : t('Suspendida')}</span> : statusTag(o.myBooking)}
         </button>)}</div>}
     <div style={{ height: 12 }} />
     <Button variant="tinted" icon="calendar" onClick={() => { close(); onAll() }}>{t('Ver todas las clases')}</Button>
@@ -216,7 +218,7 @@ function ClassStrip({ date, items, opts, onAll }) {
     {/* Una sola: en renglón, con profe y sala, en lugar de una tarjetita estirada. */}
     <div className={'class-strip' + (items.length === 1 ? ' solo' : '')} role="list">
       {items.map(o => {
-        const [text, ...args] = o.state === 'started' ? ['En curso'] : spotsText(o)
+        const [text, ...args] = o.state === 'started' ? ['En curso'] : o.planFull ? ['Límite del plan'] : spotsText(o)
         const solo = items.length === 1
         return <button key={o.key} type="button" role="listitem" className={'class-mini' + (text === 'Lista de espera' ? ' full' : '')} style={{ '--c': o.color }}
           onClick={() => classSheet(o, opts)} aria-label={t('Ver {0}', o.name)}>

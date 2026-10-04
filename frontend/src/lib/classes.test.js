@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest'
 const apiMock = vi.hoisted(() => vi.fn(() => Promise.resolve({})))
 vi.mock('./api.js', () => ({ api: apiMock }))
 
-const { REMINDER_OPTIONS, reminderLabel, buttonState, capacityText, timeRange, dayChips, conflictMessages, intensityLabel, googleCalendarUrl, classesApi, zonedToEpoch, countdown, homeClasses, classSlotChips, weekBookable, bookWeekText, teacherHome, spotsText, homeStrip } = await import('./classes.js')
+const { REMINDER_OPTIONS, reminderLabel, buttonState, capacityText, timeRange, dayChips, conflictMessages, intensityLabel, googleCalendarUrl, classesApi, zonedToEpoch, countdown, homeClasses, classSlotChips, weekBookable, bookWeekText, teacherHome, spotsText, homeStrip, shortName, shareListText, periodStart, markPlanFull, planLine, planLimitLabel, liveClasses } = await import('./classes.js')
 
 describe('etiquetas', () => {
   it('recordatorios, cupo, horario e intensidad', () => {
@@ -96,7 +96,8 @@ describe('tarjeta de Inicio', () => {
       { ...base, key: 'a', date: '2026-10-07', start: '19:00', myBooking: { status: 'waitlist' } },
       { ...base, key: 'b', date: '2026-10-05', start: '10:00', myBooking: { status: 'booked' } },
       { ...base, key: 'c', date: '2026-10-06', start: '10:00', myBooking: { status: 'cancelled' } },
-      { ...base, key: 'd', date: '2026-10-06', start: '08:00', cancelled: true, myBooking: { status: 'cancelled' } },
+      { ...base, key: 'd', date: '2026-10-06', start: '08:00', cancelled: true, myBooking: { status: 'cancelled', suspended: true } },
+      { ...base, key: 'f', date: '2026-10-06', start: '07:00', cancelled: true, myBooking: { status: 'cancelled', suspended: false } },   // ya la había cancelado
       { ...base, key: 'e', date: '2026-10-06', start: '09:00', myBooking: null }
     ]
     const now = Date.parse('2026-10-05T12:00:00Z')
@@ -177,5 +178,55 @@ describe('sin cupo y fila de Inicio', () => {
     expect(homeStrip(occs, Date.parse('2026-10-05T15:00:00Z'), TZ)).toMatchObject({ date: '2026-10-05', items: [{ key: 'pm' }] })
     expect(homeStrip(occs, Date.parse('2026-10-06T01:00:00Z'), TZ)).toMatchObject({ date: '2026-10-06', items: [{ key: 'tom' }] })
     expect(homeStrip([], Date.now(), TZ)).toEqual({ date: null, items: [] })
+  })
+})
+
+describe('compartir la lista', () => {
+  const occ = { name: 'Spinning', date: '2026-10-05', start: '19:00', room: 'Sala 2', teacherName: 'Caro', capacity: 12 }
+  const booked = [{ name: 'Ana Pérez', status: 'booked' }, { name: 'Beto Ruiz Díaz', status: 'booked' }, { name: 'Lu', status: 'booked' }]
+  it('nombre e inicial', () => {
+    expect([shortName('Ana Pérez'), shortName('beto ruiz díaz'), shortName('Lu'), shortName('  ')]).toEqual(['Ana P.', 'beto D.', 'Lu', ''])
+  })
+  it('el texto: encabezado, anotados con cupo y en espera; nombre completo si se elige', () => {
+    expect(shareListText({ occ, booked, waitlist: [{ name: 'Cami López' }] })).toBe(
+      'Spinning · Lun 5/10 · 19:00 · Sala 2\nProfe: Caro\n\nAnotados (3/12):\n1. Ana P.\n2. Beto D.\n3. Lu\n\nEn espera:\n1. Cami L.')
+    expect(shareListText({ occ, booked, full: true })).toContain('2. Beto Ruiz Díaz')
+  })
+  it('sin cupo, sin anotados y con la lista tomada', () => {
+    expect(shareListText({ occ: { ...occ, capacity: null, room: '', teacherName: '' }, booked: [] })).toBe('Spinning · Lun 5/10 · 19:00\n\nAnotados (0):\nTodavía no hay nadie anotado.')
+    expect(shareListText({ occ, booked: [{ name: 'Ana Pérez', status: 'attended' }, { name: 'Beto Ruiz', status: 'absent' }] })).toContain('1. Ana P. ✓\n2. Beto R. ✗')
+  })
+})
+
+describe('límite de clases por plan', () => {
+  const planLimit = { limit: 2, period: 'week', used: { '2026-10-05': 2, '2026-10-12': 1 } }
+  it('inicio del período: lunes de la semana o día 1 del mes', () => {
+    expect([periodStart('2026-10-11', 'week'), periodStart('2026-10-05', 'week'), periodStart('2026-10-31', 'month')]).toEqual(['2026-10-05', '2026-10-05', '2026-10-01'])
+  })
+  it('marca las fechas sin reserva propia de las semanas completas; el botón queda apagado', () => {
+    const occs = [
+      { key: 'a', date: '2026-10-07', myBooking: null }, { key: 'b', date: '2026-10-07', myBooking: { status: 'booked' } },
+      { key: 'c', date: '2026-10-13', myBooking: null }, { key: 'd', date: '2026-10-08', myBooking: null, teaching: true }
+    ]
+    expect(markPlanFull(occs, planLimit).filter(o => o.planFull).map(o => o.key)).toEqual(['a'])
+    expect(markPlanFull(occs, null)).toBe(occs)
+    expect(buttonState({ state: 'open', booked: 1, capacity: 10, myBooking: null, planFull: true })).toMatchObject({ key: 'plan', label: 'Límite del plan', disabled: true })
+    expect(weekBookable([{ key: 'x', classId: 'c1', date: '2026-10-07', state: 'open', planFull: true }], 'c1', '2026-10-05')).toEqual([])
+  })
+  it('la línea: cuántas quedan, esta o esa semana, y el mes', () => {
+    expect(planLine(planLimit, '2026-10-13', '2026-10-06')).toEqual(['Te quedan {0} de {1} clases {2}', 1, 2, 'esa semana'])
+    expect(planLine(planLimit, '2026-10-07', '2026-10-06')).toEqual(['Ya usaste tus {0} clases de {1}', 2, 'esta semana'])
+    expect(planLine({ limit: 1, period: 'month', used: {} }, '2026-10-20', '2026-10-06')).toEqual(['Te queda 1 clase {0}', 'este mes'])
+    expect(planLine(null, '2026-10-07', '2026-10-06')).toBeNull()
+    expect(planLimitLabel({ limit: 8, period: 'month' })).toBe('8 clases por mes')
+  })
+})
+
+describe('clases en curso', () => {
+  it('las reservadas o presentes que empezaron y no terminaron', () => {
+    const TZ = 'America/Argentina/Buenos_Aires'
+    const o = (key, start, extra) => ({ key, date: '2026-10-05', start, durationMin: 60, cancelled: false, myBooking: { status: 'booked' }, ...extra })
+    const occs = [o('now', '11:30'), o('later', '13:00'), o('done', '10:00'), o('mine', '11:45', { myBooking: { status: 'attended' } }), o('other', '11:40', { myBooking: null }), o('sus', '11:50', { cancelled: true })]
+    expect(liveClasses(occs, Date.parse('2026-10-05T15:00:00Z'), TZ).map(x => x.key)).toEqual(['now', 'mine'])   // 12:00 en Buenos Aires
   })
 })

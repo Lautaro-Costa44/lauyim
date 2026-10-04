@@ -4,9 +4,10 @@ import { useEffect, useState } from 'react'
 import { useUI } from '../../../store/useUI.js'
 import { t } from '../../../lib/i18n.js'
 import { errorText } from '../../../lib/errors.js'
-import { capacityText, timeRange, shortDay, classesApi } from '../../../lib/classes.js'
+import { capacityText, timeRange, shortDay, classesApi, shareListText, planLimitLabel } from '../../../lib/classes.js'
 import { Button, Segmented, Switch, TextArea, TextField } from '../../../components/ui.jsx'
 import Icon from '../../../components/Icon.jsx'
+import { retireSheet } from './RetireSheet.jsx'
 
 const ui = () => useUI.getState()
 const conflictToast = (e, fallback) => ui().toast(e?.data?.conflicts?.[0]?.text || errorText(e, fallback))
@@ -25,8 +26,8 @@ function SessionDetail({ occ: initial, canManage, users, teachers, onChange, clo
 
   const add = async userId => {
     try {
-      await classesApi.addToSession(occ, userId)
-      ui().toast(t('Anotado'))
+      const r = await classesApi.addToSession(occ, userId)
+      ui().toast(r?.overLimit ? t('Anotado. Pasa el límite de su plan ({0}).', planLimitLabel(r.planLimit)) : t('Anotado'))
       setQ(''); setMode(null)
       const d = await classesApi.session(occ)
       setDetail(d); setOcc(d.occurrence); onChange && onChange()
@@ -47,6 +48,17 @@ function SessionDetail({ occ: initial, canManage, users, teachers, onChange, clo
     onConfirm: () => change({ cancelled: true }, t('Clase suspendida'))
   }))
 
+  // Clase suelta: eliminarla la suspende con aviso y la saca de la vista, en un paso.
+  const people = (detail?.booked?.length || 0) + (detail?.waitlist?.length || 0)
+  const removeLoose = () => import('../../../sheets.jsx').then(({ confirmSheet }) => confirmSheet({
+    title: t('¿Eliminar {0} del {1}?', occ.name, shortDay(occ.date)),
+    message: people ? t('Deja de aparecer y les avisamos a las {0} personas anotadas.', people) : t('Deja de aparecer en el calendario y en la app de los socios.'),
+    confirmText: t('Eliminar'), danger: true,
+    onConfirm: async () => {
+      try { await classesApi.deleteSession(occ.sessionId); ui().toast(t('Clase eliminada')); onChange && onChange(); close() }
+      catch (e) { ui().toast(errorText(e, t('No se pudo eliminar'))) }
+    }
+  }))
   const hide = () => import('../../../sheets.jsx').then(({ confirmSheet }) => confirmSheet({
     title: t('¿Quitar {0} de la vista?', occ.name),
     message: t('La fecha suspendida deja de aparecer en el calendario y en la app de los socios.'),
@@ -95,9 +107,15 @@ function SessionDetail({ occ: initial, canManage, users, teachers, onChange, clo
     {detail?.canTakeAttendance && detail.booked.length > 0 && (mode === 'roll'
       ? <RollCall detail={detail} sessionId={occ.sessionId} onDone={async () => { setMode(null); await done() }} onCancel={() => setMode(null)} />
       : !mode && <div className="class-session-actions"><Button variant="primary" icon="checkCircle" onClick={() => setMode('roll')}>{detail.attendanceTaken ? t('Corregir lista') : t('Tomar lista')}</Button></div>)}
+    {/* Suspendida: los socios la ven como suspendida. Una suelta se puede quitar de la vista; una
+        semanal sigue en su horario (para sacarla, "Eliminar del horario"). */}
     {occ.cancelled && occ.editable && occ.sessionId && <div className="class-session-actions">
       <div className="small dim">{t('Esta fecha está suspendida: los anotados ya recibieron el aviso.')}</div>
-      <Button variant="danger" icon="trash" onClick={hide}>{t('Quitar de la vista')}</Button>
+      {!occ.slotId && <Button variant="danger" icon="trash" onClick={hide}>{t('Quitar de la vista')}</Button>}
+      {occ.slotId && <Button variant="plain" className="class-retire-btn" icon="trash" onClick={() => retireSheet(occ, { onDone: onChange })}>{t('Eliminar del horario')}</Button>}
+    </div>}
+    {detail && !mode && detail.booked.length + detail.waitlist.length > 0 && <div className="class-session-actions">
+      <Button variant="tinted" icon="upload" onClick={() => shareListSheet(occ, detail)}>{t('Compartir lista')}</Button>
     </div>}
     {/* Siempre a la vista para la profe: sin anotados, apagado y con el motivo. */}
     {detail?.canMessage && (mode === 'message'
@@ -138,6 +156,10 @@ function SessionDetail({ occ: initial, canManage, users, teachers, onChange, clo
         <Button size="sm" icon="clock" onClick={() => setMode('time')}>{t('Cambiar horario este día')}</Button>
         {canManage && <Button size="sm" icon="personCircle" onClick={() => setMode('teacher')}>{t('Cambiar profe este día')}</Button>}
         <Button size="sm" variant="danger" icon="xmark" onClick={suspend}>{t('Suspender este día')}</Button>
+        {/* Semanal: sacarla del horario (ese día de la semana o toda la clase). Suelta: eliminarla. */}
+        {occ.slotId
+          ? <Button size="sm" variant="plain" className="class-retire-btn" icon="trash" onClick={() => retireSheet(occ, { onDone: onChange })}>{t('Eliminar del horario')}</Button>
+          : occ.sessionId && <Button size="sm" variant="plain" className="class-retire-btn" icon="trash" onClick={removeLoose}>{t('Eliminar esta clase')}</Button>}
       </div>}
     </div>}
     <Button variant="ghost" className="dim" onClick={close}>{t('Cerrar')}</Button>
@@ -248,7 +270,7 @@ function RollCall({ detail, sessionId, onDone, onCancel }) {
   }
   return <div className="class-session-actions">
     <div className="list">{detail.booked.map(p => <div key={p.userId} className="item">
-      <div className="grow"><div className="tt">{p.name}</div>{p.answered && <div className="ss">{p.status === 'attended' ? t('Dijo que fue') : t('Dijo que no fue')}</div>}</div>
+      <div className="grow"><div className="tt">{p.name}</div>{p.answered && p.source === 'member' && <div className="ss">{p.status === 'attended' ? t('Dijo que fue') : t('Dijo que no fue')}</div>}</div>
       <Segmented className="seg-inline" options={[{ value: 'p', label: t('Presente') }, { value: 'a', label: t('Ausente') }]} value={roll[p.userId] ? 'p' : 'a'} onChange={v => setRoll(r => ({ ...r, [p.userId]: v === 'p' }))} />
     </div>)}</div>
     <Button size="sm" variant="plain" onClick={() => setRoll(r => Object.fromEntries(Object.keys(r).map(u => [u, true])))}>{t('Todos presentes')}</Button>
@@ -291,4 +313,37 @@ function MessageForm({ occ, detail, onDone }) {
       <Button size="sm" variant="primary" disabled={busy || !text.trim() || count === 0} onClick={send}>{t('Mandar')}</Button>
     </div>
   </div>
+}
+
+// ---- compartir la lista ----
+
+// La lista de la fecha como texto para WhatsApp u otra app: nombre e inicial (de entrada) o nombre
+// completo, recordado en el dispositivo. Donde no se puede compartir (PC), se copia y se ofrece
+// abrir WhatsApp con el texto.
+const SHARE_NAMES_KEY = 'lauyim_share_names'
+function ShareList({ occ, detail, close }) {
+  const [full, setFull] = useState(() => { try { return localStorage.getItem(SHARE_NAMES_KEY) === 'full' } catch { return false } })
+  const [copied, setCopied] = useState(false)
+  const text = shareListText({ occ, booked: detail.booked, waitlist: detail.waitlist, full })
+  const pick = value => { setFull(value === 'full'); setCopied(false); try { localStorage.setItem(SHARE_NAMES_KEY, value) } catch { /* sin storage */ } }
+  const copy = async () => {
+    try { await navigator.clipboard.writeText(text); setCopied(true); ui().toast(t('Lista copiada')) }
+    catch { ui().toast(t('No se pudo copiar')) }
+  }
+  const share = async () => {
+    if (!navigator.share) return copy()
+    try { await navigator.share({ text }); close() } catch { /* canceló */ }
+  }
+  return <div className="class-share">
+    <h3>{t('Compartir lista')}</h3>
+    <Segmented options={[{ value: 'short', label: t('Nombre e inicial') }, { value: 'full', label: t('Nombre completo') }]} value={full ? 'full' : 'short'} onChange={pick} />
+    <pre className="class-share-preview" aria-label={t('Vista previa')}>{text}</pre>
+    <Button variant="primary" icon="upload" onClick={share}>{t('Compartir')}</Button>
+    {navigator.share && <Button variant="plain" icon="copy" onClick={copy}>{t('Copiar texto')}</Button>}
+    {copied && <a className="btn tinted" href={`https://wa.me/?text=${encodeURIComponent(text)}`} target="_blank" rel="noopener noreferrer"><span>{t('Abrir WhatsApp')}</span></a>}
+  </div>
+}
+
+export function shareListSheet(occ, detail) {
+  ui().openSheet(close => <ShareList occ={occ} detail={detail} close={close} />)
 }

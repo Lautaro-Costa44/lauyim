@@ -251,3 +251,15 @@ test('bloqueo automático apagado: el socio con la cuota vencida sigue entrando;
   assert.equal((await call('m2', 'GET', '/api/me')).body.billing.blocked, true);
   assert.equal((await call('m2', 'GET', '/api/data')).body.error, 'membership_blocked');
 });
+
+test('planes: clases incluidas (libre, por semana o por mes)', async () => {
+  const bad = [{ classLimit: 0, classPeriod: 'week' }, { classLimit: 40, classPeriod: 'week' }, { classLimit: 2 }, { classLimit: 2, classPeriod: 'año' }];
+  for (const extra of bad) assert.equal((await call('owner', 'POST', '/api/admin/billing/plans', { name: 'X', price: 1, durationDays: 30, ...extra })).status, 400, JSON.stringify(extra));
+  const two = (await call('owner', 'POST', '/api/admin/billing/plans', { name: '2 por semana', price: 1, durationDays: 30, classLimit: 2, classPeriod: 'week' })).body.plan;
+  assert.deepEqual([two.classLimit, two.classPeriod], [2, 'week']);
+  const free = (await call('owner', 'PUT', `/api/admin/billing/plans/${two.id}`, { classLimit: null })).body.plan;
+  assert.deepEqual([free.classLimit, free.classPeriod], [null, null]);
+  const month = (await call('owner', 'PUT', `/api/admin/billing/plans/${two.id}`, { classLimit: 8, classPeriod: 'month' })).body.plan;
+  assert.deepEqual([month.classLimit, month.classPeriod], [8, 'month']);
+  assert.equal((await call('owner', 'POST', '/api/admin/billing/plans', { name: 'Libre', price: 1, durationDays: 30 })).body.plan.classLimit, null);
+});

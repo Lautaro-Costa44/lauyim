@@ -6,13 +6,14 @@ import { useStore } from '../../store/useStore.js'
 import { useUI } from '../../store/useUI.js'
 import { t } from '../../lib/i18n.js'
 import { errorText } from '../../lib/errors.js'
-import { capacityText, timeRange, addDays, weekdayOf, shortDay, classesApi } from '../../lib/classes.js'
+import { capacityText, timeRange, addDays, weekdayOf, shortDay, classesApi, closureOn } from '../../lib/classes.js'
 import { useAdmin } from './context.js'
 import { useDesktop } from './useDesktop.js'
 import { Button } from '../../components/ui.jsx'
 import Icon from '../../components/Icon.jsx'
 import { classEditorSheet } from './clases/ClassEditor.jsx'
 import { sessionSheet, looseClassSheet, classSettingsSheet } from './clases/SessionSheet.jsx'
+import { closureSheet, ClosureList } from './clases/ClosureSheet.jsx'
 
 const ui = () => useUI.getState()
 const toMin = time => Number(time.slice(0, 2)) * 60 + Number(time.slice(3, 5))
@@ -35,18 +36,20 @@ export default function AdminClases() {
   const [day, setDay] = useState(null)          // día visible en el celular
   const [data, setData] = useState(null)
   const [types, setTypes] = useState(null)
+  const [closures, setClosures] = useState([])   // próximos cierres del gimnasio
 
   const load = (from = week) => classesApi.calendar(from || '', 7).then(d => {
     setData(d)
     if (!from) { const monday = mondayOf(d.today); setWeek(monday); setDay(d.today); if (monday !== d.from) return classesApi.calendar(monday, 7).then(setData) }
   }).catch(e => ui().toast(errorText(e, t('Failed to load'))))
   const loadTypes = () => classesApi.types().then(setTypes).catch(() => {})
-  useEffect(() => { load(null); loadTypes() }, [])
+  const loadClosures = () => classesApi.closures().then(d => setClosures(d.closures || [])).catch(() => {})
+  useEffect(() => { load(null); loadTypes(); loadClosures() }, [])
 
   if (!data || !week) return <div className="page-loading" aria-busy="true" />
   const canManage = data.canManage
   const canCreate = canManage || data.canOwn
-  const reload = () => { load(week); loadTypes() }
+  const reload = () => { load(week); loadTypes(); loadClosures() }
   const goWeek = n => { const w = addDays(week, 7 * n); setWeek(w); setDay(addDays(day, 7 * n)); load(w) }
   const goToday = () => { const w = mondayOf(data.today); setWeek(w); setDay(data.today); load(w) }
   const goDay = n => {
@@ -71,6 +74,7 @@ export default function AdminClases() {
           {canCreate && editable.length > 0 && <Button size="sm" icon="calendar" onClick={() => looseClassSheet({ types: editable, today: data.today, onChange: reload })}>{t('Clase suelta')}</Button>}
           {editable.length > 0 && <Button size="sm" icon="list" onClick={listTypes}>{canManage ? t('Clases') : t('Mis clases')}</Button>}
           <Button size="sm" icon="chart" onClick={classStatsSheet}>{t('Estadísticas')}</Button>
+          {canManage && <Button size="sm" icon="lock" onClick={() => closureSheet({ today: data.today, onChange: reload })}>{t('Cerrar el gimnasio')}</Button>}
           {user?.owner && <Button size="sm" icon="gear" onClick={() => classSettingsSheet({ onChange: reload })}>{t('Ajustes')}</Button>}
         </div>
       </div>
@@ -81,6 +85,7 @@ export default function AdminClases() {
         <div><b>{s.lateCancels}</b><span>{t('cancelaciones tardías')}</span></div>
         <div><b>{s.waitlist}</b><span>{t('en lista de espera')}</span></div>
       </div>
+      <ClosureList closures={closures} canManage={canManage} onChange={reload} />
     </div>
 
     <div className="row between class-weeknav">
@@ -94,8 +99,8 @@ export default function AdminClases() {
 
     {data.occurrences.length === 0 && !types?.types?.length
       ? <div className="empty">{canCreate ? t('Todavía no hay clases. Creá la primera con "Nueva clase".') : t('No tenés clases asignadas.')}</div>
-      : desktop ? <WeekGrid days={days} today={data.today} occurrences={data.occurrences} onOpen={openOcc} />
-      : <DayList occurrences={data.occurrences.filter(o => o.date === day)} onOpen={openOcc} />}
+      : desktop ? <WeekGrid days={days} today={data.today} occurrences={data.occurrences} closures={data.closures} onOpen={openOcc} />
+      : <DayList occurrences={data.occurrences.filter(o => o.date === day)} closure={closureOn(data.closures, day)} onOpen={openOcc} />}
   </div>
 }
 
@@ -107,12 +112,16 @@ function Block({ occ, onOpen, style }) {
   </button>
 }
 
-function WeekGrid({ days, today, occurrences, onOpen }) {
+function WeekGrid({ days, today, occurrences, closures, onOpen }) {
   const { from, to } = gridHours(occurrences)
   const hours = Array.from({ length: (to - from) / 60 }, (_, i) => from + i * 60)
   const height = (to - from) * PX_PER_MIN
   return <div className="class-week card">
-    <div className="class-week-head"><span />{days.map(d => <span key={d} className={d === today ? 'today' : ''}>{shortDay(d)}</span>)}</div>
+    <div className="class-week-head"><span />{days.map(d => {
+      const closed = closureOn(closures, d)
+      return <span key={d} className={(d === today ? 'today' : '') + (closed ? ' closed' : '')} title={closed ? t('Cerrado · {0}', closed.reason || t('sin motivo')) : undefined}>
+        {closed && <Icon name="lock" />}{shortDay(d)}</span>
+    })}</div>
     <div className="class-week-body" style={{ height }}>
       <div className="class-week-hours">{hours.map(h => <span key={h} style={{ top: (h - from) * PX_PER_MIN }}>{String(h / 60).padStart(2, '0')}:00</span>)}</div>
       {days.map(d => <div key={d} className={'class-week-col' + (d === today ? ' today' : '')}>
@@ -127,9 +136,10 @@ function WeekGrid({ days, today, occurrences, onOpen }) {
   </div>
 }
 
-function DayList({ occurrences, onOpen }) {
-  if (!occurrences.length) return <div className="empty">{t('No hay clases este día.')}</div>
-  return <div className="list">
+function DayList({ occurrences, closure, onOpen }) {
+  const banner = closure && <div className="class-closed-banner"><Icon name="lock" /> {t('Cerrado')}{closure.reason ? ' · ' + closure.reason : ''}</div>
+  if (!occurrences.length) return banner || <div className="empty">{t('No hay clases este día.')}</div>
+  return <>{banner}<div className="list">
     {occurrences.map(o => <button key={o.key} type="button" className={'item class-item' + (o.cancelled ? ' cancelled' : '')} onClick={() => onOpen(o)}>
       <span className="class-bar" style={{ background: o.color }} aria-hidden="true" />
       <div className="grow">
@@ -139,13 +149,13 @@ function DayList({ occurrences, onOpen }) {
       </div>
       <span className="tag">{capacityText(o.booked, o.capacity)}{o.waitlist ? ` +${o.waitlist}` : ''}</span>
     </button>)}
-  </div>
+  </div></>
 }
 
 function TypeList({ types, onEdit, onArchived, close }) {
   const archive = tp => import('../../sheets.jsx').then(({ confirmSheet }) => confirmSheet({
     title: t('¿Archivar {0}?', tp.name),
-    message: t('Deja de tener horario y reservas. Las próximas fechas con anotados se suspenden con aviso. Quien ya fue la sigue viendo en su historial.'),
+    message: t('Deja de tener horario y reservas. Las próximas fechas se borran y les avisamos a los anotados; las reservas fijas se borran. Quien ya fue la sigue viendo en su historial.'),
     confirmText: t('Archivar'), danger: true,
     onConfirm: async () => {
       try { await classesApi.archiveType(tp.id); ui().toast(t('Clase archivada')); onArchived() } catch (e) { ui().toast(errorText(e, t('No se pudo archivar'))) }
@@ -182,13 +192,13 @@ function StatsView({ close }) {
         : <div className="list">{data.classes.map(c => <div key={c.classId} className="item">
             <span className="class-dot" style={{ background: c.color }} aria-hidden="true" />
             <div className="grow"><div className="tt">{c.name}</div>
-              <div className="ss">{[t('{0} fechas', c.sessions), t('{0}% ocupación', c.occupancy), t('{0} presentes', c.present), t('{0} ausentes', c.absent), t('{0} tardías', c.lateCancels)].join(' · ')}</div></div>
+              <div className="ss">{[t('{0} fechas', c.sessions), c.occupancy == null ? t('sin cupo') : t('{0}% ocupación', c.occupancy), t('{0} presentes', c.present), t('{0} ausentes', c.absent), t('{0} cancelaciones tardías', c.lateCancels)].join(' · ')}</div></div>
             <span className="tag nocap">{rating(c)}</span>
           </div>)}</div>}
       {data.teachers.length > 0 && <>
         <h4 className="sec">{t('Por profe')}</h4>
         <div className="list">{data.teachers.map(p => <div key={p.name} className="item">
-          <div className="grow"><div className="tt">{p.name}</div><div className="ss">{[t('{0} clases', p.sessions), t('{0}% ocupación', p.occupancy)].join(' · ')}</div></div>
+          <div className="grow"><div className="tt">{p.name}</div><div className="ss">{[t('{0} clases', p.sessions), p.occupancy == null ? t('sin cupo') : t('{0}% ocupación', p.occupancy)].join(' · ')}</div></div>
           <span className="tag nocap">{rating(p)}</span>
         </div>)}</div>
       </>}

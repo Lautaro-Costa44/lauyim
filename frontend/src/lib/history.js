@@ -527,11 +527,53 @@ function weekWorkouts(S, mondayDate) {
       Number(a.start || 0) - Number(b.start || 0) || Number(a.end || 0) - Number(b.end || 0))
 }
 
-/** Weekly frequency target. A started week is locked to the group of its first workout. */
-export function weeklyTarget(S, mondayDate) {
+// Objetivo del plan de hoy: los días del grupo activo (o el menor de los grupos, sin activo), o
+// los días del plan semanal. Es el que se guarda en cada entreno nuevo (stampWeekTargets).
+export function planTargetNow(S) {
   const groups = S?.routineGroups
   if (Array.isArray(groups) && groups.length > 0) {
-    const first = mondayDate ? weekWorkouts(S, mondayDate)[0] : null
+    const active = groupById(S, S.activeGroupId)
+    if (active && scheduledCount(active) > 0) return scheduledCount(active)
+    const targets = groups.map(scheduledCount).filter(n => n > 0)
+    return targets.length > 0 ? Math.min(...targets) : 0
+  }
+  return Object.keys(S?.week || {}).filter(k => S.week[k]).length
+}
+
+// Cada entreno nuevo (el que no estaba en `before`) guarda el objetivo de su semana: así una semana
+// queda con el plan con el que empezó, aunque después se cambie el plan. Si la semana ya tenía
+// entrenos (uno cargado con fecha de otro día, una clase de la semana pasada), sigue con el objetivo
+// que ya tenía; si no, el del plan de ahora.
+export function stampWeekTargets(before, S) {
+  const known = new Set((before?.workouts || []).map(w => w?.id))
+  const byWeek = new Map()
+  for (const w of S?.workouts || []) {
+    if (!w || !w.d || known.has(w.id) || Number.isInteger(w.weekTarget)) continue
+    const monday = mondayOf(w.d)
+    const key = isoOf(monday)
+    if (!byWeek.has(key)) byWeek.set(key, weekWorkouts(before, monday).length ? weeklyTarget(before, monday) : planTargetNow(S))
+    w.weekTarget = byWeek.get(key)
+  }
+}
+
+// El lunes (a las 12, lejos de cualquier cambio de hora) de la semana de una fecha ISO.
+function mondayOf(iso) {
+  const d = new Date(iso + 'T12:00:00')
+  d.setDate(d.getDate() - ((d.getDay() + 6) % 7))
+  return d
+}
+
+/** Weekly frequency target. A started week is locked to the plan it started with: the target
+ *  stamped on its first workout, or (older history) the group of its first non-class workout. */
+export function weeklyTarget(S, mondayDate) {
+  const ws = mondayDate ? weekWorkouts(S, mondayDate) : []
+  const stamped = ws.find(w => Number.isInteger(w.weekTarget))
+  if (stamped) return stamped.weekTarget
+  const groups = S?.routineGroups
+  if (Array.isArray(groups) && groups.length > 0) {
+    if (mondayDate && !ws.length) return planTargetNow(S)       // semana sin empezar: el plan de hoy
+    // Una clase no dice de qué grupo es la semana: el primer entreno de rutina.
+    const first = ws.find(w => w.kind !== 'class') || null
     const startedGroup = first ? groupForWorkout(S, first) : null
     if (startedGroup) return scheduledCount(startedGroup)
     // No workout yet, or a legacy workout whose group is genuinely ambiguous: use the
@@ -549,7 +591,7 @@ export function evalWeek(S, mondayDate) {
   const workouts = weekWorkouts(S, mondayDate)
   const groups = S?.routineGroups
   const firstGroup = Array.isArray(groups) && groups.length > 0
-    ? groupForWorkout(S, workouts[0])
+    ? groupForWorkout(S, workouts.find(w => w.kind !== 'class'))
     : null
   const weekPlan = firstGroup ? firstGroup.week || {} : S?.week || {}
 
@@ -570,7 +612,8 @@ export function evalWeek(S, mondayDate) {
 
   // Once the first session identifies a group, later group switches cannot change this week.
   const target = weeklyTarget(S, mondayDate)
-  const rutinasCompletadas = workouts.length
+  // Días entrenados (no entrenos): rutina y clase el mismo día, o dos entrenos, suman uno.
+  const rutinasCompletadas = new Set(workouts.map(w => w.d)).size
 
   const completa = target > 0
     ? rutinasCompletadas >= target
@@ -586,12 +629,12 @@ export function evalWeek(S, mondayDate) {
   }
 }
 
-export function streakWeeks(S) {
+export function streakWeeks(S, now = new Date()) {
   if (!S || !S.workouts || !S.workouts.length) return 0
 
-  const now = new Date()
   const day = (now.getDay() + 6) % 7
   const currentMonday = new Date(now)
+  currentMonday.setHours(12, 0, 0, 0)   // al mediodía: restar semanas no cambia de día con el horario de verano
   currentMonday.setDate(now.getDate() - day)
 
   let streak = 0
@@ -612,6 +655,59 @@ export function streakWeeks(S) {
   }
 
   return streak
+}
+
+// La llama cambia de color con las semanas seguidas: desde 1, 4, 12, 26 y 52 (nivel 1 a 5; 0 sin racha).
+export const STREAK_LEVELS = [1, 4, 12, 26, 52]
+export const streakLevel = n => STREAK_LEVELS.filter(x => n >= x).length
+// Las semanas seguidas en las que la llama vuelve a cambiar de color (null: ya está en el último).
+export const nextStreakLevel = n => STREAK_LEVELS.find(x => x > n) ?? null
+
+// La racha más larga del historial (semanas cumplidas seguidas, la de ahora incluida).
+export function bestStreak(S, now = new Date()) {
+  const ds = (S?.workouts || []).map(w => w?.d).filter(Boolean).sort()
+  if (!ds.length) return 0
+  const m = new Date(ds[0] + 'T12:00:00')
+  m.setDate(m.getDate() - ((m.getDay() + 6) % 7))
+  const today = isoOf(now)
+  let best = 0, run = 0
+  for (let i = 0; i < 1040 && isoOf(m) <= today; i++) {
+    run = evalWeek(S, m).completa ? run + 1 : 0
+    best = Math.max(best, run)
+    m.setDate(m.getDate() + 7)
+  }
+  return Math.max(best, streakWeeks(S, now))
+}
+
+// La racha para mostrarla (la hoja de la llama): semanas seguidas, la mejor, el color (nivel) y
+// cuándo cambia, y esta semana día por día: entrenado (rutina o clase), hoy, y lo que queda
+// planeado (rutina del plan o clase reservada, de hoy en adelante y sin entrenar todavía).
+// classDays: { iso: [clases] } (classesByDate), para contar las clases reservadas.
+export function streakSummary(S, now = new Date(), classDays = {}) {
+  const monday = new Date(now)
+  monday.setHours(12, 0, 0, 0)
+  monday.setDate(monday.getDate() - ((monday.getDay() + 6) % 7))
+  const week = evalWeek(S, monday)
+  const today = isoOf(now)
+  const trained = new Set((S?.workouts || []).map(w => w.d))
+  const days = []
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(monday)
+    d.setDate(monday.getDate() + i)
+    const iso = isoOf(d)
+    const done = trained.has(iso)
+    const routineId = effectiveRoutineId(S, iso) || null
+    const classes = (classDays[iso] || []).filter(c => !c.done)
+    const planned = !done && iso >= today && !!(routineId || classes.length)
+    days.push({ iso, done, planned, today: iso === today, past: iso < today, routineId: planned ? routineId : null, classes: planned ? classes : [] })
+  }
+  const streak = streakWeeks(S, now)
+  const target = week.objetivoSemanal || 1
+  return {
+    streak, best: bestStreak(S, now), level: streakLevel(streak), next: nextStreakLevel(streak),
+    current: { done: week.rutinasCompletadas, target, complete: week.completa, left: Math.max(0, target - week.rutinasCompletadas),
+      days, pendingDays: days.filter(d => d.planned).map(d => d.iso) }
+  }
 }
 
 /**

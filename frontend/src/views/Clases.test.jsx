@@ -92,6 +92,18 @@ describe('Plan → Clases', () => {
   })
 })
 
+describe('día cerrado', () => {
+  it('el chip lleva candado y el día muestra el aviso en lugar de la lista', async () => {
+    apiMock.mockImplementation(url => url.startsWith('/api/classes') ? Promise.resolve({ ...listBody(), closures: [{ id: 'k', from: '2026-10-06', to: '2026-10-06', reason: 'Feriado' }] }) : Promise.resolve({}))
+    await mount(<Clases />)
+    const chip = buttons().find(b => b.getAttribute('role') === 'tab' && b.textContent === 'Mañana')
+    expect(chip.classList.contains('closed')).toBe(true)
+    await act(async () => { chip.click() })
+    expect(container.querySelector('.class-closed-day').textContent).toBe('El gimnasio está cerrado · Feriado')
+    expect(container.querySelectorAll('.class-item')).toHaveLength(0)
+  })
+})
+
 describe('hoja de la clase y recordatorios', () => {
   it('anotado: cancelar, fija, recordatorios y calendario', async () => {
     occurrences[0] = occ({ myBooking: { id: 'b1', status: 'booked', waitlistPos: null, reminders: [60] } })
@@ -247,8 +259,14 @@ describe('Inicio', () => {
     expect(container.querySelector('.class-ticket-clock').textContent).toContain('28:55')
   })
 
+  it('suspendida por un cierre: el aviso dice el motivo', async () => {
+    occurrences = [occ({ key: 'cl', cancelled: true, closed: 'Feriado', myBooking: { id: 'b1', status: 'cancelled', suspended: true } })]
+    await mount(<HomeClassCard />)
+    expect(container.querySelector('.class-suspended').textContent).toContain('Gimnasio cerrado: Feriado')
+  })
+
   it('suspendida: aviso que se cierra y no vuelve', async () => {
-    occurrences = [occ({ key: 'sus', cancelled: true, myBooking: { id: 'b1', status: 'cancelled' } })]
+    occurrences = [occ({ key: 'sus', cancelled: true, myBooking: { id: 'b1', status: 'cancelled', suspended: true } })]
     await mount(<HomeClassCard />)
     expect(container.querySelector('.class-suspended').textContent).toContain('Se suspendió Spinning')
     await act(async () => { container.querySelector('.class-suspended button').click() })
@@ -260,7 +278,7 @@ describe('Inicio', () => {
     occurrences = [
       occ({ myBooking: { id: 'b1', status: 'booked' } }),
       occ({ key: 'k2', date: '2026-10-06', name: 'GAP', myBooking: { id: 'b2', status: 'waitlist', waitlistPos: 1 } }),
-      occ({ key: 'k3', date: '2026-10-07', name: 'Pilates', cancelled: true, myBooking: { id: 'b3', status: 'cancelled' } })
+      occ({ key: 'k3', date: '2026-10-07', name: 'Pilates', cancelled: true, myBooking: { id: 'b3', status: 'cancelled', suspended: true } })
     ]
     await mount(<HomeClassCard />)
     await act(async () => { container.querySelector('.class-ticket-more').click() })
@@ -352,3 +370,23 @@ describe('la profe', () => {
   })
 })
 
+describe('límite del plan', () => {
+  it('la línea de cuántas quedan y, completa la semana, "Límite del plan" apagado', async () => {
+    apiMock.mockImplementation(url => url.startsWith('/api/classes') ? Promise.resolve({ ...listBody(), planLimit: { limit: 2, period: 'week', used: { '2026-10-05': 2 } } }) : Promise.resolve({}))
+    await mount(<Clases />)
+    expect(container.querySelector('.class-plan-line').textContent).toContain('Ya usaste tus 2 clases de esta semana')
+    const btn = container.querySelector('.class-item button')
+    expect([btn.textContent, btn.disabled]).toEqual(['Límite del plan', true])
+  })
+
+  it('al reservar sin lugar en el plan, el aviso con los números', async () => {
+    apiMock.mockImplementation(url => {
+      if (url === '/api/classes/book') return Promise.reject(Object.assign(new Error('plan_limit'), { status: 403, data: { error: 'plan_limit', limit: 2, period: 'week', used: 2 } }))
+      return url.startsWith('/api/classes') ? Promise.resolve(listBody()) : Promise.resolve({})
+    })
+    await mount(<Clases />)
+    await act(async () => { container.querySelector('.class-item button').click() })
+    await tick()
+    expect(useUI.getState().toastMsg).toBe('Tu plan incluye 2 clases por semana y ya las usaste.')
+  })
+})
