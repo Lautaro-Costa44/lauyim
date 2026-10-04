@@ -8,7 +8,6 @@ import { streakSummary } from '../lib/history.js'
 import { DAYS, isoOf } from '../lib/format.js'
 import { classesByDate } from '../lib/classes.js'
 import { useMyClasses } from './useMyClasses.js'
-import { glyphOf } from '../lib/glyphs.js'
 import { Button } from './ui.jsx'
 import Icon from './Icon.jsx'
 
@@ -55,13 +54,13 @@ function Streak({ close, onCalendar }) {
       <div className="streak-now-head">{t('Esta semana')} · {t('{0} de {1}', current.done, current.target)}</div>
       <div className="streak-days" role="list">
         {current.days.map(d => {
-          // Lo planeado se ve con su ícono: la rutina y la clase (en su color).
+          // Lo planeado se ve con sus puntos, como en Inicio: la rutina (gris) y la clase (en su color).
           const r = routineOf(d.routineId), cls = d.classes[0]
           const what = [r?.name, cls?.name].filter(Boolean).join(' + ')
           return <div key={d.iso} role="listitem" className={'streak-day' + (d.done ? ' done' : d.planned ? ' plan' : '') + (d.today ? ' today' : '') + (d.past ? ' past' : '')}
           aria-label={`${t(DAY_LONG[weekdayOf(d.iso)])}${d.done ? ' · ' + t('Entrenado') : what ? ' · ' + what : ''}`} title={what || undefined}>
           <span className="streak-dot">{d.done ? <Icon name="check" />
-            : d.planned ? <>{d.routineId && <Icon name={glyphOf(r?.emoji)} />}{cls && <span className="streak-cls" style={{ color: cls.color || 'var(--acc)' }}><Icon name={cls.occ?.icon || 'calendar'} /></span>}</>
+            : d.planned ? <span className="dots">{d.routineId && <i className="dot plan" />}{cls && <i className="dot cls" style={{ background: cls.color || 'var(--acc)' }} />}</span>
             : d.today ? t('hoy') : null}</span>
           <span className="streak-day-lbl">{t(DAYS[weekdayOf(d.iso)]).charAt(0)}</span>
         </div>

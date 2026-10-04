@@ -76,8 +76,8 @@ describe('clases en las vistas', () => {
     expect(row.querySelector('.today-classes').textContent).toBe('También hoy: Spinning 19:00')
     expect(row.querySelector('.today-overlap').textContent).toBe('Spinning también trabaja cuádriceps.')
     const monday = container.querySelectorAll('.wday')[0]
-    expect(monday.querySelector('.wic.cls').style.color).toBeTruthy()
-    expect(monday.querySelector('.wic.plan')).toBeTruthy()   // la rutina planeada, tenue
+    expect(monday.querySelector('.dot.cls').style.background).toBeTruthy()
+    expect(monday.querySelector('.dot.plan')).toBeTruthy()   // la rutina planeada, gris
   })
 
   it('una clase hecha no da por hecha la rutina; la racha cuenta la clase', async () => {
@@ -111,8 +111,8 @@ describe('clases en las vistas', () => {
   it('solo una clase hecha: un único ícono (el de la clase), sin el de rutina', async () => {
     setS({ week: {}, workouts: [classWorkout('w1', TODAY, { classBookingId: 'b1' })] })
     await mount(<Home />)
-    const icons = container.querySelectorAll('.wday')[0].querySelectorAll('.wday-ic > *')
-    expect([...icons].map(d => d.className)).toEqual(['wic cls'])
+    const dots = container.querySelectorAll('.wday')[0].querySelectorAll('.dots > *')
+    expect([...dots].map(d => d.className)).toEqual(['dot cls'])
   })
 
   it('la llama abre la hoja de la racha, con lo que falta esta semana', async () => {
@@ -126,7 +126,7 @@ describe('clases en las vistas', () => {
     expect([...host.querySelectorAll('.streak-day')].map(d => d.className.replace('streak-day', '').trim())).toEqual(['done today', '', 'plan', '', '', '', ''])
     expect(container.querySelector('.streak-chip').classList.contains('lv0')).toBe(true)
     expect([...host.querySelectorAll('.streak-day')][2].getAttribute('aria-label')).toBe('miércoles · Piernas')   // lo planeado, con su ícono
-    expect([...host.querySelectorAll('.streak-day')][2].querySelector('.streak-dot svg, .streak-dot i')).toBeTruthy()
+    expect([...host.querySelectorAll('.streak-day')][2].querySelector('.streak-dot .dot.plan')).toBeTruthy()
     await unmount()
   })
 

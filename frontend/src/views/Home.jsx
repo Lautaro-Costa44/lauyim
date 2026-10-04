@@ -64,8 +64,8 @@ export default function Home() {
   const pendingRoutine = routine && !doneToday && !S.active ? routine : null
   const overlap = pendingRoutine ? classesToday.map(c => ({ c, slugs: classOverlap(c.occ?.log?.muscles || c.workout?.muscleLoad?.muscles, loadOfRoutine(pendingRoutine)) })).find(x => x.slugs.length) : null
   const muscleList = slugs => { const names = slugs.slice(0, 2).map(s => t(MUSCLE_NAME[s] || s).toLowerCase()); return names.length > 1 ? t('{0} y {1}', names[0], names[1]) : names[0] }
-  // Cada día: entrenado (fondo verde), hoy (borde), y hasta dos íconos: la rutina (la hecha, o la
-  // planeada más tenue; naranja si se reprogramó) y la clase en su color (hecha o reservada).
+  // Cada día: entrenado (fondo verde), hoy (borde), y hasta dos puntos: la rutina (verde hecha, gris
+  // planeada, naranja reprogramada) y la clase en su color (hecha o reservada). Uno solo, al medio.
   const byRoutine = id => S.routines.find(r => r.id === id)
   const strip = []
   for (let i = 0; i < 7; i++) {
@@ -80,9 +80,9 @@ export default function Home() {
     strip.push(<button key={i} type="button" className={'wday' + (iso === todayISO() ? ' today' : '') + (trained ? ' trained' : '')} onClick={() => dayOverrideSheet(iso)}
       aria-label={`${t(DAYS[d.getDay()])} ${d.getDate()}${label ? ' · ' + label : ''}`}>
       <div className="lbl">{t(DAYS[d.getDay()])}</div><div className="num">{d.getDate()}</div>
-      <div className="wday-ic">
-        {(doneW || eff) && <span className={'wic' + (doneW ? ' done' : ovr ? ' ovr' : ' plan')}><Icon name={doneW && !r ? 'dumbbell' : glyphOf(r?.emoji)} /></span>}
-        {cls && <span className="wic cls" style={{ color: cls.color || 'var(--acc)' }}><Icon name={cls.occ?.icon || 'calendar'} /></span>}
+      <div className="dots">
+        {(doneW || eff) && <div className={'dot' + (doneW ? ' done' : ovr ? ' ovr' : ' plan')} />}
+        {cls && <div className="dot cls" style={{ background: cls.color || 'var(--acc)' }} />}
       </div></button>)
   }
   const sunday = new Date(monday); sunday.setDate(monday.getDate() + 6)
