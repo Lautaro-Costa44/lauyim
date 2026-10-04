@@ -60,6 +60,8 @@ jobs:
         working-directory: api
       - run: npm test
         working-directory: api
+      # Gimnasio de la demo (scripts/demo): arma la base, la verifica y recorre la API con ella.
+      - run: node --test scripts/demo/seed-demo.test.mjs
 
   # Backup, restore y chequeo de disco con docker, rclone, curl y df falsos: corren en el servidor
   # de cada gym, así que tienen que pasar en Linux (en Windows, node y tar no se entienden con
