@@ -1,46 +1,67 @@
-// La hoja de la racha (al tocar la llama, en Inicio o en el calendario): semanas seguidas, qué
-// falta esta semana y las últimas 8 semanas. Una semana cuenta cuando se llega a los entrenos del
-// plan con el que empezó (las clases suman).
+// La hoja de la racha (al tocar la llama, en Inicio o en el calendario): la llama con las semanas
+// seguidas (su color sube con la racha), la mejor racha y esta semana día por día, con lo que falta.
+// Una semana cuenta cuando se llega a los entrenos del plan con el que empezó (las clases suman).
 import { useStore } from '../store/useStore.js'
 import { useUI } from '../store/useUI.js'
 import { t } from '../lib/i18n.js'
 import { streakSummary } from '../lib/history.js'
+import { DAYS, isoOf } from '../lib/format.js'
+import { classesByDate } from '../lib/classes.js'
+import { useMyClasses } from './useMyClasses.js'
 import { Button } from './ui.jsx'
 import Icon from './Icon.jsx'
 
 const ui = () => useUI.getState()
-const dm = iso => `${Number(iso.slice(8, 10))}/${Number(iso.slice(5, 7))}`
-const DAY_SHORT = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb']
-const dayName = iso => DAY_SHORT[new Date(iso + 'T12:00:00').getDay()]
+const DAY_LONG = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado']
+const weekdayOf = iso => new Date(iso + 'T12:00:00').getDay()
+
+// "hoy", "mañana" o "el jueves".
+function dayWord(iso, today) {
+  if (iso === today) return t('hoy')
+  const tomorrow = new Date(today + 'T12:00:00'); tomorrow.setDate(tomorrow.getDate() + 1)
+  if (iso === isoOf(tomorrow)) return t('mañana')
+  return t('el {0}', t(DAY_LONG[weekdayOf(iso)]))
+}
+// "a, b y c" (o "a, b o c" cuando alcanza con algunos de esos días).
+const joinWords = (words, sep) => words.length > 1 ? `${words.slice(0, -1).join(', ')} ${sep} ${words.at(-1)}` : words[0]
+
+// Qué le falta a la semana, en una línea.
+function weekLine(cur, today) {
+  if (cur.complete) return t('Semana cumplida ✓')
+  const words = cur.pendingDays.map(iso => dayWord(iso, today))
+  const left = cur.left === 1 ? t('Falta 1') : t('Faltan {0}', cur.left)
+  if (!words.length) return cur.left === 1 ? t('Falta 1 entreno para sumar la semana.') : t('Faltan {0} entrenos para sumar la semana.', cur.left)
+  return `${left}: ${joinWords(words, cur.left < words.length ? t('o') : t('y'))}`
+}
 
 function Streak({ close, onCalendar }) {
   const S = useStore(s => s.S)
-  const { streak, weeks, current } = streakSummary(S)
-  const pending = current.pendingDays.map(dayName)
-  const status = current.complete ? t('Esta semana ya está cumplida.')
-    : current.target ? t('Esta semana {0} de {1}', current.done, current.target) + (current.left
-      ? ' · ' + (current.left === 1 ? t('falta 1') : t('faltan {0}', current.left)) + (pending.length ? ` (${pending.length > 1 ? t('{0} y {1}', pending.slice(0, -1).join(', '), pending.at(-1)) : pending[0]})` : '')
-      : '')
-    : t('Entrená al menos una vez esta semana para sumarla.')
-  return <div className="streak-sheet">
+  const myClasses = useMyClasses()
+  const now = new Date()
+  const { streak, best, level, next, current } = streakSummary(S, now, classesByDate(myClasses?.occurrences, S.workouts))
+  const today = current.days.find(d => d.today)?.iso
+  const sub = streak && streak >= best ? t('Tu mejor racha')
+    : best ? (best === 1 ? t('Tu mejor racha: 1 semana') : t('Tu mejor racha: {0} semanas', best))
+    : t('Cumplí los entrenos de tu plan esta semana para prenderla.')
+  return <div className={'streak-sheet lv' + level}>
     <div className="streak-hero">
-      <span className={'streak-flame' + (streak ? ' on' : '')}><Icon name="flame" /></span>
-      <div>
-        <div className="streak-num">{streak === 1 ? t('1 semana seguida') : streak ? t('{0} semanas seguidas', streak) : t('Empezá tu racha')}</div>
-        <div className="small muted">{status}</div>
+      <div className="streak-flame" aria-hidden="true"><Icon name="flame" /><b>{streak}</b></div>
+      <div className="streak-num">{streak === 1 ? t('1 semana seguida') : streak ? t('{0} semanas seguidas', streak) : t('Empezá tu racha')}</div>
+      <div className="small muted">{sub}</div>
+    </div>
+    <div className="streak-now">
+      <div className="streak-now-head">{t('Esta semana')} · {t('{0} de {1}', current.done, current.target)}</div>
+      <div className="streak-days" role="list">
+        {current.days.map(d => <div key={d.iso} role="listitem" className={'streak-day' + (d.done ? ' done' : d.planned ? ' plan' : '') + (d.today ? ' today' : '') + (d.past ? ' past' : '')}
+          aria-label={`${t(DAY_LONG[weekdayOf(d.iso)])}${d.done ? ' · ' + t('Entrenado') : d.planned ? ' · ' + t('Planeado') : ''}`}>
+          <span className="streak-dot">{d.done ? <Icon name="check" /> : d.today ? t('hoy') : null}</span>
+          <span className="streak-day-lbl">{t(DAYS[weekdayOf(d.iso)]).charAt(0)}</span>
+        </div>)}
       </div>
+      <div className="small muted streak-left">{weekLine(current, today)}</div>
     </div>
-    <div className="streak-weeks" role="list" aria-label={t('Últimas 8 semanas')}>
-      {weeks.map((w, i) => {
-        const now = i === weeks.length - 1
-        return <div key={w.monday} role="listitem" className={'streak-week' + (w.complete ? ' ok' : '') + (now ? ' now' : '')}
-          title={`${dm(w.monday)}: ${w.done}/${w.target || 1}${w.classes ? ' · ' + t('{0} clases', w.classes) : ''}`}>
-          <span className="streak-block" style={!w.complete && w.target ? { '--p': Math.min(1, w.done / w.target) } : undefined} />
-          <span className="streak-label">{now ? t('Hoy') : dm(w.monday)}</span>
-        </div>
-      })}
-    </div>
-    <div className="small dim streak-help">{t('Verde: semana cumplida. Cuenta cuando llegás a los entrenos de tu plan; las clases suman. Cada semana usa el plan con el que la empezaste.')}</div>
+    {streak > 0 && next && <div className="small dim streak-next">{t('La llama cambia de color a las {0} semanas · faltan {1}', next, next - streak)}</div>}
+    <div className="small dim streak-help">{t('Una semana suma cuando llegás a los entrenos de tu plan. Las clases cuentan.')}</div>
     <Button variant="tinted" icon="calendar" onClick={() => { close(); onCalendar && onCalendar() }}>{t('Ver el calendario')}</Button>
   </div>
 }

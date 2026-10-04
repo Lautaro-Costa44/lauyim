@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useStore, healthOff } from '../store/useStore.js'
-import { effectiveRoutine, effectiveRoutineId, streakWeeks, evalWeek, lastBW, setsDoneActive } from '../lib/history.js'
+import { effectiveRoutine, effectiveRoutineId, streakWeeks, streakLevel, evalWeek, lastBW, setsDoneActive } from '../lib/history.js'
 import { fmtNum, fmtDate, todayISO, isoOf, weekKey, DAYS } from '../lib/format.js'
 import { t, dateLocale } from '../lib/i18n.js'
 import { bwSheet, goalSheet, dayOverrideSheet, calendarSheet, startFlow, bwDeltaColor, confirmSheet } from '../sheets.jsx'
@@ -129,7 +129,7 @@ export default function Home() {
         <button className="iconbtn" onClick={() => setWeekOffset(w => w + 1)} aria-label={t('Semana siguiente')}><Icon name="chevronRight" /></button>
         <span className="grow" />
         <button type="button" className="iconbtn week-cal" onClick={() => calendarSheet()} aria-label={t('Calendario')}><Icon name="calendar" /></button>
-        <button type="button" className={'streak-chip' + (streak ? ' on' : '')} onClick={() => streakSheet({ onCalendar: () => calendarSheet() })}
+        <button type="button" className={'streak-chip lv' + streakLevel(streak) + (streak ? ' on' : '')} onClick={() => streakSheet({ onCalendar: () => calendarSheet() })}
           aria-label={streak === 1 ? t('Racha: 1 semana') : t('Racha: {0} semanas', streak)}><Icon name="flame" />{streak}</button>
       </div>
       <div className="week-progress">

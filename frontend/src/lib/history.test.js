@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { modeOf, isTimed, fmtSec, setLabel, defaultConfig, buildSets, freestyleConfig, exLine, workoutVolume, bestWeightFor, bestWeightForEntry, effortOf, stepEffort, capEffort, isBw, isPerSide, sideReps, repStep, cascadeWeight, insertWarmupRow, removeRowAt, workSetsDone, pairAdjacent, unpairSuperset, supersetUnits, applyIntensifierPlan, pinnedNoteFor, exNoteFor, evalWeek, weeklyTarget, markedDoneWorkout, planTargetNow, stampWeekTargets, streakSummary } from './history.js'
+import { modeOf, isTimed, fmtSec, setLabel, defaultConfig, buildSets, freestyleConfig, exLine, workoutVolume, bestWeightFor, bestWeightForEntry, effortOf, stepEffort, capEffort, isBw, isPerSide, sideReps, repStep, cascadeWeight, insertWarmupRow, removeRowAt, workSetsDone, pairAdjacent, unpairSuperset, supersetUnits, applyIntensifierPlan, pinnedNoteFor, exNoteFor, evalWeek, weeklyTarget, markedDoneWorkout, planTargetNow, stampWeekTargets, streakSummary, streakLevel, nextStreakLevel, bestStreak } from './history.js'
 import { localDayStartOf, localNoonOf, workoutTime } from './format.js'
 import { buildCompletedWorkout } from './finish-workout.js'
 import { EXDB } from './exercises.js'
@@ -1058,16 +1058,23 @@ describe('racha: la semana va con el plan con el que empezó', () => {
     expect(weeklyTarget({ ...S, workouts: [] }, monday('2026-09-07'))).toBe(5)
   })
 
-  it('resumen de la racha: semanas seguidas, las últimas 8 y lo que falta esta semana', () => {
+  it('resumen de la racha: semanas seguidas, la mejor y esta semana día por día', () => {
     const w = (d, extra) => ({ id: d, d, start: Date.parse(d + 'T18:00:00'), entries: [], weekTarget: 2, ...extra })
     const S = { week: { 1: 'r1', 4: 'r2' }, routines: [{ id: 'r1', name: 'Piernas' }, { id: 'r2', name: 'Torso' }], dayPlan: {},
-      workouts: [w('2026-09-21'), w('2026-09-24'), w('2026-09-28'), w('2026-10-01', { kind: 'class' }), w('2026-10-05')] }
-    const r = streakSummary(S, new Date('2026-10-06T12:00:00'))   // martes
-    expect(r.streak).toBe(2)
-    expect(r.weeks).toHaveLength(8)
-    expect(r.weeks.slice(-3).map(x => [x.done, x.target, x.complete, x.classes])).toEqual([[2, 2, true, 0], [2, 2, true, 1], [1, 2, false, 0]])
-    expect(r.current).toMatchObject({ done: 1, target: 2, left: 1 })
-    expect(r.current.pendingDays).toEqual(['2026-10-08'])   // jueves: Torso
+      workouts: [w('2026-09-07'), w('2026-09-08'), w('2026-09-14'), w('2026-09-15'), w('2026-09-16'),
+        w('2026-09-28'), w('2026-10-01', { kind: 'class' }), w('2026-10-05')] }
+    // Sábado de clase reservado: cuenta como planeado.
+    const r = streakSummary(S, new Date('2026-10-06T12:00:00'), { '2026-10-10': [{ name: 'Spinning' }] })   // martes
+    expect([r.streak, r.best, r.level, r.next]).toEqual([1, 2, 1, 4])
+    expect(r.current).toMatchObject({ done: 1, target: 2, left: 1, complete: false })
+    expect(r.current.days.map(d => (d.done ? 'x' : d.planned ? 'p' : '-') + (d.today ? '*' : ''))).toEqual(['x', '-*', '-', 'p', '-', 'p', '-'])
+    expect(r.current.pendingDays).toEqual(['2026-10-08', '2026-10-10'])
+  })
+
+  it('niveles de la llama: cambia a las 1, 4, 12, 26 y 52 semanas', () => {
+    expect([0, 1, 3, 4, 11, 12, 26, 51, 52, 80].map(streakLevel)).toEqual([0, 1, 1, 2, 2, 3, 4, 4, 5, 5])
+    expect([0, 3, 4, 25, 52].map(nextStreakLevel)).toEqual([1, 4, 12, 26, null])
+    expect(bestStreak({ workouts: [] })).toBe(0)
   })
 })
 

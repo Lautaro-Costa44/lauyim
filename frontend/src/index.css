@@ -429,7 +429,7 @@ h4.sec{
 .week-cal{color:var(--label-2)}
 .streak-chip{display:inline-flex;align-items:center;gap:3px;height:30px;padding:0 10px;border-radius:99px;font-weight:700;font-variant-numeric:tabular-nums;
   background:var(--surface-2);color:var(--label-2)}
-.streak-chip.on{background:color-mix(in srgb,var(--orange) 16%,transparent);color:var(--orange)}
+.streak-chip.on{background:color-mix(in srgb,var(--flame) 16%,transparent);color:var(--flame)}
 .streak-chip:active{transform:scale(.96)}
 .week-progress{display:flex;flex-direction:column;gap:5px;margin-bottom:10px}
 .week-bar{height:6px;border-radius:3px;background:var(--surface-3);overflow:hidden}
@@ -438,17 +438,27 @@ h4.sec{
 .wday-ic{display:flex;justify-content:center;gap:2px;height:16px;margin-top:2px;font-size:14px;line-height:1}
 .wday-ic .wic.plan{color:var(--label-3)}.wday-ic .wic.ovr{color:var(--orange)}.wday-ic .wic.done{color:var(--acc)}
 /* Hoja de la racha */
+.lv0{--flame:var(--label-3)}.lv1{--flame:var(--orange)}.lv2{--flame:color-mix(in srgb,var(--orange),var(--red))}
+.lv3{--flame:var(--red)}.lv4{--flame:var(--pink)}.lv5{--flame:var(--purple)}
 .streak-sheet{display:flex;flex-direction:column;gap:14px}
-.streak-hero{display:flex;align-items:center;gap:14px}
-.streak-flame{width:54px;height:54px;border-radius:16px;display:flex;align-items:center;justify-content:center;font-size:28px;background:var(--surface-2);color:var(--label-3);flex:none}
-.streak-flame.on{background:color-mix(in srgb,var(--orange) 16%,transparent);color:var(--orange)}
-.streak-num{font-size:21px;font-weight:700;letter-spacing:-.015em}
-.streak-weeks{display:grid;grid-template-columns:repeat(8,minmax(0,1fr));gap:6px}
-.streak-week{display:flex;flex-direction:column;align-items:center;gap:4px}
-.streak-block{width:100%;aspect-ratio:1;max-width:34px;border-radius:8px;background:linear-gradient(to top,color-mix(in srgb,var(--acc) 35%,transparent) calc(var(--p,0)*100%),var(--surface-2) 0)}
-.streak-week.ok .streak-block{background:var(--acc)}
-.streak-week.now .streak-block{box-shadow:inset 0 0 0 1.5px var(--acc)}
-.streak-label{font-size:10px;color:var(--label-3);font-variant-numeric:tabular-nums}
+.streak-hero{display:flex;flex-direction:column;align-items:center;text-align:center;gap:2px;padding-top:4px}
+.streak-flame{width:96px;height:96px;border-radius:50%;display:flex;flex-direction:column;align-items:center;justify-content:center;margin-bottom:10px;
+  background:color-mix(in srgb,var(--flame) 16%,transparent);color:var(--flame);font-size:26px;line-height:1}
+.streak-flame b{font-size:32px;font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+.streak-num{font-size:19px;font-weight:700;letter-spacing:-.015em}
+.streak-now{background:var(--surface-2);border-radius:14px;padding:12px}
+.streak-now-head{font-weight:600;font-size:14px;margin-bottom:10px}
+.streak-days{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px}
+.streak-day{display:flex;flex-direction:column;align-items:center;gap:4px}
+.streak-dot{width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;color:var(--flame);border:1.5px solid transparent}
+.streak-day.past .streak-dot{background:var(--surface-3)}
+.streak-day.plan .streak-dot{border:1.5px dashed var(--flame)}
+.streak-day.today .streak-dot{border:1.5px solid var(--flame)}
+.streak-day.done .streak-dot{background:var(--acc);color:var(--on-acc);border-color:transparent;font-size:16px}
+.streak-day-lbl{font-size:11px;color:var(--label-3)}
+.streak-day.today .streak-day-lbl{color:var(--label);font-weight:600}
+.streak-left{margin-top:10px}
+.streak-next{text-align:center}
 .streak-help{line-height:1.4}
 .wday .dot.cls{width:5px;height:5px}
 .today-classes{margin-top:3px;line-height:1.35;white-space:normal}

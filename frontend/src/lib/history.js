@@ -644,32 +644,55 @@ export function streakWeeks(S, now = new Date()) {
   return streak
 }
 
-// La racha para mostrarla (la hoja de la llama): semanas seguidas, las últimas 8 (de la más vieja a
-// esta) con lo hecho, el objetivo y cuántas fueron clases, y lo que falta esta semana: cuántos
-// entrenos y qué días planeados quedan (de hoy en adelante, sin entrenar todavía).
-export function streakSummary(S, now = new Date()) {
-  const monday0 = new Date(now)
-  monday0.setHours(12, 0, 0, 0)
-  monday0.setDate(monday0.getDate() - ((monday0.getDay() + 6) % 7))
-  const weeks = []
-  for (let i = 7; i >= 0; i--) {
-    const m = new Date(monday0)
-    m.setDate(monday0.getDate() - 7 * i)
-    const e = evalWeek(S, m)
-    weeks.push({ monday: isoOf(m), done: e.rutinasCompletadas, target: e.objetivoSemanal, complete: e.completa,
-      classes: weekWorkouts(S, m).filter(w => w.kind === 'class').length })
+// La llama cambia de color con las semanas seguidas: desde 1, 4, 12, 26 y 52 (nivel 1 a 5; 0 sin racha).
+export const STREAK_LEVELS = [1, 4, 12, 26, 52]
+export const streakLevel = n => STREAK_LEVELS.filter(x => n >= x).length
+// Las semanas seguidas en las que la llama vuelve a cambiar de color (null: ya está en el último).
+export const nextStreakLevel = n => STREAK_LEVELS.find(x => x > n) ?? null
+
+// La racha más larga del historial (semanas cumplidas seguidas, la de ahora incluida).
+export function bestStreak(S, now = new Date()) {
+  const ds = (S?.workouts || []).map(w => w?.d).filter(Boolean).sort()
+  if (!ds.length) return 0
+  const m = new Date(ds[0] + 'T12:00:00')
+  m.setDate(m.getDate() - ((m.getDay() + 6) % 7))
+  const today = isoOf(now)
+  let best = 0, run = 0
+  for (let i = 0; i < 1040 && isoOf(m) <= today; i++) {
+    run = evalWeek(S, m).completa ? run + 1 : 0
+    best = Math.max(best, run)
+    m.setDate(m.getDate() + 7)
   }
-  const current = weeks[weeks.length - 1]
+  return Math.max(best, streakWeeks(S, now))
+}
+
+// La racha para mostrarla (la hoja de la llama): semanas seguidas, la mejor, el color (nivel) y
+// cuándo cambia, y esta semana día por día: entrenado (rutina o clase), hoy, y lo que queda
+// planeado (rutina del plan o clase reservada, de hoy en adelante y sin entrenar todavía).
+// classDays: { iso: [clases] } (classesByDate), para contar las clases reservadas.
+export function streakSummary(S, now = new Date(), classDays = {}) {
+  const monday = new Date(now)
+  monday.setHours(12, 0, 0, 0)
+  monday.setDate(monday.getDate() - ((monday.getDay() + 6) % 7))
+  const week = evalWeek(S, monday)
   const today = isoOf(now)
   const trained = new Set((S?.workouts || []).map(w => w.d))
-  const pendingDays = []
+  const days = []
   for (let i = 0; i < 7; i++) {
-    const d = new Date(monday0)
-    d.setDate(monday0.getDate() + i)
+    const d = new Date(monday)
+    d.setDate(monday.getDate() + i)
     const iso = isoOf(d)
-    if (iso >= today && effectiveRoutineId(S, iso) && !trained.has(iso)) pendingDays.push(iso)
+    const done = trained.has(iso)
+    const planned = !done && iso >= today && !!(effectiveRoutineId(S, iso) || (classDays[iso] || []).length)
+    days.push({ iso, done, planned, today: iso === today, past: iso < today })
   }
-  return { streak: streakWeeks(S, now), weeks, current: { ...current, left: Math.max(0, current.target - current.done), pendingDays } }
+  const streak = streakWeeks(S, now)
+  const target = week.objetivoSemanal || 1
+  return {
+    streak, best: bestStreak(S, now), level: streakLevel(streak), next: nextStreakLevel(streak),
+    current: { done: week.rutinasCompletadas, target, complete: week.completa, left: Math.max(0, target - week.rutinasCompletadas),
+      days, pendingDays: days.filter(d => d.planned).map(d => d.iso) }
+  }
 }
 
 /**

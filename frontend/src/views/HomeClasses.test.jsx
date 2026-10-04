@@ -121,8 +121,10 @@ describe('clases en las vistas', () => {
     await act(async () => { container.querySelector('.streak-chip').click() })
     const { host, unmount } = await openLastSheet()
     expect(host.querySelector('.streak-num').textContent).toBe('Empezá tu racha')
-    expect(host.textContent).toContain('Esta semana 1 de 2 · falta 1 (mié)')
-    expect(host.querySelectorAll('.streak-week')).toHaveLength(8)
+    expect(host.querySelector('.streak-now-head').textContent).toBe('Esta semana · 1 de 2')
+    expect(host.querySelector('.streak-left').textContent).toBe('Falta 1: el miércoles')
+    expect([...host.querySelectorAll('.streak-day')].map(d => d.className.replace('streak-day', '').trim())).toEqual(['done today', '', 'plan', '', '', '', ''])
+    expect(container.querySelector('.streak-chip').classList.contains('lv0')).toBe(true)
     await unmount()
   })
 
