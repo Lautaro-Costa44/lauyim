@@ -1,5 +1,8 @@
+// @vitest-environment node
 import { describe, it, expect } from 'vitest'
-import { auditCat, auditLabel, auditReason, auditLine, fmtWhen } from './audit.js'
+import fs from 'node:fs'
+import path from 'node:path'
+import { auditCat, auditLabel, auditReason, auditLine, fmtWhen, AUDIT_FILTERS, auditCategoryLabel } from './audit.js'
 
 // Every event name and reason code the server can emit (api/server.js, the audit block).
 // If a new one is added there without a label here, the first test fails rather than the
@@ -186,3 +189,30 @@ describe('fmtWhen', () => {
     expect(fmtWhen(undefined)).toBe('')
   })
 })
+
+// Todos los eventos que escribe el servidor (api/*.js), no solo los de la lista de arriba: uno
+// nuevo sin texto rompe este test en lugar de mostrarse como "actividad desconocida".
+const API = path.resolve(process.cwd(), '../api')
+const emittedEvents = () => {
+  const events = new Set()
+  for (const f of fs.readdirSync(API).filter(f => f.endsWith('.js') && !f.includes('.test.'))) {
+    const src = fs.readFileSync(path.join(API, f), 'utf8')
+    for (const m of src.matchAll(/audit\(req,\s*'([a-z_.]+)'/g)) events.add(m[1])
+    for (const m of src.matchAll(/audit\(req,\s*[^'(),]+\?\s*'([a-z_.]+)'\s*:\s*'([a-z_.]+)'/g)) { events.add(m[1]); events.add(m[2]) }
+  }
+  return [...events]
+}
+
+describe('el registro y el backend', () => {
+  it('cada evento que escribe el servidor tiene texto', () => {
+    const events = emittedEvents()
+    expect(events.length).toBeGreaterThan(90)
+    expect(events.filter(ev => auditLabel(ev) === 'Unknown activity')).toEqual([])
+  })
+  it('filtros por categoría, con nombre', () => {
+    expect(AUDIT_FILTERS.map(([v]) => v)).toEqual(['', 'auth', 'members', 'billing', 'classes', 'training', 'checkin', 'settings', 'fail'])
+    expect(auditCategoryLabel('classes')).toBe('Clases')
+    expect(auditCategoryLabel('other')).toBe('Otros')
+  })
+})
+

@@ -5,7 +5,7 @@ import { useUI } from '../../store/useUI.js'
 import { useStore } from '../../store/useStore.js'
 import { api } from '../../lib/api.js'
 import { fmtNum } from '../../lib/format.js'
-import { auditCat, auditLine, fmtWhen } from '../../lib/audit.js'
+import { auditLine, fmtWhen, AUDIT_FILTERS, auditCategoryLabel } from '../../lib/audit.js'
 import { confirmSheet } from '../../sheets.jsx'
 import { t } from '../../lib/i18n.js'
 import Icon from '../../components/Icon.jsx'
@@ -48,9 +48,10 @@ function AuditCard({ tick }) {
     <div className="small muted" style={{ margin: '6px 0 10px' }}>
       {meta ? fmtNum(meta.total) + ' ' + t('events')
         + (meta.retention.days ? ' · ' + t('last {0} days', meta.retention.days) : '') : t('Loading…')}</div>
-    <div className="chips" style={{ marginBottom: 10 }}>
-      {[['', 'All'], ['auth', 'Sign-ins'], ['admin', 'Admin'], ['fail', 'Failed']].map(([v, l]) =>
-        <button key={v} className={'chip nocap' + (cat === v ? ' on' : '')} onClick={() => pick(v)}>{t(l)}</button>)}
+    {/* Por categoría (accesos, socios, cuotas, clases, …) o solo los fallidos. */}
+    <div className="chips audit-filters" role="group" aria-label={t('Filtrar actividad')} style={{ marginBottom: 10 }}>
+      {AUDIT_FILTERS.map(([v, l]) =>
+        <button key={v} type="button" className={'chip nocap' + (cat === v ? ' on' : '')} aria-pressed={cat === v} onClick={() => pick(v)}>{t(l)}</button>)}
     </div>
     <div className="audit-rows">
     {rows.map(e => {
@@ -60,7 +61,8 @@ function AuditCard({ tick }) {
           <div className="small" style={{ fontWeight: 600 }}>{line.title}
             {/* a red pill, not a red row: twenty fumbled Face IDs in a row shouldn't read as an incident */}
             {!e.ok && <span className="tag" style={{ marginLeft: 6, color: 'var(--red)' }}>{t('failed')}</span>}
-            {(auditCat(e.ev) === 'admin' || auditCat(e.ev) === 'owner') && <span className="tag acc" style={{ marginLeft: 6 }}>{t('admin')}</span>}</div>
+            {/* En "Todo" y "Fallidos", de qué es cada fila. */}
+            {(cat === '' || cat === 'fail') && e.cat && <span className={'tag nocap audit-cat audit-cat-' + e.cat} style={{ marginLeft: 6 }}>{auditCategoryLabel(e.cat)}</span>}</div>
           {line.sub && <div className="dim" style={{ fontSize: '.72rem' }}>{line.sub}</div>}
         </div>
         <span className="small muted" style={{ flex: 'none', marginLeft: 8 }}>{fmtWhen(e.ts, meta?.now)}</span>

@@ -1,5 +1,6 @@
 /* lauyim-api — passkey (WebAuthn) auth + per-user state storage for lauyim
    SQLite storage via node:sqlite, signed session cookies.                  */
+import { auditCategory, AUDIT_CATEGORIES } from './audit-categories.js';
 import http from 'node:http';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
@@ -4395,13 +4396,14 @@ const routes = {
     const limit = Math.max(1, Math.min(200, +q.get('limit') || 100));
     const before = +q.get('before') || Infinity;
     const cat = q.get('cat') || '';
-    let rows = auditKeep(auditLines()).reverse();
+    // Cada evento con su categoría (audit-categories.js): accesos, socios, cuotas, clases, … El
+    // filtro es una categoría o "fail" (los fallidos de cualquiera).
+    let rows = auditKeep(auditLines()).reverse().map(r => ({ ...r, cat: auditCategory(r.ev) }));
     if (cat === 'fail') rows = rows.filter(r => !r.ok);
-    else if (cat === 'admin') rows = rows.filter(r => String(r.ev).startsWith('admin.') || String(r.ev).startsWith('owner.'));
-    else if (cat) rows = rows.filter(r => String(r.ev).startsWith(cat + '.'));
+    else if (cat) rows = rows.filter(r => r.cat === cat);
     const page = rows.filter(r => r.id < before).slice(0, limit);
     json(res, 200, {
-      events: page,
+      events: page, categories: AUDIT_CATEGORIES,
       total: rows.length,
       nextBefore: page.length === limit ? page[page.length - 1].id : null,
       enabled: AUDIT_ON, ip_mode: AUDIT_IP,

@@ -8,8 +8,17 @@
 // Labels are source strings passed through t(), so the operator surface follows the active locale.
 import { dateLocale, t } from './i18n-core.js'
 
-// The first segment of an event name is also the filter chip it belongs to.
+// The first segment of an event name (legacy; the server now sends each event's category).
 export const auditCat = ev => String(ev || '').split('.')[0]
+
+// Categorías del registro (api/audit-categories.js manda `cat` en cada evento). '' es todo y
+// 'fail' los fallidos de cualquiera.
+export const AUDIT_FILTERS = [
+  ['', 'Todo'], ['auth', 'Accesos'], ['members', 'Socios'], ['billing', 'Cuotas'], ['classes', 'Clases'],
+  ['training', 'Entrenamiento'], ['checkin', 'Ingreso físico'], ['settings', 'Configuración'], ['fail', 'Fallidos']
+]
+const CATEGORY_LABELS = Object.fromEntries(AUDIT_FILTERS.filter(([v]) => v && v !== 'fail'))
+export const auditCategoryLabel = cat => t(CATEGORY_LABELS[cat] || 'Otros')
 
 const LABELS = {
   'auth.login.ok': 'Signed in',
@@ -88,7 +97,40 @@ const LABELS = {
   'auth.health.deleted': 'Deleted their health data',
   'auth.legal.accepted': 'Accepted the terms and privacy notice',
   'owner.branding.settings': 'Changed the app personalization',
-  'owner.branding.reset': 'Reset the app personalization to lauyim'
+  'owner.branding.reset': 'Reset the app personalization to lauyim',
+  // Registro y accesos
+  'owner.audit.clear': 'Borró el registro de actividad',
+  'auth.device.claim.fail': 'Falló la vinculación de un dispositivo',
+  'auth.device.login.fail': 'Falló el ingreso desde un dispositivo vinculado',
+  // Roles
+  'admin.user.role': 'Cambió el rol de una persona',
+  'owner.role.save': 'Guardó un rol',
+  'owner.role.delete': 'Borró un rol',
+  // Programas y plantillas
+  'admin.preset.duplicate': 'Duplicó un preset',
+  'admin.program.delete': 'Borró un programa',
+  'admin.program.rename': 'Renombró un programa',
+  'admin.program.visibility': 'Cambió la visibilidad de un programa',
+  'admin.program.duplicate': 'Duplicó un programa',
+  'admin.nutrition.template.create': 'Creó una plantilla de comidas',
+  'admin.nutrition.template.update': 'Editó una plantilla de comidas',
+  'admin.nutrition.template.delete': 'Borró una plantilla de comidas',
+  // Clases
+  'classes.type.save': 'Guardó una clase',
+  'classes.type.archive': 'Archivó una clase',
+  'classes.slot.save': 'Cambió el horario semanal de una clase',
+  'classes.slot.delete': 'Sacó un día del horario de una clase',
+  'classes.session.change': 'Cambió una fecha de clase',
+  'classes.session.hide': 'Quitó de la vista una clase suspendida',
+  'classes.session.delete': 'Eliminó una clase suelta',
+  'classes.booking.add': 'Anotó a un socio en una clase',
+  'classes.booking.cancel': 'Canceló la reserva de un socio',
+  'classes.attendance': 'Tomó lista en una clase',
+  'classes.message': 'Mandó un mensaje a los anotados',
+  'classes.penalty.reset': 'Levantó la penalización de un socio',
+  'classes.closure.add': 'Cerró el gimnasio',
+  'classes.closure.delete': 'Reabrió el gimnasio',
+  'owner.classes.settings': 'Cambió los ajustes de clases'
 }
 
 const UNKNOWN_EVENT = 'Unknown activity'

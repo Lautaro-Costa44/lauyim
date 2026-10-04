@@ -263,3 +263,12 @@ test('eliminar una clase suelta: avisa y desaparece en un paso', async () => {
   assert.deepEqual([r.status, r.body.notified], [200, 1]);
   assert.ok(!(await call('owner', 'GET', `/api/admin/classes/calendar?from=${dayAfter(day, 3)}&days=1`)).body.occurrences.some(o => o.sessionId === sessionId));
 });
+
+test('registro de actividad: las acciones de clases con su categoría y el filtro', async () => {
+  const all = (await call('owner', 'GET', '/api/admin/audit?limit=200')).body;
+  assert.ok(all.categories.includes('classes'));
+  const classes = (await call('owner', 'GET', '/api/admin/audit?limit=200&cat=classes')).body.events;
+  assert.ok(classes.length > 0);
+  assert.ok(classes.every(e => e.cat === 'classes'));
+  assert.ok(classes.some(e => e.ev === 'classes.session.delete'));
+});
