@@ -6,6 +6,7 @@ import { guestAllowed } from '../lib/guest.js'
 import { deviceSubscription, isAccountEnded, wipeDeviceData } from '../lib/session-end.js'
 import { enqueueSync, takeSyncBatch, removeSync, deferSync, countSync, diffState, applySyncMappings } from '../lib/sync-queue.js'
 import { MAX_ROUTINE_GROUPS, canAddGroup, validateGroupName, createRoutineGroup, syncActiveGroupInState, addGroupToState, removeGroupFromState } from '../lib/routineGroups.js'
+import { stampWeekTargets } from '../lib/history.js'
 
 const KEY = 'gym_state_v1'
 export const DEF = {
@@ -355,6 +356,7 @@ export const useStore = create((set, get) => {
       const before = clone(S)
       mut(S)
       markPlanStarted(S)
+      stampWeekTargets(before, S)      // el objetivo de la semana en cada entreno nuevo (racha)
       mirrorWeekIntoActiveGroup(S, before)
       persist(S, false)
       // Cambio local sin subir: marcado antes de que llegue a la cola (IndexedDB es asíncrono), para

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { modeOf, isTimed, fmtSec, setLabel, defaultConfig, buildSets, freestyleConfig, exLine, workoutVolume, bestWeightFor, bestWeightForEntry, effortOf, stepEffort, capEffort, isBw, isPerSide, sideReps, repStep, cascadeWeight, insertWarmupRow, removeRowAt, workSetsDone, pairAdjacent, unpairSuperset, supersetUnits, applyIntensifierPlan, pinnedNoteFor, exNoteFor, evalWeek, weeklyTarget, markedDoneWorkout } from './history.js'
+import { modeOf, isTimed, fmtSec, setLabel, defaultConfig, buildSets, freestyleConfig, exLine, workoutVolume, bestWeightFor, bestWeightForEntry, effortOf, stepEffort, capEffort, isBw, isPerSide, sideReps, repStep, cascadeWeight, insertWarmupRow, removeRowAt, workSetsDone, pairAdjacent, unpairSuperset, supersetUnits, applyIntensifierPlan, pinnedNoteFor, exNoteFor, evalWeek, weeklyTarget, markedDoneWorkout, planTargetNow, stampWeekTargets, streakSummary } from './history.js'
 import { localDayStartOf, localNoonOf, workoutTime } from './format.js'
 import { buildCompletedWorkout } from './finish-workout.js'
 import { EXDB } from './exercises.js'
@@ -1027,3 +1027,47 @@ describe('markedDoneWorkout', () => {
     expect(w).toMatchObject({ id: 'x', d: '2026-03-10', name: 'Freestyle', routineId: null, vol: 0, entries: [] })
   })
 })
+
+describe('racha: la semana va con el plan con el que empezó', () => {
+  it('cada entreno nuevo guarda el objetivo de su semana; cambiar el plan no toca las semanas ya empezadas', () => {
+    const before = { week: { 1: 'r1', 3: 'r2', 5: 'r3' }, routines: [], workouts: [] }
+    const after = { ...before, workouts: [{ id: 'w1', d: '2026-09-07', entries: [] }] }
+    stampWeekTargets(before, after)
+    expect(after.workouts[0].weekTarget).toBe(3)
+    // Pasa a 5 días: la semana del 7 sigue pidiendo 3; una semana nueva sin entrenos pide 5.
+    const S = { ...after, week: { 1: 'a', 2: 'b', 3: 'c', 4: 'd', 5: 'e' }, workouts: [...after.workouts, { id: 'w2', d: '2026-09-09', entries: [] }, { id: 'w3', d: '2026-09-11', entries: [] }] }
+    expect(weeklyTarget(S, monday('2026-09-07'))).toBe(3)
+    expect(evalWeek(S, monday('2026-09-07')).completa).toBe(true)
+    expect(weeklyTarget(S, monday('2026-09-14'))).toBe(5)
+    // Un entreno que ya tenía objetivo no se toca.
+    const again = { ...S, workouts: S.workouts.map(w => ({ ...w })) }
+    stampWeekTargets(S, again)
+    expect(again.workouts[0].weekTarget).toBe(3)
+  })
+
+  it('con grupos: el del grupo activo; una clase primero no confunde el grupo de la semana', () => {
+    const g3 = { id: 'g3', week: { 1: 'a', 3: 'b', 5: 'c' }, routines: [{ id: 'a' }] }
+    const g5 = { id: 'g5', week: { 1: 'd', 2: 'e', 3: 'f', 4: 'g', 5: 'h' }, routines: [{ id: 'd' }] }
+    expect(planTargetNow({ routineGroups: [g3, g5], activeGroupId: 'g5' })).toBe(5)
+    const S = { routineGroups: [g3, g5], activeGroupId: 'g5', week: g5.week, workouts: [
+      { d: '2026-09-07', start: 1, kind: 'class', entries: [] },
+      { d: '2026-09-08', start: 2, routineId: 'a', routineGroupId: 'g3', entries: [] }
+    ] }
+    expect(weeklyTarget(S, monday('2026-09-07'))).toBe(3)
+    // Sin entrenos todavía, el del grupo activo.
+    expect(weeklyTarget({ ...S, workouts: [] }, monday('2026-09-07'))).toBe(5)
+  })
+
+  it('resumen de la racha: semanas seguidas, las últimas 8 y lo que falta esta semana', () => {
+    const w = (d, extra) => ({ id: d, d, start: Date.parse(d + 'T18:00:00'), entries: [], weekTarget: 2, ...extra })
+    const S = { week: { 1: 'r1', 4: 'r2' }, routines: [{ id: 'r1', name: 'Piernas' }, { id: 'r2', name: 'Torso' }], dayPlan: {},
+      workouts: [w('2026-09-21'), w('2026-09-24'), w('2026-09-28'), w('2026-10-01', { kind: 'class' }), w('2026-10-05')] }
+    const r = streakSummary(S, new Date('2026-10-06T12:00:00'))   // martes
+    expect(r.streak).toBe(2)
+    expect(r.weeks).toHaveLength(8)
+    expect(r.weeks.slice(-3).map(x => [x.done, x.target, x.complete, x.classes])).toEqual([[2, 2, true, 0], [2, 2, true, 1], [1, 2, false, 0]])
+    expect(r.current).toMatchObject({ done: 1, target: 2, left: 1 })
+    expect(r.current.pendingDays).toEqual(['2026-10-08'])   // jueves: Torso
+  })
+})
+

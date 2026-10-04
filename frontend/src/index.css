@@ -422,6 +422,34 @@ h4.sec{
 .wday .dot.ovr{background:var(--orange)}
 .wday .dot.done{background:var(--acc)}
 .wday .dots{display:flex;justify-content:center;gap:3px;height:5px}.wday .dots .dot{margin:0}
+/* Tu semana (Inicio): cabecera con la racha, barra de progreso y días con íconos. */
+.week-card .week-head{display:flex;align-items:center;gap:2px;margin:-4px -4px 8px}.week-card .week-head .grow{flex:1}
+.week-card .week-head .iconbtn{width:30px;height:30px;font-size:15px}
+.week-title{font-weight:600;font-size:15px;padding:4px 6px;color:inherit;border-radius:8px}
+.week-cal{color:var(--label-2)}
+.streak-chip{display:inline-flex;align-items:center;gap:3px;height:30px;padding:0 10px;border-radius:99px;font-weight:700;font-variant-numeric:tabular-nums;
+  background:var(--surface-2);color:var(--label-2)}
+.streak-chip.on{background:color-mix(in srgb,var(--orange) 16%,transparent);color:var(--orange)}
+.streak-chip:active{transform:scale(.96)}
+.week-progress{display:flex;flex-direction:column;gap:5px;margin-bottom:10px}
+.week-bar{height:6px;border-radius:3px;background:var(--surface-3);overflow:hidden}
+.week-bar span{display:block;height:100%;border-radius:3px;background:var(--acc);transition:width var(--med) var(--ease)}
+.wday.trained{background:var(--acc-soft)}.wday.trained .num{color:var(--acc);font-weight:600}
+.wday-ic{display:flex;justify-content:center;gap:2px;height:16px;margin-top:2px;font-size:14px;line-height:1}
+.wday-ic .wic.plan{color:var(--label-3)}.wday-ic .wic.ovr{color:var(--orange)}.wday-ic .wic.done{color:var(--acc)}
+/* Hoja de la racha */
+.streak-sheet{display:flex;flex-direction:column;gap:14px}
+.streak-hero{display:flex;align-items:center;gap:14px}
+.streak-flame{width:54px;height:54px;border-radius:16px;display:flex;align-items:center;justify-content:center;font-size:28px;background:var(--surface-2);color:var(--label-3);flex:none}
+.streak-flame.on{background:color-mix(in srgb,var(--orange) 16%,transparent);color:var(--orange)}
+.streak-num{font-size:21px;font-weight:700;letter-spacing:-.015em}
+.streak-weeks{display:grid;grid-template-columns:repeat(8,minmax(0,1fr));gap:6px}
+.streak-week{display:flex;flex-direction:column;align-items:center;gap:4px}
+.streak-block{width:100%;aspect-ratio:1;max-width:34px;border-radius:8px;background:linear-gradient(to top,color-mix(in srgb,var(--acc) 35%,transparent) calc(var(--p,0)*100%),var(--surface-2) 0)}
+.streak-week.ok .streak-block{background:var(--acc)}
+.streak-week.now .streak-block{box-shadow:inset 0 0 0 1.5px var(--acc)}
+.streak-label{font-size:10px;color:var(--label-3);font-variant-numeric:tabular-nums}
+.streak-help{line-height:1.4}
 .wday .dot.cls{width:5px;height:5px}
 .today-classes{margin-top:3px;line-height:1.35;white-space:normal}
 .today-class i{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:4px;vertical-align:0}
@@ -1106,6 +1134,12 @@ input[type="search"]::-webkit-search-cancel-button{display:none;-webkit-appearan
 .day-classes .class-bar{align-self:stretch;width:4px;border-radius:2px;flex:none}
 .cal-legend{display:flex;gap:14px;justify-content:center;margin-top:12px;font-size:12px;color:var(--label-3)}
 .cal-legend i{display:inline-block;width:6px;height:6px;border-radius:50%;margin-right:5px}
+.cal-grid-wk{grid-template-columns:repeat(7,1fr) 18px}
+.cal-d.cls::after{content:'';width:14px;height:3px;border-radius:2px;background:var(--cls);margin-top:-1px}.cal-d.cls i:not([class]),.cal-d.cls i[class='']{display:none}
+.cal-wk{display:flex;align-items:center;justify-content:center;font-size:13px;color:var(--orange);background:none;border:none;padding:0}
+.cal-legend{flex-wrap:wrap;row-gap:6px}
+.cal-legend .cal-legend-cls{width:10px;height:3px;border-radius:2px}
+.cal-legend-flame{display:inline-flex;align-items:center;gap:3px;color:var(--orange)}
 
 /* --- accent swatches --- */
 .swatches{display:flex;gap:12px;flex-wrap:wrap}

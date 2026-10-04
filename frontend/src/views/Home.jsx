@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useStore, healthOff } from '../store/useStore.js'
-import { effectiveRoutine, effectiveRoutineId, streakWeeks, weeklyTarget, lastBW, setsDoneActive } from '../lib/history.js'
+import { effectiveRoutine, effectiveRoutineId, streakWeeks, evalWeek, lastBW, setsDoneActive } from '../lib/history.js'
 import { fmtNum, fmtDate, todayISO, isoOf, weekKey, DAYS } from '../lib/format.js'
 import { t, dateLocale } from '../lib/i18n.js'
 import { bwSheet, goalSheet, dayOverrideSheet, calendarSheet, startFlow, bwDeltaColor, confirmSheet } from '../sheets.jsx'
@@ -18,6 +18,7 @@ import { useMyClasses } from '../components/useMyClasses.js'
 import { classesByDate, classOverlap } from '../lib/classes.js'
 import { isClassWorkout } from '../lib/workout-history.js'
 import { loadOfRoutine, MUSCLE_NAME } from '../lib/muscles.js'
+import { streakSheet } from '../components/StreakSheet.jsx'
 
 
 // Home = what to do now + a quick glance. Deep charts & history live in Stats.
@@ -63,26 +64,37 @@ export default function Home() {
   const pendingRoutine = routine && !doneToday && !S.active ? routine : null
   const overlap = pendingRoutine ? classesToday.map(c => ({ c, slugs: classOverlap(c.occ?.log?.muscles || c.workout?.muscleLoad?.muscles, loadOfRoutine(pendingRoutine)) })).find(x => x.slugs.length) : null
   const muscleList = slugs => { const names = slugs.slice(0, 2).map(s => t(MUSCLE_NAME[s] || s).toLowerCase()); return names.length > 1 ? t('{0} y {1}', names[0], names[1]) : names[0] }
+  // Cada día: entrenado (fondo verde), hoy (borde), y hasta dos íconos: la rutina (la hecha, o la
+  // planeada más tenue; naranja si se reprogramó) y la clase en su color (hecha o reservada).
+  const byRoutine = id => S.routines.find(r => r.id === id)
   const strip = []
   for (let i = 0; i < 7; i++) {
     const d = new Date(monday); d.setDate(monday.getDate() + i)
     const iso = isoOf(d)
     const eff = effectiveRoutineId(S, iso), ovr = S.dayPlan[iso] !== undefined, done = doneDays.has(iso)
-    const dot = done ? ' done' : ovr && eff ? ' ovr' : eff ? ' plan' : ''
+    const doneW = done ? S.workouts.filter(w => w.d === iso && !isClassWorkout(w)).at(-1) : null
+    const r = doneW ? byRoutine(doneW.routineId) : eff ? byRoutine(eff) : null
     const cls = classDays[iso]?.[0]
-    strip.push(<div key={i} className={'wday' + (iso === todayISO() ? ' today' : '')} onClick={() => dayOverrideSheet(iso)}>
+    const trained = done || (classDays[iso] || []).some(c => c.done)
+    const label = [r?.name, cls?.name].filter(Boolean).join(' + ')
+    strip.push(<button key={i} type="button" className={'wday' + (iso === todayISO() ? ' today' : '') + (trained ? ' trained' : '')} onClick={() => dayOverrideSheet(iso)}
+      aria-label={`${t(DAYS[d.getDay()])} ${d.getDate()}${label ? ' · ' + label : ''}`}>
       <div className="lbl">{t(DAYS[d.getDay()])}</div><div className="num">{d.getDate()}</div>
-      <div className="dots">{dot && <div className={'dot' + dot} />}{cls && <div className="dot cls" style={{ background: cls.color || 'var(--acc)' }} title={cls.name} />}</div></div>)
+      <div className="wday-ic">
+        {(doneW || eff) && <span className={'wic' + (doneW ? ' done' : ovr ? ' ovr' : ' plan')}><Icon name={doneW && !r ? 'dumbbell' : glyphOf(r?.emoji)} /></span>}
+        {cls && <span className="wic cls" style={{ color: cls.color || 'var(--acc)' }}><Icon name={cls.occ?.icon || 'calendar'} /></span>}
+      </div></button>)
   }
   const sunday = new Date(monday); sunday.setDate(monday.getDate() + 6)
   const wkLabel = weekOffset === 0 ? t('This week') : `${monday.getDate()} ${monday.toLocaleDateString(dateLocale(), { month: 'short' })} – ${sunday.getDate()} ${sunday.toLocaleDateString(dateLocale(), { month: 'short' })}`
 
-  const thisWeek = S.workouts.filter(w => weekKey(w.d) === weekKey(todayISO()))
-  const wThisWeek = thisWeek.length
-  const classesThisWeek = thisWeek.filter(isClassWorkout).length
-  // El mismo objetivo que la racha (con grupos de rutinas); las clases cuentan como entrenos.
-  const thisMonday = new Date(today); thisMonday.setDate(today.getDate() - ((today.getDay() + 6) % 7))
-  const plannedPerWeek = weeklyTarget(S, thisMonday)
+  // Progreso de la semana que se ve: el mismo cálculo que la racha (objetivo del plan con el que
+  // empezó la semana; las clases cuentan como entrenos).
+  const shownWeek = evalWeek(S, monday)
+  const weekClasses = S.workouts.filter(w => isClassWorkout(w) && weekKey(w.d) === weekKey(isoOf(monday))).length
+  const weekTarget = shownWeek.objetivoSemanal || 1
+  const weekFill = Math.min(1, shownWeek.rutinasCompletadas / weekTarget)
+  const streak = streakWeeks(S)
   const bwPoints = S.bodyweight.slice(-30).map(b => ({ t: b.t || new Date(b.d).getTime(), y: b.w, d: b.d }))
 
   // today's session shown right under the week strip
@@ -109,11 +121,20 @@ export default function Home() {
       <button className="iconbtn" data-tour="settings-btn" onClick={() => nav('/settings')} aria-label={t('Settings')}><Icon name="gear" /></button>
     </div>
 
-    <div className="card">
-      <div className="row between" style={{ marginBottom: 8 }}>
-        <button className="iconbtn" style={{ width: 30, height: 30, fontSize: 15 }} onClick={() => setWeekOffset(w => w - 1)} aria-label="Previous week"><Icon name="chevronLeft" /></button>
-        <div className="small muted" style={{ fontWeight: 500 }}>{wkLabel}</div>
-        <button className="iconbtn" style={{ width: 30, height: 30, fontSize: 15 }} onClick={() => setWeekOffset(w => w + 1)} aria-label="Next week"><Icon name="chevronRight" /></button>
+    {/* Tu semana: progreso, racha (la llama abre su hoja), los días con sus íconos y Hoy. */}
+    <div className="card week-card">
+      <div className="week-head">
+        <button className="iconbtn" onClick={() => setWeekOffset(w => w - 1)} aria-label={t('Semana anterior')}><Icon name="chevronLeft" /></button>
+        <button type="button" className="week-title" onClick={() => setWeekOffset(0)} aria-label={t('Ir a esta semana')}>{weekOffset === 0 ? t('Tu semana') : wkLabel}</button>
+        <button className="iconbtn" onClick={() => setWeekOffset(w => w + 1)} aria-label={t('Semana siguiente')}><Icon name="chevronRight" /></button>
+        <span className="grow" />
+        <button type="button" className="iconbtn week-cal" onClick={() => calendarSheet()} aria-label={t('Calendario')}><Icon name="calendar" /></button>
+        <button type="button" className={'streak-chip' + (streak ? ' on' : '')} onClick={() => streakSheet({ onCalendar: () => calendarSheet() })}
+          aria-label={streak === 1 ? t('Racha: 1 semana') : t('Racha: {0} semanas', streak)}><Icon name="flame" />{streak}</button>
+      </div>
+      <div className="week-progress">
+        <div className="week-bar" aria-hidden="true"><span style={{ width: `${Math.round(weekFill * 100)}%` }} className={shownWeek.completa ? 'ok' : ''} /></div>
+        <div className="small muted">{shownWeek.completa ? t('Semana cumplida ✓') : t('{0} de {1} entrenos', shownWeek.rutinasCompletadas, shownWeek.objetivoSemanal || 1)}{weekClasses ? ' · ' + (weekClasses === 1 ? t('1 clase') : t('{0} clases', weekClasses)) : ''}</div>
       </div>
       <div className="week">{strip}</div>
       {/* Once today's session is logged the row stops asking for it. The week strip already
@@ -212,17 +233,5 @@ export default function Home() {
       </> : <div className="muted small">{t("No entries yet — log your weight to start the curve. It's also asked before every workout.")}</div>}
     </div>}
 
-    <div className="card tappable" style={{ cursor: 'pointer' }} onClick={() => calendarSheet()}>
-      <div className="row between">
-        <div>
-          <div className="row" style={{ gap: 7, fontSize: 22, fontWeight: 600, letterSpacing: '-.021em' }}>
-            <Icon name="flame" style={{ color: 'var(--orange)' }} />
-            {t('{0} week streak', streakWeeks(S))}
-          </div>
-          <div className="muted small" style={{ marginTop: 2 }}>{wThisWeek}{plannedPerWeek ? ' / ' + plannedPerWeek : ''} {t('this week')}{classesThisWeek ? ' · ' + (classesThisWeek === 1 ? t('1 clase') : t('{0} clases', classesThisWeek)) : ''} · {t(S.workouts.length === 1 ? '{0} workout total' : '{0} workouts total', S.workouts.length)}</div>
-        </div>
-        <Icon name="calendar" className="chev" style={{ fontSize: 20 }} />
-      </div>
-    </div>
   </div>
 }

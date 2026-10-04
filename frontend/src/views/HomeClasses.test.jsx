@@ -76,7 +76,8 @@ describe('clases en las vistas', () => {
     expect(row.querySelector('.today-classes').textContent).toBe('También hoy: Spinning 19:00')
     expect(row.querySelector('.today-overlap').textContent).toBe('Spinning también trabaja cuádriceps.')
     const monday = container.querySelectorAll('.wday')[0]
-    expect(monday.querySelector('.dot.cls').style.background).toBeTruthy()
+    expect(monday.querySelector('.wic.cls').style.color).toBeTruthy()
+    expect(monday.querySelector('.wic.plan')).toBeTruthy()   // la rutina planeada, tenue
   })
 
   it('una clase hecha no da por hecha la rutina; la racha cuenta la clase', async () => {
@@ -85,7 +86,9 @@ describe('clases en las vistas', () => {
     const row = container.querySelector('.today-row')
     expect(row.querySelector('.ttl').textContent).toBe('Piernas')
     expect(row.querySelector('.today-classes').textContent).toBe('También hoy: Spinning 19:00 ✓')
-    expect(container.textContent).toContain('1 / 1 esta semana · 1 clase')
+    expect(container.querySelector('.week-progress').textContent).toBe('Semana cumplida ✓ · 1 clase')
+    expect(container.querySelector('.streak-chip').textContent).toBe('1')
+    expect(container.querySelectorAll('.wday')[0].classList.contains('trained')).toBe(true)
   })
 
   it('sin rutina hoy, la clase hecha es lo de hoy', async () => {
@@ -105,11 +108,22 @@ describe('clases en las vistas', () => {
     await unmount()
   })
 
-  it('solo una clase hecha: un único punto (el de la clase), centrado; sin el punto de entreno', async () => {
+  it('solo una clase hecha: un único ícono (el de la clase), sin el de rutina', async () => {
     setS({ week: {}, workouts: [classWorkout('w1', TODAY, { classBookingId: 'b1' })] })
     await mount(<Home />)
-    const dots = container.querySelectorAll('.wday')[0].querySelectorAll('.dots > *')
-    expect([...dots].map(d => d.className)).toEqual(['dot cls'])
+    const icons = container.querySelectorAll('.wday')[0].querySelectorAll('.wday-ic > *')
+    expect([...icons].map(d => d.className)).toEqual(['wic cls'])
+  })
+
+  it('la llama abre la hoja de la racha, con lo que falta esta semana', async () => {
+    setS({ week: { 1: 'r1', 3: 'r1' }, workouts: [{ id: 'p1', d: TODAY, start: 1, end: 2, name: 'Piernas', routineId: 'r1', entries: [] }] })
+    await mount(<Home />)
+    await act(async () => { container.querySelector('.streak-chip').click() })
+    const { host, unmount } = await openLastSheet()
+    expect(host.querySelector('.streak-num').textContent).toBe('Empezá tu racha')
+    expect(host.textContent).toContain('Esta semana 1 de 2 · falta 1 (mié)')
+    expect(host.querySelectorAll('.streak-week')).toHaveLength(8)
+    await unmount()
   })
 
   it('la semana muestra las clases guardadas en el dispositivo sin esperar la red', async () => {
@@ -121,11 +135,24 @@ describe('clases en las vistas', () => {
     localStorage.removeItem('lauyim_my_classes')
   })
 
+  it('calendario: llama al final de la semana cumplida; tocarla abre la racha', async () => {
+    setS({ workouts: [{ id: 'p1', d: TODAY, start: 1, end: 2, name: 'Piernas', routineId: 'r1', entries: [] }] })
+    calendarSheet(TODAY)
+    const { host, unmount } = await openLastSheet()
+    const flames = host.querySelectorAll('.cal-wk.on')
+    expect(flames).toHaveLength(1)
+    await act(async () => { flames[0].click() })
+    await unmount()
+    const streak = await openLastSheet()
+    expect(streak.host.querySelector('.streak-num').textContent).toBe('1 semana seguida')
+    await streak.unmount()
+  })
+
   it('calendario: punto de clase en el día', async () => {
     calendarSheet(TODAY)
     const { host, unmount } = await openLastSheet()
     const day5 = [...host.querySelectorAll('.cal-d')].find(b => b.querySelector('span')?.textContent === '5')
-    expect(day5.querySelector('i.cls')).toBeTruthy()
+    expect(day5.classList.contains('cls')).toBe(true)
     await unmount()
   })
 })
