@@ -30,7 +30,7 @@ function weekLine(cur, today) {
   if (cur.complete) return t('Semana cumplida ✓')
   const words = cur.pendingDays.map(iso => dayWord(iso, today))
   const left = cur.left === 1 ? t('Falta 1') : t('Faltan {0}', cur.left)
-  if (!words.length) return cur.left === 1 ? t('Falta 1 entreno para sumar la semana.') : t('Faltan {0} entrenos para sumar la semana.', cur.left)
+  if (!words.length) return cur.left === 1 ? t('Falta 1 día de entreno para sumar la semana.') : t('Faltan {0} días de entreno para sumar la semana.', cur.left)
   return `${left}: ${joinWords(words, cur.left < words.length ? t('o') : t('y'))}`
 }
 
@@ -51,7 +51,7 @@ function Streak({ close, onCalendar }) {
       <div className="small muted">{sub}</div>
     </div>
     <div className="streak-now">
-      <div className="streak-now-head">{t('Esta semana')} · {t('{0} de {1}', current.done, current.target)}</div>
+      <div className="streak-now-head">{t('Esta semana')} · {current.target === 1 ? t('{0} de 1 día', current.done) : t('{0} de {1} días', current.done, current.target)}</div>
       <div className="streak-days" role="list">
         {current.days.map(d => {
           // Lo planeado se ve con sus puntos, como en Inicio: la rutina (gris) y la clase (en su color).
@@ -69,7 +69,7 @@ function Streak({ close, onCalendar }) {
       <div className="small muted streak-left">{weekLine(current, today)}</div>
     </div>
     {streak > 0 && next && <div className="small dim streak-next">{t('La llama cambia de color a las {0} semanas · faltan {1}', next, next - streak)}</div>}
-    <div className="small dim streak-help">{t('Una semana suma cuando llegás a los entrenos de tu plan. Las clases cuentan.')}</div>
+    <div className="small dim streak-help">{t('Una semana suma cuando entrenás los días de tu plan (sin plan, con un día alcanza). Las clases cuentan.')}</div>
     <Button variant="tinted" icon="calendar" onClick={() => { close(); onCalendar && onCalendar() }}>{t('Ver el calendario')}</Button>
   </div>
 }

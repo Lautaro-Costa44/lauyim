@@ -138,7 +138,7 @@ export default function Home() {
       </div>
       <div className="week-progress">
         <div className="week-bar" aria-hidden="true"><span style={{ width: `${Math.round(weekFill * 100)}%` }} className={shownWeek.completa ? 'ok' : ''} /></div>
-        <div className="small muted">{shownWeek.completa ? t('Semana cumplida ✓') : t('{0} de {1} entrenos', shownWeek.rutinasCompletadas, shownWeek.objetivoSemanal || 1)}{weekClasses ? ' · ' + (weekClasses === 1 ? t('1 clase') : t('{0} clases', weekClasses)) : ''}</div>
+        <div className="small muted">{shownWeek.completa ? t('Semana cumplida ✓') : t('{0} de {1} días', shownWeek.rutinasCompletadas, shownWeek.objetivoSemanal || 1)}{weekClasses ? ' · ' + (weekClasses === 1 ? t('1 clase') : t('{0} clases', weekClasses)) : ''}</div>
       </div>
       <div className="week">{strip}</div>
       {/* Once today's session is logged the row stops asking for it. The week strip already

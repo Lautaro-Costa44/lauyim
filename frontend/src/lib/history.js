@@ -540,16 +540,27 @@ export function planTargetNow(S) {
   return Object.keys(S?.week || {}).filter(k => S.week[k]).length
 }
 
-// Cada entreno nuevo (el que no estaba en `before`) guarda el objetivo de su semana en ese momento:
-// así una semana queda con el plan con el que empezó, aunque después se cambie el plan.
+// Cada entreno nuevo (el que no estaba en `before`) guarda el objetivo de su semana: así una semana
+// queda con el plan con el que empezó, aunque después se cambie el plan. Si la semana ya tenía
+// entrenos (uno cargado con fecha de otro día, una clase de la semana pasada), sigue con el objetivo
+// que ya tenía; si no, el del plan de ahora.
 export function stampWeekTargets(before, S) {
   const known = new Set((before?.workouts || []).map(w => w?.id))
-  let target = null
+  const byWeek = new Map()
   for (const w of S?.workouts || []) {
-    if (!w || known.has(w.id) || Number.isInteger(w.weekTarget)) continue
-    if (target === null) target = planTargetNow(S)
-    w.weekTarget = target
+    if (!w || !w.d || known.has(w.id) || Number.isInteger(w.weekTarget)) continue
+    const monday = mondayOf(w.d)
+    const key = isoOf(monday)
+    if (!byWeek.has(key)) byWeek.set(key, weekWorkouts(before, monday).length ? weeklyTarget(before, monday) : planTargetNow(S))
+    w.weekTarget = byWeek.get(key)
   }
+}
+
+// El lunes (a las 12, lejos de cualquier cambio de hora) de la semana de una fecha ISO.
+function mondayOf(iso) {
+  const d = new Date(iso + 'T12:00:00')
+  d.setDate(d.getDate() - ((d.getDay() + 6) % 7))
+  return d
 }
 
 /** Weekly frequency target. A started week is locked to the plan it started with: the target
@@ -601,7 +612,8 @@ export function evalWeek(S, mondayDate) {
 
   // Once the first session identifies a group, later group switches cannot change this week.
   const target = weeklyTarget(S, mondayDate)
-  const rutinasCompletadas = workouts.length
+  // Días entrenados (no entrenos): rutina y clase el mismo día, o dos entrenos, suman uno.
+  const rutinasCompletadas = new Set(workouts.map(w => w.d)).size
 
   const completa = target > 0
     ? rutinasCompletadas >= target
@@ -622,6 +634,7 @@ export function streakWeeks(S, now = new Date()) {
 
   const day = (now.getDay() + 6) % 7
   const currentMonday = new Date(now)
+  currentMonday.setHours(12, 0, 0, 0)   // al mediodía: restar semanas no cambia de día con el horario de verano
   currentMonday.setDate(now.getDate() - day)
 
   let streak = 0
