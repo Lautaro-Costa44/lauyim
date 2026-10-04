@@ -92,6 +92,7 @@ try {
 }
 
 // Reemplazo: la base y el registro de actividad anteriores quedan con otro nombre.
+const hadBase = fs.existsSync(path.join(dataDir, 'gym.db'));
 try {
   for (const name of ['gym.db', 'gym.db-wal', 'gym.db-shm', 'audit.log']) {
     const target = path.join(dataDir, name);
@@ -116,4 +117,6 @@ for (const c of result.linkCodes) {
   const role = c.role === 'owner' ? 'dueño' : c.role === 'coach' ? 'profe' : c.role === 'reception' ? 'recepción' : 'socio/a';
   console.log(`  ${c.fullName.padEnd(24)} ${role.padEnd(10)} ${c.code}   ${origin}/?link=${c.code}`);
 }
-console.log('\nLa base anterior quedó como gym.db.antes-demo-' + stamp + '. Ahora levantá la API de la demo.');
+console.log(hadBase
+  ? `\nLa base anterior quedó como gym.db.antes-demo-${stamp}. Ahora levantá la API de la demo.`
+  : '\nAhora levantá la API de la demo.');
