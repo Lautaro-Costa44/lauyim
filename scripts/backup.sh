@@ -261,10 +261,17 @@ for entry in "${INSTANCES[@]}"; do
 
   # Rotación solo después de una subida buena: si el remote falla, lo viejo se queda. Cada carpeta
   # por su cuenta y sin bajar a subcarpetas (--max-depth 1): la de la raíz (paquetes de antes de
-  # daily/) entraría si no a weekly/ y monthly/.
+  # daily/) entraría si no a weekly/ y monthly/. Solo las carpetas que existen: en Drive no hay
+  # carpetas vacías, así que weekly/ no existe hasta el primer lunes (y rclone delete falla ahí).
+  if ! folders="$(rclone lsf "$dest" --dirs-only --max-depth 1 2>&1)"; then
+    error "${instance}: no se pudieron listar las carpetas de ${dest}; no se rota. ${folders}"
+    status=$EXIT_RCLONE
+    continue
+  fi
   for rot in "daily|${KEEP_DAILY}" "|${KEEP_DAILY}" "weekly|$((KEEP_WEEKLY * 7))" "monthly|$((KEEP_MONTHLY * 31))"; do
     folder="${rot%%|*}"; days="${rot#*|}"
     [[ "$days" -gt 0 ]] || continue
+    [[ -z "$folder" ]] || grep -qx "${folder}/" <<< "$folders" || continue
     target="$dest"; [[ -n "$folder" ]] && target="${dest}/${folder}"
     if ! out="$(rclone delete "$target" --min-age "${days}d" --max-depth 1 --include "${instance}_*.tar.gz" 2>&1)"; then
       error "${instance}: la rotación en ${target} falló. ${out}"

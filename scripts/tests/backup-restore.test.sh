@@ -43,11 +43,13 @@ p() { local r="\${1#*:}"; printf '%s/%s' "\$R" "\$r"; }
 case "\$1" in
   listremotes) printf 'gcrypt: crypt\ngplain: drive\n' ;;
   copy) mkdir -p "\$(p "\$3")"; if [[ -f "\$2" ]]; then cp "\$2" "\$(p "\$3")/"; else cp "\$(p "\$2")" "\$3/"; fi ;;
-  delete) echo "\$@" >> "$T/rclone-delete.log" ;;
+  delete) [[ -d "\$(p "\$2")" ]] || { echo "ERROR : error listing: directory not found" >&2; exit 1; }
+    echo "\$@" >> "$T/rclone-delete.log" ;;
   lsf|lsl)
-    cmd="\$1"; dir="\$(p "\$2")"; shift 2; pat='*'
-    while [[ \$# -gt 0 ]]; do [[ "\$1" == --include ]] && { pat="\$2"; shift; }; shift; done
-    [[ -d "\$dir" ]] || exit 0
+    cmd="\$1"; dir="\$(p "\$2")"; shift 2; pat='*'; dirs=0
+    while [[ \$# -gt 0 ]]; do [[ "\$1" == --include ]] && { pat="\$2"; shift; }; [[ "\$1" == --dirs-only ]] && dirs=1; shift; done
+    [[ -d "\$dir" ]] || { echo "ERROR : error listing: directory not found" >&2; exit 1; }
+    [[ \$dirs -eq 1 ]] && { (cd "\$dir" && find . -mindepth 1 -maxdepth 1 -type d | sed 's|^\./||; s|$|/|' | sort); exit 0; }
     (cd "\$dir" && find . -type f -name "\$pat" | sed 's|^\./||' | sort | while read -r f; do
       [[ "\$cmd" == lsl ]] && echo "1 2026-01-01 00:00:00 \$f" || echo "\$f"; done) ;;
 esac
@@ -71,6 +73,8 @@ if [[ $rc -eq 0 && "$pkg" == prod_*.tar.gz ]]; then
   [[ ! -d "$T/remote/lauyim/prod/weekly" && ! -d "$T/remote/lauyim/prod/monthly" ]] && ok "un miércoles no hay semanal ni mensual" || ko "miércoles con semanal o mensual"
   grep -q -- "lauyim/prod/daily --min-age 7d" "$T/rclone-delete.log" && ok "rotación de los diarios (7 días)" || ko "rotación diaria: $(cat "$T/rclone-delete.log")"
   grep -q -- "lauyim/prod --min-age 7d" "$T/rclone-delete.log" && ok "los paquetes viejos de la raíz rotan como diarios" || ko "rotación de la raíz"
+  # weekly/ y monthly/ todavía no existen (Drive no guarda carpetas vacías): no se rotan ni fallan.
+  ! grep -q -- "weekly\|monthly" "$T/rclone-delete.log" && ok "sin weekly/ ni monthly/ todavía: no se rotan" || ko "rotó carpetas que no existen"
   # Sin --max-depth 1, la rotación de la raíz entraría a weekly/ y monthly/ y los borraría a los 7 días.
   [[ "$(grep -c -- "--max-depth 1" "$T/rclone-delete.log")" == "$(wc -l < "$T/rclone-delete.log")" ]] && ok "cada rotación se queda en su carpeta" || ko "rotación sin --max-depth 1"
 else ko "backup bueno ($rc)"; fi
