@@ -100,6 +100,8 @@ export const classesApi = {
   addToSession: (occ, userId) => post('/api/admin/classes/sessions/add', { sessionId: occ.sessionId, slotId: occ.slotId, date: occ.date, userId }),
   changeSession: body => post('/api/admin/classes/sessions/change', body),
   hideSession: sessionId => post('/api/admin/classes/sessions/hide', { sessionId }),
+  deleteSession: sessionId => post('/api/admin/classes/sessions/delete', { sessionId }),
+  retirePreview: ({ slotId, classId }) => api(`/api/admin/classes/retire-preview?${slotId ? `slotId=${encodeURIComponent(slotId)}` : `classId=${encodeURIComponent(classId)}`}`),
   // owner
   settings: () => api('/api/owner/classes/settings'),
   saveSettings: body => put('/api/owner/classes/settings', body),

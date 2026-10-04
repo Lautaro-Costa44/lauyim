@@ -310,6 +310,26 @@ export function classRoutes(d) {
   };
   // Fechas guardadas de hoy en adelante de un bloque o de una clase.
   const futureOccs = pick => loadOccurrences(now().date, MAX_RANGE_DAYS).filter(o => o.sessionId && !o.cancelled && pick(o));
+  // Sacar del horario (un día de la semana, la clase entera o una clase suelta): las fechas que
+  // todavía no empezaron se suspenden con aviso a los anotados y dejan de verse (no quedan como
+  // "Suspendida": esa clase ya no existe). Las pasadas quedan para el historial. -> a cuántos avisó.
+  const upcomingOf = pick => { const clock = now(); return loadOccurrences(clock.date, MAX_RANGE_DAYS).filter(o => o.sessionId && pick(o) && minutesLeft(o, clock) > 0); };
+  const peopleOf = occs => new Set(cdb.getBookingsForSessions(occs.map(o => o.sessionId))
+    .filter(b => ['booked', 'waitlist'].includes(b.status) && !teachesOcc(occs.find(o => o.sessionId === b.sessionId), b.userId)).map(b => b.userId));
+  const retire = occs => {
+    const notified = new Set();
+    for (const occ of occs) {
+      if (!occ.cancelled) {
+        cdb.updateClassSession(occ.sessionId, { cancelled: true });
+        const users = cdb.cancelSessionBookings(occ.sessionId).filter(uid => !teachesOcc(occ, uid));
+        notify(users, 'cancelled', occ);
+        users.forEach(uid => notified.add(uid));
+      }
+      cdb.updateClassSession(occ.sessionId, { hidden: true });
+    }
+    return notified.size;
+  };
+  const dropRecurring = slotId => { for (const r of cdb.getRecurring({ slotId })) cdb.removeRecurring(slotId, r.userId); };
 
   // Socio con sesión y cuenta activa.
   const member = (req, res) => {
@@ -367,11 +387,11 @@ export function classRoutes(d) {
     const type = cdb.getClassType(id);
     if (!type) return json(res, 404, { error: 'not_found' });
     if (!editableType(user, type)) return json(res, 403, NOT_YOURS);
-    for (const occ of futureOccs(o => o.classId === id)) cancelOcc(occ);
+    const notified = retire(upcomingOf(o => o.classId === id));
     cdb.archiveClassType(id);
-    for (const slot of cdb.getClassSlots({ classId: id })) for (const r of cdb.getRecurring({ slotId: slot.id })) cdb.removeRecurring(slot.id, r.userId);
+    for (const slot of cdb.getClassSlots({ classId: id })) dropRecurring(slot.id);
     d.audit(req, 'classes.type.archive', { user, msg: type.name });
-    json(res, 200, { ok: true });
+    json(res, 200, { ok: true, notified });
   },
   'POST /api/admin/classes/slots/save': async (req, res) => {
     const user = d.requireAdmin(req, res); if (!user) return;
@@ -406,10 +426,39 @@ export function classRoutes(d) {
     const slot = cdb.getClassSlot(id);
     if (!slot) return json(res, 404, { error: 'not_found' });
     if (!editableType(user, cdb.getClassType(slot.classId))) return json(res, 403, NOT_YOURS);
-    for (const occ of futureOccs(o => o.slotId === id)) cancelOcc(occ);
+    const notified = retire(upcomingOf(o => o.slotId === id));
+    dropRecurring(id);
     cdb.deleteClassSlot(id);
     d.audit(req, 'classes.slot.delete', { user, msg: `${cdb.getClassType(slot.classId)?.name || ''} ${slot.weekday} ${slot.start}` });
-    json(res, 200, { ok: true });
+    json(res, 200, { ok: true, notified });
+  },
+  // Qué afecta sacar del horario un día de la semana (slotId) o la clase entera: fechas próximas y
+  // personas anotadas, para la confirmación.
+  'GET /api/admin/classes/retire-preview': async (req, res) => {
+    const user = d.requireAdmin(req, res); if (!user) return;
+    const q = new URL(req.url, 'http://x').searchParams;
+    const slot = cdb.getClassSlot(q.get('slotId'));
+    const type = cdb.getClassType(slot ? slot.classId : q.get('classId'));
+    if (!type) return json(res, 404, { error: 'not_found' });
+    if (!editableType(user, type)) return json(res, 403, NOT_YOURS);
+    const count = pick => { const occs = upcomingOf(pick).filter(o => !o.cancelled); return { dates: occs.length, people: peopleOf(occs).size }; };
+    json(res, 200, {
+      slot: slot ? { id: slot.id, weekday: slot.weekday, start: slot.start, ...count(o => o.slotId === slot.id) } : null,
+      class: { id: type.id, name: type.name, slots: cdb.getClassSlots({ classId: type.id }).length, ...count(o => o.classId === type.id) }
+    });
+  },
+  // Eliminar una clase suelta: se suspende con aviso y deja de verse, en un paso. (Una fecha de una
+  // clase semanal se suspende; para sacarla del horario está slots/delete.)
+  'POST /api/admin/classes/sessions/delete': async (req, res) => {
+    const user = d.requireAdmin(req, res); if (!user) return;
+    const { sessionId } = await readBody(req);
+    const occ = occOfSession(cdb.getClassSession(sessionId));
+    if (!occ) return json(res, 404, { error: 'not_found' });
+    if (!editableOcc(user, occ)) return json(res, 403, NOT_YOURS);
+    if (occ.slotId) return json(res, 409, { error: 'not_loose', message: 'Es una clase semanal: suspendé el día o sacala del horario' });
+    const notified = retire([occ]);
+    d.audit(req, 'classes.session.delete', { user, msg: `${occ.type.name} ${occ.date} ${occ.start}` });
+    json(res, 200, { ok: true, notified });
   },
   'POST /api/admin/classes/overlap-check': async (req, res) => {
     const user = d.requireAdmin(req, res); if (!user) return;

@@ -155,7 +155,7 @@ function DayList({ occurrences, closure, onOpen }) {
 function TypeList({ types, onEdit, onArchived, close }) {
   const archive = tp => import('../../sheets.jsx').then(({ confirmSheet }) => confirmSheet({
     title: t('¿Archivar {0}?', tp.name),
-    message: t('Deja de tener horario y reservas. Las próximas fechas con anotados se suspenden con aviso. Quien ya fue la sigue viendo en su historial.'),
+    message: t('Deja de tener horario y reservas. Las próximas fechas se borran y les avisamos a los anotados; las reservas fijas se borran. Quien ya fue la sigue viendo en su historial.'),
     confirmText: t('Archivar'), danger: true,
     onConfirm: async () => {
       try { await classesApi.archiveType(tp.id); ui().toast(t('Clase archivada')); onArchived() } catch (e) { ui().toast(errorText(e, t('No se pudo archivar'))) }

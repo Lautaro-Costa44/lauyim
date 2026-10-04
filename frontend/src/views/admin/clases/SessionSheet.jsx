@@ -7,6 +7,7 @@ import { errorText } from '../../../lib/errors.js'
 import { capacityText, timeRange, shortDay, classesApi, shareListText, planLimitLabel } from '../../../lib/classes.js'
 import { Button, Segmented, Switch, TextArea, TextField } from '../../../components/ui.jsx'
 import Icon from '../../../components/Icon.jsx'
+import { retireSheet } from './RetireSheet.jsx'
 
 const ui = () => useUI.getState()
 const conflictToast = (e, fallback) => ui().toast(e?.data?.conflicts?.[0]?.text || errorText(e, fallback))
@@ -47,6 +48,17 @@ function SessionDetail({ occ: initial, canManage, users, teachers, onChange, clo
     onConfirm: () => change({ cancelled: true }, t('Clase suspendida'))
   }))
 
+  // Clase suelta: eliminarla la suspende con aviso y la saca de la vista, en un paso.
+  const people = (detail?.booked?.length || 0) + (detail?.waitlist?.length || 0)
+  const removeLoose = () => import('../../../sheets.jsx').then(({ confirmSheet }) => confirmSheet({
+    title: t('¿Eliminar {0} del {1}?', occ.name, shortDay(occ.date)),
+    message: people ? t('Deja de aparecer y les avisamos a las {0} personas anotadas.', people) : t('Deja de aparecer en el calendario y en la app de los socios.'),
+    confirmText: t('Eliminar'), danger: true,
+    onConfirm: async () => {
+      try { await classesApi.deleteSession(occ.sessionId); ui().toast(t('Clase eliminada')); onChange && onChange(); close() }
+      catch (e) { ui().toast(errorText(e, t('No se pudo eliminar'))) }
+    }
+  }))
   const hide = () => import('../../../sheets.jsx').then(({ confirmSheet }) => confirmSheet({
     title: t('¿Quitar {0} de la vista?', occ.name),
     message: t('La fecha suspendida deja de aparecer en el calendario y en la app de los socios.'),
@@ -95,9 +107,12 @@ function SessionDetail({ occ: initial, canManage, users, teachers, onChange, clo
     {detail?.canTakeAttendance && detail.booked.length > 0 && (mode === 'roll'
       ? <RollCall detail={detail} sessionId={occ.sessionId} onDone={async () => { setMode(null); await done() }} onCancel={() => setMode(null)} />
       : !mode && <div className="class-session-actions"><Button variant="primary" icon="checkCircle" onClick={() => setMode('roll')}>{detail.attendanceTaken ? t('Corregir lista') : t('Tomar lista')}</Button></div>)}
+    {/* Suspendida: los socios la ven como suspendida. Una suelta se puede quitar de la vista; una
+        semanal sigue en su horario (para sacarla, "Eliminar del horario"). */}
     {occ.cancelled && occ.editable && occ.sessionId && <div className="class-session-actions">
       <div className="small dim">{t('Esta fecha está suspendida: los anotados ya recibieron el aviso.')}</div>
-      <Button variant="danger" icon="trash" onClick={hide}>{t('Quitar de la vista')}</Button>
+      {!occ.slotId && <Button variant="danger" icon="trash" onClick={hide}>{t('Quitar de la vista')}</Button>}
+      {occ.slotId && <Button variant="plain" className="class-retire-btn" icon="trash" onClick={() => retireSheet(occ, { onDone: onChange })}>{t('Eliminar del horario')}</Button>}
     </div>}
     {detail && !mode && detail.booked.length + detail.waitlist.length > 0 && <div className="class-session-actions">
       <Button variant="tinted" icon="upload" onClick={() => shareListSheet(occ, detail)}>{t('Compartir lista')}</Button>
@@ -141,6 +156,10 @@ function SessionDetail({ occ: initial, canManage, users, teachers, onChange, clo
         <Button size="sm" icon="clock" onClick={() => setMode('time')}>{t('Cambiar horario este día')}</Button>
         {canManage && <Button size="sm" icon="personCircle" onClick={() => setMode('teacher')}>{t('Cambiar profe este día')}</Button>}
         <Button size="sm" variant="danger" icon="xmark" onClick={suspend}>{t('Suspender este día')}</Button>
+        {/* Semanal: sacarla del horario (ese día de la semana o toda la clase). Suelta: eliminarla. */}
+        {occ.slotId
+          ? <Button size="sm" variant="plain" className="class-retire-btn" icon="trash" onClick={() => retireSheet(occ, { onDone: onChange })}>{t('Eliminar del horario')}</Button>
+          : occ.sessionId && <Button size="sm" variant="plain" className="class-retire-btn" icon="trash" onClick={removeLoose}>{t('Eliminar esta clase')}</Button>}
       </div>}
     </div>}
     <Button variant="ghost" className="dim" onClick={close}>{t('Cerrar')}</Button>

@@ -234,3 +234,32 @@ test('cierre del gimnasio: vista previa, cierra con un aviso por persona, no se 
   assert.equal((await call('owner', 'POST', '/api/admin/classes/closures/delete', { id: made.body.closure.id })).status, 200);
   assert.ok((await call('owner', 'GET', `/api/admin/classes/calendar?from=${next}&days=1`)).body.occurrences.some(o => !o.cancelled));
 });
+
+test('eliminar del horario: un día de la semana o la clase entera; avisa, saca las fechas de la vista y borra las fijas', async () => {
+  const box = (await call('owner', 'POST', '/api/admin/classes/types/save', typeBody({ name: 'Box', room: 'Sala 7' }))).body.type;
+  const a = (await call('owner', 'POST', '/api/admin/classes/slots/save', { classId: box.id, weekday, start: '06:00' })).body.slot;
+  const b = (await call('owner', 'POST', '/api/admin/classes/slots/save', { classId: box.id, weekday: (weekday + 1) % 7, start: '06:00' })).body.slot;
+  assert.equal((await call('recep', 'POST', '/api/admin/classes/sessions/add', { slotId: a.id, date: day, userId: 'socio1' })).status, 200);
+  const preview = (await call('owner', 'GET', `/api/admin/classes/retire-preview?slotId=${a.id}`)).body;
+  assert.deepEqual([preview.slot.people, preview.slot.weekday, preview.slot.start, preview.class.slots], [1, weekday, '06:00', 2]);
+  assert.equal((await call('recep', 'POST', '/api/admin/classes/slots/delete', { id: a.id })).status, 403);
+  assert.equal((await call('owner', 'POST', '/api/admin/classes/slots/delete', { id: a.id })).status, 200);
+  // La fecha con anotados ya no aparece (ni suspendida) y la reserva quedó cancelada.
+  const cal = (await call('owner', 'GET', `/api/admin/classes/calendar?from=${day}&days=1`)).body.occurrences.filter(o => o.name === 'Box');
+  assert.deepEqual(cal, []);
+  // La clase entera: el otro día también desaparece.
+  assert.equal((await call('owner', 'POST', '/api/admin/classes/types/archive', { id: box.id })).status, 200);
+  const week = (await call('owner', 'GET', `/api/admin/classes/calendar?from=${today}&days=14`)).body.occurrences.filter(o => o.name === 'Box');
+  assert.deepEqual(week, []);
+  assert.ok(b.id);
+});
+
+test('eliminar una clase suelta: avisa y desaparece en un paso', async () => {
+  const loose = await call('owner', 'POST', '/api/admin/classes/sessions/change', { classId: spinning.id, date: dayAfter(day, 3), start: '23:00' });
+  const sessionId = loose.body.occurrence.sessionId;
+  await call('recep', 'POST', '/api/admin/classes/sessions/add', { sessionId, userId: 'socio2' });
+  assert.equal((await call('recep', 'POST', '/api/admin/classes/sessions/delete', { sessionId })).status, 403);
+  const r = await call('owner', 'POST', '/api/admin/classes/sessions/delete', { sessionId });
+  assert.deepEqual([r.status, r.body.notified], [200, 1]);
+  assert.ok(!(await call('owner', 'GET', `/api/admin/classes/calendar?from=${dayAfter(day, 3)}&days=1`)).body.occurrences.some(o => o.sessionId === sessionId));
+});

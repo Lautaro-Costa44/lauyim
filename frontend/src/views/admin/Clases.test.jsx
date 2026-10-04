@@ -115,8 +115,8 @@ describe('hoja de la fecha', () => {
 })
 
 describe('fecha suspendida', () => {
-  it('quien la puede editar la quita de la vista; sin permiso, no hay botón', async () => {
-    sessionOcc = occ({ cancelled: true })
+  it('suelta: quien la puede editar la quita de la vista; sin permiso, no hay botón', async () => {
+    sessionOcc = occ({ cancelled: true, slotId: null })
     sessionSheet(sessionOcc, { canManage: true, users: [], teachers: [], onChange: vi.fn() })
     let sheet = await openLastSheet()
     expect(button(sheet.host, 'Quitar de la vista')).toBeTruthy()
@@ -133,7 +133,7 @@ describe('fecha suspendida', () => {
     expect(apiMock).toHaveBeenCalledWith('/api/admin/classes/sessions/hide', { method: 'POST', body: JSON.stringify({ sessionId: 'x1' }) })
     await act(async () => r.unmount()); host.remove()
     await sheet.unmount()
-    sessionOcc = occ({ cancelled: true, editable: false })
+    sessionOcc = occ({ cancelled: true, editable: false, slotId: null })
     sessionSheet(sessionOcc, { canManage: false, users: [], teachers: [] })
     sheet = await openLastSheet()
     expect(button(sheet.host, 'Quitar de la vista')).toBeFalsy()
@@ -341,3 +341,48 @@ describe('cerrar el gimnasio', () => {
   })
 })
 
+describe('eliminar una clase', () => {
+  const confirmLast = async () => {
+    for (let i = 0; i < 100 && !useUI.getState().sheets.at(-1)?.render; i++) await tick()
+    return openLastSheet()
+  }
+  it('semanal suspendida: sin "Quitar de la vista"; "Eliminar del horario" pregunta solo ese día o toda la clase', async () => {
+    sessionOcc = occ({ cancelled: true })
+    apiMock.mockImplementation((url, opts) => {
+      if (url.startsWith('/api/admin/classes/session?')) return Promise.resolve({ occurrence: sessionOcc, booked: [], waitlist: [] })
+      if (url.startsWith('/api/admin/classes/retire-preview')) return Promise.resolve({ slot: { id: 's1', weekday: 3, start: '19:00', dates: 2, people: 5 }, class: { id: 'c1', name: 'Spinning', slots: 2, dates: 4, people: 9 } })
+      return Promise.resolve({ ok: true, notified: 5 })
+    })
+    sessionSheet(sessionOcc, { canManage: true, users: [], teachers: [], onChange: vi.fn() })
+    const sheet = await openLastSheet()
+    expect(button(sheet.host, 'Quitar de la vista')).toBeFalsy()
+    const n = useUI.getState().sheets.length
+    await act(async () => { button(sheet.host, 'Eliminar del horario').click() })
+    for (let i = 0; i < 100 && useUI.getState().sheets.length === n; i++) await tick()
+    const retire = await confirmLast()
+    expect(retire.host.textContent).toContain('Spinning deja de darse los miércoles 19:00.')
+    expect(retire.host.textContent).toContain('Se borran 2 fechas y le avisamos a 5 personas.')
+    await act(async () => { button(retire.host, 'Toda la clase').click() })
+    expect(retire.host.textContent).toContain('Se borran 4 fechas y le avisamos a 9 personas.')
+    await act(async () => { button(retire.host, 'Solo los miércoles 19:00').click() })
+    await act(async () => { button(retire.host, 'Eliminar').click() })
+    await tick()
+    expect(apiMock).toHaveBeenCalledWith('/api/admin/classes/slots/delete', { method: 'POST', body: JSON.stringify({ id: 's1' }) })
+    await retire.unmount(); await sheet.unmount()
+  })
+
+  it('suelta: "Eliminar esta clase" (suspende con aviso y la saca, en un paso)', async () => {
+    sessionOcc = occ({ slotId: null })
+    sessionSheet(sessionOcc, { canManage: true, users: [], teachers: [], onChange: vi.fn() })
+    const sheet = await openLastSheet()
+    expect(button(sheet.host, 'Eliminar del horario')).toBeFalsy()
+    const n = useUI.getState().sheets.length
+    await act(async () => { button(sheet.host, 'Eliminar esta clase').click() })
+    for (let i = 0; i < 100 && useUI.getState().sheets.length === n; i++) await tick()
+    const confirm = await confirmLast()
+    await act(async () => { button(confirm.host, 'Eliminar').click() })
+    await tick()
+    expect(apiMock).toHaveBeenCalledWith('/api/admin/classes/sessions/delete', { method: 'POST', body: JSON.stringify({ sessionId: 'x1' }) })
+    await confirm.unmount(); await sheet.unmount()
+  })
+})
