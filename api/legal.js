@@ -2,7 +2,7 @@
 // texto vigente). Al cambiar cualquiera de los dos se sube la fecha y la app le vuelve a pedir la
 // aceptación a cada cuenta, una vez. Los textos viven en el frontend
 // (components/TermsNotice.jsx y components/PrivacyNotice.jsx).
-export const LEGAL_VERSION = '2026-10-01';
+export const LEGAL_VERSION = '2026-10-04';
 
 export const legalAcceptedOf = user => user?.legal_version === LEGAL_VERSION;
 

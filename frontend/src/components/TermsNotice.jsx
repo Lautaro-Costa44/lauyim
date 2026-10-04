@@ -24,6 +24,24 @@ function Sect({ title, children }) {
   </section>
 }
 
+const hours = n => n === 1 ? t('1 hora') : t('{0} horas', n)
+
+// Reglas de clases con los números del gym (ajustes de clases): cancelación, penalización y planes.
+function ClassRules({ rules, gym }) {
+  return <Sect title={t('Clases')}>
+    <ul>
+      <li>{t('Las clases tienen cupo: si está completo podés anotarte en la lista de espera, y si se libera un lugar a tiempo, entrás por orden y te avisamos.')}</li>
+      <li>{rules.cancelHours > 0
+        ? t('Si no vas a ir, cancelá desde la app hasta {0} antes. Después el lugar se libera igual, pero cuenta como cancelación tardía.', hours(rules.cancelHours))
+        : t('Si no vas a ir, cancelá desde la app hasta que empieza la clase, así el lugar le queda a otra persona.')}</li>
+      {rules.penalty && <li>{t('Si sumás {0} ausencias o cancelaciones tardías en {1} días, no vas a poder reservar durante {2} días. El staff igual puede anotarte.', rules.penalty.absences, rules.penalty.windowDays, rules.penalty.blockDays)}</li>}
+      {rules.planLimits && <li>{t('Si tu plan incluye una cantidad de clases por semana o por mes, no vas a poder reservar más que esas en ese período.')}</li>}
+      <li>{t('{0} puede cambiar el horario o la profe de una clase, o suspenderla, y te avisa por la app.', gym)}</li>
+      <li>{t('Los recordatorios son una ayuda: pueden no llegar (por ejemplo, sin conexión o con las notificaciones apagadas).')}</li>
+    </ul>
+  </Sect>
+}
+
 export function TermsNotice({ info, onSupport }) {
   if (!info) return <div className="dim small">{t('Loading…')}</div>
   // Al principio de una oración: sin nombre cargado, "El gimnasio" con mayúscula.
@@ -61,6 +79,8 @@ export function TermsNotice({ info, onSupport }) {
     <Sect title={t('Cuota y acceso')}>
       <p>{t('Los precios, vencimientos y medios de pago los fija el gimnasio, y los pagos se registran en la recepción: la app no cobra. Si el gimnasio lo configura, la app puede bloquear tu acceso con la cuota vencida hasta que la regularices.')}</p>
     </Sect>
+
+    {info.classes && <ClassRules rules={info.classes} gym={gym} />}
 
     <Sect title={t('Disponibilidad')}>
       <p>{t('La app puede interrumpirse por mantenimiento o por fallas. Lo que cargues sin conexión queda guardado en tu dispositivo y se sincroniza al volver a conectarte. No la uses para emergencias médicas.')}</p>

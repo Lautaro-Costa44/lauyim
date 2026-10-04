@@ -6,7 +6,8 @@ import { TermsNotice, LegalVersion } from './TermsNotice.jsx'
 
 // Aviso de privacidad (Ley 25.326). El responsable es el gym (nombre y contacto los configura el
 // owner en Acceso); lauyim es el encargado. La lista de datos sale de la config real de la
-// instancia (/api/privacy): campos de la ficha pedidos, cuotas activas y auditoría. Comparte la
+// instancia (/api/privacy): campos de la ficha pedidos, cuotas activas, auditoría, ingreso físico
+// y clases. Las copias de seguridad: 6 meses (scripts/backup.sh, BACKUP_KEEP_MONTHLY). Comparte la
 // versión con los términos y condiciones (api/legal.js): al cambiar este texto, subir LEGAL_VERSION.
 
 let cached = null
@@ -55,6 +56,8 @@ export function PrivacyNotice({ info, onSupport }) {
         {fields.length > 0 && <li>{t('Tus datos de socio: {0}.', fields.join(', '))}</li>}
         {info.billingEnabled && <li>{t('Tu cuota: plan, vencimientos, pagos registrados en recepción y pruebas gratis.')}</li>}
         <li>{t('Tu entrenamiento: rutinas, programas, series, pesos levantados e historial.')}</li>
+        {info.checkinEnabled && <li>{t('Tu asistencia: los ingresos al gimnasio que se registran en la recepción, con fecha y hora.')}</li>}
+        {info.classes && <li>{t('Tus clases: reservas, lista de espera, asistencia, cancelaciones y las calificaciones que des.')}</li>}
         <li>{t('Tus datos de salud, si das tu consentimiento: peso corporal, edad, género, altura, lesiones y nutrición.')}</li>
         <li>{t('Notificaciones: si las activás, la dirección de envío que da tu navegador.')}</li>
         <li>{t('Registros técnicos de seguridad: ingresos y acciones del staff, con fecha y hora.')}</li>
@@ -67,6 +70,8 @@ export function PrivacyNotice({ info, onSupport }) {
         <li>{t('Identificarte como socio del gimnasio y evitar cuentas duplicadas.')}</li>
         {info.billingEnabled && <li>{t('Controlar tu cuota y avisarte antes del vencimiento.')}</li>}
         <li>{t('Guardar y sincronizar tus entrenamientos y mostrarte tu progreso.')}</li>
+        {info.classes && <li>{t('Gestionar las reservas de clases, los cupos y las listas de espera, y avisarte si una clase cambia.')}</li>}
+        {(info.checkinEnabled || info.classes) && <li>{t('Armar estadísticas de uso del gimnasio (asistencia y ocupación) para organizar horarios y clases.')}</li>}
         <li>{t('Mandarte los avisos que activaste.')}</li>
         <li>{t('Proteger la cuenta y detectar usos indebidos.')}</li>
       </ul>
@@ -75,7 +80,8 @@ export function PrivacyNotice({ info, onSupport }) {
 
     <Sect title={t('Quién accede')}>
       <ul>
-        <li>{t('El staff del gimnasio (dueño, recepción, entrenadores y nutricionistas), solo para atenderte.')}</li>
+        <li>{t('El staff del gimnasio (dueño, recepción, entrenadores y nutricionistas), solo para atenderte. Cada persona ve solo lo que su rol le permite.')}</li>
+        {info.classes && <li>{t('La profe de cada clase ve quiénes están anotados. El gimnasio puede pasarle la lista (por ejemplo, por WhatsApp) con nombre e inicial del apellido, o con el nombre completo. El staff ve las calificaciones de las clases para mejorarlas.')}</li>}
         <li>{t('lauyim, solo para soporte y mantenimiento técnico.')}</li>
         <li>{t('Las copias de seguridad se guardan cifradas en un servicio de almacenamiento en la nube, que no puede leerlas.')}</li>
         <li>{t('Cloudflare, que conecta la app con el servidor: el cifrado de la conexión termina en su red, así que puede ver el tráfico para entregarlo. No lo usa para otros fines.')}</li>
@@ -90,9 +96,8 @@ export function PrivacyNotice({ info, onSupport }) {
 
     <Sect title={t('Cuánto tiempo se guardan')}>
       <p>{t('Mientras seas socio o tengas la cuenta. Si pedís la baja se borran, salvo lo que el gimnasio tenga que conservar por ley (por ejemplo, registros de pagos).')}</p>
-      <p>{info.auditDays
-        ? t('Los registros de seguridad se borran a los {0} días y las copias de seguridad a los pocos días (7 por defecto).', info.auditDays)
-        : t('Las copias de seguridad se borran a los pocos días (7 por defecto).')}</p>
+      {info.auditDays && <p>{t('Los registros de seguridad se borran a los {0} días.', info.auditDays)}</p>}
+      <p>{t('Las copias de seguridad se guardan hasta 6 meses, cifradas, y después se borran. Si pedís la baja, tus datos pueden seguir en esas copias hasta que venzan: solo se usan para recuperar el sistema ante una falla.')}</p>
     </Sect>
 
     <Sect title={t('Tus derechos')}>

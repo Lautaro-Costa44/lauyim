@@ -21,3 +21,16 @@ export function validatePrivacySettings(body) {
   if (!Object.keys(value).length) return { error: 'Nada para guardar' };
   return { value };
 }
+
+// Lo que el aviso de privacidad y los términos tienen que contar según lo que el gym tiene prendido:
+// ingreso físico (asistencia) y clases (reservas, asistencia, calificaciones), con las reglas de
+// clases que el socio acepta (horas para cancelar, la penalización si está prendida y si algún plan
+// activo limita las clases, que solo se aplica con las cuotas prendidas).
+export function legalContext({ checkinEnabled, classSettings, classesAvailable, billingEnabled, plans }) {
+  if (!classesAvailable) return { checkinEnabled: !!checkinEnabled, classes: null };
+  const penalty = classSettings?.penalty?.on
+    ? { absences: classSettings.penalty.absences, windowDays: classSettings.penalty.windowDays, blockDays: classSettings.penalty.blockDays }
+    : null;
+  const planLimits = !!billingEnabled && (plans || []).some(p => p.active && p.classLimit);
+  return { checkinEnabled: !!checkinEnabled, classes: { cancelHours: classSettings.cancelHours, penalty, planLimits } };
+}

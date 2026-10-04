@@ -148,7 +148,7 @@ import {
   normalizeDni, maskDni, profileChangeSummary, formatLinkCode, canonicalLinkCode, missingRequiredFields
 } from './members.js';
 import { parseImportBody, analyzeImport } from './member-import.js';
-import { PRIVACY_GYM_NAME_SETTING, PRIVACY_CONTACT_SETTING, validatePrivacySettings } from './privacy.js';
+import { PRIVACY_GYM_NAME_SETTING, PRIVACY_CONTACT_SETTING, validatePrivacySettings, legalContext } from './privacy.js';
 import { sanitizeExerciseDef } from './custom-exercise.js';
 import { LEGAL_VERSION, legalAcceptedOf, legalOkOf, healthChoiceOf } from './legal.js';
 import { parseLicenseConfig, licenseState } from './license.js';
@@ -3788,7 +3788,9 @@ const routes = {
       // Nombre de la app (Personalización): si no es lauyim, los dos textos aclaran quién la provee.
       appName: brandingNow().appName,
       // Encargado del tratamiento (lauyim): opcional, por instancia.
-      operator: { name: (process.env.OPERATOR_NAME || '').trim().slice(0, 80) || null, cuit: (process.env.OPERATOR_CUIT || '').trim().slice(0, 20) || null }
+      operator: { name: (process.env.OPERATOR_NAME || '').trim().slice(0, 80) || null, cuit: (process.env.OPERATOR_CUIT || '').trim().slice(0, 20) || null },
+      // Ingreso físico y clases: qué datos se suman y qué reglas de clases acepta el socio.
+      ...legalContext({ checkinEnabled: checkinSettingsNow().enabled, classSettings: classSettingsNow(), classesAvailable: classesAvailable(), billingEnabled: billingEnabledNow(), plans: getPlans() })
     });
   },
 

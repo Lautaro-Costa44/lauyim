@@ -8,7 +8,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { validatePrivacySettings } from './privacy.js';
+import { validatePrivacySettings, legalContext } from './privacy.js';
 
 const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lauyim-privacy-'));
 const SECRET = crypto.randomBytes(32).toString('hex');
@@ -68,6 +68,22 @@ test('validatePrivacySettings: recorta, limita y rechaza lo que no es texto', ()
   assert.ok(validatePrivacySettings(null).error);
 });
 
+test('legalContext: ingreso físico y clases, con las reglas que el socio acepta', () => {
+  const classSettings = { enabled: true, cancelHours: 2, penalty: { on: false, absences: 3, windowDays: 30, blockDays: 7 } };
+  const plans = [{ active: true, classLimit: null }, { active: false, classLimit: 8 }];
+  // Sin clases cargadas (o con el módulo apagado): nada de clases en los textos.
+  assert.deepEqual(legalContext({ checkinEnabled: false, classSettings, classesAvailable: false, billingEnabled: true, plans }), { checkinEnabled: false, classes: null });
+  assert.deepEqual(legalContext({ checkinEnabled: true, classSettings, classesAvailable: true, billingEnabled: true, plans }),
+    { checkinEnabled: true, classes: { cancelHours: 2, penalty: null, planLimits: false } });
+  // Penalización prendida: sus números. Un plan activo con límite y cuotas prendidas: planLimits.
+  const on = { ...classSettings, penalty: { on: true, absences: 3, windowDays: 30, blockDays: 7 } };
+  const limited = [{ active: true, classLimit: 8 }];
+  assert.deepEqual(legalContext({ checkinEnabled: false, classSettings: on, classesAvailable: true, billingEnabled: true, plans: limited }).classes,
+    { cancelHours: 2, penalty: { absences: 3, windowDays: 30, blockDays: 7 }, planLimits: true });
+  // Con las cuotas apagadas el límite del plan no se aplica: no se menciona.
+  assert.equal(legalContext({ checkinEnabled: false, classSettings, classesAvailable: true, billingEnabled: false, plans: limited }).classes.planLimits, false);
+});
+
 test('GET /api/privacy es público, aun con la licencia vencida', async () => {
   const r = await call(null, 'GET', '/api/privacy', undefined, EXPIRED);
   assert.equal(r.status, 200);
@@ -75,6 +91,9 @@ test('GET /api/privacy es público, aun con la licencia vencida', async () => {
   assert.ok(Array.isArray(r.body.fields));
   assert.equal(typeof r.body.billingEnabled, 'boolean');
   assert.deepEqual(r.body.operator, { name: null, cuit: null });
+  // Instancia sin clases cargadas: el aviso no habla de clases.
+  assert.equal(typeof r.body.checkinEnabled, 'boolean');
+  assert.equal(r.body.classes, null);
   // El resto de la API sí queda cortado por la licencia.
   assert.equal((await call('owner', 'GET', '/api/owner/privacy', undefined, EXPIRED)).body.error, 'license_expired');
 });
