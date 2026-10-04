@@ -96,7 +96,8 @@ describe('tarjeta de Inicio', () => {
       { ...base, key: 'a', date: '2026-10-07', start: '19:00', myBooking: { status: 'waitlist' } },
       { ...base, key: 'b', date: '2026-10-05', start: '10:00', myBooking: { status: 'booked' } },
       { ...base, key: 'c', date: '2026-10-06', start: '10:00', myBooking: { status: 'cancelled' } },
-      { ...base, key: 'd', date: '2026-10-06', start: '08:00', cancelled: true, myBooking: { status: 'cancelled' } },
+      { ...base, key: 'd', date: '2026-10-06', start: '08:00', cancelled: true, myBooking: { status: 'cancelled', suspended: true } },
+      { ...base, key: 'f', date: '2026-10-06', start: '07:00', cancelled: true, myBooking: { status: 'cancelled', suspended: false } },   // ya la había cancelado
       { ...base, key: 'e', date: '2026-10-06', start: '09:00', myBooking: null }
     ]
     const now = Date.parse('2026-10-05T12:00:00Z')

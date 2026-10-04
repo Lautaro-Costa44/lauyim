@@ -105,6 +105,22 @@ describe('clases en las vistas', () => {
     await unmount()
   })
 
+  it('solo una clase hecha: un único punto (el de la clase), centrado; sin el punto de entreno', async () => {
+    setS({ week: {}, workouts: [classWorkout('w1', TODAY, { classBookingId: 'b1' })] })
+    await mount(<Home />)
+    const dots = container.querySelectorAll('.wday')[0].querySelectorAll('.dots > *')
+    expect([...dots].map(d => d.className)).toEqual(['dot cls'])
+  })
+
+  it('la semana muestra las clases guardadas en el dispositivo sin esperar la red', async () => {
+    localStorage.setItem('lauyim_my_classes', JSON.stringify({ userId: 'socio', data: { today: TODAY, occurrences: [occ()] } }))
+    apiMock.mockImplementation(() => new Promise(() => {}))   // la red no contesta
+    myClassesList({ force: true })   // queda pendiente: lo que se ve es lo guardado
+    await mount(<Home />)
+    expect(container.querySelector('.today-classes').textContent).toContain('Spinning 19:00')
+    localStorage.removeItem('lauyim_my_classes')
+  })
+
   it('calendario: punto de clase en el día', async () => {
     calendarSheet(TODAY)
     const { host, unmount } = await openLastSheet()

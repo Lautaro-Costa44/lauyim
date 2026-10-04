@@ -47,9 +47,10 @@ export default function ClassesMemberCard({ userId, userName }) {
       <div className="member-classes-tiles">
         <div><b>{month.present}</b><span>{t('presentes')}</span></div>
         <div><b>{month.absent}</b><span>{t('ausentes')}</span></div>
-        <div><b>{month.late}</b><span>{t('tardías')}</span></div>
+        <div><b>{month.late}</b><span>{t('canceló tarde')}</span></div>
         <div><b>{month.rate == null ? '—' : `${month.rate}%`}</b><span>{t('asistencia')}</span></div>
       </div>
+      {month.late > 0 && <div className="small dim">{t('Canceló tarde: con menos de {0} horas de anticipación (cuenta como ausencia para la penalización).', d.cancelHours ?? 2)}</div>}
       {penalty && <div className="access-warn small member-classes-penalty" role="note">
         <Icon name="warning" /> {t('No puede reservar hasta el {0} · {1} ausencias', shortDay(penalty.until), penalty.count)}
       </div>}

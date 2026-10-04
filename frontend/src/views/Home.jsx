@@ -49,7 +49,8 @@ export default function Home() {
   const delta = bw && prevBW ? bw.w - prevBW.w : null
 
   const monday = new Date(today); monday.setDate(today.getDate() - ((today.getDay() + 6) % 7) + weekOffset * 7)
-  const doneDays = new Set(S.workouts.map(w => w.d))
+  // El punto de "hecho" es de un entreno de rutina; las clases tienen su propio punto.
+  const doneDays = new Set(S.workouts.filter(w => !isClassWorkout(w)).map(w => w.d))
   const classDays = classesByDate(myClasses?.occurrences, S.workouts)
   // The last session logged for today, if any — what the row below reports instead of asking
   // you to start the one you already did. Last wins, so a second session names itself.
@@ -71,7 +72,7 @@ export default function Home() {
     const cls = classDays[iso]?.[0]
     strip.push(<div key={i} className={'wday' + (iso === todayISO() ? ' today' : '')} onClick={() => dayOverrideSheet(iso)}>
       <div className="lbl">{t(DAYS[d.getDay()])}</div><div className="num">{d.getDate()}</div>
-      <div className="dots"><div className={'dot' + dot} />{cls && <div className="dot cls" style={{ background: cls.color || 'var(--acc)' }} title={cls.name} />}</div></div>)
+      <div className="dots">{dot && <div className={'dot' + dot} />}{cls && <div className="dot cls" style={{ background: cls.color || 'var(--acc)' }} title={cls.name} />}</div></div>)
   }
   const sunday = new Date(monday); sunday.setDate(monday.getDate() + 6)
   const wkLabel = weekOffset === 0 ? t('This week') : `${monday.getDate()} ${monday.toLocaleDateString(dateLocale(), { month: 'short' })} – ${sunday.getDate()} ${sunday.toLocaleDateString(dateLocale(), { month: 'short' })}`

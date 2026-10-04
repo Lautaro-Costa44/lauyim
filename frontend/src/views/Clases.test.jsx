@@ -260,13 +260,13 @@ describe('Inicio', () => {
   })
 
   it('suspendida por un cierre: el aviso dice el motivo', async () => {
-    occurrences = [occ({ key: 'cl', cancelled: true, closed: 'Feriado', myBooking: { id: 'b1', status: 'cancelled' } })]
+    occurrences = [occ({ key: 'cl', cancelled: true, closed: 'Feriado', myBooking: { id: 'b1', status: 'cancelled', suspended: true } })]
     await mount(<HomeClassCard />)
     expect(container.querySelector('.class-suspended').textContent).toContain('Gimnasio cerrado: Feriado')
   })
 
   it('suspendida: aviso que se cierra y no vuelve', async () => {
-    occurrences = [occ({ key: 'sus', cancelled: true, myBooking: { id: 'b1', status: 'cancelled' } })]
+    occurrences = [occ({ key: 'sus', cancelled: true, myBooking: { id: 'b1', status: 'cancelled', suspended: true } })]
     await mount(<HomeClassCard />)
     expect(container.querySelector('.class-suspended').textContent).toContain('Se suspendió Spinning')
     await act(async () => { container.querySelector('.class-suspended button').click() })
@@ -278,7 +278,7 @@ describe('Inicio', () => {
     occurrences = [
       occ({ myBooking: { id: 'b1', status: 'booked' } }),
       occ({ key: 'k2', date: '2026-10-06', name: 'GAP', myBooking: { id: 'b2', status: 'waitlist', waitlistPos: 1 } }),
-      occ({ key: 'k3', date: '2026-10-07', name: 'Pilates', cancelled: true, myBooking: { id: 'b3', status: 'cancelled' } })
+      occ({ key: 'k3', date: '2026-10-07', name: 'Pilates', cancelled: true, myBooking: { id: 'b3', status: 'cancelled', suspended: true } })
     ]
     await mount(<HomeClassCard />)
     await act(async () => { container.querySelector('.class-ticket-more').click() })

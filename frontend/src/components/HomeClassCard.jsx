@@ -14,6 +14,7 @@ import { classSheet, dayLabel } from './ClassSheet.jsx'
 import { Button } from './ui.jsx'
 import Icon from './Icon.jsx'
 import { GearButton } from './TeacherClass.jsx'
+import { shareMyClasses } from './useMyClasses.js'
 
 const ui = () => useUI.getState()
 const WEEKDAY_SHORT = ['DOM', 'LUN', 'MAR', 'MIÉ', 'JUE', 'VIE', 'SÁB']
@@ -39,7 +40,7 @@ export default function HomeClassCard() {
   const on = useStore(s => !!s.config?.classes_available)
   const [data, setData] = useState(null)
   const [dismissed, setDismissed] = useState(readDismissed)
-  const load = () => classesApi.list().then(setData).catch(() => {})
+  const load = () => classesApi.list().then(d => { shareMyClasses(d); setData(d) }).catch(() => {})
   useEffect(() => {
     if (!on) return
     load()

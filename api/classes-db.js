@@ -341,7 +341,9 @@ export function cancelAndPromote({ bookingId, kind, promote, capacity }) {
 export function cancelSessionBookings(sessionId) {
   return inTransaction(db => {
     const users = db.prepare(`SELECT user_id FROM class_bookings WHERE session_id = ? AND status IN ${ACTIVE}`).all(sessionId).map(r => r.user_id);
-    db.prepare(`UPDATE class_bookings SET status = 'cancelled', waitlist_pos = NULL, updated_at = ? WHERE session_id = ? AND status IN ${ACTIVE}`).run(nowIso(), sessionId);
+    // attendance_source 'suspended': la canceló la suspensión (o un cierre), no el socio; la app
+    // avisa "Se suspendió…" solo a estas.
+    db.prepare(`UPDATE class_bookings SET status = 'cancelled', waitlist_pos = NULL, attendance_source = 'suspended', updated_at = ? WHERE session_id = ? AND status IN ${ACTIVE}`).run(nowIso(), sessionId);
     return users;
   });
 }

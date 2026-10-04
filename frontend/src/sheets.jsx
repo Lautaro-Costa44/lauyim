@@ -1434,14 +1434,16 @@ function Calendar({ start, close }) {
   for (let d = 1; d <= daysIn; d++) {
     const iso = y + '-' + String(mo + 1).padStart(2, '0') + '-' + String(d).padStart(2, '0')
     const ws = byDay[iso], effId = effectiveRoutineId(st, iso), ovr = st.dayPlan[iso] !== undefined
-    const dotCls = ws ? 'done' : ovr && effId ? 'ovr' : effId ? 'plan' : ''
+    // El punto de entrenado es de un entreno de rutina; las clases tienen el suyo.
+    const trained = (ws || []).some(w => !isClassWorkout(w))
+    const dotCls = trained ? 'done' : ovr && effId ? 'ovr' : effId ? 'plan' : ''
     const cls = classDays[iso]?.[0]
     cells.push(<button key={d} className={'cal-d' + (ws ? ' has' : '') + (iso === todayISO() ? ' today' : '')} onClick={() => {
       // Con clases, la hoja del día (las clases y la rutina); si no, como siempre.
       if (!ws || cls) { close(); dayOverrideSheet(iso); return }
       if (ws.length === 1) { close(); workoutDetailSheet(ws[0]); return }
       close(); ui().openSheet(c2 => <><h3>{fmtDate(iso, true)}</h3><div className="list">{ws.map(w => <WorkoutRow key={w.id} w={w} onClick={() => { c2(); workoutDetailSheet(w) }} />)}</div></>)
-    }}><span>{d}</span><span className="cal-dots"><i className={dotCls} />{cls && <i className="cls" style={{ background: cls.color || 'var(--acc)' }} />}</span></button>)
+    }}><span>{d}</span><span className="cal-dots">{(dotCls || !cls) && <i className={dotCls} />}{cls && <i className="cls" style={{ background: cls.color || 'var(--acc)' }} />}</span></button>)
   }
   return <>
     <div className="row between" style={{ marginBottom: 2 }}>

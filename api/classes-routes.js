@@ -319,7 +319,7 @@ export function classRoutes(d) {
     return user;
   };
   const publicSettings = s => ({ bookAheadDays: s.bookAheadDays, cancelHours: s.cancelHours });
-  const bookingView = b => b && ({ id: b.id, status: b.status, waitlistPos: b.waitlistPos, reminders: b.reminders });
+  const bookingView = b => b && ({ id: b.id, status: b.status, waitlistPos: b.waitlistPos, reminders: b.reminders, suspended: b.status === 'cancelled' && b.attendanceSource === 'suspended' });
   const memberView = (occ, counts, mine, recurring, state) => ({
     key: occ.key, classId: occ.classId, slotId: occ.slotId, sessionId: occ.sessionId, date: occ.date, start: occ.start, end: occ.end,
     movedFrom: occ.movedFrom, teacherName: occ.teacherName, room: occ.room, cancelled: occ.cancelled, closed: occ.closed || null,
@@ -619,7 +619,7 @@ export function classRoutes(d) {
     json(res, 200, {
       upcoming, fixed, penalty: penaltyNow(userId, today),
       month: { present, absent, late: count('late_cancel'), rate: present + absent ? Math.round(100 * present / (present + absent)) : null },
-      canCancel: has(user, 'classes.book_members'), canReset: isManager(user)
+      canCancel: has(user, 'classes.book_members'), canReset: isManager(user), cancelHours: settings().cancelHours
     });
   },
   // El staff cancela una reserva desde la ficha: a tiempo (sin penalización), sube la primera de la

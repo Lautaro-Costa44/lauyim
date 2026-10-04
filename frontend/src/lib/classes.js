@@ -143,7 +143,8 @@ export function homeClasses(occurrences, nowMs, tz, dismissed = []) {
   const mine = (occurrences || []).filter(o => o.myBooking)
   const upcoming = mine.filter(o => !o.cancelled && ['booked', 'waitlist'].includes(o.myBooking.status) && occTimes(o, tz).end > nowMs)
     .sort((a, b) => occTimes(a, tz).start - occTimes(b, tz).start)
-  const suspended = mine.filter(o => o.cancelled && occTimes(o, tz).end > nowMs && !dismissed.includes(o.key))
+  // Solo las que canceló la suspensión (o un cierre); no las que el socio ya había cancelado.
+  const suspended = mine.filter(o => o.cancelled && o.myBooking.suspended && occTimes(o, tz).end > nowMs && !dismissed.includes(o.key))
   return { next: upcoming[0] || null, upcoming, suspended }
 }
 

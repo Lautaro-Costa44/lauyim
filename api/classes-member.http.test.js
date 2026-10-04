@@ -244,3 +244,13 @@ test('límite del plan: bloquea al llegar, la cancelación a tiempo devuelve la 
   // Sin límite en el plan, nada cambia.
   assert.equal((await list('ana', day, 1)).planLimit, null);
 });
+
+test('suspensión: el aviso en la app es solo para quien estaba anotado (no para quien ya había cancelado)', async () => {
+  const yogaOf = async uid => (await list(uid, day, 1)).occurrences.find(o => o.slotId === yogaSlot.id)
+  const anaBooking = (await yogaOf('ana')).myBooking
+  assert.equal((await call('ana', 'POST', '/api/classes/cancel', { bookingId: anaBooking.id })).status, 200)
+  const r = await call('owner', 'POST', '/api/admin/classes/sessions/change', { slotId: yogaSlot.id, date: day, cancelled: true })
+  assert.equal(r.status, 200, JSON.stringify(r.body))
+  assert.deepEqual([(await yogaOf('ana')).myBooking.status, (await yogaOf('ana')).myBooking.suspended], ['cancelled', false])
+  assert.deepEqual([(await yogaOf('beto')).myBooking.status, (await yogaOf('beto')).myBooking.suspended], ['cancelled', true])
+});

@@ -7,6 +7,7 @@ import { errorText } from '../lib/errors.js'
 import { buttonState, capacityText, timeRange, dayChips, shortDay, classesApi, closureOn, planLine } from '../lib/classes.js'
 import { classSheet, classAction } from '../components/ClassSheet.jsx'
 import { GearButton } from '../components/TeacherClass.jsx'
+import { shareMyClasses } from '../components/useMyClasses.js'
 import { Button } from '../components/ui.jsx'
 import Icon from '../components/Icon.jsx'
 
@@ -18,7 +19,7 @@ export default function Clases() {
   const [day, setDay] = useState(asked || null)
   const [busyKey, setBusyKey] = useState(null)
 
-  const load = () => classesApi.list().then(d => { setData(d); setError(null); setDay(cur => cur && d.occurrences.some(o => o.date === cur) ? cur : cur || d.today) })
+  const load = () => classesApi.list().then(d => { shareMyClasses(d); setData(d); setError(null); setDay(cur => cur && d.occurrences.some(o => o.date === cur) ? cur : cur || d.today) })
     .catch(e => setError(errorText(e, t('No se pudieron cargar las clases'))))
   useEffect(() => { load() }, [])
 

@@ -192,7 +192,7 @@ function StatsView({ close }) {
         : <div className="list">{data.classes.map(c => <div key={c.classId} className="item">
             <span className="class-dot" style={{ background: c.color }} aria-hidden="true" />
             <div className="grow"><div className="tt">{c.name}</div>
-              <div className="ss">{[t('{0} fechas', c.sessions), c.occupancy == null ? t('sin cupo') : t('{0}% ocupación', c.occupancy), t('{0} presentes', c.present), t('{0} ausentes', c.absent), t('{0} tardías', c.lateCancels)].join(' · ')}</div></div>
+              <div className="ss">{[t('{0} fechas', c.sessions), c.occupancy == null ? t('sin cupo') : t('{0}% ocupación', c.occupancy), t('{0} presentes', c.present), t('{0} ausentes', c.absent), t('{0} cancelaciones tardías', c.lateCancels)].join(' · ')}</div></div>
             <span className="tag nocap">{rating(c)}</span>
           </div>)}</div>}
       {data.teachers.length > 0 && <>
