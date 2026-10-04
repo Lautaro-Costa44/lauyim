@@ -683,8 +683,10 @@ export function streakSummary(S, now = new Date(), classDays = {}) {
     d.setDate(monday.getDate() + i)
     const iso = isoOf(d)
     const done = trained.has(iso)
-    const planned = !done && iso >= today && !!(effectiveRoutineId(S, iso) || (classDays[iso] || []).length)
-    days.push({ iso, done, planned, today: iso === today, past: iso < today })
+    const routineId = effectiveRoutineId(S, iso) || null
+    const classes = (classDays[iso] || []).filter(c => !c.done)
+    const planned = !done && iso >= today && !!(routineId || classes.length)
+    days.push({ iso, done, planned, today: iso === today, past: iso < today, routineId: planned ? routineId : null, classes: planned ? classes : [] })
   }
   const streak = streakWeeks(S, now)
   const target = week.objetivoSemanal || 1

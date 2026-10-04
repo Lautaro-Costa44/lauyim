@@ -125,6 +125,8 @@ describe('clases en las vistas', () => {
     expect(host.querySelector('.streak-left').textContent).toBe('Falta 1: el miércoles')
     expect([...host.querySelectorAll('.streak-day')].map(d => d.className.replace('streak-day', '').trim())).toEqual(['done today', '', 'plan', '', '', '', ''])
     expect(container.querySelector('.streak-chip').classList.contains('lv0')).toBe(true)
+    expect([...host.querySelectorAll('.streak-day')][2].getAttribute('aria-label')).toBe('miércoles · Piernas')   // lo planeado, con su ícono
+    expect([...host.querySelectorAll('.streak-day')][2].querySelector('.streak-dot svg, .streak-dot i')).toBeTruthy()
     await unmount()
   })
 

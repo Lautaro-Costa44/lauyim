@@ -452,7 +452,7 @@ h4.sec{
 .streak-day{display:flex;flex-direction:column;align-items:center;gap:4px}
 .streak-dot{width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;color:var(--flame);border:1.5px solid transparent}
 .streak-day.past .streak-dot{background:var(--surface-3)}
-.streak-day.plan .streak-dot{border:1.5px dashed var(--flame)}
+.streak-day.plan .streak-dot{border:1.5px dashed var(--flame)}.streak-day.plan .streak-dot{gap:1px;font-size:14px;color:var(--label-2)}.streak-day.plan .streak-dot>*{display:inline-flex}
 .streak-day.today .streak-dot{border:1.5px solid var(--flame)}
 .streak-day.done .streak-dot{background:var(--acc);color:var(--on-acc);border-color:transparent;font-size:16px}
 .streak-day-lbl{font-size:11px;color:var(--label-3)}

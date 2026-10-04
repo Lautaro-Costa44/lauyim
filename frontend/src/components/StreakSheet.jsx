@@ -8,6 +8,7 @@ import { streakSummary } from '../lib/history.js'
 import { DAYS, isoOf } from '../lib/format.js'
 import { classesByDate } from '../lib/classes.js'
 import { useMyClasses } from './useMyClasses.js'
+import { glyphOf } from '../lib/glyphs.js'
 import { Button } from './ui.jsx'
 import Icon from './Icon.jsx'
 
@@ -40,6 +41,7 @@ function Streak({ close, onCalendar }) {
   const now = new Date()
   const { streak, best, level, next, current } = streakSummary(S, now, classesByDate(myClasses?.occurrences, S.workouts))
   const today = current.days.find(d => d.today)?.iso
+  const routineOf = id => id ? S.routines.find(r => r.id === id) || null : null
   const sub = streak && streak >= best ? t('Tu mejor racha')
     : best ? (best === 1 ? t('Tu mejor racha: 1 semana') : t('Tu mejor racha: {0} semanas', best))
     : t('Cumplí los entrenos de tu plan esta semana para prenderla.')
@@ -52,11 +54,18 @@ function Streak({ close, onCalendar }) {
     <div className="streak-now">
       <div className="streak-now-head">{t('Esta semana')} · {t('{0} de {1}', current.done, current.target)}</div>
       <div className="streak-days" role="list">
-        {current.days.map(d => <div key={d.iso} role="listitem" className={'streak-day' + (d.done ? ' done' : d.planned ? ' plan' : '') + (d.today ? ' today' : '') + (d.past ? ' past' : '')}
-          aria-label={`${t(DAY_LONG[weekdayOf(d.iso)])}${d.done ? ' · ' + t('Entrenado') : d.planned ? ' · ' + t('Planeado') : ''}`}>
-          <span className="streak-dot">{d.done ? <Icon name="check" /> : d.today ? t('hoy') : null}</span>
+        {current.days.map(d => {
+          // Lo planeado se ve con su ícono: la rutina y la clase (en su color).
+          const r = routineOf(d.routineId), cls = d.classes[0]
+          const what = [r?.name, cls?.name].filter(Boolean).join(' + ')
+          return <div key={d.iso} role="listitem" className={'streak-day' + (d.done ? ' done' : d.planned ? ' plan' : '') + (d.today ? ' today' : '') + (d.past ? ' past' : '')}
+          aria-label={`${t(DAY_LONG[weekdayOf(d.iso)])}${d.done ? ' · ' + t('Entrenado') : what ? ' · ' + what : ''}`} title={what || undefined}>
+          <span className="streak-dot">{d.done ? <Icon name="check" />
+            : d.planned ? <>{d.routineId && <Icon name={glyphOf(r?.emoji)} />}{cls && <span className="streak-cls" style={{ color: cls.color || 'var(--acc)' }}><Icon name={cls.occ?.icon || 'calendar'} /></span>}</>
+            : d.today ? t('hoy') : null}</span>
           <span className="streak-day-lbl">{t(DAYS[weekdayOf(d.iso)]).charAt(0)}</span>
-        </div>)}
+        </div>
+        })}
       </div>
       <div className="small muted streak-left">{weekLine(current, today)}</div>
     </div>
