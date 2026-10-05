@@ -177,13 +177,27 @@ test('doble ingreso el mismo día: "already", sin otra fila', async () => {
   assert.equal(sql('SELECT COUNT(*) AS n FROM attendance WHERE user_id = ?', 'juan')[0].n, 1);
 });
 
-test('ficha sin app, vencido, bloqueado y en prueba: se registran igual, cada uno con su estado', async () => {
+test('ficha sin app, vencido (en gracia) y en prueba: se registran igual, cada uno con su estado', async () => {
   const { token } = await newDevice();
   assert.deepEqual((await checkIn(token, '40111333')).body, { status: 'registered', fullName: 'Ana Gómez', nick: 'ficha', billing: { status: 'sin_plan', days: null } });
   assert.deepEqual((await checkIn(token, '20500501')).body.billing, { status: 'vencido', days: -2 });
-  assert.deepEqual((await checkIn(token, '20500502')).body.billing, { status: 'bloqueado', days: -40 });
   assert.deepEqual((await checkIn(token, '20500503')).body.billing, { status: 'prueba', days: 1 });
-  assert.equal(sql("SELECT COUNT(*) AS n FROM attendance WHERE user_id IN ('ficha', 'venc', 'bloq', 'prueba')")[0].n, 4);
+  assert.equal(sql("SELECT COUNT(*) AS n FROM attendance WHERE user_id IN ('ficha', 'venc', 'prueba')")[0].n, 3);
+});
+
+test('bloqueado: no se registra, vuelve "blocked" y queda en el log como fallido', async () => {
+  const { token } = await newDevice('Bloqueos');
+  const r = await checkIn(token, '20500502');
+  assert.deepEqual(r.body, { status: 'blocked', fullName: 'Bruno Bloqueado', nick: 'bloq', billing: { status: 'bloqueado', days: -40 } });
+  assert.equal((await checkIn(token, '20500502')).body.status, 'blocked');   // otra vez: lo mismo
+  assert.equal(sql("SELECT COUNT(*) AS n FROM attendance WHERE user_id = 'bloq'")[0].n, 0);
+  const lines = auditLog().trim().split('\n').map(l => JSON.parse(l)).filter(e => e.ev === 'checkin.blocked');
+  assert.equal(lines.length, 2);
+  assert.equal(lines[0].ok, false);
+  // Sin mostrar el estado en la pantalla, tampoco entra: solo sin los detalles de la cuota.
+  await setSettings({ showStatus: false });
+  assert.deepEqual((await checkIn(token, '20500502')).body, { status: 'blocked', fullName: 'Bruno Bloqueado', nick: 'bloq' });
+  await setSettings({ showStatus: true });
 });
 
 test('desactivadas, pendientes y rechazadas: como no encontradas, sin registrar', async () => {
@@ -238,7 +252,8 @@ test('el ingreso cuenta en el gráfico de 4 semanas (una vez aunque también hay
   assert.deepEqual(section.body.checkins.filter(c => c.userId === 'juan').map(c => [c.fullName, c.nick]), [['Juan Pérez', 'juan']]);
   // Con la cuota de hoy (días en gym_tz) para mostrar junto al nombre.
   assert.deepEqual(section.body.checkins.find(c => c.userId === 'juan').billing, { status: 'por_vencer', days: 3 });
-  assert.deepEqual(section.body.checkins.find(c => c.userId === 'bloq').billing, { status: 'bloqueado', days: -40 });
+  assert.deepEqual(section.body.checkins.find(c => c.userId === 'venc').billing, { status: 'vencido', days: -2 });
+  assert.equal(section.body.checkins.some(c => c.userId === 'bloq'), false);
 });
 
 test('registro de días anteriores: ?date= devuelve ese día; un día futuro o inválido → 400', async () => {

@@ -1757,6 +1757,7 @@ input[type="search"]::-webkit-search-cancel-button{display:none;-webkit-appearan
 .checkin-result{cursor:pointer}
 .checkin-icon{width:84px;height:84px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:color-mix(in srgb,var(--success) 16%,transparent);color:var(--success);margin-bottom:6px}
 .checkin-icon.warn{background:color-mix(in srgb,var(--warning) 16%,transparent);color:var(--warning)}
+.checkin-icon.danger{background:color-mix(in srgb,var(--danger) 16%,transparent);color:var(--danger)}
 .checkin-ended .checkin-icon{background:color-mix(in srgb,var(--danger) 16%,transparent);color:var(--danger)}
 .checkin-sub{font-size:18px}
 .checkin-billing{display:flex;flex-direction:column;align-items:center;gap:8px;font-size:17px;margin-top:8px}

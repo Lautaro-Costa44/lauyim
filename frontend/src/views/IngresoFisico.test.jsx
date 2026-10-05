@@ -199,6 +199,30 @@ describe('Ingreso Físico: pantalla', () => {
     expect(text()).toContain('Pasá por recepción.')
   })
 
+  it('bloqueado: el ingreso no se registró, candado y "Pasá por recepción"', async () => {
+    routes['/api/checkin/confirm'] = () => Promise.resolve({ status: 'blocked', fullName: 'Diego Pereyra', nick: 'Diego', billing: { status: 'bloqueado', days: -12 } })
+    await mount()
+    await typeDni('30111222')
+    await click(key('Confirmar'))
+    expect(text()).toContain('Tu ingreso no se registró: tu cuota está bloqueada.')
+    expect(text()).not.toContain('Ya registraste tu ingreso hoy.')
+    expect(text()).not.toContain('Tu ingreso quedó registrado.')
+    expect(text()).toContain('Bloqueado')
+    expect(text()).toContain('Tu cuota venció hace 12 días.')
+    expect(text()).toContain('Pasá por recepción.')
+    expect(document.querySelector('.checkin-icon.danger')).not.toBeNull()
+  })
+
+  it('bloqueado sin mostrar el estado de cuota: igual avisa, sin detalles', async () => {
+    routes['/api/checkin/confirm'] = () => Promise.resolve({ status: 'blocked', fullName: null, nick: 'Diego' })
+    await mount()
+    await typeDni('30111222')
+    await click(key('Confirmar'))
+    expect(text()).toContain('Tu ingreso no se registró: tu cuota está bloqueada.')
+    expect(text()).toContain('Pasá por recepción.')
+    expect(document.querySelector('.checkin-billing')).toBeNull()
+  })
+
   it('módulo apagado o dispositivo revocado: borra el token y muestra que no está activado', async () => {
     await mount()
     routes['/api/checkin/lookup'] = () => fail(403, { error: 'feature_disabled' })

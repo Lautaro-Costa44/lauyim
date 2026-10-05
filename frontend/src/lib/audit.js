@@ -79,6 +79,7 @@ const LABELS = {
   'admin.checkin.device.revoke': 'Revocó un dispositivo de Ingreso Físico',
   'checkin.ok': 'Ingreso Físico registrado',
   'checkin.fail': 'Ingreso Físico sin coincidencia',
+  'checkin.blocked': 'Ingreso Físico rechazado: cuota bloqueada',
   'checkin.exit': 'Salió de la pantalla de Ingreso Físico',
   'checkin.exit.denied': 'Salida de Ingreso Físico rechazada (passkey sin permiso)',
   'owner.member.fields': 'Changed member record fields',

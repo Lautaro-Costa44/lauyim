@@ -2,6 +2,7 @@
 import { describe, it, expect } from 'vitest'
 import fs from 'node:fs'
 import path from 'node:path'
+import es from '../locales/es.js'
 import { auditCat, auditLabel, auditReason, auditLine, fmtWhen, AUDIT_FILTERS, auditCategoryLabel } from './audit.js'
 
 // Every event name and reason code the server can emit (api/server.js, the audit block).
@@ -208,6 +209,16 @@ describe('el registro y el backend', () => {
     const events = emittedEvents()
     expect(events.length).toBeGreaterThan(90)
     expect(events.filter(ev => auditLabel(ev) === 'Unknown activity')).toEqual([])
+  })
+  // Los textos en inglés pasan por es.js; los que ya están en castellano llevan tildes. Uno en
+  // inglés sin traducción aparecía tal cual en el panel ("Changed the app personalization").
+  it('cada texto en inglés tiene su traducción al castellano', () => {
+    const src = fs.readFileSync(path.resolve(process.cwd(), 'src/lib/audit.js'), 'utf8')
+    const block = src.slice(src.indexOf('const LABELS = {'), src.indexOf('const UNKNOWN_EVENT'))
+    const labels = [...block.matchAll(/'[a-z_.]+':\s*'([^']+)'/g)].map(m => m[1])
+    expect(labels.length).toBeGreaterThan(90)
+    const untranslated = labels.filter(l => /^[\x20-\x7e]+$/.test(l) && !(l in es))
+    expect(untranslated).toEqual([])
   })
   it('filtros por categoría, con nombre', () => {
     expect(AUDIT_FILTERS.map(([v]) => v)).toEqual(['', 'auth', 'members', 'billing', 'classes', 'training', 'checkin', 'settings', 'fail'])
