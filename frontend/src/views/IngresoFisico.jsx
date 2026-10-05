@@ -161,12 +161,15 @@ export default function IngresoFisico() {
   </div>
 
   if (result) {
-    const late = result.billing && ['vencido', 'bloqueado'].includes(result.billing.status)
-    return <div className="checkin checkin-result" role="status" onClick={reset}>
-      <div className={'checkin-icon' + (late ? ' warn' : '')}><Icon name={late ? 'warning' : 'checkCircle'} size={40} /></div>
+    // Bloqueado: el servidor no registró el ingreso. Vencido (en gracia): entra, con aviso.
+    const blocked = result.status === 'blocked'
+    const late = blocked || (result.billing && ['vencido', 'bloqueado'].includes(result.billing.status))
+    return <div className={'checkin checkin-result' + (blocked ? ' blocked' : '')} role="status" onClick={reset}>
+      <div className={'checkin-icon' + (blocked ? ' danger' : late ? ' warn' : '')}><Icon name={blocked ? 'lock' : late ? 'warning' : 'checkCircle'} size={40} /></div>
       <h1 className="checkin-hello">{t('¡Hola, {0}', result.fullName || result.nick)}
         {result.fullName && result.nick && result.nick.trim().toLowerCase() !== result.fullName.trim().toLowerCase() && <span className="checkin-hello-nick"> [{result.nick}]</span>}!</h1>
-      <p className="checkin-sub">{result.status === 'already' ? t('Ya registraste tu ingreso hoy.') : t('Tu ingreso quedó registrado.')}</p>
+      <p className="checkin-sub">{blocked ? t('Tu ingreso no se registró: tu cuota está bloqueada.')
+        : result.status === 'already' ? t('Ya registraste tu ingreso hoy.') : t('Tu ingreso quedó registrado.')}</p>
       {result.billing && <div className="checkin-billing">
         <StatusBadge status={result.billing.status} />
         <div>{daysText(result.billing)}</div>

@@ -3372,17 +3372,19 @@ const routes = {
     const body = await readBody(req);
     const settings = billingSettingsNow();
     const today = billingToday(settings);
-    const out = checkinConfirm(getDatabase(), { ticket: body.ticket, deviceId: ctx.device.id, today });
+    // Con la cuota bloqueada no entra: no se registra el ingreso y la pantalla lo manda a recepción.
+    const out = checkinConfirm(getDatabase(), { ticket: body.ticket, deviceId: ctx.device.id, today, isBlocked: uid => isMembershipBlocked(getUserById(uid)) });
     if (out.error) return json(res, 400, { error: out.error });
     if (out.status === 'not_found') return json(res, 200, { status: 'not_found' });
     const target = getUserById(out.userId);
     // Saludo con nombre y apellido y el usuario (la pantalla arma "Juan Fernández [Juani]").
-    const result = { status: out.already ? 'already' : 'registered', fullName: out.fullName, nick: out.nick };
+    const result = { status: out.blocked ? 'blocked' : out.already ? 'already' : 'registered', fullName: out.fullName, nick: out.nick };
     // Estado de cuota: si el owner lo muestra y cuotas está encendido. Días en gym_tz.
     if (ctx.settings.showStatus && billingEnabledNow() && !isFeeExempt(target)) {
       result.billing = checkinBilling(out.userId, today, settings);
     }
-    if (!out.already) audit(req, 'checkin.ok', { target, msg: `device=${ctx.device.name}` });
+    if (out.blocked) audit(req, 'checkin.blocked', { ok: false, target, msg: `device=${ctx.device.name}` });
+    else if (!out.already) audit(req, 'checkin.ok', { target, msg: `device=${ctx.device.name}` });
     json(res, 200, result);
   },
 

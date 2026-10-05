@@ -166,16 +166,19 @@ export function lookup(db, { query, settings, deviceId, now = Date.now() }) {
 }
 
 /**
- * Registra el ingreso de hoy del socio del ticket.
-
- * @returns {{ error: 'invalid_ticket' } | { status: 'not_found' } | { userId, already: boolean }}
+ * Registra el ingreso de hoy del socio del ticket. isBlocked(userId) → true para un socio con la
+ * cuota bloqueada: no se registra y vuelve `blocked`.
+ *
+ * @returns {{ error: 'invalid_ticket' } | { status: 'not_found' } |
+ *           { userId, blocked: true } | { userId, already: boolean }}
  */
-export function confirm(db, { ticket, deviceId, today, now = Date.now() }) {
+export function confirm(db, { ticket, deviceId, today, now = Date.now(), isBlocked = () => false }) {
   const t = takeTicket(ticket, deviceId, now);
   if (!t) return { error: 'invalid_ticket' };
   // La cuenta pudo darse de baja en los segundos entre la búsqueda y la confirmación.
   const active = db.prepare(`${ACTIVE_WITH_DNI} AND u.id = ?`).get(t.userId);
   if (!active) return { status: 'not_found' };
+  if (isBlocked(t.userId)) return { userId: t.userId, name: active.name, fullName: active.full_name, nick: active.nick, blocked: true };
   // Sin SELECT previo: la clave primaria decide si ya había uno hoy (sin carrera entre dos taps).
   const r = db.prepare("INSERT OR IGNORE INTO attendance (user_id, date, source, device_id, created_at) VALUES (?, ?, 'physical', ?, ?)")
     .run(t.userId, today, deviceId, now);
