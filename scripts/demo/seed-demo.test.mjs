@@ -136,12 +136,16 @@ test('con la API andando no toca nada (sale con 2)', () => {
   assert.equal(fs.readdirSync(dataDir).filter(f => f.startsWith('.demo-') || f.includes('antes-demo')).length, 0);
 });
 
-test('se puede armar cualquier día (domingo, temprano, fin de mes, 29 de febrero)', () => {
-  for (const now of ['2026-10-04T23:00:00-03:00', '2026-10-05T07:10:00-03:00', '2026-10-31T23:30:00-03:00', '2028-02-29T18:00:00-03:00']) {
+test('se puede armar cualquier día (domingo, temprano, fin de mes, 29 de febrero) y con códigos para los perfiles', () => {
+  // La última, con --codigos-perfiles: los 5 perfiles quedan sin passkey y con su código.
+  const runs = ['2026-10-04T23:00:00-03:00', '2026-10-05T07:10:00-03:00', '2026-10-31T23:30:00-03:00', '2028-02-29T18:00:00-03:00'];
+  for (const [i, now] of runs.entries()) {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lauyim-demo-dia-'));
+    const codes = i === runs.length - 1;
     try {
-      const out = execFileSync(process.execPath, [path.join(root, 'scripts/demo/seed-demo.mjs'), '--data', dir, '--now', now], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+      const out = execFileSync(process.execPath, [path.join(root, 'scripts/demo/seed-demo.mjs'), '--data', dir, '--now', now, ...(codes ? ['--codigos-perfiles'] : [])], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
       assert.match(out, /Listo: \d+ personas/, now);
+      assert.equal((out.match(/\?link=/g) || []).length, codes ? 6 : 1, now);
     } finally { fs.rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }); }
   }
 });

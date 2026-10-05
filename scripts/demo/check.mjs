@@ -164,7 +164,9 @@ export function checkDemo({ now, today }) {
       if (Date.parse(b.created_at) >= start) fail(`${who} reservó ${type.name} ${s.date} después de empezar`);
       if (b.rating != null && (b.status !== 'attended' || !isInt(b.rating) || b.rating < 1 || b.rating > 5)) fail(`${who}: calificación inválida`);
       if (b.logged && b.status !== 'attended') fail(`${who}: registrada sin ir`);
-      if (!db.countCredentials(b.user_id) && (b.logged || b.rating != null || b.answered_at || !b.added_by)) fail(`${who}: sin app pero reservó, contestó o calificó solo`);
+      // Los perfiles principales usan la app aunque con --codigos-perfiles todavía no tengan passkey.
+      const usesApp = db.countCredentials(b.user_id) > 0 || PEOPLE.some(p => p.username === who);
+      if (!usesApp && (b.logged || b.rating != null || b.answered_at || !b.added_by)) fail(`${who}: sin app pero reservó, contestó o calificó solo`);
       if (['attended', 'absent'].includes(b.status) && !['teacher', 'member', 'checkin', 'timeout'].includes(b.attendance_source)) fail(`${who}: origen de asistencia ${b.attendance_source}`);
       if (b.status === 'attended' && !sql.prepare('SELECT 1 FROM attendance WHERE user_id = ? AND date = ?').get(b.user_id, s.date)) fail(`${who} fue a ${type.name} ${s.date} sin ingreso físico`);
       if (b.status === 'absent' && b.attendance_source === 'timeout' && sql.prepare('SELECT 1 FROM attendance WHERE user_id = ? AND date = ?').get(b.user_id, s.date)) fail(`${who}: ausente con ingreso ese día`);
