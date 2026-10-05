@@ -185,8 +185,15 @@ export function checkDemo({ now, today }) {
   }
 
   // ---------- ingreso físico ----------
+  // Con la cuota bloqueada la tablet no deja entrar: ningún ingreso un día en que estaba bloqueado
+  // (estado de ese día según el último pago hecho hasta entonces).
+  const blockedOn = (userId, date) => {
+    const last = db.getPaymentsByUserId(userId).filter(p => !p.voidedAt && gymClock(p.paidAt, tz).date <= date).sort((a, b) => a.paidAt - b.paidAt).at(-1);
+    return !!last && billingStatus({ planId: last.planId, dueDate: last.periodEnd, trialUntil: null }, date, settings) === 'bloqueado';
+  };
   for (const a of sql.prepare('SELECT * FROM attendance').all()) {
     if (a.created_at > now || dayOf(a.created_at) !== a.date) fail(`ingreso de ${a.user_id} fuera de fecha`);
+    if (blockedOn(a.user_id, a.date)) fail(`ingreso de ${users.find(u => u.id === a.user_id)?.name} el ${a.date} con la cuota bloqueada`);
   }
 
   // ---------- nutrición ----------
