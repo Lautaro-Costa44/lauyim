@@ -87,6 +87,7 @@ const P = {
   chevronRight: <path d="m9.6 5.6 6.6 6.4-6.6 6.4" />,
   chevronLeft: <path d="m14.4 5.6-6.6 6.4 6.6 6.4" />,
   chevronDown: <path d="m5.6 9.4 6.4 6.2 6.4-6.2" />,
+  more: <><circle cx="5.6" cy="12" r=".9" /><circle cx="12" cy="12" r=".9" /><circle cx="18.4" cy="12" r=".9" /></>,
   chevronUp: <path d="m5.6 14.6 6.4-6.2 6.4 6.2" />,
   arrowUp: <path d="M12 19.6V4.4M6.2 10.6 12 4.4l5.8 6.2" />,
   arrowDown: <path d="M12 4.4v15.2M6.2 13.4 12 19.6l5.8-6.2" />,

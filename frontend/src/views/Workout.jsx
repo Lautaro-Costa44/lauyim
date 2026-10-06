@@ -2,13 +2,17 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useStore } from '../store/useStore.js'
 import { useUI } from '../store/useUI.js'
-import { exOr } from '../lib/exercises.js'
+import { exOr, imgSrc, gifSrc } from '../lib/exercises.js'
 import { effectiveRoutine, lastEntryFor, bestWeightFor, buildSets, freestyleConfig, defaultConfig, setsDoneActive, supersetUnits, unitOf, setLabel, modeOf, isBw, isPerSide, sideReps, repStep, EFFORT, effortOf, cascadeWeight, insertWarmupRow, removeRowAt, pairAdjacent, unpairSuperset, cleanupSg, applyIntensifierPlan, pinnedNoteFor, exNoteFor, isEmptySet, restFor } from '../lib/history.js'
 import { fmtNum, fmtDate, todayISO, exCount, DAYN } from '../lib/format.js'
 import { beep, vibrate } from '../lib/sound.js'
 import { t, exerciseNameFor, instrFor } from '../lib/i18n.js'
 import { setProgressHighWater, supersetFlowStep, restAfterSet, restOnRecheck } from '../lib/supersetFlow.js'
 import Media from '../components/Media.jsx'
+import ExerciseStrip from '../components/ExerciseStrip.jsx'
+import { useSwipeNav } from '../lib/useSwipeNav.js'
+import { canPrefetch, prefetchImages, whenIdle } from '../lib/net.js'
+import { exerciseGifsOn } from '../lib/exercise-media.js'
 import { startFlow, exercisePicker, exConfigSheet, exerciseDetailSheet, topWeightSheet, finishWorkout, closeStaleWorkout, workoutCompleteSheet, confirmSheet, exerciseNoteSheet, sessionNoteSheet } from '../sheets.jsx'
 import Icon from '../components/Icon.jsx'
 import { Button, Check, NumberField, Switch } from '../components/ui.jsx'
@@ -373,6 +377,49 @@ function ActiveWorkout() {
     document.addEventListener('visibilitychange', onVisible)
     return () => document.removeEventListener('visibilitychange', onVisible)
   }, [])
+
+  // Moving between units: the Prev/Next buttons, a swipe on the card and a tap in the strip all
+  // go through here. `navDir` picks the direction the new card slides in from.
+  const [navDir, setNavDir] = useState(null)
+  const [stripOpen, setStripOpen] = useState(false)
+  const goToUnit = k => {
+    const target = units[k]
+    if (!target || k === unitIdx) return
+    setNavDir(k > unitIdx ? 'next' : 'prev')
+    update(s => { if (s.active) s.active.cur = target[0] })
+    // Scrolled down a long exercise, the next one should start at its top, not mid-card.
+    const el = cardRef.current
+    if (el && el.getBoundingClientRect?.().top < 0 && typeof el.scrollIntoView === 'function') el.scrollIntoView({ block: 'start' })
+  }
+  const sheetOpen = useUI(s => s.sheets.length > 0)
+  const cardRef = useRef(null)
+  const swipe = useSwipeNav(cardRef, {
+    canPrev: unitIdx > 0, canNext: unitIdx >= 0 && unitIdx < units.length - 1,
+    // A hold being timed is not the moment to change exercise; neither is a sheet on top.
+    disabled: !!work || sheetOpen,
+    onPrev: () => { vibrate(10); goToUnit(unitIdx - 1) },
+    onNext: () => { vibrate(10); goToUnit(unitIdx + 1) },
+  })
+
+  // On a good connection, warm the cache while idle: every exercise's still image (the strip)
+  // and the next unit's gif, so a swipe lands on an animation that is already there. On data
+  // saver, a slow link or offline, nothing — the strip loads its stills only when opened.
+  const gifsOn = exerciseGifsOn(useStore(s => s.config))
+  useEffect(() => {
+    if (!gifsOn || !canPrefetch()) return
+    whenIdle(() => {
+      const A2 = useStore.getState().S.active
+      if (!A2) return
+      const media = A2.entries.map(e => exOr(e.id)).filter(ex => ex && !ex.custom)
+      const urls = media.filter(ex => ex.img).map(imgSrc)
+      for (const i of supersetUnits(A2.entries)[unitIdx + 1] || []) {
+        const ex = exOr(A2.entries[i].id)
+        if (ex?.gif && !ex.custom) urls.push(gifSrc(ex))
+      }
+      prefetchImages(urls)
+    })
+  }, [unitIdx, A.entries.length, gifsOn])
+
   useEffect(() => {
     if (!isSuperset) return
     const el = exRefs.current[cur]
@@ -563,16 +610,38 @@ function ActiveWorkout() {
     }
   }
 
+  const discard = () => confirmSheet({ title: t('Discard workout?'), message: t('The sets you logged in this session will be lost.'), confirmText: t('Discard'), danger: true, onConfirm: () => { useUI.getState().stopWork(); update(s => { s.active = null }); stopRest(); nav('/home') } })
+  // The ✕ that used to sit here discarded the workout, and most people read a ✕ as "close".
+  // Discarding now lives in a menu, red and behind its confirmation.
+  const workoutMenu = () => useUI.getState().openSheet(close => <>
+    <h3>{A.name}</h3>
+    <div className="list">
+      <div className="item" onClick={() => { close(); sessionNoteSheet() }}>
+        <span className="lrow-i"><Icon name="pencil" /></span><div className="grow"><div className="tt">{A.note ? t('Edit session note') : t('Add session note')}</div></div></div>
+      <div className="item" style={{ color: 'var(--red)' }} onClick={() => { close(); discard() }}>
+        <span className="lrow-i"><Icon name="trash" /></span><div className="grow"><div className="tt">{t('Discard workout')}</div></div></div>
+    </div>
+  </>)
+  const unitIsDone = u => u.every(i => A.entries[i].sets.length > 0 && A.entries[i].sets.every(s => s.done))
+  const canPrev = unitIdx > 0
+  const canNext = unitIdx >= 0 && unitIdx < units.length - 1
+
   return <div className="narrow">
     <div className="hdr">
-      <button className="iconbtn" aria-label={t('Discard')} onClick={() => confirmSheet({ title: t('Discard workout?'), message: t('The sets you logged in this session will be lost.'), confirmText: t('Discard'), danger: true, onConfirm: () => { useUI.getState().stopWork(); update(s => { s.active = null }); stopRest(); nav('/home') } })}><Icon name="xmark" /></button>
+      <button className="iconbtn" aria-label={t('Workout options')} onClick={workoutMenu}><Icon name="more" /></button>
       <div style={{ textAlign: 'center' }}><div style={{ fontWeight: 600 }}>{A.name}</div><div className="sub"><Elapsed start={A.start} /> · {t('{0} sets', done + '/' + total)}</div></div>
       <button className="iconbtn" style={{ color: 'var(--acc)' }} aria-label={t('Finish')} onClick={finishWorkout}><Icon name="check" /></button>
     </div>
-    <div className="wprog"><i style={{ width: (total ? done / total * 100 : 0) + '%' }} /></div>
+    {/* One segment per unit (a superset is one), the label under it; either opens the strip. */}
+    {A.entries.length > 0 ? <button type="button" className="wseg" aria-expanded={stripOpen} onClick={() => setStripOpen(o => !o)}>
+      <span className="wseg-bar">{units.map((u, k) => <i key={k} className={k === unitIdx ? 'cur' : unitIsDone(u) ? 'done' : ''} />)}</span>
+      <span className="wseg-lbl">{isSuperset ? t('Superset {0} / {1}', unitIdx + 1, units.length) : t('Exercise {0} / {1}', unitIdx + 1, units.length)}<Icon name="chevronDown" /></span>
+    </button> : <div className="wprog" />}
+    {stripOpen && A.entries.length > 0 && <ExerciseStrip entries={A.entries} units={units} current={unitIdx}
+      onJump={k => { setStripOpen(false); goToUnit(k) }} />}
 
-    {A.entries.length ? <>
-      <div className="muted small" style={{ marginBottom: 6 }}>{isSuperset ? t('Superset {0} / {1}', unitIdx + 1, units.length) : t('Exercise {0} / {1}', unitIdx + 1, units.length)}</div>
+    <div ref={cardRef} className={'wcard' + (swipe.dragging ? ' dragging' : '')} style={swipe.dx ? { transform: `translateX(${swipe.dx}px)` } : undefined}>
+    {A.entries.length ? <div key={unitIdx} className={navDir ? 'wcard-in ' + navDir : undefined}>
       {isSuperset ? (
         <div className="ss-card">
           <div className="ss-hd" style={{ justifyContent: 'space-between' }}>
@@ -589,14 +658,16 @@ function ActiveWorkout() {
         <ExerciseBlock entryIdx={cur}
           onToggle={i => toggle(cur, i)} onField={(i, f, v) => setField(cur, i, f, v)} onAddSet={() => addSet(cur)} onRemoveSet={() => removeSet(cur)} onAddWarmup={() => addWarmup(cur)} onRemoveSetAt={i => removeSetAt(cur, i)} onStartTimed={i => startTimed(cur, i)} onPairPrev={onPairPrev} onPairNext={onPairNext} />
       )}
-    </> : <div className="empty"><div className="ico"><Icon name="shuffle" /></div>{t('Freestyle workout — add your first exercise.')}</div>}
-
-    <div style={{ height: 12 }} />
-    <div className="row">
-      <Button icon="chevronLeft" disabled={unitIdx <= 0} onClick={() => update(s => { s.active.cur = units[unitIdx - 1][0] })}>{t('Prev')}</Button>
-      <Button trailingIcon="chevronRight" disabled={unitIdx < 0 || unitIdx >= units.length - 1} onClick={() => update(s => { s.active.cur = units[unitIdx + 1][0] })}>{t('Next')}</Button>
+    </div> : <div className="empty"><div className="ico"><Icon name="shuffle" /></div>{t('Freestyle workout — add your first exercise.')}</div>}
     </div>
-    <div style={{ height: 10 }} />
+
+    {/* Sticky above the tab bar (and the rest timer), so they are reachable without scrolling
+        to the end of a long exercise. Swiping the card does the same. */}
+    {units.length > 1 && <div className="wnav">
+      <button type="button" className="wnav-b" disabled={!canPrev} onClick={() => goToUnit(unitIdx - 1)}><Icon name="chevronLeft" />{t('Prev')}</button>
+      <button type="button" className="wnav-b" disabled={!canNext} onClick={() => goToUnit(unitIdx + 1)}>{t('Next')}<Icon name="chevronRight" /></button>
+    </div>}
+    <div style={{ height: 12 }} />
     <Button onClick={() => exercisePicker(ex => {
       const routine = S.routines.find(r => r.id === A.routineId)
       const freestyle = !A.routineId

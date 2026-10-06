@@ -27,6 +27,7 @@ const mocks = vi.hoisted(() => {
   })
   state.uiSnapshot = () => ({
     work: null,
+    sheets: [],
     startRest: state.startRest,
     stopRest: state.stopRest,
     startWork: state.startWork,
@@ -63,7 +64,7 @@ vi.mock('../sheets.jsx', () => ({
   exerciseNoteSheet: vi.fn(),
   sessionNoteSheet: vi.fn(),
 }))
-vi.mock('../components/Media.jsx', () => ({ default: () => null }))
+vi.mock('../components/Media.jsx', () => ({ default: () => null, Thumb: () => null }))
 // Real implementation, wrapped so a test can count how often the history is walked.
 vi.mock('../lib/history.js', async importOriginal => {
   const orig = await importOriginal()
@@ -132,6 +133,19 @@ async function toggleSet(index) {
 beforeEach(() => {
   vi.clearAllMocks()
 })
+
+const click = async el => { await act(async () => { el.dispatchEvent(new dom.Event('click', { bubbles: true })) }) }
+// Renders what the last openSheet call would show, so its buttons can be pressed.
+let sheetRoot
+async function openedSheet() {
+  const host = document.createElement('div')
+  document.body.appendChild(host)
+  sheetRoot = createRoot(host)
+  await act(async () => { sheetRoot.render(mocks.openSheet.mock.calls.at(-1)[0](vi.fn())) })
+  return host
+}
+afterEach(async () => { if (sheetRoot) await act(async () => { sheetRoot.unmount() }); sheetRoot = null })
+const itemByText = (host, re) => [...host.querySelectorAll('.item')].find(el => re.test(el.textContent))
 
 afterEach(async () => {
   await unmount()
@@ -210,8 +224,8 @@ describe('session lifecycle (audit phase 1)', () => {
 
   it('discarding stops a hold that is still running', async () => {
     await mount([hold(false)])
-    const discard = container.querySelector('.hdr .iconbtn')
-    await act(async () => { discard.dispatchEvent(new dom.Event('click', { bubbles: true })) })
+    await click(container.querySelector('.hdr .iconbtn'))
+    await click(itemByText(await openedSheet(), /Discard|Descartar/))
     expect(mocks.confirmSheet).toHaveBeenCalledOnce()
     await act(async () => { mocks.confirmSheet.mock.calls[0][0].onConfirm() })
     expect(mocks.stopWork).toHaveBeenCalled()
@@ -230,7 +244,6 @@ describe('session lifecycle (audit phase 1)', () => {
 })
 
 describe('guards against losing or faking data (audit phase 2)', () => {
-  const click = async el => { await act(async () => { el.dispatchEvent(new dom.Event('click', { bubbles: true })) }) }
   const removeSetButton = () => [...container.querySelectorAll('button')].find(b => /Remove set|Quitar serie/.test(b.textContent))
 
   it('asks before removing a set that is already logged', async () => {
@@ -268,18 +281,6 @@ describe('guards against losing or faking data (audit phase 2)', () => {
 })
 
 describe('set rows (audit phase 5)', () => {
-  const click = async el => { await act(async () => { el.dispatchEvent(new dom.Event('click', { bubbles: true })) }) }
-  // Renders what the last openSheet call would show, so its buttons can be pressed.
-  let sheetRoot
-  async function openedSheet() {
-    const host = document.createElement('div')
-    document.body.appendChild(host)
-    sheetRoot = createRoot(host)
-    await act(async () => { sheetRoot.render(mocks.openSheet.mock.calls.at(-1)[0](vi.fn())) })
-    return host
-  }
-  afterEach(async () => { if (sheetRoot) await act(async () => { sheetRoot.unmount() }); sheetRoot = null })
-  const itemByText = (host, re) => [...host.querySelectorAll('.item')].find(el => re.test(el.textContent))
 
   it('removes a warm-up through its number instead of a ✕ in the row', async () => {
     await mount([exercise('bench', [false, false], {
@@ -312,6 +313,45 @@ describe('set rows (audit phase 5)', () => {
     const two = [...picker.querySelectorAll('.effpick .chip')].find(b => b.textContent === '2')
     await click(two)
     expect(mocks.S.active.entries[0].sets[0].rir).toBe(2)
+  })
+})
+
+describe('header, strip and navigation (audit phase 6)', () => {
+  const three = () => [exercise('a', [true]), exercise('b', [false], { sg: 'g' }), exercise('c', [false], { sg: 'g' }), exercise('d', [false])]
+  const rerender = async () => { await act(async () => { root.render(React.createElement(Workout)) }) }
+
+  it('keeps discarding behind the options menu instead of a ✕ in the header', async () => {
+    await mount([exercise('bench', [false])])
+    expect(container.querySelector('.hdr .iconbtn').getAttribute('aria-label')).not.toMatch(/Discard|Descartar/)
+    await click(container.querySelector('.hdr .iconbtn'))
+    expect(itemByText(await openedSheet(), /Discard|Descartar/)).toBeTruthy()
+    expect(mocks.confirmSheet).not.toHaveBeenCalled()
+  })
+
+  it('shows one progress segment per unit, a superset counting once', async () => {
+    await mount(three(), 1)
+    const segs = [...container.querySelectorAll('.wseg-bar i')].map(i => i.className)
+    expect(segs).toEqual(['done', 'cur', ''])
+  })
+
+  it('opens the strip from the progress bar (closed by default) and jumps to a unit', async () => {
+    await mount(three())
+    expect(container.querySelector('.xstrip')).toBeNull()
+    await click(container.querySelector('.wseg'))
+    const units = container.querySelectorAll('.xs-unit')
+    expect(units).toHaveLength(3)
+    await click(units[2])
+    expect(mocks.S.active.cur).toBe(3)
+    await rerender()
+    expect(container.querySelector('.xstrip')).toBeNull()
+  })
+
+  it('moves between units with the floating Prev / Next buttons', async () => {
+    await mount(three())
+    const [prev, next] = container.querySelectorAll('.wnav-b')
+    expect(prev.disabled).toBe(true)
+    await click(next)
+    expect(mocks.S.active.cur).toBe(1)
   })
 })
 

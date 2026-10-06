@@ -750,7 +750,67 @@ input[type="search"]::-webkit-search-cancel-button{display:none;-webkit-appearan
 /* ------------------------------------------------------------- workout --- */
 .wprog{height:4px;background:var(--surface-2);border-radius:99px;overflow:hidden;margin-bottom:16px}
 .wprog i{display:block;height:100%;background:var(--acc);border-radius:99px;transition:width var(--med) var(--ease)}
-.exmedia{position:relative;border-radius:var(--r-lg);overflow:hidden;background:#fff;margin-bottom:12px}
+/* progress by unit (a superset is one segment); with its label it opens the exercise strip */
+.wseg{display:block;width:100%;margin:0 0 12px;padding:4px 0 0;text-align:left;color:inherit;background:none}
+.wseg-bar{display:flex;gap:3px;height:4px}
+.wseg-bar i{flex:1;min-width:0;border-radius:99px;background:var(--surface-2);transition:background var(--fast)}
+.wseg-bar i.done{background:var(--acc)}
+.wseg-bar i.cur{background:var(--acc);animation:wsegpulse 2.4s ease-in-out infinite}
+@keyframes wsegpulse{50%{opacity:.5}}
+.wseg-lbl{display:flex;align-items:center;gap:4px;margin-top:8px;font-size:13px;color:var(--label-2)}
+.wseg-lbl .icn{font-size:13px;transition:transform var(--fast)}
+.wseg[aria-expanded="true"] .wseg-lbl .icn{transform:rotate(180deg)}
+.xstrip{
+  position:relative;display:flex;gap:8px;overflow-x:auto;margin:0 calc(-1 * var(--pad)) 14px;
+  padding:2px var(--pad) 4px;scrollbar-width:none;-webkit-overflow-scrolling:touch;scroll-snap-type:x proximity;
+}
+.xstrip::-webkit-scrollbar{display:none}
+.xs-unit{
+  flex:none;width:86px;display:flex;flex-direction:column;gap:5px;padding:6px;border-radius:12px;
+  background:var(--surface);color:var(--label);text-align:left;scroll-snap-align:center;
+}
+.xs-unit:has(.xs-link){width:128px}
+.xs-unit.cur{box-shadow:inset 0 0 0 2px var(--acc)}
+.xs-thumbs{position:relative;display:flex;gap:3px}
+.xs-thumbs .thumb{flex:1;min-width:0;width:auto;height:56px}
+.xs-link{
+  position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:20px;height:20px;border-radius:50%;
+  background:var(--surface);color:var(--acc);display:flex;align-items:center;justify-content:center;font-size:12px;
+}
+.xs-ok{
+  position:absolute;right:3px;top:3px;width:18px;height:18px;border-radius:50%;
+  background:var(--acc);color:var(--on-acc);display:flex;align-items:center;justify-content:center;font-size:11px;--icon-stroke:2.6;
+}
+.xs-name{
+  font-size:11.5px;line-height:1.25;text-transform:capitalize;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;
+}
+/* the exercise card follows a horizontal swipe; vertical scrolling stays the browser's */
+.wcard{touch-action:pan-y;transition:transform var(--med) var(--ease)}
+.wcard.dragging{transition:none;will-change:transform}
+.wcard-in.next{animation:wcardnext var(--med) var(--ease)}
+.wcard-in.prev{animation:wcardprev var(--med) var(--ease)}
+@keyframes wcardnext{from{opacity:0;transform:translateX(24px)}to{opacity:1;transform:none}}
+@keyframes wcardprev{from{opacity:0;transform:translateX(-24px)}to{opacity:1;transform:none}}
+/* Prev/Next stick to the bottom of the screen, above the tab bar and above the rest timer when it
+   shows, so they are reachable without scrolling to the end of a long exercise. A full-width bar
+   rather than floating buttons: a floating "next" at the edge sat right on top of the checkboxes. */
+.wnav{
+  position:sticky;bottom:calc(92px + var(--sab));z-index:40;display:flex;gap:6px;margin-top:12px;padding:4px;
+  border-radius:14px;background:color-mix(in srgb,var(--surface) 94%,transparent);
+  -webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);box-shadow:0 8px 24px -10px rgba(0,0,0,.55);
+}
+body.resting .wnav{bottom:calc(212px + var(--sab))}
+.wnav-b{
+  flex:1;height:40px;border-radius:10px;display:flex;align-items:center;justify-content:center;gap:4px;
+  font-size:15px;font-weight:500;color:var(--label);background:var(--surface-2);
+}
+.wnav-b .icn{font-size:16px}
+.wnav-b:active{background:var(--surface-3)}
+.wnav-b:disabled{opacity:.35}@media (prefers-reduced-motion:reduce){
+  .wcard,.wcard-in.next,.wcard-in.prev{transition:none;animation:none}
+  .wseg-bar i.cur{animation:none}
+}.exmedia{position:relative;border-radius:var(--r-lg);overflow:hidden;background:#fff;margin-bottom:12px}
 .exmedia img{width:100%;height:320px;object-fit:contain;display:block}
 .exmedia .gifhint,.exmedia .giftoggle{
   position:absolute;bottom:9px;display:inline-flex;align-items:center;gap:4px;
@@ -1228,6 +1288,8 @@ input[type="search"]::-webkit-search-cancel-button{display:none;-webkit-appearan
   /* 520px fits the clock, the bar and all three controls on one line again */
   #timer.rest{flex-direction:row;align-items:center;gap:14px}
   #timer.rest .head{flex:1;min-width:0}
+  .wnav{bottom:100px}
+  body.resting .wnav{bottom:184px}
   .exmedia img{height:380px}
   .exmedia.exmap:not(.compact):not(.mini){height:380px}
   .hm-wrap{display:flex;flex-direction:column;align-items:center}
