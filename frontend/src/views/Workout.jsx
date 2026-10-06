@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useStore } from '../store/useStore.js'
 import { useUI } from '../store/useUI.js'
 import { exOr } from '../lib/exercises.js'
-import { effectiveRoutine, lastEntryFor, bestWeightFor, buildSets, freestyleConfig, defaultConfig, setsDoneActive, supersetUnits, unitOf, setLabel, modeOf, isBw, isPerSide, sideReps, repStep, EFFORT, effortOf, stepEffort, capEffort, cascadeWeight, insertWarmupRow, removeRowAt, pairAdjacent, unpairSuperset, cleanupSg, applyIntensifierPlan, pinnedNoteFor, exNoteFor, isEmptySet, restFor } from '../lib/history.js'
+import { effectiveRoutine, lastEntryFor, bestWeightFor, buildSets, freestyleConfig, defaultConfig, setsDoneActive, supersetUnits, unitOf, setLabel, modeOf, isBw, isPerSide, sideReps, repStep, EFFORT, effortOf, cascadeWeight, insertWarmupRow, removeRowAt, pairAdjacent, unpairSuperset, cleanupSg, applyIntensifierPlan, pinnedNoteFor, exNoteFor, isEmptySet, restFor } from '../lib/history.js'
 import { fmtNum, fmtDate, todayISO, exCount, DAYN } from '../lib/format.js'
 import { beep, vibrate } from '../lib/sound.js'
 import { t, exerciseNameFor, instrFor } from '../lib/i18n.js'
@@ -66,6 +66,25 @@ function Elapsed({ start }) {
     tick(); const iv = setInterval(tick, 1000); return () => clearInterval(iv)
   }, [start])
   return <span>{t}</span>
+}
+
+/* ---------- effort picker: RIR 0–5 or RPE 6–10 in the profile's own steps ---------- */
+function EffortPicker({ kind, value, onPick }) {
+  const e = EFFORT[kind]
+  // RIR above 5 is barely a work set, so the picker stops there; an older value above it still
+  // shows on the row.
+  const top = kind === 'rir' ? 5 : e.max
+  const opts = []
+  for (let v = e.min; v <= top; v = Math.round((v + e.step) * 100) / 100) opts.push(v)
+  return <>
+    <h3>{t(e.hd)}</h3>
+    <div className="muted small" style={{ marginBottom: 12 }}>{kind === 'rir' ? t('Reps you still had in the tank.') : t('How hard the set was — 10 is all you had.')}</div>
+    <div className="effpick">
+      {opts.map(v => <button key={v} className={'chip nocap' + (value === v ? ' on' : '')} onClick={() => onPick(v)}>{fmtNum(v)}</button>)}
+    </div>
+    <div style={{ height: 14 }} />
+    <Button variant="ghost" className="dim" onClick={() => onPick(null)}>{t('Clear effort')}</Button>
+  </>
 }
 
 /* ---------- one exercise block (reps: weight×reps · time: a held duration · cardio: duration+speed) ---------- */
@@ -150,15 +169,39 @@ function ExerciseBlock({ entryIdx, compact, onToggle, onField, onAddSet, onRemov
     : timed ? ((bw && !added) ? null : loadCol)
       : (bw && !added) ? null : repCol
   // Effort (RIR or RPE, whichever the profile logs) only makes sense for weighted rep sets,
-  // not cardio/timed holds, and is opt-in since it adds a third stepper to every row. `opt`
-  // because an unlogged effort is not the same as 0 — RIR 0 says the set went to failure.
+  // not cardio/timed holds, and is opt-in. A third stepper squeezed weight and reps down to
+  // 20 px buttons, so the column is just the number: tapping it opens a picker. An unlogged
+  // effort shows "–", which is not the same as 0 — RIR 0 says the set went to failure.
   const kind = effortOf(S)
   const eff = EFFORT[kind]
-  const col3 = mode === 'reps' && eff ? { ...eff, eff: kind, dec: true, opt: true, hd: t(eff.hd) } : null
-  // The effort column walks its own scale — see stepEffort. Weight and reps step up from 0
-  // with no ceiling, as they always did.
+  const col3 = mode === 'reps' && eff ? { ...eff, hd: t(eff.hd) } : null
+  const effortPicker = i => useUI.getState().openSheet(close => (
+    <EffortPicker kind={kind} value={entry.sets[i]?.[eff.f]} onPick={v => { close(); onField(i, eff.f, v) }} />
+  ))
+  // The set you are on: the first work set not yet checked.
+  const currentRow = entry.sets.findIndex(x => !x.done && !isWarmupRow(x))
+  // Tapping a set's number: the per-row actions that used to be a ✕ on warm-ups and two chips
+  // under every work set. Removing a logged set asks first, like "Remove set" below.
+  const removeRow = i => {
+    if (!entry.sets[i]?.done) return onRemoveSetAt(i)
+    confirmSheet({ title: t('Remove set?'), message: t('This set is already logged. Removing it deletes what you recorded.'), confirmText: t('Remove'), danger: true, onConfirm: () => onRemoveSetAt(i) })
+  }
+  const rowMenu = (i, label, canExtend) => {
+    const s = entry.sets[i]
+    useUI.getState().openSheet(close => <>
+      <h3>{label}</h3>
+      <div className="list">
+        {canExtend && !isRestPauseSet(s) && <div className="item" onClick={() => { close(); addDropRow(i) }}>
+          <span className="lrow-i"><Icon name="arrowDown" /></span><div className="grow"><div className="tt">{t('+ Drop')}</div></div></div>}
+        {canExtend && !isDropSet(s) && <div className="item" onClick={() => { close(); addBurstRow(i) }}>
+          <span className="lrow-i"><Icon name="bolt" /></span><div className="grow"><div className="tt">{t('+ Burst')}</div></div></div>}
+        {entry.sets.length > 1 && <div className="item" style={{ color: 'var(--red)' }} onClick={() => { close(); removeRow(i) }}>
+          <span className="lrow-i"><Icon name="trash" /></span><div className="grow"><div className="tt">{t('Remove set')}</div></div></div>}
+      </div>
+    </>)
+  }
+  // Weight and reps step up from 0 with no ceiling, as they always did.
   const bump = (s, i, col, dir) => {
-    if (col.eff) return onField(i, col.f, stepEffort(col.eff, s[col.f], dir))
     onField(i, col.f, Math.max(0, Math.round(((s[col.f] || 0) + dir * col.step) * 100) / 100))
   }
   // Uses the shared stepper markup so a set row picks up the same control styling
@@ -166,9 +209,8 @@ function ExerciseBlock({ entryIdx, compact, onToggle, onField, onAddSet, onRemov
   const cell = (s, i, col, cls) => (
     <div className={'stp ' + cls}>
       <button aria-label="Decrease" onClick={() => bump(s, i, col, -1)}><Icon name="minus" /></button>
-      {/* a typed effort is capped — there is no RPE 12, and 12 reps in reserve is a warm-up */}
-      <span className="val"><NumberField decimal={col.dec} nullable={col.opt} value={s[col.f] ?? ''}
-        onChange={v => onField(i, col.f, col.eff ? capEffort(col.eff, v) : v)} /></span>
+      <span className="val"><NumberField decimal={col.dec} value={s[col.f] ?? ''}
+        onChange={v => onField(i, col.f, v)} /></span>
       <button aria-label="Increase" onClick={() => bump(s, i, col, 1)}><Icon name="plus" /></button>
     </div>
   )
@@ -230,26 +272,26 @@ function ExerciseBlock({ entryIdx, compact, onToggle, onField, onAddSet, onRemov
         const isFirstWarmup = warm && !warmBefore
         // Numbering restarts per phase: with two warm-ups the first work set reads 1, not 3.
         const phaseNum = entry.sets.slice(0, i + 1).filter(x => isWarmupRow(x) === warm).length
+        const label = warm ? t('Warm-up {0}', phaseNum) : t('Set {0}', phaseNum)
+        const canExtend = !warm && mode === 'reps'
         return <div key={i}>
           {isFirstWarmup && <div className="setph">{t('Warm-up')}</div>}
           {!warm && warmBefore && <div className="setsep" />}
-          <div className={'setrow' + (s.done ? ' done' : '') + (col3 ? ' eff3' : '')}>
-            <div className="n">{phaseNum}</div>
+          <div className={'setrow' + (s.done ? ' done' : '') + (col3 ? ' eff3' : '') + (timed ? ' timed' : '')}>
+            <button className="n" aria-label={t('Options for {0}', label)} onClick={() => rowMenu(i, label, canExtend)}>{phaseNum}</button>
             {cell(s, i, col1, 'w')}
             {col2 && cell(s, i, col2, 'r')}
-            {col3 && cell(s, i, col3, 'eff')}
+            {col3 && <button className="effv" aria-label={col3.hd} onClick={() => effortPicker(i)}>{s[eff.f] != null ? fmtNum(s[eff.f]) : '–'}</button>}
             {/* A timed set is started, not typed: the timer counts the hold down and checks the
                 set off itself. The checkbox stays for anyone who timed it on their own watch. */}
             {timed && <button className="setgo" aria-label={t('Start set')} disabled={s.done || !!working}
               onClick={() => onStartTimed(i)}><Icon name="play" /></button>}
-            {warm && <button className="iconbtn" style={{ fontSize: 13 }} aria-label={t('Remove set')}
-              disabled={entry.sets.length <= 1} onClick={() => onRemoveSetAt(i)}><Icon name="xmark" /></button>}
             <Check checked={s.done} onChange={() => onToggle(i)} />
           </div>
           {/* Drop-sets and rest-pause bursts extend this same row — no long rest, no new set.
               A planned exercise arrives with these already filled in (applyIntensifierPlan);
               every value here is just as editable as the main row's own weight/reps. */}
-          {!warm && mode === 'reps' && <>
+          {canExtend && <>
             {dropsOf(s).map((d, di) => (
               <div className="subrow" key={'d' + di}>
                 <span className="subn">{t('Drop {0}', di + 1)}</span>
@@ -266,10 +308,12 @@ function ExerciseBlock({ entryIdx, compact, onToggle, onField, onAddSet, onRemov
                 <button className="iconbtn" aria-label={t('Remove burst')} onClick={() => removeCluster(i, ci)}><Icon name="xmark" /></button>
               </div>
             ))}
-            <div className="setextra">
+            {/* Only under the set you are on: on every row they were most of the card. Any other
+                row reaches the same actions through its number. */}
+            {i === currentRow && <div className="setextra">
               {!isRestPauseSet(s) && <button className="chip add" onClick={() => addDropRow(i)}><Icon name="arrowDown" />{t('+ Drop')}</button>}
               {!isDropSet(s) && <button className="chip add" onClick={() => addBurstRow(i)}><Icon name="bolt" />{t('+ Burst')}</button>}
-            </div>
+            </div>}
           </>}
         </div>
       })}

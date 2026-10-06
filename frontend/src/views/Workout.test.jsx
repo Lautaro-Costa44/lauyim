@@ -16,6 +16,7 @@ const mocks = vi.hoisted(() => {
     workoutCompleteSheet: vi.fn(),
     confirmSheet: vi.fn(),
     closeStaleWorkout: vi.fn(),
+    openSheet: vi.fn(),
   }
   state.storeSnapshot = () => ({
     S: state.S,
@@ -30,6 +31,7 @@ const mocks = vi.hoisted(() => {
     stopRest: state.stopRest,
     startWork: state.startWork,
     stopWork: state.stopWork,
+    openSheet: state.openSheet,
     toast: vi.fn(),
   })
   return state
@@ -107,8 +109,8 @@ function installDom() {
   root = createRoot(container)
 }
 
-async function mount(entries, cur = 0) {
-  mocks.S = workout(entries, cur)
+async function mount(entries, cur = 0, extra = {}) {
+  mocks.S = { ...workout(entries, cur), ...extra }
   installDom()
   await act(async () => { root.render(React.createElement(Workout)) })
 }
@@ -262,6 +264,54 @@ describe('guards against losing or faking data (audit phase 2)', () => {
     await toggleSet(1)
     expect(mocks.confirmSheet).not.toHaveBeenCalled()
     expect(mocks.S.active.entries[0].sets.map(s => s.done)).toEqual([true, false])
+  })
+})
+
+describe('set rows (audit phase 5)', () => {
+  const click = async el => { await act(async () => { el.dispatchEvent(new dom.Event('click', { bubbles: true })) }) }
+  // Renders what the last openSheet call would show, so its buttons can be pressed.
+  let sheetRoot
+  async function openedSheet() {
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    sheetRoot = createRoot(host)
+    await act(async () => { sheetRoot.render(mocks.openSheet.mock.calls.at(-1)[0](vi.fn())) })
+    return host
+  }
+  afterEach(async () => { if (sheetRoot) await act(async () => { sheetRoot.unmount() }); sheetRoot = null })
+  const itemByText = (host, re) => [...host.querySelectorAll('.item')].find(el => re.test(el.textContent))
+
+  it('removes a warm-up through its number instead of a ✕ in the row', async () => {
+    await mount([exercise('bench', [false, false], {
+      sets: [{ w: 30, r: 5, phase: 'warmup', done: false }, { w: 60, r: 5, done: false }],
+    })])
+    expect(container.querySelector('.setrow .iconbtn')).toBeNull()
+    await click(container.querySelector('.setrow .n'))
+    const menu = await openedSheet()
+    expect(itemByText(menu, /Drop|Bajada/)).toBeUndefined()
+    await click(itemByText(menu, /Remove set|Quitar serie/))
+    expect(mocks.S.active.entries[0].sets).toHaveLength(1)
+    expect(mocks.S.active.entries[0].sets[0].phase).toBeUndefined()
+  })
+
+  it('shows + Drop / + Burst only under the current set, and any set reaches them from its number', async () => {
+    await mount([exercise('bench', [true, false, false])])
+    expect(container.querySelectorAll('.setextra')).toHaveLength(1)
+    await click(container.querySelectorAll('.setrow .n')[0])
+    const menu = await openedSheet()
+    await click(itemByText(menu, /Drop|Bajada/))
+    expect(mocks.S.active.entries[0].sets[0].drops).toHaveLength(1)
+  })
+
+  it('logs effort by tapping the number and picking a value', async () => {
+    await mount([exercise('bench', [false])], 0, { effort: 'rir' })
+    const effv = container.querySelector('.setrow .effv')
+    expect(effv.textContent).toBe('–')
+    await click(effv)
+    const picker = await openedSheet()
+    const two = [...picker.querySelectorAll('.effpick .chip')].find(b => b.textContent === '2')
+    await click(two)
+    expect(mocks.S.active.entries[0].sets[0].rir).toBe(2)
   })
 })
 

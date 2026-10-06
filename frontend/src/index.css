@@ -781,50 +781,53 @@ input[type="search"]::-webkit-search-cancel-button{display:none;-webkit-appearan
   display:flex;align-items:center;gap:8px;padding:0 0 6px;
   font-size:11px;color:var(--label-3);font-weight:500;text-transform:uppercase;letter-spacing:.045em;
 }
-.sethead .n-sp{width:24px;flex:none}
-.sethead .w-sp{flex:1.4;text-align:center}
+.sethead .n-sp{width:28px;flex:none}
+.sethead .w-sp{flex:1.2;text-align:center}
 .sethead .r-sp{flex:1;text-align:center}
-.sethead .eff-sp{text-align:center}
+.sethead .eff-sp{width:40px;flex:none;text-align:center}
 .sethead .ck-sp{width:30px;flex:none}
 .setrow{display:flex;align-items:center;gap:8px;padding:7px 0;position:relative}
-.setrow+.setrow::before{
-  content:'';position:absolute;left:32px;right:0;top:0;height:var(--hair);background:var(--sep);
-}
 .setph{margin:8px 0 2px;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim);display:flex;align-items:center;gap:10px}
 .setph::after{content:'';flex:1;height:1px;background:var(--sep)}
 .setsep{height:1px;background:var(--sep);margin:9px 0}
+/* the set number is also the row's menu (+ Drop, + Burst, Remove set) */
 .setrow .n{
-  width:24px;height:24px;border-radius:50%;background:var(--surface-2);color:var(--label-2);
+  width:28px;height:28px;border-radius:50%;background:var(--surface-2);color:var(--label-2);
   display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:500;flex:none;
   transition:background var(--fast),color var(--fast);
 }
-.setrow .stp.w{flex:1.4;min-width:0}
+.setrow .n:active{background:var(--surface-3)}
+.setrow .stp.w{flex:1.2;min-width:0}
 .setrow .stp.r{flex:1;min-width:0}
-.setrow .stp.eff{flex:1.1;min-width:0}
-.setrow .stp button{width:32px;height:40px}
-/* a 3rd stepper (RIR) needs narrower buttons and a tighter row gap to fit next to weight+reps
-   on narrow phones, same technique as the exercise-config sheet's three-steppers-in-a-row
-   (.cfgrow below) — RIR's own value is short ("1.5") so its buttons shrink the most, weight/reps
-   just enough to make room since their values ("82.5", "12") need more of what's left.
-   The header shares the numbers so its labels stay centred over the steppers they name. */
+/* 36x44 targets for sweaty hands; the value keeps ~45/25 px at 360 px wide, enough for "82.5"
+   and "12". A timed row also carries the start button, so its steppers give some of that back. */
+.setrow .stp button{width:36px;height:44px}
+.setrow.timed .stp button{width:30px}
+/* Effort is a number you tap, not a third stepper (see EffortPicker), so weight and reps keep
+   usable buttons next to it. The header shares the numbers so its labels stay over their columns. */
+.setrow .effv{
+  width:40px;height:44px;flex:none;border-radius:10px;background:var(--surface-2);
+  font-size:15px;font-weight:500;color:var(--label);font-variant-numeric:tabular-nums;
+}
+.setrow .effv:active{background:var(--surface-3)}
 .setrow.eff3,.sethead.eff3{gap:6px}
-.setrow.eff3 .stp.w,.sethead.eff3 .w-sp{flex:1.2}
-.setrow.eff3 .stp.r,.sethead.eff3 .r-sp{flex:1}
-.setrow.eff3 .stp.eff,.sethead.eff3 .eff-sp{flex:.85}
-.setrow.eff3 .stp button{width:23px}
-.setrow.eff3 .stp.eff button{width:20px}
+.setrow.eff3 .stp button{width:28px}
 .setrow.eff3 .stp .num{font-size:14px}
+/* A done set reads as done without fading what you logged. */
+.setrow.done{background:color-mix(in srgb,var(--acc) 9%,transparent);border-radius:12px;margin:0 -6px;padding-left:6px;padding-right:6px}
 .setrow.done .n{background:var(--acc);color:var(--on-acc)}
-.setrow.done{opacity:.45}
+.effpick{display:flex;flex-wrap:wrap;gap:8px}
+.effpick .chip{min-width:52px;height:44px;display:inline-flex;align-items:center;justify-content:center;background:var(--surface-2);font-variant-numeric:tabular-nums}
+.effpick .chip.on{background:var(--acc);color:var(--on-acc)}
 /* drop-set drops / rest-pause bursts riding on a work row, editable like the row itself
    (issue: drop-sets & rest-pause) */
-.subrow{display:flex;align-items:center;gap:6px;padding:3px 0 3px 32px}
+.subrow{display:flex;align-items:center;gap:6px;padding:3px 0 3px 36px}
 .subrow .subn{font-size:11px;color:var(--label-3);flex:none;width:46px}
 .subrow .stp.mini{flex:1;min-width:0}
 .subrow .stp.mini button{width:26px;height:30px}
 .subrow .stp.mini .num{font-size:13px}
 .subrow .iconbtn{width:26px;height:26px;font-size:11px;flex:none}
-.setextra{display:flex;flex-wrap:wrap;gap:6px;margin:2px 0 8px 32px}
+.setextra{display:flex;flex-wrap:wrap;gap:6px;margin:2px 0 8px 36px}
 .setextra .chip.add{display:inline-flex;align-items:center;gap:4px;color:var(--acc)}
 .setextra .chip.add svg{width:13px;height:13px}
 .setextra .chip.add:disabled{opacity:.35}
