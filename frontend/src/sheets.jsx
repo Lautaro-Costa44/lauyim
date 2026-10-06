@@ -32,7 +32,7 @@ import { parseImport, mergeImport } from './lib/import-csv.js'
 import { buildPlanBundle, parsePlan, mergePlan, printPlan } from './lib/plan-share.js'
 import { estimate1RM, best1RM, is1RMRecord, REP_CAP } from './lib/onerm.js'
 import { nextPrescription, applyPrescription, policyFor, defaultIncrement, POLICIES_FOR, POLICY_NAME, POLICY_DESC, MAX_BW_SETS } from './lib/progression.js'
-import { buildCompletedWorkout } from './lib/finish-workout.js'
+import { buildCompletedWorkout, isStaleWorkout, lastActivityOf } from './lib/finish-workout.js'
 import { isWarmupRow } from './lib/workout-model.js'
 import { applyPlannedDays } from './lib/routineGroups.js'
 import { errorText } from './lib/errors.js'
@@ -1698,11 +1698,12 @@ function WorkoutComplete({ close }) {
 }
 export const workoutCompleteSheet = () => ui().openSheet(close => <WorkoutComplete close={close} />, { kind: 'center' })
 
-function FinishSummary({ w, prs, e1prs = [], close }) {
+function FinishSummary({ w, prs, e1prs = [], reason, close }) {
   const st = useStore(s => s.S)
   return <div style={{ textAlign: 'center', padding: '8px 0' }}>
     <div style={{ fontSize: 44, display: 'flex', justifyContent: 'center', color: 'var(--acc)' }}><Icon name="trophy" /></div>
     <h3 style={{ margin: '8px 0' }}>{t('Workout complete!')}</h3>
+    {reason === 'inactivity' && <div className="muted small" style={{ marginBottom: 12 }}>{t('Closed automatically after 2 hours without activity.')}</div>}
     <div className="tiles" style={{ textAlign: 'left' }}>
       <div className="tile"><div className="l">{t('Duration')}</div><div className="v" style={{ fontSize: '1.1rem' }}>{fmtDur(w.end - w.start)}</div></div>
       <div className="tile"><div className="l">{t('Volume')}</div><div className="v" style={{ fontSize: '1.1rem' }}>{fmtVol(w.vol, st.unit)}</div></div>
@@ -1729,7 +1730,9 @@ export function finishWorkout(isPartial = false) {
   if (partial && !isPartial) { confirmSheet({ title: t('Finish early?'), message: t(total - done === 1 ? '{0} set still unchecked. Finish the workout now?' : '{0} sets still unchecked. Finish the workout now?', total - done), confirmText: t('Finish workout'), onConfirm: () => doFinishWorkout(true) }); return }
   doFinishWorkout(partial)
 }
-function doFinishWorkout(partial = false) {
+// `end` is overridable so a session closed for inactivity ends when it was last touched, not
+// whenever the app was reopened.
+function doFinishWorkout(partial = false, { end = Date.now(), reason } = {}) {
   const st = S()
   const A = st.active
   if (!A) return
@@ -1744,7 +1747,7 @@ function doFinishWorkout(partial = false) {
     if (rec && !prs.includes(e.id)) e1prs.push({ id: e.id, ...rec })
   })
   const w = buildCompletedWorkout(A, {
-    end: Date.now(),
+    end,
     prs,
     snapshotFor: e => EXIDX[e.id]?.custom ? exerciseMuscleSnapshot(EXIDX[e.id]) : null,
     partial,
@@ -1760,8 +1763,29 @@ function doFinishWorkout(partial = false) {
   })
   useStore.getState().autoBackupNow()
   useUI.getState().stopRest()
+  useUI.getState().stopWork()
   beep(snd(), 880, 0.15); beep(snd(), 1100, 0.15, 0.18); beep(snd(), 1320, 0.3, 0.36)
-  ui().openSheet(close => <FinishSummary w={w} prs={prs} e1prs={e1prs} close={close} />, { kind: 'center', locked: true })
+  ui().openSheet(close => <FinishSummary w={w} prs={prs} e1prs={e1prs} reason={reason} close={close} />, { kind: 'center', locked: true })
+}
+
+// A session nobody touched for INACTIVITY_MS: kept as a partial workout if any set was logged,
+// discarded otherwise. Exactly one sheet either way. → true if it closed the session.
+export function closeStaleWorkout(now = Date.now()) {
+  const A = S().active
+  if (!isStaleWorkout(A, now)) return false
+  if (setsDoneActive(A) > 0) {
+    doFinishWorkout(true, { end: lastActivityOf(A), reason: 'inactivity' })
+    return true
+  }
+  update(s => { s.active = null })
+  useUI.getState().stopRest()
+  useUI.getState().stopWork()
+  ui().openSheet(close => <>
+    <h3 style={{ margin: '8px 0' }}>{t('Workout discarded')}</h3>
+    <div className="muted small" style={{ marginBottom: 16 }}>{t('No sets were logged and there was no activity for over 2 hours.')}</div>
+    <Button variant="primary" onClick={close}>{t('OK')}</Button>
+  </>, { kind: 'center', locked: true })
+  return true
 }
 
 export function supportSheet() {

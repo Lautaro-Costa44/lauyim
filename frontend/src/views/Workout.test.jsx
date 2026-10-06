@@ -9,18 +9,26 @@ const mocks = vi.hoisted(() => {
     S: null,
     startRest: vi.fn(),
     stopRest: vi.fn(),
+    startWork: vi.fn(),
+    stopWork: vi.fn(),
     topWeightSheet: vi.fn(),
+    workoutCompleteSheet: vi.fn(),
+    confirmSheet: vi.fn(),
+    closeStaleWorkout: vi.fn(),
   }
   state.storeSnapshot = () => ({
     S: state.S,
     user: null,
-    update: mut => mut(state.S),
+    // Mutates a copy, like the real store: a write to the rendered state instead of the draft
+    // is lost here too (audit B2/B3).
+    update: mut => { const next = JSON.parse(JSON.stringify(state.S)); mut(next); state.S = next },
   })
   state.uiSnapshot = () => ({
     work: null,
     startRest: state.startRest,
     stopRest: state.stopRest,
-    startWork: vi.fn(),
+    startWork: state.startWork,
+    stopWork: state.stopWork,
     toast: vi.fn(),
   })
   return state
@@ -44,8 +52,9 @@ vi.mock('../sheets.jsx', () => ({
   exerciseDetailSheet: vi.fn(),
   topWeightSheet: mocks.topWeightSheet,
   finishWorkout: vi.fn(),
-  workoutCompleteSheet: vi.fn(),
-  confirmSheet: vi.fn(),
+  closeStaleWorkout: mocks.closeStaleWorkout,
+  workoutCompleteSheet: mocks.workoutCompleteSheet,
+  confirmSheet: mocks.confirmSheet,
   // Both note sheets belong here even though the tests never open one: Workout.jsx reads
   // sessionNoteSheet during render, so a missing export is a render crash, not a no-op.
   exerciseNoteSheet: vi.fn(),
@@ -152,6 +161,63 @@ describe('Workout set completion flow', () => {
     expect(mocks.topWeightSheet).toHaveBeenCalledWith(1)
     expect(mocks.S.active.cur).toBe(1)
     expect(mocks.startRest).toHaveBeenCalledWith(90)
+  })
+})
+
+describe('session lifecycle (audit phase 1)', () => {
+  const cardio = done => exercise('treadmill', [done], { target: { mode: 'cardio', min: 20, speed: 8 } })
+  const hold = done => ({ id: 'plank', target: { mode: 'time', sec: 45 }, sets: [{ sec: 45, w: 0, done }] })
+
+  it('checks for a stale session as soon as the workout screen mounts', async () => {
+    await mount([exercise('bench', [false])])
+    expect(mocks.closeStaleWorkout).toHaveBeenCalledOnce()
+  })
+
+  it('persists lastActivity on the session itself when a set is checked', async () => {
+    await mount([exercise('bench', [false, false])])
+    mocks.S.active.lastActivity = undefined
+    await toggleSet(0)
+    expect(mocks.S.active.lastActivity).toBeGreaterThan(0)
+  })
+
+  it('opens the finish prompt when the last set of the workout is cardio', async () => {
+    await mount([exercise('bench', [true], { asked: true }), cardio(false)], 1)
+    await toggleSet(0)
+    expect(mocks.workoutCompleteSheet).toHaveBeenCalledOnce()
+  })
+
+  it('opens the finish prompt when the last set of the workout is a timed hold', async () => {
+    await mount([hold(false)])
+    await toggleSet(0)
+    expect(mocks.workoutCompleteSheet).toHaveBeenCalledOnce()
+  })
+
+  it('does not reopen the finish prompt when the last set is unchecked and checked again', async () => {
+    await mount([cardio(false)])
+    await toggleSet(0)
+    await toggleSet(0)
+    await toggleSet(0)
+    expect(mocks.workoutCompleteSheet).toHaveBeenCalledOnce()
+  })
+
+  it('discarding stops a hold that is still running', async () => {
+    await mount([hold(false)])
+    const discard = container.querySelector('.hdr .iconbtn')
+    await act(async () => { discard.dispatchEvent(new dom.Event('click', { bubbles: true })) })
+    expect(mocks.confirmSheet).toHaveBeenCalledOnce()
+    await act(async () => { mocks.confirmSheet.mock.calls[0][0].onConfirm() })
+    expect(mocks.stopWork).toHaveBeenCalled()
+    expect(mocks.S.active).toBeNull()
+  })
+
+  it('a hold that ends after the session is gone does nothing instead of crashing', async () => {
+    await mount([hold(false)])
+    const go = container.querySelector('.setgo')
+    await act(async () => { go.dispatchEvent(new dom.Event('click', { bubbles: true })) })
+    expect(mocks.startWork).toHaveBeenCalledOnce()
+    const onDone = mocks.startWork.mock.calls[0][2]
+    mocks.S.active = null
+    expect(() => onDone(30)).not.toThrow()
   })
 })
 

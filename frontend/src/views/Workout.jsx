@@ -10,7 +10,7 @@ import { t, exerciseNameFor, instrFor } from '../lib/i18n.js'
 import { api } from '../lib/api.js'
 import { setProgressHighWater, supersetFlowStep, restAfterSet, restOnRecheck } from '../lib/supersetFlow.js'
 import Media from '../components/Media.jsx'
-import { startFlow, exercisePicker, exConfigSheet, exerciseDetailSheet, topWeightSheet, finishWorkout, workoutCompleteSheet, confirmSheet, exerciseNoteSheet, sessionNoteSheet } from '../sheets.jsx'
+import { startFlow, exercisePicker, exConfigSheet, exerciseDetailSheet, topWeightSheet, finishWorkout, closeStaleWorkout, workoutCompleteSheet, confirmSheet, exerciseNoteSheet, sessionNoteSheet } from '../sheets.jsx'
 import Icon from '../components/Icon.jsx'
 import { Button, Check, NumberField, Switch } from '../components/ui.jsx'
 import { nextPrescription, applyPrescription, defaultIncrement } from '../lib/progression.js'
@@ -78,7 +78,12 @@ function ExerciseBlock({ entryIdx, compact, onToggle, onField, onAddSet, onRemov
   // Drops/bursts mutate the row in place — same card, not a new set with its own long rest.
   // A planned exercise (see the exercise's "Intensifier" config) arrives with these already
   // filled in by applyIntensifierPlan; these only add/edit/remove entries live from here on.
-  const mutSet = (i, fn) => update(s => { const row = s.active.entries[entryIdx].sets[i]; s.active.entries[entryIdx].sets[i] = fn(row) }, true)
+  const mutSet = (i, fn) => update(s => {
+    const e = s.active?.entries?.[entryIdx]
+    if (!e?.sets?.[i]) return
+    e.sets[i] = fn(e.sets[i])
+    s.active.lastActivity = Date.now()
+  }, true)
   const addDropRow = i => mutSet(i, row => {
     const drops = dropsOf(row)
     const base = drops.length ? drops[drops.length - 1].w : (row.w || 0)
@@ -308,24 +313,13 @@ function ActiveWorkout() {
     progressHighWater.current = A.entries.map(e => e.sets.filter(s => s.done).length)
   }, [A.entries.length])
 
+  // Checked on mount and whenever the app comes back to the foreground: a screen kept awake on
+  // /workout never remounts, so mount alone would miss a session left overnight.
   useEffect(() => {
-    if (!A) return
-    const lastTime = A.lastActivity || A.start
-    if (Date.now() - lastTime > 2 * 3600 * 1000) {
-      const doneSets = A.entries.reduce((n, e) => n + e.sets.filter(s => s.done).length, 0)
-      if (doneSets > 0) {
-        doFinishWorkout(true)
-      } else {
-        update(s => { s.active = null })
-      }
-      useUI.getState().openSheet(close => <>
-        <h3 style={{ margin: '8px 0' }}>{t('Entrenamiento parcial')}</h3>
-        <div className="muted small" style={{ marginBottom: 16 }}>
-          {t('Se marcó tu entrenamiento como completado parcialmente al no registrarse actividad.')}
-        </div>
-        <Button variant="primary" onClick={close}>{t('Okey')}</Button>
-      </>, { kind: 'center', locked: true })
-    }
+    closeStaleWorkout()
+    const onVisible = () => { if (document.visibilityState === 'visible') closeStaleWorkout() }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => document.removeEventListener('visibilitychange', onVisible)
   }, [])
   useEffect(() => {
     if (!isSuperset) return
@@ -336,7 +330,14 @@ function ActiveWorkout() {
   const total = A.entries.reduce((n, e) => n + e.sets.length, 0)
   const done = setsDoneActive(A)
 
-  const mutEntry = (idx, fn) => update(s => { fn(s.active.entries[idx]) }, true)
+  // Every edit to a set counts as activity for the inactivity rule (closeStaleWorkout). Written
+  // on the draft: `A` is the rendered state, and update() would throw a change to it away.
+  const mutEntry = (idx, fn) => update(s => {
+    const e = s.active?.entries?.[idx]
+    if (!e) return
+    fn(e, s.active)
+    s.active.lastActivity = Date.now()
+  }, true)
   // Clearing an optional field drops the key rather than storing null, so a set only carries
   // what was actually logged — in the session, in history and in a backup.
   const setField = (idx, i, field, v) => mutEntry(idx, e => {
@@ -347,7 +348,6 @@ function ActiveWorkout() {
       e.sets = cascadeWeight(e.sets, i, v)
     }
   })
-  const modeAt = idx => modeOf({ ...(A.entries[idx].target || {}), id: A.entries[idx].id })
   const addSet = idx => mutEntry(idx, e => {
     const l = e.sets[e.sets.length - 1]
     const m = modeOf({ ...(e.target || {}), id: e.id })
@@ -409,22 +409,28 @@ function ActiveWorkout() {
   const startTimed = (idx, i) => {
     const e = A.entries[idx]
     useUI.getState().startWork(e.sets[i].sec || 45, exerciseNameFor(exOr(e.id)), elapsed => {
+      // The session may have been finished or discarded while the hold was running.
+      if (!useStore.getState().S.active?.entries?.[idx]?.sets?.[i]) return
       mutEntry(idx, en => { en.sets[i].sec = elapsed })
       if (!useStore.getState().S.active.entries[idx].sets[i].done) toggle(idx, i)
     })
   }
 
+  // Reads the store rather than this render's `S`/`A`: the work timer calls it from a closure
+  // created when the hold started, and the mutator must judge "all done" on the draft that
+  // already has this set checked.
   const toggle = (idx, i) => {
-    const m = modeAt(idx)
+    const st = useStore.getState().S
+    const entry = st.active?.entries?.[idx]
+    if (!entry?.sets?.[i]) return
+    const m = modeOf({ ...(entry.target || {}), id: entry.id })
     const cardioEntry = m === 'cardio'
     let askTop = false, exJustDone = false, workoutDone = false, checked = false
-    mutEntry(idx, e => {
+    mutEntry(idx, (e, draft) => {
       e.sets[i].done = !e.sets[i].done
       checked = e.sets[i].done
-      A.lastActivity = Date.now()
       if (e.sets[i].done) {
-        beep(S.sound, 1040, 0.12); vibrate(30)
-        const allExercisesDone = A.entries.length > 0 && A.entries.every(en => en.sets.length > 0 && en.sets.every(x => x.done))
+        const allExercisesDone = draft.entries.every(en => en.sets.length > 0 && en.sets.every(x => x.done))
         if (allExercisesDone) workoutDone = true
         // Only loaded reps training has a "working weight" worth confirming — a bodyweight
         // plank has nothing to put in that slider, and neither does a set of push-ups
@@ -433,16 +439,18 @@ function ActiveWorkout() {
         if (e.sets.every(x => x.done)) { exJustDone = true; if (loaded && !e.asked) { e.asked = true; askTop = true } }
       }
     })
+    if (checked) { beep(st.sound, 1040, 0.12); vibrate(30) }
+    // Only progress beyond this exercise's high-water mark may navigate, open the finish prompt
+    // or change rest. This prevents an uncheck/re-check of finished work from replaying them.
+    const fresh = useStore.getState().S.active
+    const isNew = checked && !!fresh?.entries[idx] && setProgressHighWater(fresh.entries[idx], progressHighWater.current[idx] || 0).isNew
     // reps: topWeight first (it chains into the finish/continue prompt on the last unit).
     // cardio/timed or already-confirmed: go straight to the prompt.
     if (askTop) topWeightSheet(idx)
-    else if (workoutDone) workoutCompleteSheet()
+    else if (workoutDone && isNew) workoutCompleteSheet()
     else if (exJustDone && cardioEntry) useUI.getState().toast(t('Cardio logged'))
     else if (exJustDone && m === 'time') useUI.getState().toast(t('Hold logged'))
 
-    // Only progress beyond this exercise's high-water mark may navigate or change rest. This
-    // prevents an uncheck/re-check of finished work from replaying the flow side effects.
-    const fresh = useStore.getState().S.active
     if (fresh && checked && fresh.entries[idx]) {
       const progress = setProgressHighWater(fresh.entries[idx], progressHighWater.current[idx] || 0)
       progressHighWater.current[idx] = progress.highWater
@@ -456,7 +464,7 @@ function ActiveWorkout() {
       // A re-check of finished work must not navigate or reopen a sheet, but it may still owe
       // you a rest — see restOnRecheck, and the other half of issue #3.
       if (!progress.isNew) {
-        if (restOnRecheck({ timerRunning: !!useUI.getState().timer, unitDone: freshUnitDone, lastUnit: freshLastUnit })) startRest(S.restSec)
+        if (restOnRecheck({ timerRunning: !!useUI.getState().timer, unitDone: freshUnitDone, lastUnit: freshLastUnit })) startRest(st.restSec)
         return
       }
 
@@ -465,7 +473,7 @@ function ActiveWorkout() {
       // after this set replaces the one that was running, rather than stacking on it.
       if (freshUnitDone) stopRest()
       if (!freshUnit || freshUnit.length <= 1) {
-        if (restAfterSet({ unitDone: freshUnitDone, lastUnit: freshLastUnit })) startRest(S.restSec)
+        if (restAfterSet({ unitDone: freshUnitDone, lastUnit: freshLastUnit })) startRest(st.restSec)
         return
       }
 
@@ -476,11 +484,11 @@ function ActiveWorkout() {
           const nextUnit = freshUnits[freshUnitIdx + 1]
           // The top-weight sheet's explicit "Just close" path owns the choice not to advance.
           if (!askTop && nextUnit?.length) update(s => { if (s.active) s.active.cur = nextUnit[0] })
-          startRest(S.restSec)
+          startRest(st.restSec)
         }
       } else {
         if (step.nextIdx != null) update(s => { if (s.active) s.active.cur = step.nextIdx })
-        if (step.roundDone) startRest(S.restSec)
+        if (step.roundDone) startRest(st.restSec)
       }
     }
   }
@@ -514,7 +522,7 @@ function ActiveWorkout() {
 
   return <div className="narrow">
     <div className="hdr">
-      <button className="iconbtn" aria-label={t('Discard')} onClick={() => confirmSheet({ title: t('Discard workout?'), message: t('The sets you logged in this session will be lost.'), confirmText: t('Discard'), danger: true, onConfirm: () => { update(s => { s.active = null }); stopRest(); nav('/home') } })}><Icon name="xmark" /></button>
+      <button className="iconbtn" aria-label={t('Discard')} onClick={() => confirmSheet({ title: t('Discard workout?'), message: t('The sets you logged in this session will be lost.'), confirmText: t('Discard'), danger: true, onConfirm: () => { useUI.getState().stopWork(); update(s => { s.active = null }); stopRest(); nav('/home') } })}><Icon name="xmark" /></button>
       <div style={{ textAlign: 'center' }}><div style={{ fontWeight: 600 }}>{A.name}</div><div className="sub"><Elapsed start={A.start} /> · {t('{0} sets', done + '/' + total)}</div></div>
       <button className="iconbtn" style={{ color: 'var(--acc)' }} aria-label={t('Finish')} onClick={finishWorkout}><Icon name="check" /></button>
     </div>

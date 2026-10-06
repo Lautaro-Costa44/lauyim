@@ -847,9 +847,10 @@ export default {
   'How the session went as a whole.': 'Cómo fue la sesión en conjunto.',
   'Rest-pause always trains as one warm-up set at this rep count, then one rest-pause work set — "Sets" is not used.': 'Rest-pause siempre entrena como una serie de calentamiento con estas reps y una serie de trabajo rest-pause — «Series» no se usa.',
   'Not signed in': 'No has iniciado sesión',
-  'Entrenamiento parcial': 'Entrenamiento parcial',
-  'Se marcó tu entrenamiento como completado parcialmente al no registrarse actividad.': 'Se marcó tu entrenamiento como completado parcialmente al no registrarse actividad.',
-  'Okey': 'Okey',
+  'Workout discarded': 'Entrenamiento descartado',
+  'No sets were logged and there was no activity for over 2 hours.': 'No había series registradas y pasaron más de 2 horas sin actividad.',
+  'Closed automatically after 2 hours without activity.': 'Se cerró solo tras 2 horas sin actividad.',
+  'OK': 'OK',
   'Backoff sets': 'Series de backoff',
   'Backoff reps': 'Repeticiones de backoff',
 

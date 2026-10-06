@@ -1,3 +1,12 @@
+// A session left untouched this long is closed the next time the workout screen is shown.
+export const INACTIVITY_MS = 2 * 3600 * 1000
+
+// Sessions started before lastActivity was persisted only have `start` to go by.
+export const lastActivityOf = active => active?.lastActivity || active?.start || 0
+
+export const isStaleWorkout = (active, now = Date.now()) =>
+  !!active && now - lastActivityOf(active) > INACTIVITY_MS
+
 // The persisted boundary for a finished session. Keep this pure so compatibility tests can
 // exercise the exact shape the UI writes without mounting React or mutating store state.
 export function buildCompletedWorkout(active, { end = Date.now(), prs = [], snapshotFor, partial = false } = {}) {
