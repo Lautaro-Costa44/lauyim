@@ -856,6 +856,10 @@ export default {
   'This set is empty': 'Esta serie está vacía',
   'Nothing is filled in on this set. Mark it as done anyway?': 'No hay nada cargado en esta serie. ¿Marcarla igual?',
   'Mark as done': 'Marcar igual',
+  'Rest between sets (s)': 'Descanso entre series (s)',
+  'Rest after each set of this exercise. Warm-ups get half.': 'Descanso después de cada serie de este ejercicio. Los calentamientos, la mitad.',
+  '0 uses your default rest ({0} s). Warm-ups get half.': 'Con 0 se usa tu descanso de siempre ({0} s). Los calentamientos, la mitad.',
+  '0 uses your default rest, which is Off.': 'Con 0 se usa tu descanso de siempre, que está apagado.',
   'Backoff sets': 'Series de backoff',
   'Backoff reps': 'Repeticiones de backoff',
 

@@ -24,6 +24,13 @@ describe('what survives a shared plan', () => {
     expect(roundTrip({ warmupSets: 3 }).warmupSets).toBe(3)
   })
 
+  it('carries an exercise rest, clamped, and leaves it out when it follows the default', () => {
+    expect(roundTrip({ restSec: 150 }).restSec).toBe(150)
+    expect(roundTrip({ restSec: 0 })).not.toHaveProperty('restSec')
+    const bundle = { lauyim_plan: 1, name: 'x', routines: [{ id: 'r', name: 'R', ex: [{ id: '0025', sets: 3, reps: 5, restSec: 99999 }] }], week: {}, customEx: [] }
+    expect(parsePlan(bundle).routines[0].ex[0].restSec).toBe(600)
+  })
+
   it('drops an intensifier it does not recognise rather than passing it on', () => {
     expect(roundTrip({ intensifier: { type: 'nonsense', count: 3 } }).intensifier).toBeUndefined()
   })

@@ -265,6 +265,19 @@ describe('guards against losing or faking data (audit phase 2)', () => {
   })
 })
 
+describe('rest per exercise (audit phase 4)', () => {
+  it('rests for the exercise’s own rest after a work set, and half after a warm-up', async () => {
+    await mount([exercise('squat', [false, false], {
+      target: { mode: 'reps', reps: 5, weight: 100, bodyweight: false, restSec: 180 },
+      sets: [{ w: 50, r: 5, phase: 'warmup', done: false }, { w: 100, r: 5, done: false }, { w: 100, r: 5, done: false }],
+    })])
+    await toggleSet(0)
+    expect(mocks.startRest).toHaveBeenLastCalledWith(90)
+    await toggleSet(1)
+    expect(mocks.startRest).toHaveBeenLastCalledWith(180)
+  })
+})
+
 describe('performance (audit phase 3)', () => {
   it('walks the history once per added workout, not on every tap', async () => {
     const rerender = async () => { await act(async () => { root.render(React.createElement(Workout)) }) }

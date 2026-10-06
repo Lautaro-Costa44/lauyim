@@ -52,6 +52,18 @@ export function isEmptySet(set, cfg) {
   if (mode === 'time') return !(set?.sec > 0)
   return !(set?.r > 0) || (!isBw(cfg) && !(set?.w > 0))
 }
+// The longest per-exercise rest the config sheet offers; also the clamp for a plan file.
+export const MAX_REST_SEC = 600
+
+// The rest that follows a completed set: the exercise's own rest if its config sets one,
+// otherwise the global one (0 = Off). A warm-up is a ramp, not work, so it gets half — never
+// under 15 s, never more than the full rest, and still Off when the rest is Off.
+export function restFor(entry, set, S) {
+  const own = entry?.target?.restSec
+  const base = own > 0 ? own : (S?.restSec || 0)
+  if (!(base > 0)) return 0
+  return isWarmupRow(set) ? Math.min(base, Math.max(15, Math.round(base / 2))) : base
+}
 export const isPerSide = cfg => !!(cfg && cfg.side)
 // What one side did, for display only. Half of an odd total is shown as it falls (8.5) rather
 // than rounded away: it means the sides were not even, which is worth seeing.

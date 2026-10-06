@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { modeOf, isTimed, fmtSec, setLabel, defaultConfig, buildSets, freestyleConfig, exLine, workoutVolume, bestWeightFor, bestWeightForEntry, effortOf, stepEffort, capEffort, isBw, isPerSide, sideReps, repStep, cascadeWeight, insertWarmupRow, removeRowAt, workSetsDone, pairAdjacent, unpairSuperset, supersetUnits, applyIntensifierPlan, pinnedNoteFor, exNoteFor, evalWeek, weeklyTarget, markedDoneWorkout, planTargetNow, stampWeekTargets, streakSummary, streakLevel, nextStreakLevel, bestStreak, isEmptySet } from './history.js'
+import { modeOf, isTimed, fmtSec, setLabel, defaultConfig, buildSets, freestyleConfig, exLine, workoutVolume, bestWeightFor, bestWeightForEntry, effortOf, stepEffort, capEffort, isBw, isPerSide, sideReps, repStep, cascadeWeight, insertWarmupRow, removeRowAt, workSetsDone, pairAdjacent, unpairSuperset, supersetUnits, applyIntensifierPlan, pinnedNoteFor, exNoteFor, evalWeek, weeklyTarget, markedDoneWorkout, planTargetNow, stampWeekTargets, streakSummary, streakLevel, nextStreakLevel, bestStreak, isEmptySet, restFor } from './history.js'
 import { localDayStartOf, localNoonOf, workoutTime } from './format.js'
 import { buildCompletedWorkout } from './finish-workout.js'
 import { EXDB } from './exercises.js'
@@ -1095,5 +1095,25 @@ describe('isEmptySet', () => {
     expect(isEmptySet({ min: 0, speed: 8 }, { id: 'x', mode: 'cardio' })).toBe(true)
     expect(isEmptySet({ sec: 30, w: 0 }, { id: 'x', mode: 'time', bodyweight: false })).toBe(false)
     expect(isEmptySet({ sec: 0 }, { id: 'x', mode: 'time' })).toBe(true)
+  })
+})
+
+describe('restFor', () => {
+  const work = { w: 60, r: 5 }
+  const warm = { w: 30, r: 5, phase: 'warmup' }
+  it('uses the exercise rest when its config has one, the default rest otherwise', () => {
+    expect(restFor({ target: { restSec: 180 } }, work, { restSec: 90 })).toBe(180)
+    expect(restFor({ target: {} }, work, { restSec: 90 })).toBe(90)
+    expect(restFor({ target: { restSec: 0 } }, work, { restSec: 90 })).toBe(90)
+  })
+  it('gives a warm-up half, at least 15 s and never more than the full rest', () => {
+    expect(restFor({ target: {} }, warm, { restSec: 90 })).toBe(45)
+    expect(restFor({ target: {} }, warm, { restSec: 20 })).toBe(15)
+    expect(restFor({ target: {} }, warm, { restSec: 10 })).toBe(10)
+  })
+  it('stays Off when the default is Off and the exercise sets none', () => {
+    expect(restFor({ target: {} }, work, { restSec: 0 })).toBe(0)
+    expect(restFor({ target: {} }, warm, { restSec: 0 })).toBe(0)
+    expect(restFor({ target: { restSec: 120 } }, warm, { restSec: 0 })).toBe(60)
   })
 })
