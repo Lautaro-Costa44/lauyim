@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client'
 import { parseHTML } from 'linkedom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import Workout from './Workout.jsx'
+import { bestWeightFor } from '../lib/history.js'
 
 const mocks = vi.hoisted(() => {
   const state = {
@@ -61,6 +62,11 @@ vi.mock('../sheets.jsx', () => ({
   sessionNoteSheet: vi.fn(),
 }))
 vi.mock('../components/Media.jsx', () => ({ default: () => null }))
+// Real implementation, wrapped so a test can count how often the history is walked.
+vi.mock('../lib/history.js', async importOriginal => {
+  const orig = await importOriginal()
+  return { ...orig, bestWeightFor: vi.fn(orig.bestWeightFor) }
+})
 // api.js reads navigator.userAgent at module scope. This file installs its own DOM inside the
 // tests rather than declaring a vitest environment, so it must not depend on an ambient one.
 vi.mock('../lib/api.js', () => ({
@@ -256,6 +262,23 @@ describe('guards against losing or faking data (audit phase 2)', () => {
     await toggleSet(1)
     expect(mocks.confirmSheet).not.toHaveBeenCalled()
     expect(mocks.S.active.entries[0].sets.map(s => s.done)).toEqual([true, false])
+  })
+})
+
+describe('performance (audit phase 3)', () => {
+  it('walks the history once per added workout, not on every tap', async () => {
+    const rerender = async () => { await act(async () => { root.render(React.createElement(Workout)) }) }
+    await mount([exercise('bench', [false, false])])
+    const before = bestWeightFor.mock.calls.length
+    expect(before).toBeGreaterThan(0)
+
+    await toggleSet(0)
+    await rerender()
+    expect(bestWeightFor.mock.calls.length).toBe(before)
+
+    mocks.S = { ...mocks.S, workouts: [{ id: 'w-new', d: '2026-10-01', entries: [] }] }
+    await rerender()
+    expect(bestWeightFor.mock.calls.length).toBe(before + 1)
   })
 })
 

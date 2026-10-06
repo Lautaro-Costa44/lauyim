@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useStore } from '../store/useStore.js'
 import { useUI } from '../store/useUI.js'
@@ -113,14 +113,23 @@ function ExerciseBlock({ entryIdx, compact, onToggle, onField, onAddSet, onRemov
   const mode = modeOf({ ...(entry.target || {}), id: entry.id })
   const cardio = mode === 'cardio'
   const timed = mode === 'time'
-  const last = lastEntryFor(S, entry.id)
+  // These three walk the whole history, and every stepper tap re-renders the block. update()
+  // rebuilds S from JSON, so S.workouts is a new array on every tap and can't be the memo key;
+  // during a session the history only changes by a workout being added or removed.
+  const historyKey = S.workouts.length + ':' + (S.workouts.at(-1)?.id ?? '')
+  const fromHistory = useMemo(() => ({
+    last: lastEntryFor(S, entry.id),
+    pinned: pinnedNoteFor(S, entry.id),
+    bestLogged: bestWeightFor(S, entry.id),
+  }), [historyKey, entry.id])
+  const last = fromHistory.last
   const standingNote = exNoteFor(S, entry.id)
   // Only worth surfacing while there is still work left: once the exercise is finished, a note
   // telling you what to do in it is behind you, and the block is already long.
-  const pinnedNote = entry.sets.some(s => !s.done) ? pinnedNoteFor(S, entry.id) : null
+  const pinnedNote = entry.sets.some(s => !s.done) ? fromHistory.pinned : null
   // The same number the "confirm your working weight" sheet calls your best, so the two
   // never disagree inside one session: heaviest logged set, or the working weight you kept.
-  const best = cardio ? 0 : Math.max(bestWeightFor(S, entry.id), (S.exWeights[entry.id] || {}).w || 0)
+  const best = cardio ? 0 : Math.max(fromHistory.bestLogged, (S.exWeights[entry.id] || {}).w || 0)
   // What the progression policy decided for this session, and why (issue #17). Computed when
   // the session was built so the reason matches the numbers already in the rows.
   const plan = entry.plan

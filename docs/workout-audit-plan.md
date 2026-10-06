@@ -264,7 +264,7 @@ B1, B2, B3, B4, M1, M2, M4, V1–V8: confirmados tal cual están descritos.
 |---|---|
 | 1 Bugs graves + N1–N3 | hecho: `closeStaleWorkout` en `sheets.jsx`, `lastActivity` en el draft, `toggle` lee el store, `stopWork` al descartar/terminar. Tests en `Workout.test.jsx`, `stale-workout.test.jsx` y `finish-workout.test.js` |
 | 2 Bugs medios (M3 según C2) | hecho: confirm al quitar una serie hecha, `isEmptySet` (`history.js`) + confirm al marcar vacía, presencia en `lib/presence.js` montada en `App.jsx`. Tests en `Workout.test.jsx`, `presence.test.jsx`, `history.test.js` |
-| 3 Internas (I1 según C3, I4 según C4) | pendiente |
+| 3 Internas (I1 según C3, I4 según C4) | hecho: `useMemo` en `ExerciseBlock` con clave `largo:último id` (I1). I2 ya quedó resuelto en fase 1 (beep/vibrate fuera del mutador, `A` ya no se muta). I4: todos los textos nuevos de fases 1–2 tienen clave en inglés + `es.js`; no queda nada más en el alcance. Test en `Workout.test.jsx` |
 | 4 Descanso | pendiente |
 | 5 UX de filas | pendiente |
 | 6 Encabezado, tira, swipe | pendiente |
