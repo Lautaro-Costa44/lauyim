@@ -851,6 +851,11 @@ export default {
   'No sets were logged and there was no activity for over 2 hours.': 'No había series registradas y pasaron más de 2 horas sin actividad.',
   'Closed automatically after 2 hours without activity.': 'Se cerró solo tras 2 horas sin actividad.',
   'OK': 'OK',
+  'Remove set?': '¿Quitar serie?',
+  'This set is already logged. Removing it deletes what you recorded.': 'Esta serie ya está registrada. Quitarla borra lo que anotaste.',
+  'This set is empty': 'Esta serie está vacía',
+  'Nothing is filled in on this set. Mark it as done anyway?': 'No hay nada cargado en esta serie. ¿Marcarla igual?',
+  'Mark as done': 'Marcar igual',
   'Backoff sets': 'Series de backoff',
   'Backoff reps': 'Repeticiones de backoff',
 

@@ -76,7 +76,7 @@ function exercise(id, sets, extra = {}) {
   return {
     id,
     target: { mode: 'reps', reps: 5, weight: 60, bodyweight: false },
-    sets: sets.map(done => ({ w: 60, r: 5, done })),
+    sets: sets.map(done => ({ w: 60, r: 5, min: 20, speed: 8, done })),
     ...extra,
   }
 }
@@ -218,6 +218,44 @@ describe('session lifecycle (audit phase 1)', () => {
     const onDone = mocks.startWork.mock.calls[0][2]
     mocks.S.active = null
     expect(() => onDone(30)).not.toThrow()
+  })
+})
+
+describe('guards against losing or faking data (audit phase 2)', () => {
+  const click = async el => { await act(async () => { el.dispatchEvent(new dom.Event('click', { bubbles: true })) }) }
+  const removeSetButton = () => [...container.querySelectorAll('button')].find(b => /Remove set|Quitar serie/.test(b.textContent))
+
+  it('asks before removing a set that is already logged', async () => {
+    await mount([exercise('bench', [true, true])])
+    await click(removeSetButton())
+    expect(mocks.confirmSheet).toHaveBeenCalledOnce()
+    expect(mocks.S.active.entries[0].sets).toHaveLength(2)
+    await act(async () => { mocks.confirmSheet.mock.calls[0][0].onConfirm() })
+    expect(mocks.S.active.entries[0].sets).toHaveLength(1)
+  })
+
+  it('removes an unlogged set without asking', async () => {
+    await mount([exercise('bench', [true, false])])
+    await click(removeSetButton())
+    expect(mocks.confirmSheet).not.toHaveBeenCalled()
+    expect(mocks.S.active.entries[0].sets).toHaveLength(1)
+  })
+
+  it('asks before checking off an empty set, and checks it only on confirm', async () => {
+    await mount([exercise('bench', [false, false], { sets: [{ w: 60, r: 0, done: false }, { w: 60, r: 5, done: false }] })])
+    await toggleSet(0)
+    expect(mocks.confirmSheet).toHaveBeenCalledOnce()
+    expect(mocks.S.active.entries[0].sets[0].done).toBe(false)
+    await act(async () => { mocks.confirmSheet.mock.calls[0][0].onConfirm() })
+    expect(mocks.S.active.entries[0].sets[0].done).toBe(true)
+  })
+
+  it('does not ask for a bodyweight set with no added weight, or when unchecking', async () => {
+    await mount([{ id: 'pushup', target: { mode: 'reps', reps: 10, bodyweight: true }, sets: [{ w: 0, r: 10, done: false }, { w: 0, r: 0, done: true }] }])
+    await toggleSet(0)
+    await toggleSet(1)
+    expect(mocks.confirmSheet).not.toHaveBeenCalled()
+    expect(mocks.S.active.entries[0].sets.map(s => s.done)).toEqual([true, false])
   })
 })
 

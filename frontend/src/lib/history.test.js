@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { modeOf, isTimed, fmtSec, setLabel, defaultConfig, buildSets, freestyleConfig, exLine, workoutVolume, bestWeightFor, bestWeightForEntry, effortOf, stepEffort, capEffort, isBw, isPerSide, sideReps, repStep, cascadeWeight, insertWarmupRow, removeRowAt, workSetsDone, pairAdjacent, unpairSuperset, supersetUnits, applyIntensifierPlan, pinnedNoteFor, exNoteFor, evalWeek, weeklyTarget, markedDoneWorkout, planTargetNow, stampWeekTargets, streakSummary, streakLevel, nextStreakLevel, bestStreak } from './history.js'
+import { modeOf, isTimed, fmtSec, setLabel, defaultConfig, buildSets, freestyleConfig, exLine, workoutVolume, bestWeightFor, bestWeightForEntry, effortOf, stepEffort, capEffort, isBw, isPerSide, sideReps, repStep, cascadeWeight, insertWarmupRow, removeRowAt, workSetsDone, pairAdjacent, unpairSuperset, supersetUnits, applyIntensifierPlan, pinnedNoteFor, exNoteFor, evalWeek, weeklyTarget, markedDoneWorkout, planTargetNow, stampWeekTargets, streakSummary, streakLevel, nextStreakLevel, bestStreak, isEmptySet } from './history.js'
 import { localDayStartOf, localNoonOf, workoutTime } from './format.js'
 import { buildCompletedWorkout } from './finish-workout.js'
 import { EXDB } from './exercises.js'
@@ -1078,3 +1078,22 @@ describe('racha: la semana va con el plan con el que empezó', () => {
   })
 })
 
+
+describe('isEmptySet', () => {
+  const loaded = { id: 'x', mode: 'reps', bodyweight: false }
+  const bw = { id: 'x', mode: 'reps', bodyweight: true }
+  it('reps: needs reps, and weight unless it is bodyweight', () => {
+    expect(isEmptySet({ w: 60, r: 5 }, loaded)).toBe(false)
+    expect(isEmptySet({ w: 60, r: 0 }, loaded)).toBe(true)
+    expect(isEmptySet({ w: 60 }, loaded)).toBe(true)
+    expect(isEmptySet({ w: 0, r: 5 }, loaded)).toBe(true)
+    expect(isEmptySet({ w: 0, r: 10 }, bw)).toBe(false)
+    expect(isEmptySet({ w: 0, r: 0 }, bw)).toBe(true)
+  })
+  it('cardio needs minutes and a hold needs seconds', () => {
+    expect(isEmptySet({ min: 20, speed: 0 }, { id: 'x', mode: 'cardio' })).toBe(false)
+    expect(isEmptySet({ min: 0, speed: 8 }, { id: 'x', mode: 'cardio' })).toBe(true)
+    expect(isEmptySet({ sec: 30, w: 0 }, { id: 'x', mode: 'time', bodyweight: false })).toBe(false)
+    expect(isEmptySet({ sec: 0 }, { id: 'x', mode: 'time' })).toBe(true)
+  })
+})

@@ -3,11 +3,10 @@ import { useNavigate } from 'react-router-dom'
 import { useStore } from '../store/useStore.js'
 import { useUI } from '../store/useUI.js'
 import { exOr } from '../lib/exercises.js'
-import { effectiveRoutine, lastEntryFor, bestWeightFor, buildSets, freestyleConfig, defaultConfig, setsDoneActive, supersetUnits, unitOf, setLabel, modeOf, isBw, isPerSide, sideReps, repStep, EFFORT, effortOf, stepEffort, capEffort, cascadeWeight, insertWarmupRow, removeRowAt, pairAdjacent, unpairSuperset, cleanupSg, applyIntensifierPlan, pinnedNoteFor, exNoteFor } from '../lib/history.js'
+import { effectiveRoutine, lastEntryFor, bestWeightFor, buildSets, freestyleConfig, defaultConfig, setsDoneActive, supersetUnits, unitOf, setLabel, modeOf, isBw, isPerSide, sideReps, repStep, EFFORT, effortOf, stepEffort, capEffort, cascadeWeight, insertWarmupRow, removeRowAt, pairAdjacent, unpairSuperset, cleanupSg, applyIntensifierPlan, pinnedNoteFor, exNoteFor, isEmptySet } from '../lib/history.js'
 import { fmtNum, fmtDate, todayISO, exCount, DAYN } from '../lib/format.js'
 import { beep, vibrate } from '../lib/sound.js'
 import { t, exerciseNameFor, instrFor } from '../lib/i18n.js'
-import { api } from '../lib/api.js'
 import { setProgressHighWater, supersetFlowStep, restAfterSet, restOnRecheck } from '../lib/supersetFlow.js'
 import Media from '../components/Media.jsx'
 import { startFlow, exercisePicker, exConfigSheet, exerciseDetailSheet, topWeightSheet, finishWorkout, closeStaleWorkout, workoutCompleteSheet, confirmSheet, exerciseNoteSheet, sessionNoteSheet } from '../sheets.jsx'
@@ -355,7 +354,12 @@ function ActiveWorkout() {
     else if (m === 'time') e.sets.push({ sec: l ? l.sec : (e.target.sec || 45), w: l ? (l.w || 0) : (e.target.weight || 0), done: false })
     else e.sets.push({ w: l ? l.w : 0, r: l ? l.r : e.target.reps, done: false })
   })
-  const removeSet = idx => mutEntry(idx, e => { if (e.sets.length > 1) e.sets.pop() })
+  const removeSet = idx => {
+    const pop = () => mutEntry(idx, e => { if (e.sets.length > 1) e.sets.pop() })
+    const last = A.entries[idx]?.sets.at(-1)
+    if (!last?.done) return pop()
+    confirmSheet({ title: t('Remove set?'), message: t('This set is already logged. Removing it deletes what you recorded.'), confirmText: t('Remove'), danger: true, onConfirm: pop })
+  }
   const addWarmup = idx => mutEntry(idx, e => {
     const m = modeOf({ ...(e.target || {}), id: e.id })
     e.sets = insertWarmupRow(e.sets, m, e.target || {}, defaultIncrement(e.id, S.unit))
@@ -416,10 +420,22 @@ function ActiveWorkout() {
     })
   }
 
+  // Checking off an empty set asks first; unchecking never does.
+  const toggle = (idx, i) => {
+    const e = useStore.getState().S.active?.entries?.[idx]
+    const set = e?.sets?.[i]
+    if (!set) return
+    if (!set.done && isEmptySet(set, { ...(e.target || {}), id: e.id })) {
+      confirmSheet({ title: t('This set is empty'), message: t('Nothing is filled in on this set. Mark it as done anyway?'), confirmText: t('Mark as done'), onConfirm: () => applyToggle(idx, i) })
+      return
+    }
+    applyToggle(idx, i)
+  }
+
   // Reads the store rather than this render's `S`/`A`: the work timer calls it from a closure
   // created when the hold started, and the mutator must judge "all done" on the draft that
   // already has this set checked.
-  const toggle = (idx, i) => {
+  const applyToggle = (idx, i) => {
     const st = useStore.getState().S
     const entry = st.active?.entries?.[idx]
     if (!entry?.sets?.[i]) return
@@ -492,33 +508,6 @@ function ActiveWorkout() {
       }
     }
   }
-
-  // Live-presence heartbeat so the admin dashboard can show who's training now. Signed-in only —
-  // guests have no server session. Reads fresh state each tick so progress stays current.
-  useEffect(() => {
-    if (!useStore.getState().user) return
-    let stopped = false
-    const ping = active => {
-      const A2 = useStore.getState().S.active
-      if (!A2) return
-      const u = supersetUnits(A2.entries)
-      const c = Math.min(A2.cur, Math.max(0, A2.entries.length - 1))
-      const ui = u.findIndex(x => x.includes(c))
-      const tot = A2.entries.reduce((n, e) => n + e.sets.length, 0)
-      api('/api/activity', { method: 'POST', body: JSON.stringify({
-        active, name: A2.name, exIdx: ui + 1, exTotal: u.length,
-        setsDone: setsDoneActive(A2), setsTotal: tot, startedAt: A2.start
-      }) }).catch(() => {})
-    }
-    ping(true)
-    const iv = setInterval(() => { if (!stopped) ping(true) }, 20000)
-    return () => {
-      stopped = true; clearInterval(iv)
-      // best-effort "left" signal: sendBeacon survives a tab close, fetch covers in-app nav
-      try { navigator.sendBeacon?.('/api/activity', new Blob([JSON.stringify({ active: false })], { type: 'application/json' })) } catch { /* */ }
-      api('/api/activity', { method: 'POST', body: JSON.stringify({ active: false }) }).catch(() => {})
-    }
-  }, [])
 
   return <div className="narrow">
     <div className="hdr">

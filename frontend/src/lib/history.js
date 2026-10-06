@@ -44,6 +44,14 @@ export const isTimed = cfg => modeOf(cfg) === 'time'
 // Both are absent on every plan, workout and backup written before they existed, and absent
 // reads as false, so nothing needs migrating.
 export const isBw = cfg => (cfg && cfg.bodyweight != null ? !!cfg.bodyweight : isBodyweightEq(cfg && cfg.id))
+// A set with nothing in it — checking it off would log a zero into history and progression.
+// Weight only counts for loaded reps work: a bodyweight set has no weight column to fill in.
+export function isEmptySet(set, cfg) {
+  const mode = modeOf(cfg)
+  if (mode === 'cardio') return !(set?.min > 0)
+  if (mode === 'time') return !(set?.sec > 0)
+  return !(set?.r > 0) || (!isBw(cfg) && !(set?.w > 0))
+}
 export const isPerSide = cfg => !!(cfg && cfg.side)
 // What one side did, for display only. Half of an odd total is shown as it falls (8.5) rather
 // than rounded away: it means the sides were not even, which is worth seeing.
