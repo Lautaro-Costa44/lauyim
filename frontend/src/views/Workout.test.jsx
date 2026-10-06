@@ -17,6 +17,7 @@ const mocks = vi.hoisted(() => {
     confirmSheet: vi.fn(),
     closeStaleWorkout: vi.fn(),
     openSheet: vi.fn(),
+    exercisePicker: vi.fn(),
   }
   state.storeSnapshot = () => ({
     S: state.S,
@@ -51,7 +52,7 @@ vi.mock('../store/useUI.js', () => {
 vi.mock('react-router-dom', () => ({ useNavigate: () => () => {} }))
 vi.mock('../sheets.jsx', () => ({
   startFlow: vi.fn(),
-  exercisePicker: vi.fn(),
+  exercisePicker: mocks.exercisePicker,
   exConfigSheet: vi.fn(),
   exerciseDetailSheet: vi.fn(),
   topWeightSheet: mocks.topWeightSheet,
@@ -338,7 +339,7 @@ describe('header, strip and navigation (audit phase 6)', () => {
     await mount(three())
     expect(container.querySelector('.xstrip')).toBeNull()
     await click(container.querySelector('.wseg'))
-    const units = container.querySelectorAll('.xs-unit')
+    const units = container.querySelectorAll('.xs-main')
     expect(units).toHaveLength(3)
     await click(units[2])
     expect(mocks.S.active.cur).toBe(3)
@@ -352,6 +353,56 @@ describe('header, strip and navigation (audit phase 6)', () => {
     expect(prev.disabled).toBe(true)
     await click(next)
     expect(mocks.S.active.cur).toBe(1)
+  })
+})
+
+describe('replace and reorder from the strip (audit phase 7)', () => {
+  const session = () => [exercise('0025', [true]), exercise('0047', [false], { sg: 'g' }), exercise('0251', [false], { sg: 'g' }), exercise('0334', [false])]
+  const openStrip = async () => { await click(container.querySelector('.wseg')) }
+  const unitMenu = async k => { await click(container.querySelectorAll('.xs-more')[k]); return openedSheet() }
+
+  it('replaces an exercise picked from the library, keeping its superset slot', async () => {
+    await mount(session(), 1)
+    await openStrip()
+    const menu = await unitMenu(1)
+    await click(itemByText(menu, /Pick from the library|Elegir de la biblioteca/))
+    expect(mocks.exercisePicker).toHaveBeenCalledOnce()
+    await act(async () => { mocks.exercisePicker.mock.calls[0][0]({ id: '0652' }) })
+    expect(mocks.confirmSheet).not.toHaveBeenCalled()
+    expect(mocks.S.active.entries[1]).toMatchObject({ id: '0652', sg: 'g' })
+    expect(mocks.S.active.entries[1].sets.every(s => !s.done)).toBe(true)
+  })
+
+  it('asks before replacing an exercise that has logged sets', async () => {
+    await mount(session())
+    await openStrip()
+    await click(itemByText(await unitMenu(0), /Pick from the library|Elegir de la biblioteca/))
+    await act(async () => { mocks.exercisePicker.mock.calls[0][0]({ id: '0652' }) })
+    expect(mocks.confirmSheet).toHaveBeenCalledOnce()
+    expect(mocks.S.active.entries[0].id).toBe('0025')
+  })
+
+  it('removes through the strip menu with the usual confirmation', async () => {
+    await mount(session())
+    await openStrip()
+    await click(itemByText(await unitMenu(2), /^Remove$|^Quitar$/))
+    expect(mocks.confirmSheet).toHaveBeenCalledOnce()
+    await act(async () => { mocks.confirmSheet.mock.calls[0][0].onConfirm() })
+    expect(mocks.S.active.entries.map(e => e.id)).toEqual(['0025', '0047', '0251'])
+  })
+
+  it('reorders whole units and keeps the current exercise selected', async () => {
+    await mount(session(), 1)
+    await openStrip()
+    await click(container.querySelector('.xs-reorder'))
+    const sheet = await openedSheet()
+    const handle = sheet.querySelectorAll('.drag-handle')[0]
+    const down = new dom.Event('keydown', { bubbles: true })
+    Object.defineProperty(down, 'key', { value: 'ArrowDown' })
+    await act(async () => { handle.dispatchEvent(down) })
+    expect(mocks.S.active.entries.map(e => e.id)).toEqual(['0047', '0251', '0025', '0334'])
+    expect(mocks.S.active.entries[0].sg).toBe('g')
+    expect(mocks.S.active.cur).toBe(0)
   })
 })
 

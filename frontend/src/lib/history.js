@@ -183,6 +183,32 @@ export function exLine(cfg, unit) {
   return `${n} × ${repsVal}${load}${split}`
 }
 
+// The session's units in a new order. `order` lists the old unit indexes (supersetUnits) in
+// their new positions; a superset moves as one. `map[oldIdx]` is each entry's new index, so the
+// caller can carry the current exercise across.
+export function reorderUnits(entries, order) {
+  const units = supersetUnits(entries)
+  if (order.length !== units.length || new Set(order).size !== units.length || order.some(k => !units[k])) {
+    throw new RangeError('order must list every unit exactly once')
+  }
+  const map = []
+  const next = []
+  for (const k of order) for (const i of units[k]) { map[i] = next.length; next.push(entries[i]) }
+  return { entries: next, map }
+}
+
+// A new exercise in place of `old` mid-session: the target it was last trained with (like a
+// freestyle add), as many work sets as the one it replaces, rows built from its own history.
+// It keeps the superset slot. Nothing logged on the old exercise carries over.
+export function replacementEntry(S, old, newId, step) {
+  const seed = freestyleConfig(S, { id: newId, ...defaultConfig(newId) })
+  const workSets = (old?.sets || []).filter(s => !isWarmupRow(s)).length
+  const { id: _id, ...target } = { ...seed, sets: Math.max(1, workSets || seed.sets || 1) }
+  const full = { ...target, id: newId, effort: S.effort }
+  const sets = applyIntensifierPlan(buildSets(S, full, { step, preferLast: true }), full)
+  return { id: newId, ...(old?.sg ? { sg: old.sg } : {}), target, plan: null, sets }
+}
+
 // Drop superset ids that no longer have an adjacent partner (after unlink/reorder/remove).
 export function cleanupSg(ex) {
   ex.forEach((e, i) => {

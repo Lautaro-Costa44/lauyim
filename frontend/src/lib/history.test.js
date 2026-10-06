@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { modeOf, isTimed, fmtSec, setLabel, defaultConfig, buildSets, freestyleConfig, exLine, workoutVolume, bestWeightFor, bestWeightForEntry, effortOf, stepEffort, capEffort, isBw, isPerSide, sideReps, repStep, cascadeWeight, insertWarmupRow, removeRowAt, workSetsDone, pairAdjacent, unpairSuperset, supersetUnits, applyIntensifierPlan, pinnedNoteFor, exNoteFor, evalWeek, weeklyTarget, markedDoneWorkout, planTargetNow, stampWeekTargets, streakSummary, streakLevel, nextStreakLevel, bestStreak, isEmptySet, restFor } from './history.js'
+import { modeOf, isTimed, fmtSec, setLabel, defaultConfig, buildSets, freestyleConfig, exLine, workoutVolume, bestWeightFor, bestWeightForEntry, effortOf, stepEffort, capEffort, isBw, isPerSide, sideReps, repStep, cascadeWeight, insertWarmupRow, removeRowAt, workSetsDone, pairAdjacent, unpairSuperset, supersetUnits, applyIntensifierPlan, pinnedNoteFor, exNoteFor, evalWeek, weeklyTarget, markedDoneWorkout, planTargetNow, stampWeekTargets, streakSummary, streakLevel, nextStreakLevel, bestStreak, isEmptySet, restFor, reorderUnits, replacementEntry } from './history.js'
 import { localDayStartOf, localNoonOf, workoutTime } from './format.js'
 import { buildCompletedWorkout } from './finish-workout.js'
 import { EXDB } from './exercises.js'
@@ -1115,5 +1115,34 @@ describe('restFor', () => {
     expect(restFor({ target: {} }, work, { restSec: 0 })).toBe(0)
     expect(restFor({ target: {} }, warm, { restSec: 0 })).toBe(0)
     expect(restFor({ target: { restSec: 120 } }, warm, { restSec: 0 })).toBe(60)
+  })
+})
+
+describe('reorderUnits', () => {
+  const e = (id, sg) => ({ id, ...(sg ? { sg } : {}), sets: [] })
+  const list = [e('a'), e('b', 'g'), e('c', 'g'), e('d')]
+  it('moves a superset as one unit and maps every old index to its new one', () => {
+    const { entries, map } = reorderUnits(list, [2, 1, 0])
+    expect(entries.map(x => x.id)).toEqual(['d', 'b', 'c', 'a'])
+    expect(map).toEqual([3, 1, 2, 0])
+  })
+  it('refuses an order that drops or repeats a unit', () => {
+    expect(() => reorderUnits(list, [0, 1])).toThrow(RangeError)
+    expect(() => reorderUnits(list, [0, 0, 1])).toThrow(RangeError)
+  })
+})
+
+describe('replacementEntry', () => {
+  const S = { workouts: [], exWeights: {}, unit: 'kg', effort: 'none' }
+  const old = { id: '0025', sg: 'g1', target: { mode: 'reps', sets: 4 }, sets: [
+    { w: 20, r: 8, phase: 'warmup', done: true }, { w: 60, r: 8, done: true }, { w: 60, r: 8, done: false }, { w: 60, r: 8, done: false },
+  ] }
+  it('keeps the superset slot and the number of work sets, with nothing logged', () => {
+    const next = replacementEntry(S, old, '0047', 2.5)
+    expect(next.id).toBe('0047')
+    expect(next.sg).toBe('g1')
+    expect(next.sets).toHaveLength(3)
+    expect(next.sets.every(s => !s.done)).toBe(true)
+    expect(next.target).not.toHaveProperty('id')
   })
 })

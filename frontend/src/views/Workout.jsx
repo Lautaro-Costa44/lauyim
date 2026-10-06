@@ -2,14 +2,17 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useStore } from '../store/useStore.js'
 import { useUI } from '../store/useUI.js'
-import { exOr, imgSrc, gifSrc } from '../lib/exercises.js'
-import { effectiveRoutine, lastEntryFor, bestWeightFor, buildSets, freestyleConfig, defaultConfig, setsDoneActive, supersetUnits, unitOf, setLabel, modeOf, isBw, isPerSide, sideReps, repStep, EFFORT, effortOf, cascadeWeight, insertWarmupRow, removeRowAt, pairAdjacent, unpairSuperset, cleanupSg, applyIntensifierPlan, pinnedNoteFor, exNoteFor, isEmptySet, restFor } from '../lib/history.js'
+import { exOr, imgSrc, gifSrc, allExercises, isCardio, isStretch } from '../lib/exercises.js'
+import { exAvailable } from '../lib/equipment.js'
+import { effectiveRoutine, lastEntryFor, bestWeightFor, buildSets, freestyleConfig, defaultConfig, setsDoneActive, supersetUnits, unitOf, setLabel, modeOf, isBw, isPerSide, sideReps, repStep, EFFORT, effortOf, cascadeWeight, insertWarmupRow, removeRowAt, pairAdjacent, unpairSuperset, cleanupSg, applyIntensifierPlan, pinnedNoteFor, exNoteFor, isEmptySet, restFor, reorderUnits, replacementEntry } from '../lib/history.js'
 import { fmtNum, fmtDate, todayISO, exCount, DAYN } from '../lib/format.js'
 import { beep, vibrate } from '../lib/sound.js'
 import { t, exerciseNameFor, instrFor } from '../lib/i18n.js'
 import { setProgressHighWater, supersetFlowStep, restAfterSet, restOnRecheck } from '../lib/supersetFlow.js'
 import Media from '../components/Media.jsx'
 import ExerciseStrip from '../components/ExerciseStrip.jsx'
+import ExerciseReplacementSheet from '../components/ExerciseReplacementSheet.jsx'
+import { useDragReorder } from '../components/useDragReorder.js'
 import { useSwipeNav } from '../lib/useSwipeNav.js'
 import { canPrefetch, prefetchImages, whenIdle } from '../lib/net.js'
 import { exerciseGifsOn } from '../lib/exercise-media.js'
@@ -88,6 +91,27 @@ function EffortPicker({ kind, value, onPick }) {
     </div>
     <div style={{ height: 14 }} />
     <Button variant="ghost" className="dim" onClick={() => onPick(null)}>{t('Clear effort')}</Button>
+  </>
+}
+
+/* ---------- reorder the session: a vertical list with handles (a superset moves as one) ---------- */
+function ReorderSheet({ onCommit }) {
+  const entries = useStore(s => s.S.active?.entries) || []
+  const units = supersetUnits(entries)
+  const ids = units.map(u => u.join('+'))
+  const drag = useDragReorder(ids, next => onCommit(next.map(id => ids.indexOf(id))))
+  return <>
+    <h3>{t('Reorder exercises')}</h3>
+    <div className="muted small" style={{ marginBottom: 12 }}>{t('Drag by the handle. A superset moves as one.')}</div>
+    <div className="list">
+      {drag.order.map(id => {
+        const names = units[ids.indexOf(id)].map(i => exerciseNameFor(exOr(entries[i].id))).join(' + ')
+        return <div key={id} ref={drag.rowRef(id)} className={'reo-row' + (drag.draggingId === id ? ' dragging' : '')}>
+          <div className="grow capitalize">{names}</div>
+          <span className="drag-handle" role="button" tabIndex={0} aria-label={t('Move {0}', names)} {...drag.handleProps(id)}><Icon name="grip" /></span>
+        </div>
+      })}
+    </div>
   </>
 }
 
@@ -362,12 +386,13 @@ function ActiveWorkout() {
   // next exercise in the group, then back up to the first exercise of the next round.
   const exRefs = useRef({})
   const progressHighWater = useRef(A.entries.map(e => e.sets.filter(s => s.done).length))
-  // The marks are index-keyed, and removing an exercise shifts every index above it down
-  // (removeActiveExercise splices). Re-baseline whenever the list length changes, otherwise a
-  // shifted exercise inherits its predecessor's mark and its real progress reads as a re-check.
+  // The marks are index-keyed, and removing, reordering or replacing an exercise moves what sits
+  // at each index. Re-baseline whenever the list changes, otherwise a moved exercise inherits
+  // another one's mark and its real progress reads as a re-check.
+  const entriesKey = A.entries.map(e => e.id).join(',')
   useEffect(() => {
     progressHighWater.current = A.entries.map(e => e.sets.filter(s => s.done).length)
-  }, [A.entries.length])
+  }, [entriesKey])
 
   // Checked on mount and whenever the app comes back to the foreground: a screen kept awake on
   // /workout never remounts, so mount alone would miss a session left overnight.
@@ -506,6 +531,65 @@ function ActiveWorkout() {
     } else confirmRemoveExercise(cur)
   }
 
+  // Replacing or reordering moves what sits at each index; a hold being timed is tied to its
+  // index, so neither is offered until the hold is over.
+  const busy = () => {
+    if (!useUI.getState().work) return false
+    useUI.getState().toast(t('Finish the timed set first'))
+    return true
+  }
+  const replaceExercise = (idx, newId) => {
+    const old = useStore.getState().S.active?.entries?.[idx]
+    if (!old || old.id === newId || busy()) return
+    const apply = () => update(s => {
+      if (!s.active?.entries?.[idx]) return
+      s.active.entries[idx] = replacementEntry(s, s.active.entries[idx], newId, defaultIncrement(newId, s.unit))
+      s.active.lastActivity = Date.now()
+    })
+    if (!old.sets.some(x => x.done)) return apply()
+    confirmSheet({
+      title: t('Replace {0}?', exerciseNameFor(exOr(old.id))),
+      message: t('The sets you logged for this exercise in this session will be lost.'),
+      confirmText: t('Replace'), danger: true, onConfirm: apply,
+    })
+  }
+  const suggestReplacement = idx => {
+    const e = A.entries[idx]
+    const ex = exOr(e.id)
+    useUI.getState().openSheet(close => <ExerciseReplacementSheet exActual={ex}
+      poolSeguro={allExercises(S).filter(x => exAvailable(S, x))} usadosEnSemana={new Set(A.entries.map(x => x.id))}
+      tipo={isCardio(ex) ? 'cardio' : isStretch(ex) ? 'stretch' : 'normal'}
+      onReemplazar={alt => replaceExercise(idx, alt.id)} close={close} />)
+  }
+  const unitMenu = k => {
+    const u = units[k]
+    if (!u) return
+    const named = (label, idx) => u.length > 1 ? label + ' · ' + exerciseNameFor(exOr(A.entries[idx].id)) : label
+    useUI.getState().openSheet(close => <>
+      <h3 className="capitalize">{u.map(i => exerciseNameFor(exOr(A.entries[i].id))).join(' + ')}</h3>
+      <div className="list">
+        {u.map(idx => [
+          <div key={'s' + idx} className="item" onClick={() => { close(); if (!busy()) suggestReplacement(idx) }}>
+            <span className="lrow-i"><Icon name="reset" /></span><div className="grow"><div className="tt">{named(t('Replace'), idx)}</div></div></div>,
+          <div key={'p' + idx} className="item" onClick={() => { close(); if (!busy()) exercisePicker(ex => replaceExercise(idx, ex.id)) }}>
+            <span className="lrow-i"><Icon name="list" /></span><div className="grow"><div className="tt">{named(t('Pick from the library'), idx)}</div></div></div>,
+          <div key={'r' + idx} className="item" style={{ color: 'var(--red)' }} onClick={() => { close(); if (!busy()) confirmRemoveExercise(idx) }}>
+            <span className="lrow-i"><Icon name="trash" /></span><div className="grow"><div className="tt">{named(t('Remove'), idx)}</div></div></div>,
+        ])}
+      </div>
+    </>)
+  }
+  const reorderSheet = () => {
+    if (busy()) return
+    useUI.getState().openSheet(() => <ReorderSheet onCommit={order => update(s => {
+      if (!s.active) return
+      const { entries, map } = reorderUnits(s.active.entries, order)
+      s.active.entries = entries
+      cleanupSg(s.active.entries)
+      s.active.cur = map[s.active.cur] ?? 0
+    })} />)
+  }
+
   // A timed set is held, not typed. The work timer records what was actually held — an early
   // finish logs 0:38 of a 0:45 target rather than crediting the full prescription — and then
   // checks the set off through the normal path, so rest, supersets and the finish prompt all
@@ -638,7 +722,7 @@ function ActiveWorkout() {
       <span className="wseg-lbl">{isSuperset ? t('Superset {0} / {1}', unitIdx + 1, units.length) : t('Exercise {0} / {1}', unitIdx + 1, units.length)}<Icon name="chevronDown" /></span>
     </button> : <div className="wprog" />}
     {stripOpen && A.entries.length > 0 && <ExerciseStrip entries={A.entries} units={units} current={unitIdx}
-      onJump={k => { setStripOpen(false); goToUnit(k) }} />}
+      onJump={k => { setStripOpen(false); goToUnit(k) }} onMore={unitMenu} onReorder={reorderSheet} />}
 
     <div ref={cardRef} className={'wcard' + (swipe.dragging ? ' dragging' : '')} style={swipe.dx ? { transform: `translateX(${swipe.dx}px)` } : undefined}>
     {A.entries.length ? <div key={unitIdx} className={navDir ? 'wcard-in ' + navDir : undefined}>
