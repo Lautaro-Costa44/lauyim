@@ -143,10 +143,12 @@ describe('modeOf', () => {
     expect(modeOf(undefined)).toBe('reps')
   })
 
-  it('lets an explicit mode win over the body part', () => {
+  it('lets an explicit mode win over the body part, except on cardio', () => {
     expect(modeOf({ id: LIFT, mode: 'time' })).toBe('time')
-    expect(modeOf({ id: CARDIO, mode: 'reps' })).toBe('reps')
-    expect(modeOf({ id: CARDIO, mode: 'time' })).toBe('time')
+    // The config sheet only ever offers a cardio exercise the cardio form, so a stale mode on
+    // one (a session started before the config changed) must not turn it into weight × reps.
+    expect(modeOf({ id: CARDIO, mode: 'reps' })).toBe('cardio')
+    expect(modeOf({ id: CARDIO, mode: 'time' })).toBe('cardio')
   })
 
   it('ignores a mode it does not know rather than trusting a bad file', () => {

@@ -24,6 +24,9 @@ import { t } from './i18n-core.js'
 // An entry without `mode` behaves exactly as before, so every existing plan, workout and
 // plan file is read unchanged and nothing needs migrating.
 export function modeOf(cfg) {
+  // A cardio exercise is always logged as cardio, whatever mode a stale config still carries —
+  // the config sheet only ever offers it the cardio form, so the workout must agree with it.
+  if (isCardio(cfg && cfg.id)) return 'cardio'
   const m = cfg && cfg.mode
   if (m === 'reps' || m === 'time' || m === 'cardio') return m
   return isCardio(cfg && cfg.id) ? 'cardio' : 'reps'
