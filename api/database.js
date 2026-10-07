@@ -2854,6 +2854,9 @@ function mergePlan(db, fichaId, targetId, keepBilling) {
   if (countCredentials(fichaId) > 0) return { error: 'ficha_has_app' };
   if (countCredentials(targetId) < 1) return { error: 'target_without_app' };
   if (target.role_id || target.owner === 1) return { error: 'target_is_staff' };
+  // Una ficha con rol: al unirla el rol se perdería con la ficha, y pasarlo a la cuenta sería dar
+  // un rol sin el permiso de asignar roles. Primero se le quita.
+  if (ficha.role_id) return { error: 'ficha_has_role' };
 
   const billingRow = id => db.prepare(`
     SELECT mb.plan_id, mb.due_date, mb.trial_until, p.name AS plan_name

@@ -14,6 +14,7 @@ import { confirmSheet } from '../../sheets.jsx'
 import { useAdmin } from './context.js'
 import { RoleTag, canAssign, peopleText } from './roles-common.jsx'
 import { nickSuffix } from '../../lib/member-name.js'
+import { NoAppBadge } from './members/common.jsx'
 
 const MAX_ROLE_NAME = 30
 
@@ -159,10 +160,11 @@ function RoleEditor({ role, catalog, roles, close, onSaved }) {
 }
 
 // Tocar asigna este rol (reemplaza el que tenía); tocar a quien ya lo tiene lo deja sin rol. Solo
-// cuentas activas con la app: no el owner, ni pendientes, ni desactivadas, ni fichas sin celular.
+// cuentas activas: no el owner, ni pendientes, ni desactivadas. Las fichas sin app también (con su
+// etiqueta): al vincular el celular entran con el rol.
 function AssignSheet({ role, users, close, onChanged }) {
   const toast = useUI(s => s.toast)
-  const [list, setList] = useState(() => (users || []).filter(u => !u.owner && !u.pending && !u.disabled && u.hasApp))
+  const [list, setList] = useState(() => (users || []).filter(u => !u.owner && !u.pending && !u.disabled))
   const [q, setQ] = useState('')
   const [busy, setBusy] = useState(null)
   const needle = q.trim().toLocaleLowerCase('es')
@@ -190,12 +192,13 @@ function AssignSheet({ role, users, close, onChanged }) {
         const has = u.role?.id === role.id
         return <button key={u.id} type="button" className={'lrow tap' + (has ? ' on' : '')} disabled={busy === u.id} aria-pressed={has} onClick={() => toggle(u)}>
           {/* Como en Usuarios: "Juan Fernández [Juani]", el usuario en gris (una vez si son iguales). */}
-          <span className="lrow-m"><span className="lrow-t">{u.fullName || u.name}{nickSuffix({ fullName: u.fullName, nick: u.name }) && <span className="unick"> [{u.name}]</span>}</span>
+          <span className="lrow-m"><span className="lrow-t">{u.fullName || u.name}{nickSuffix({ fullName: u.fullName, nick: u.name }) && <span className="unick"> [{u.name}]</span>}
+            {u.hasApp === false && <NoAppBadge />}</span>
             {u.role && !has && <span className="lrow-s"><RoleTag role={u.role} /></span>}</span>
           {has && <Icon name="check" className="lrow-k" />}
         </button>
       })}
-      {!shown.length && <div className="empty small">{needle ? t('Nadie con ese nombre.') : t('No hay cuentas activas con la app.')}</div>}
+      {!shown.length && <div className="empty small">{needle ? t('Nadie con ese nombre.') : t('No hay cuentas activas.')}</div>}
     </div>
     <Button style={{ width: '100%', marginTop: 12 }} onClick={close}>{t('Listo')}</Button>
   </div>

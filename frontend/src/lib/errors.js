@@ -95,6 +95,7 @@ export const ERROR_TEXTS = {
   target_not_found: 'La cuenta no existe.',
   target_without_app: 'La cuenta elegida no tiene la app.',
   target_is_staff: 'No se puede unir con una cuenta del staff.',
+  ficha_has_role: 'Quitale el rol a la ficha antes de unirla.',
   // cuotas y pruebas
   billing_disabled: 'El cobro de cuotas está desactivado.',
   trial_requires_dni: 'La prueba necesita el DNI del socio (una por persona).',

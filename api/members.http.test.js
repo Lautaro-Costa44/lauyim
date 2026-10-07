@@ -383,6 +383,23 @@ test('merge: precondiciones por HTTP (cualquier admin puede)', async () => {
   assert.equal((await call('adm', 'POST', `/api/admin/users/${clean}/merge`, { targetId: 'acc3' })).status, 200);
 });
 
+test('ficha sin app con rol: se le asigna, su código de vinculación sale igual y no se puede unir hasta quitarle el rol', async () => {
+  const fichaId = await newFicha('40777888');
+  const role = (await call('owner', 'GET', '/api/admin/roles')).body.roles.find(r => !r.builtin);
+  assert.ok(role, 'hay un rol que no es el de fábrica');
+  const set = await call('owner', 'POST', '/api/admin/users/role', { userId: fichaId, roleId: role.id });
+  assert.equal(set.status, 200, JSON.stringify(set.body));
+  assert.equal(set.body.role.id, role.id);
+  assert.equal((await call('adm', 'POST', `/api/admin/users/${fichaId}/link-code`)).status, 200);
+  const blocked = await call('adm', 'POST', `/api/admin/users/${fichaId}/merge`, { targetId: 'acc3' });
+  assert.deepEqual([blocked.status, blocked.body.error], [409, 'ficha_has_role']);
+  assert.equal(blocked.body.message, 'Quitale el rol a la ficha antes de unirla');
+  assert.ok(sql('SELECT id FROM users WHERE id = ?', fichaId).length);
+  // Sin el rol, la unión sigue con sus reglas de siempre (acá, DNI distinto al de la cuenta).
+  await call('owner', 'POST', '/api/admin/users/role', { userId: fichaId, roleId: null });
+  assert.equal((await call('adm', 'POST', `/api/admin/users/${fichaId}/merge`, { targetId: 'acc3' })).body.error, 'dni_conflict');
+});
+
 test('auditoría: eventos nuevos, DNI enmascarado, nunca el celular ni el DNI completo', async () => {
   const log = auditLog();
   for (const ev of ['admin.member.create', 'admin.member.profile_update', 'admin.member.link_code', 'admin.member.link_code_revoke',

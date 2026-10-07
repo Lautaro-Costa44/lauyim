@@ -311,6 +311,8 @@ describe('detalle de una ficha sin app', () => {
     expect(sheet.textContent).toContain('Generar código de vinculación')
     expect(sheet.textContent).toContain('Vincular con cuenta existente')
     expect(sheet.querySelector('.member-ficha').textContent).toContain('30.999.888')
+    // Rol antes de tener la app: al vincular el celular entra con ese rol.
+    expect(sheet.textContent).toContain('Gestionar roles')
   })
 
   it('una cuenta con app sigue mostrando sus tiles y no los botones de ficha', async () => {
