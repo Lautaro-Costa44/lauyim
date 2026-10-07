@@ -675,6 +675,13 @@ function ActiveWorkout() {
       if (freshUnitDone) stopRest()
       if (!freshUnit || freshUnit.length <= 1) {
         if (restAfterSet({ unitDone: freshUnitDone, lastUnit: freshLastUnit })) startRest(rest)
+        // A finished exercise moves on by itself, rest still running — what "Save & next
+        // exercise" already did for loaded lifts. When the top-weight sheet opened, that sheet
+        // owns the choice (it has its own "Just close").
+        if (freshUnitDone && !freshLastUnit && !askTop) {
+          setNavDir('next')
+          update(s => { if (s.active) s.active.cur = freshUnits[freshUnitIdx + 1][0] })
+        }
         return
       }
 

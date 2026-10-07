@@ -406,6 +406,35 @@ describe('replace and reorder from the strip (audit phase 7)', () => {
   })
 })
 
+describe('moving on after a finished exercise (audit phase 8)', () => {
+  const next = () => exercise('next', [false])
+
+  it('moves to the next exercise after the last cardio interval, with the rest running', async () => {
+    await mount([exercise('bike', [false], { target: { mode: 'cardio', min: 20, speed: 8 } }), next()])
+    await toggleSet(0)
+    expect(mocks.S.active.cur).toBe(1)
+    expect(mocks.startRest).toHaveBeenCalledWith(90)
+  })
+
+  it('does the same for a bodyweight exercise and for a lift whose weight was already confirmed', async () => {
+    await mount([{ id: 'pushup', target: { mode: 'reps', reps: 10, bodyweight: true }, sets: [{ w: 0, r: 10, done: false }] }, next()])
+    await toggleSet(0)
+    expect(mocks.S.active.cur).toBe(1)
+
+    await unmount()
+    await mount([exercise('bench', [true, false], { asked: true }), next()])
+    await toggleSet(1)
+    expect(mocks.S.active.cur).toBe(1)
+  })
+
+  it('leaves the choice to the top-weight sheet when it opens', async () => {
+    await mount([exercise('bench', [true, false]), next()])
+    await toggleSet(1)
+    expect(mocks.topWeightSheet).toHaveBeenCalledWith(0)
+    expect(mocks.S.active.cur).toBe(0)
+  })
+})
+
 describe('rest per exercise (audit phase 4)', () => {
   it('rests for the exercise’s own rest after a work set, and half after a warm-up', async () => {
     await mount([exercise('squat', [false, false], {
