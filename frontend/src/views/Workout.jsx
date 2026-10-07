@@ -582,7 +582,7 @@ function ActiveWorkout() {
         {u.map(idx => [
           <div key={'s' + idx} className="item" onClick={() => { close(); if (!busy()) suggestReplacement(idx) }}>
             <span className="lrow-i"><Icon name="reset" /></span><div className="grow"><div className="tt">{named(t('Replace'), idx)}</div></div></div>,
-          <div key={'p' + idx} className="item" onClick={() => { close(); if (!busy()) exercisePicker(ex => replaceExercise(idx, ex.id)) }}>
+          <div key={'p' + idx} className="item" onClick={() => { close(); if (!busy()) { const picker = exercisePicker(ex => { picker?.close(); replaceExercise(idx, ex.id) }) } }}>
             <span className="lrow-i"><Icon name="list" /></span><div className="grow"><div className="tt">{named(t('Pick from the library'), idx)}</div></div></div>,
           <div key={'r' + idx} className="item" style={{ color: 'var(--red)' }} onClick={() => { close(); if (!busy()) confirmRemoveExercise(idx) }}>
             <span className="lrow-i"><Icon name="trash" /></span><div className="grow"><div className="tt">{named(t('Remove'), idx)}</div></div></div>,
@@ -769,7 +769,9 @@ function ActiveWorkout() {
       <button type="button" className="wnav-b" disabled={!canNext} onClick={() => goToUnit(unitIdx + 1)}>{t('Next')}<Icon name="chevronRight" /></button>
     </div>}
     <div style={{ height: 12 }} />
-    <Button onClick={() => exercisePicker(ex => {
+    <Button onClick={() => { const picker = exercisePicker(ex => {
+      // Mid-workout you add one exercise at a time: the library closes once you pick.
+      picker?.close()
       const routine = S.routines.find(r => r.id === A.routineId)
       const freestyle = !A.routineId
       // Freestyle has no routine prescription to apply: show the last target in the config
@@ -783,7 +785,7 @@ function ActiveWorkout() {
         s.active.entries.push({ id: ex.id, target: { ...cfg }, plan, sets: applyIntensifierPlan(progressed, full) })
         s.active.cur = s.active.entries.length - 1
       }), null, routine, seed)
-    })} icon="plus">{t('Add exercise')}</Button>
+    }) }} icon="plus">{t('Add exercise')}</Button>
     {A.entries.length > 0 && <>
       <div style={{ height: 6 }} />
       <div style={{ display: 'flex', justifyContent: 'center' }}>
