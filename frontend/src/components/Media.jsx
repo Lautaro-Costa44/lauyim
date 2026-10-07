@@ -61,8 +61,11 @@ export default function Media({ ex, id, compact, minimizable, steps }) {
   </>)
 }
 
+// Still image only. Offline with nothing cached the load fails: show the icon instead of a
+// broken image, never a spinner.
 export function Thumb({ ex }) {
   const gifsOn = useExerciseGifs()
-  if (!ex || !ex.img || !gifsOn) return <div className="thumb thumb-x"><Icon name="dumbbell" /></div>
-  return <img className="thumb" loading="lazy" decoding="async" src={imgSrc(ex)} alt="" />
+  const [failed, setFailed] = useState(false)
+  if (!ex || !ex.img || !gifsOn || failed) return <div className="thumb thumb-x"><Icon name="dumbbell" /></div>
+  return <img className="thumb" loading="lazy" decoding="async" src={imgSrc(ex)} alt="" onError={() => setFailed(true)} />
 }

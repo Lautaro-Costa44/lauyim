@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { modeOf, isTimed, fmtSec, setLabel, defaultConfig, buildSets, freestyleConfig, exLine, workoutVolume, bestWeightFor, bestWeightForEntry, effortOf, stepEffort, capEffort, isBw, isPerSide, sideReps, repStep, cascadeWeight, insertWarmupRow, removeRowAt, workSetsDone, pairAdjacent, unpairSuperset, supersetUnits, applyIntensifierPlan, pinnedNoteFor, exNoteFor, evalWeek, weeklyTarget, markedDoneWorkout, planTargetNow, stampWeekTargets, streakSummary, streakLevel, nextStreakLevel, bestStreak } from './history.js'
+import { modeOf, isTimed, fmtSec, setLabel, defaultConfig, buildSets, freestyleConfig, exLine, workoutVolume, bestWeightFor, bestWeightForEntry, effortOf, stepEffort, capEffort, isBw, isPerSide, sideReps, repStep, cascadeWeight, insertWarmupRow, removeRowAt, workSetsDone, pairAdjacent, unpairSuperset, supersetUnits, applyIntensifierPlan, pinnedNoteFor, exNoteFor, evalWeek, weeklyTarget, markedDoneWorkout, planTargetNow, stampWeekTargets, streakSummary, streakLevel, nextStreakLevel, bestStreak, isEmptySet, restFor, reorderUnits, replacementEntry, workingWeightCheck } from './history.js'
 import { localDayStartOf, localNoonOf, workoutTime } from './format.js'
 import { buildCompletedWorkout } from './finish-workout.js'
 import { EXDB } from './exercises.js'
@@ -143,10 +143,12 @@ describe('modeOf', () => {
     expect(modeOf(undefined)).toBe('reps')
   })
 
-  it('lets an explicit mode win over the body part', () => {
+  it('lets an explicit mode win over the body part, except on cardio', () => {
     expect(modeOf({ id: LIFT, mode: 'time' })).toBe('time')
-    expect(modeOf({ id: CARDIO, mode: 'reps' })).toBe('reps')
-    expect(modeOf({ id: CARDIO, mode: 'time' })).toBe('time')
+    // The config sheet only ever offers a cardio exercise the cardio form, so a stale mode on
+    // one (a session started before the config changed) must not turn it into weight × reps.
+    expect(modeOf({ id: CARDIO, mode: 'reps' })).toBe('cardio')
+    expect(modeOf({ id: CARDIO, mode: 'time' })).toBe('cardio')
   })
 
   it('ignores a mode it does not know rather than trusting a bad file', () => {
@@ -1078,3 +1080,83 @@ describe('racha: la semana va con el plan con el que empezó', () => {
   })
 })
 
+
+describe('isEmptySet', () => {
+  const loaded = { id: 'x', mode: 'reps', bodyweight: false }
+  const bw = { id: 'x', mode: 'reps', bodyweight: true }
+  it('reps: needs reps, and weight unless it is bodyweight', () => {
+    expect(isEmptySet({ w: 60, r: 5 }, loaded)).toBe(false)
+    expect(isEmptySet({ w: 60, r: 0 }, loaded)).toBe(true)
+    expect(isEmptySet({ w: 60 }, loaded)).toBe(true)
+    expect(isEmptySet({ w: 0, r: 5 }, loaded)).toBe(true)
+    expect(isEmptySet({ w: 0, r: 10 }, bw)).toBe(false)
+    expect(isEmptySet({ w: 0, r: 0 }, bw)).toBe(true)
+  })
+  it('cardio needs minutes and a hold needs seconds', () => {
+    expect(isEmptySet({ min: 20, speed: 0 }, { id: 'x', mode: 'cardio' })).toBe(false)
+    expect(isEmptySet({ min: 0, speed: 8 }, { id: 'x', mode: 'cardio' })).toBe(true)
+    expect(isEmptySet({ sec: 30, w: 0 }, { id: 'x', mode: 'time', bodyweight: false })).toBe(false)
+    expect(isEmptySet({ sec: 0 }, { id: 'x', mode: 'time' })).toBe(true)
+  })
+})
+
+describe('restFor', () => {
+  const work = { w: 60, r: 5 }
+  const warm = { w: 30, r: 5, phase: 'warmup' }
+  it('uses the exercise rest when its config has one, the default rest otherwise', () => {
+    expect(restFor({ target: { restSec: 180 } }, work, { restSec: 90 })).toBe(180)
+    expect(restFor({ target: {} }, work, { restSec: 90 })).toBe(90)
+    expect(restFor({ target: { restSec: 0 } }, work, { restSec: 90 })).toBe(90)
+  })
+  it('gives a warm-up half, at least 15 s and never more than the full rest', () => {
+    expect(restFor({ target: {} }, warm, { restSec: 90 })).toBe(45)
+    expect(restFor({ target: {} }, warm, { restSec: 20 })).toBe(15)
+    expect(restFor({ target: {} }, warm, { restSec: 10 })).toBe(10)
+  })
+  it('stays Off when the default is Off and the exercise sets none', () => {
+    expect(restFor({ target: {} }, work, { restSec: 0 })).toBe(0)
+    expect(restFor({ target: {} }, warm, { restSec: 0 })).toBe(0)
+    expect(restFor({ target: { restSec: 120 } }, warm, { restSec: 0 })).toBe(60)
+  })
+})
+
+describe('reorderUnits', () => {
+  const e = (id, sg) => ({ id, ...(sg ? { sg } : {}), sets: [] })
+  const list = [e('a'), e('b', 'g'), e('c', 'g'), e('d')]
+  it('moves a superset as one unit and maps every old index to its new one', () => {
+    const { entries, map } = reorderUnits(list, [2, 1, 0])
+    expect(entries.map(x => x.id)).toEqual(['d', 'b', 'c', 'a'])
+    expect(map).toEqual([3, 1, 2, 0])
+  })
+  it('refuses an order that drops or repeats a unit', () => {
+    expect(() => reorderUnits(list, [0, 1])).toThrow(RangeError)
+    expect(() => reorderUnits(list, [0, 0, 1])).toThrow(RangeError)
+  })
+})
+
+describe('replacementEntry', () => {
+  const S = { workouts: [], exWeights: {}, unit: 'kg', effort: 'none' }
+  const old = { id: '0025', sg: 'g1', target: { mode: 'reps', sets: 4 }, sets: [
+    { w: 20, r: 8, phase: 'warmup', done: true }, { w: 60, r: 8, done: true }, { w: 60, r: 8, done: false }, { w: 60, r: 8, done: false },
+  ] }
+  it('keeps the superset slot and the number of work sets, with nothing logged', () => {
+    const next = replacementEntry(S, old, '0047', 2.5)
+    expect(next.id).toBe('0047')
+    expect(next.sg).toBe('g1')
+    expect(next.sets).toHaveLength(3)
+    expect(next.sets.every(s => !s.done)).toBe(true)
+    expect(next.target).not.toHaveProperty('id')
+  })
+})
+
+describe('workingWeightCheck', () => {
+  const S = w => ({ workouts: [], exWeights: w ? { bench: { w } } : {} })
+  const e = (...ws) => ({ id: 'bench', sets: [{ w: 20, r: 5, phase: 'warmup', done: true }, ...ws.map(w => ({ w, r: 5, done: true }))] })
+  it('asks when nothing was lifted, saves silently the first time, asks only for a new best after that', () => {
+    expect(workingWeightCheck(S(60), e(0, 0))).toMatchObject({ ask: true })
+    expect(workingWeightCheck(S(), e(55, 60))).toEqual({ ask: false, save: true, top: 60 })
+    expect(workingWeightCheck(S(60), e(60))).toMatchObject({ ask: false, save: false })
+    expect(workingWeightCheck(S(60), e(57.5))).toMatchObject({ ask: false, save: false })
+    expect(workingWeightCheck(S(60), e(62.5))).toMatchObject({ ask: true, top: 62.5 })
+  })
+})

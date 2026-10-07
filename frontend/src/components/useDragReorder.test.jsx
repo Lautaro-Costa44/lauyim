@@ -2,7 +2,7 @@
 import React, { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { moveItem, useDragReorder } from './useDragReorder.js'
+import { LONG_PRESS_MS, moveItem, useDragReorder } from './useDragReorder.js'
 
 describe('moveItem', () => {
   it('moves one item and leaves the input untouched', () => {
@@ -59,5 +59,47 @@ describe('useDragReorder', () => {
     const first = container.querySelector('[data-handle="a"]')
     await act(async () => { first.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true })) })
     expect(onCommit).toHaveBeenCalledTimes(1)
+  })
+})
+
+function HoldList({ ids, onCommit }) {
+  const drag = useDragReorder(ids, onCommit)
+  return <div>{drag.order.map(id => <div key={id} ref={drag.rowRef(id)} data-row={id} {...drag.rowProps(id)}>{id}</div>)}</div>
+}
+
+describe('useDragReorder, press-and-hold on the whole row', () => {
+  const mountHold = async (ids, onCommit) => {
+    globalThis.IS_REACT_ACT_ENVIRONMENT = true
+    container = document.createElement('div')
+    document.body.appendChild(container)
+    root = createRoot(container)
+    await act(async () => { root.render(<HoldList ids={ids} onCommit={onCommit} />) })
+    container.querySelectorAll('[data-row]').forEach((el, i) => { el.getBoundingClientRect = () => ({ top: i * 40, height: 40 }) })
+  }
+  afterEach(() => vi.useRealTimers())
+
+  it('picks a row up after the hold and drags it anywhere it was grabbed', async () => {
+    vi.useFakeTimers()
+    const onCommit = vi.fn()
+    await mountHold(['a', 'b', 'c'], onCommit)
+    const row = container.querySelector('[data-row="a"]')
+    await act(async () => { pointer(row, 'pointerdown', 20) })
+    await act(async () => { vi.advanceTimersByTime(LONG_PRESS_MS) })
+    await act(async () => { pointer(row, 'pointermove', 110) })
+    expect(rows()).toEqual(['b', 'c', 'a'])
+    await act(async () => { pointer(row, 'pointerup', 110) })
+    expect(onCommit).toHaveBeenCalledWith(['b', 'c', 'a'])
+  })
+
+  it('a quick swipe is a scroll: moving before the hold completes never picks the row up', async () => {
+    vi.useFakeTimers()
+    const onCommit = vi.fn()
+    await mountHold(['a', 'b', 'c'], onCommit)
+    const row = container.querySelector('[data-row="a"]')
+    await act(async () => { pointer(row, 'pointerdown', 20) })
+    await act(async () => { pointer(row, 'pointermove', 60); vi.advanceTimersByTime(LONG_PRESS_MS) })
+    await act(async () => { pointer(row, 'pointermove', 110); pointer(row, 'pointerup', 110) })
+    expect(rows()).toEqual(['a', 'b', 'c'])
+    expect(onCommit).not.toHaveBeenCalled()
   })
 })

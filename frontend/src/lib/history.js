@@ -24,6 +24,9 @@ import { t } from './i18n-core.js'
 // An entry without `mode` behaves exactly as before, so every existing plan, workout and
 // plan file is read unchanged and nothing needs migrating.
 export function modeOf(cfg) {
+  // A cardio exercise is always logged as cardio, whatever mode a stale config still carries —
+  // the config sheet only ever offers it the cardio form, so the workout must agree with it.
+  if (isCardio(cfg && cfg.id)) return 'cardio'
   const m = cfg && cfg.mode
   if (m === 'reps' || m === 'time' || m === 'cardio') return m
   return isCardio(cfg && cfg.id) ? 'cardio' : 'reps'
@@ -44,6 +47,26 @@ export const isTimed = cfg => modeOf(cfg) === 'time'
 // Both are absent on every plan, workout and backup written before they existed, and absent
 // reads as false, so nothing needs migrating.
 export const isBw = cfg => (cfg && cfg.bodyweight != null ? !!cfg.bodyweight : isBodyweightEq(cfg && cfg.id))
+// A set with nothing in it — checking it off would log a zero into history and progression.
+// Weight only counts for loaded reps work: a bodyweight set has no weight column to fill in.
+export function isEmptySet(set, cfg) {
+  const mode = modeOf(cfg)
+  if (mode === 'cardio') return !(set?.min > 0)
+  if (mode === 'time') return !(set?.sec > 0)
+  return !(set?.r > 0) || (!isBw(cfg) && !(set?.w > 0))
+}
+// The longest per-exercise rest the config sheet offers; also the clamp for a plan file.
+export const MAX_REST_SEC = 600
+
+// The rest that follows a completed set: the exercise's own rest if its config sets one,
+// otherwise the global one (0 = Off). A warm-up is a ramp, not work, so it gets half — never
+// under 15 s, never more than the full rest, and still Off when the rest is Off.
+export function restFor(entry, set, S) {
+  const own = entry?.target?.restSec
+  const base = own > 0 ? own : (S?.restSec || 0)
+  if (!(base > 0)) return 0
+  return isWarmupRow(set) ? Math.min(base, Math.max(15, Math.round(base / 2))) : base
+}
 export const isPerSide = cfg => !!(cfg && cfg.side)
 // What one side did, for display only. Half of an odd total is shown as it falls (8.5) rather
 // than rounded away: it means the sides were not even, which is worth seeing.
@@ -161,6 +184,44 @@ export function exLine(cfg, unit) {
   const repsVal = cfg.reps || 10
   const split = isPerSide(cfg) ? ' · ' + t('{0}/side', fmtNum(sideReps(repsVal))) : ''
   return `${n} × ${repsVal}${load}${split}`
+}
+
+// Finishing a loaded exercise: does the "confirm your working weight" sheet need to open?
+// Only when there is something to confirm — no weight logged at all (ask for it), or a weight
+// above the previous best (a record worth a look). With no previous best the weight just done
+// is saved as is; matching or staying under it needs nothing.
+export function workingWeightCheck(S, entry) {
+  const top = Math.max(0, ...(entry?.sets || []).filter(s => s.done && !isWarmupRow(s)).map(s => s.w || 0))
+  if (!(top > 0)) return { ask: true, save: false, top }
+  const prev = Math.max((S?.exWeights?.[entry.id] || {}).w || 0, bestWeightFor(S, entry.id))
+  if (!(prev > 0)) return { ask: false, save: true, top }
+  return { ask: top > prev, save: false, top }
+}
+
+// The session's units in a new order. `order` lists the old unit indexes (supersetUnits) in
+// their new positions; a superset moves as one. `map[oldIdx]` is each entry's new index, so the
+// caller can carry the current exercise across.
+export function reorderUnits(entries, order) {
+  const units = supersetUnits(entries)
+  if (order.length !== units.length || new Set(order).size !== units.length || order.some(k => !units[k])) {
+    throw new RangeError('order must list every unit exactly once')
+  }
+  const map = []
+  const next = []
+  for (const k of order) for (const i of units[k]) { map[i] = next.length; next.push(entries[i]) }
+  return { entries: next, map }
+}
+
+// A new exercise in place of `old` mid-session: the target it was last trained with (like a
+// freestyle add), as many work sets as the one it replaces, rows built from its own history.
+// It keeps the superset slot. Nothing logged on the old exercise carries over.
+export function replacementEntry(S, old, newId, step) {
+  const seed = freestyleConfig(S, { id: newId, ...defaultConfig(newId) })
+  const workSets = (old?.sets || []).filter(s => !isWarmupRow(s)).length
+  const { id: _id, ...target } = { ...seed, sets: Math.max(1, workSets || seed.sets || 1) }
+  const full = { ...target, id: newId, effort: S.effort }
+  const sets = applyIntensifierPlan(buildSets(S, full, { step, preferLast: true }), full)
+  return { id: newId, ...(old?.sg ? { sg: old.sg } : {}), target, plan: null, sets }
 }
 
 // Drop superset ids that no longer have an adjacent partner (after unlink/reorder/remove).

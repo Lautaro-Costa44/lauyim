@@ -9,7 +9,7 @@
 //     a page break — each exercise, and each routine that fits, stays in one place.
 
 import { EXIDX, isBodyweightEq } from './exercises.js'
-import { modeOf, fmtSec, isBw, isPerSide, sideReps, MAX_PLANNED_WARMUPS } from './history.js'
+import { modeOf, fmtSec, isBw, isPerSide, sideReps, MAX_PLANNED_WARMUPS, MAX_REST_SEC } from './history.js'
 import { uid, todayISO, DAYN, fmtNum, exCount } from './format.js'
 import { t, exerciseNameFor } from './i18n-core.js'
 import { MUSCLE_NAME } from './muscles.js'
@@ -50,6 +50,8 @@ function cleanEx(e) {
   if (e.note) o.note = e.note
   const warm = cleanWarmupSets(e.warmupSets)
   if (warm) o.warmupSets = warm
+  const rest = cleanRestSec(e.restSec)
+  if (rest) o.restSec = rest
   // Drop-sets and rest-pause are part of how the exercise is prescribed, not a logging detail.
   // Without this a shared "3x5 with a double drop" arrived at the other end as a plain 3x5,
   // silently — parsePlan's `dropped` counter only tracks exercises it cannot resolve at all.
@@ -63,6 +65,12 @@ function cleanEx(e) {
 function cleanWarmupSets(v) {
   const n = Math.round(Number(v)) || 0
   return n > 0 ? Math.min(MAX_PLANNED_WARMUPS, n) : 0
+}
+
+/** An exercise's own rest in seconds; 0 means "use the member's default rest". */
+function cleanRestSec(v) {
+  const n = Math.round(Number(v)) || 0
+  return n > 0 ? Math.min(MAX_REST_SEC, n) : 0
 }
 
 /** Keep the floors the config sheet and applyIntensifierPlan already enforce, and nothing else:
@@ -135,12 +143,13 @@ export function parsePlan(raw) {
       if (!ok) dropped++
       return ok
     }).map(e => {
-      // The exercises pass through as written, so the two fields that carry numbers into the
+      // The exercises pass through as written, so the fields that carry numbers into the
       // planner get the same clamps on the way in that they get on the way out.
       const warm = cleanWarmupSets(e.warmupSets)
       const intens = cleanIntensifier(e.intensifier)
-      const { warmupSets, intensifier, ...rest } = e
-      return { ...rest, ...(warm ? { warmupSets: warm } : {}), ...(intens ? { intensifier: intens } : {}) }
+      const restSec = cleanRestSec(e.restSec)
+      const { warmupSets, intensifier, restSec: _rest, ...rest } = e
+      return { ...rest, ...(warm ? { warmupSets: warm } : {}), ...(intens ? { intensifier: intens } : {}), ...(restSec ? { restSec } : {}) }
     })
   }))
   return {

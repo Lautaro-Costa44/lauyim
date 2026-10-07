@@ -4,7 +4,7 @@ import { useUI } from './store/useUI.js'
 import { EXDB, EXIDX, BODYPARTS, isCardio, isStretch, isBodyweightEq, allExercises, equipmentOf, smOf, matchExercise, exOr } from './lib/exercises.js'
 import { activeProfile, exAvailable, ALL_EQUIPMENT, newProfile } from './lib/equipment.js'
 import { fmtDate, fmtNum, fmtVol, fmtDur, durPart, todayISO, isoOf, uid, exCount, DAYN, MONTHS_LONG, ACCENTS } from './lib/format.js'
-import { evalWeek, lastEntryFor, bestWeightFor, buildSets, effectiveRoutineId, workoutVolume, setsDone, setsDoneActive, lastBW, supersetUnits, unitOf, setLabel, defaultConfig, cleanupSg, modeOf, effortOf, isBw, isPerSide, sideReps, workSetsDone, applyIntensifierPlan, MAX_PLANNED_WARMUPS, NOTE_MAX, intensifierConfig, markedDoneWorkout } from './lib/history.js'
+import { evalWeek, lastEntryFor, bestWeightFor, buildSets, effectiveRoutineId, workoutVolume, setsDone, setsDoneActive, lastBW, supersetUnits, unitOf, setLabel, defaultConfig, cleanupSg, modeOf, effortOf, isBw, isPerSide, sideReps, workSetsDone, applyIntensifierPlan, MAX_PLANNED_WARMUPS, MAX_REST_SEC, NOTE_MAX, intensifierConfig, markedDoneWorkout } from './lib/history.js'
 import { beep, vibrate } from './lib/sound.js'
 import { t, instrFor, exerciseNameFor, getLang, INSTR_LANGS } from './lib/i18n.js'
 import { nav } from './lib/nav.js'
@@ -32,7 +32,7 @@ import { parseImport, mergeImport } from './lib/import-csv.js'
 import { buildPlanBundle, parsePlan, mergePlan, printPlan } from './lib/plan-share.js'
 import { estimate1RM, best1RM, is1RMRecord, REP_CAP } from './lib/onerm.js'
 import { nextPrescription, applyPrescription, policyFor, defaultIncrement, POLICIES_FOR, POLICY_NAME, POLICY_DESC, MAX_BW_SETS } from './lib/progression.js'
-import { buildCompletedWorkout } from './lib/finish-workout.js'
+import { buildCompletedWorkout, isStaleWorkout, lastActivityOf } from './lib/finish-workout.js'
 import { isWarmupRow } from './lib/workout-model.js'
 import { applyPlannedDays } from './lib/routineGroups.js'
 import { errorText } from './lib/errors.js'
@@ -871,14 +871,17 @@ function ExConfig({ ex, existing, onSave, onDelete, close, routine, initial }) {
     // shape it had — and reads back as 0 either way (buildSets).
     const warmupSets = Math.max(0, Math.min(MAX_PLANNED_WARMUPS, Math.round(c.warmupSets) || 0))
     const withWarmups = warmupSets ? { warmupSets } : {}
-    if (cardio) onSave({ sets, min: Math.max(1, Math.round(c.min) || 20), speed: Math.max(0, c.speed || 8), ...withNote })
-    else if (mode === 'time') onSave({ sets, mode: 'time', sec: Math.max(1, Math.round(c.sec) || 45), weight: Math.max(0, c.weight || 0), ...flags, ...prog, ...withNote, ...withWarmups })
+    // Same idea: no key at all means "my default rest", so existing plans read exactly as before.
+    const restSec = Math.max(0, Math.min(MAX_REST_SEC, Math.round(c.restSec) || 0))
+    const withRest = restSec ? { restSec } : {}
+    if (cardio) onSave({ sets, min: Math.max(1, Math.round(c.min) || 20), speed: Math.max(0, c.speed || 8), ...withNote, ...withRest })
+    else if (mode === 'time') onSave({ sets, mode: 'time', sec: Math.max(1, Math.round(c.sec) || 45), weight: Math.max(0, c.weight || 0), ...flags, ...prog, ...withNote, ...withWarmups, ...withRest })
     else {
       // A unilateral target is stored even: the split has to divide, and a typed 15 would
       // otherwise plan seven reps on one side and eight on the other, every session.
       const typed = Math.max(1, Math.round(c.reps) || 10)
       const reps = perSide ? Math.ceil(typed / 2) * 2 : typed
-      const out = { sets, mode: 'reps', reps, weight: Math.max(0, c.weight || 0), ...flags, ...(perSide ? { side: true } : {}), ...prog, ...withNote, ...withWarmups }
+      const out = { sets, mode: 'reps', reps, weight: Math.max(0, c.weight || 0), ...flags, ...(perSide ? { side: true } : {}), ...prog, ...withNote, ...withWarmups, ...withRest }
       if (policyFor({ ...c, id: ex.id }, routine, 'reps') === 'double') out.repsMin = Math.min(reps, Math.max(1, Math.round(c.repsMin) || Math.max(1, reps - 2)))
       // A ceiling below the working reps would tell you to add a set on day one.
       if (bw && !(out.weight > 0) && c.repsMax > 0) out.repsMax = Math.max(reps, Math.round(c.repsMax))
@@ -945,6 +948,17 @@ function ExConfig({ ex, existing, onSave, onDelete, close, routine, initial }) {
     {mode === 'time' && !bw && <div className="small dim" style={{ marginBottom: 18 }}>
       {t('A timer runs while you hold the set. Leave the weight at 0 for bodyweight holds.')}
     </div>}
+    {/* 0 = follow the default rest from Settings, so a heavy squat can rest longer than curls
+        without changing the rest of the plan. */}
+    <div className="row cfgrow" style={{ marginBottom: 6 }}>
+      <Stepper label={t('Rest between sets (s)')} value={c.restSec || 0} step={15} decimal={false}
+        onChange={v => setC(x => ({ ...x, restSec: Math.max(0, Math.min(MAX_REST_SEC, Math.round(v) || 0)) }))} />
+    </div>
+    <div className="small dim" style={{ marginBottom: 18 }}>
+      {c.restSec > 0 ? t('Rest after each set of this exercise. Warm-ups get half.')
+        : st.restSec > 0 ? t('0 uses your default rest ({0} s). Warm-ups get half.', st.restSec)
+          : t('0 uses your default rest, which is Off.')}
+    </div>
     {/* ---------- bodyweight + per side (issues #31/#32/#33) ---------- */}
     {!cardio && <div className="sect-b" style={{ marginBottom: 8 }}>
       <Row icon="figureStrength" iconTint="var(--acc)" title={t('Bodyweight')}
@@ -1698,11 +1712,12 @@ function WorkoutComplete({ close }) {
 }
 export const workoutCompleteSheet = () => ui().openSheet(close => <WorkoutComplete close={close} />, { kind: 'center' })
 
-function FinishSummary({ w, prs, e1prs = [], close }) {
+function FinishSummary({ w, prs, e1prs = [], reason, close }) {
   const st = useStore(s => s.S)
   return <div style={{ textAlign: 'center', padding: '8px 0' }}>
     <div style={{ fontSize: 44, display: 'flex', justifyContent: 'center', color: 'var(--acc)' }}><Icon name="trophy" /></div>
     <h3 style={{ margin: '8px 0' }}>{t('Workout complete!')}</h3>
+    {reason === 'inactivity' && <div className="muted small" style={{ marginBottom: 12 }}>{t('Closed automatically after 2 hours without activity.')}</div>}
     <div className="tiles" style={{ textAlign: 'left' }}>
       <div className="tile"><div className="l">{t('Duration')}</div><div className="v" style={{ fontSize: '1.1rem' }}>{fmtDur(w.end - w.start)}</div></div>
       <div className="tile"><div className="l">{t('Volume')}</div><div className="v" style={{ fontSize: '1.1rem' }}>{fmtVol(w.vol, st.unit)}</div></div>
@@ -1729,7 +1744,9 @@ export function finishWorkout(isPartial = false) {
   if (partial && !isPartial) { confirmSheet({ title: t('Finish early?'), message: t(total - done === 1 ? '{0} set still unchecked. Finish the workout now?' : '{0} sets still unchecked. Finish the workout now?', total - done), confirmText: t('Finish workout'), onConfirm: () => doFinishWorkout(true) }); return }
   doFinishWorkout(partial)
 }
-function doFinishWorkout(partial = false) {
+// `end` is overridable so a session closed for inactivity ends when it was last touched, not
+// whenever the app was reopened.
+function doFinishWorkout(partial = false, { end = Date.now(), reason } = {}) {
   const st = S()
   const A = st.active
   if (!A) return
@@ -1744,7 +1761,7 @@ function doFinishWorkout(partial = false) {
     if (rec && !prs.includes(e.id)) e1prs.push({ id: e.id, ...rec })
   })
   const w = buildCompletedWorkout(A, {
-    end: Date.now(),
+    end,
     prs,
     snapshotFor: e => EXIDX[e.id]?.custom ? exerciseMuscleSnapshot(EXIDX[e.id]) : null,
     partial,
@@ -1760,8 +1777,29 @@ function doFinishWorkout(partial = false) {
   })
   useStore.getState().autoBackupNow()
   useUI.getState().stopRest()
+  useUI.getState().stopWork()
   beep(snd(), 880, 0.15); beep(snd(), 1100, 0.15, 0.18); beep(snd(), 1320, 0.3, 0.36)
-  ui().openSheet(close => <FinishSummary w={w} prs={prs} e1prs={e1prs} close={close} />, { kind: 'center', locked: true })
+  ui().openSheet(close => <FinishSummary w={w} prs={prs} e1prs={e1prs} reason={reason} close={close} />, { kind: 'center', locked: true })
+}
+
+// A session nobody touched for INACTIVITY_MS: kept as a partial workout if any set was logged,
+// discarded otherwise. Exactly one sheet either way. → true if it closed the session.
+export function closeStaleWorkout(now = Date.now()) {
+  const A = S().active
+  if (!isStaleWorkout(A, now)) return false
+  if (setsDoneActive(A) > 0) {
+    doFinishWorkout(true, { end: lastActivityOf(A), reason: 'inactivity' })
+    return true
+  }
+  update(s => { s.active = null })
+  useUI.getState().stopRest()
+  useUI.getState().stopWork()
+  ui().openSheet(close => <>
+    <h3 style={{ margin: '8px 0' }}>{t('Workout discarded')}</h3>
+    <div className="muted small" style={{ marginBottom: 16 }}>{t('No sets were logged and there was no activity for over 2 hours.')}</div>
+    <Button variant="primary" onClick={close}>{t('OK')}</Button>
+  </>, { kind: 'center', locked: true })
+  return true
 }
 
 export function supportSheet() {

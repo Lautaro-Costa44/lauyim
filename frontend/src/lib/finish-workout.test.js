@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildCompletedWorkout } from './finish-workout.js'
+import { buildCompletedWorkout, INACTIVITY_MS, isStaleWorkout, lastActivityOf } from './finish-workout.js'
 
 describe('completed workout boundary', () => {
   it('builds the same legacy-shaped record doFinishWorkout stores and keeps it visible', () => {
@@ -89,5 +89,22 @@ describe('session notes', () => {
     }
     const completed = buildCompletedWorkout(active)
     expect(completed.partial).toBeUndefined()
+  })
+})
+
+describe('inactivity rule', () => {
+  const H = 3600 * 1000
+  it('measures from the last activity, falling back to the start for older sessions', () => {
+    expect(lastActivityOf({ start: 10, lastActivity: 50 })).toBe(50)
+    expect(lastActivityOf({ start: 10 })).toBe(10)
+  })
+
+  it('is stale only after more than INACTIVITY_MS without activity', () => {
+    const now = 10 * H
+    expect(INACTIVITY_MS).toBe(2 * H)
+    expect(isStaleWorkout({ start: now - 3 * H }, now)).toBe(true)
+    expect(isStaleWorkout({ start: now - 3 * H, lastActivity: now - H }, now)).toBe(false)
+    expect(isStaleWorkout({ start: now - 2 * H }, now)).toBe(false)
+    expect(isStaleWorkout(null, now)).toBe(false)
   })
 })

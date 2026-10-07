@@ -9,6 +9,7 @@ import { resolveAccent, customAccentVars, cachedBranding, applyBrandingToDocumen
 import { setLang, useLang } from './lib/i18n.js'
 import { setNav } from './lib/nav.js'
 import { useWakeLock } from './lib/wakelock.js'
+import { useWorkoutPresence } from './lib/presence.js'
 import { guestAllowed } from './lib/guest.js'
 import Icon from './components/Icon.jsx'
 import TabBar from './components/TabBar.jsx'
@@ -147,6 +148,7 @@ function Shell() {
   // …y siempre en la pantalla de Ingreso Físico: es una tablet o notebook de recepción que tiene
   // que quedar prendida (el mismo Wake Lock que Ajustes → "Mantener la pantalla encendida").
   useWakeLock((!!S.active && S.keepAwake !== false) || loc.pathname === CHECKIN_ROUTE)
+  useWorkoutPresence(signedIn, S.active?.id)
 
   // La configuración del backend es la única fuente de verdad para invitados.
   const allowGuest = guestAllowed(config)
