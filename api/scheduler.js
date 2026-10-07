@@ -3,7 +3,7 @@
  */
 
 import { getDatabase, getUserState, markDuePushSent } from './database.js';
-import { sendPushToSubscription } from './push-send.js';
+import { sendPushToSubscription, pushBody } from './push-send.js';
 import { dayReminderPush, gymFeePush, billingDuePush } from './push-messages.js';
 import { getBillingSettings, gymClock, shouldSendDuePush, daysBetween, isBillingEnabled, getBillingNotifyHour } from './billing.js';
 import { materializeRecurring, sendClassReminders, sendTeacherReminders, runAfterClass, dropTeacherBookings, classClock } from './classes-routes.js';
@@ -48,7 +48,7 @@ async function sendPushToUser(userId, payload) {
 
   if (!rawSubs || rawSubs.length === 0) return { sent: 0, subCount };
 
-  const body = JSON.stringify(payload);
+  const body = pushBody(payload);
   let sentCount = 0;
   for (const sub of rawSubs) {
     try {

@@ -59,6 +59,10 @@ export const customAccentVars = color => ({
 // Logo para el login y la pantalla de carga.
 export const logoSrc = branding => branding?.logo ? `/api/branding/logo.png?v=${branding.logo}` : 'logo-perf.svg?v=3'
 
+// Foto de las notificaciones: el ícono del gym, o el de lauyim (la misma regla que los push, en
+// api/branding.js brandPush).
+export const notificationIcon = branding => branding?.logo ? `/api/branding/icon-192.png?v=${branding.logo}` : 'icon-512.png?v=3'
+
 // Última config guardada (sin conexión, o antes de que responda /api/config).
 let cached
 export function cachedBranding() {

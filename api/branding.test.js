@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { brandingOf, validateBranding, validateAssets, pngSize, buildManifest, BRANDING_ASSETS } from './branding.js';
+import { brandingOf, validateBranding, validateAssets, pngSize, buildManifest, brandPush, BRANDING_ASSETS } from './branding.js';
 import { fakePng } from './fake-png.js';
 
 const allAssets = (opts) => Object.fromEntries(Object.entries(BRANDING_ASSETS).map(([name, side]) => [name, 'data:image/png;base64,' + fakePng(side, opts).toString('base64')]));
@@ -64,4 +64,13 @@ test('buildManifest: nombre, nombre corto e íconos propios o los de lauyim', ()
   assert.equal(plain.background_color, '#0c0e12');
   assert.equal(buildManifest(brandingOf(JSON.stringify({ theme: 'light' }))).background_color, '#f2f2f7');
   assert.equal(buildManifest(brandingOf(JSON.stringify({ theme: 'light', lockTheme: false }))).background_color, '#0c0e12');
+});
+
+test('brandPush: foto del gym con logo propio, nada sin logo; nombre del gym si falta el título', () => {
+  const plain = brandPush({ title: 'Hoy toca', body: 'x', tag: 't' }, brandingOf(null));
+  assert.deepEqual(plain, { title: 'Hoy toca', body: 'x', tag: 't' });
+  const gym = brandingOf(JSON.stringify({ appName: 'Gimnasio Centro Norte', logo: 7 }));
+  assert.equal(brandPush({ title: 'Hoy toca' }, gym).icon, '/api/branding/icon-192.png?v=7');
+  assert.equal(brandPush({ body: 'x' }, gym).title, 'Gimnasio Centro Norte');
+  assert.equal(brandPush({ body: 'x' }, brandingOf(null)).title, 'lauyim');
 });

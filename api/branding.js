@@ -104,6 +104,14 @@ export function validateAssets(assets) {
 
 const assetUrl = (branding, name) => branding.logo ? `/api/branding/${name}?v=${branding.logo}` : DEFAULT_ASSETS[name];
 
+// Push → el mismo push con el logo del gym como foto (icon) y su nombre si no trae título. Sin logo
+// propio no agrega icon: el service worker pone el de lauyim, que ya tiene guardado sin conexión.
+export function brandPush(payload, branding) {
+  const out = { ...payload, title: payload.title || branding.appName };
+  if (branding.logo) out.icon = assetUrl(branding, 'icon-192.png');
+  return out;
+}
+
 // Manifest de la PWA: nombre, nombre corto, color e íconos de la instancia.
 export function buildManifest(branding) {
   const short = branding.shortName || branding.appName.slice(0, MAX_SHORT_NAME);

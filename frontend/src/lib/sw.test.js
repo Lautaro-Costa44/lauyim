@@ -35,6 +35,7 @@ function boot(initialCaches, { online = true, release = 'r2', swRelease } = {}) 
   let skipped = 0
   const listeners = {}
   const netCalls = []
+  const shown = []
   const scope = {
     caches, Response, URL,
     location: { origin: 'https://gym.test' },
@@ -49,7 +50,7 @@ function boot(initialCaches, { online = true, release = 'r2', swRelease } = {}) 
     }
   }
   scope.self = Object.assign(scope, {
-    registration: { scope: 'https://gym.test/' },
+    registration: { scope: 'https://gym.test/', showNotification: async (title, options) => { shown.push({ title, options }) } },
     clients: { claim: async () => {} },
     skipWaiting: async () => { skipped++ },
     SW_RELEASE: swRelease,
@@ -63,7 +64,8 @@ function boot(initialCaches, { online = true, release = 'r2', swRelease } = {}) 
     return p === undefined ? undefined : Promise.resolve(p).then(r => r.text())
   }
   const message = data => listeners.message({ data })
-  return { caches, netCalls, run, fetchEvent, message, skipped: () => skipped }
+  const push = async data => { let p; listeners.push({ data: data && { json: () => data }, waitUntil: x => { p = x } }); await p }
+  return { caches, netCalls, run, fetchEvent, message, push, shown, skipped: () => skipped }
 }
 
 const releaseCache = (release, at, extra = {}) => ({
@@ -191,5 +193,12 @@ describe('service worker caches', () => {
   it('API requests are left to the network', () => {
     sw = boot(releaseCache('r2', 200))
     expect(sw.fetchEvent('https://gym.test/api/me')).toBeUndefined()
+  })
+
+  it("a push shows the gym logo the server sends, or lauyim's precached icon without one", async () => {
+    sw = boot(releaseCache('r2', 200))
+    await sw.push({ title: 'Hoy toca', body: 'x', icon: '/api/branding/icon-192.png?v=7' })
+    await sw.push({ title: 'Hoy toca', body: 'x' })
+    expect(sw.shown.map(n => n.options.icon)).toEqual(['/api/branding/icon-192.png?v=7', 'icon-512.png?v=3'])
   })
 })

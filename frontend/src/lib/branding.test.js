@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { contrastRatio, onAccentFor, darken, resolveAccent, contrastWarnings, isCustomBrand, shortNameFor, themeFor } from './branding.js'
+import { contrastRatio, onAccentFor, darken, resolveAccent, contrastWarnings, isCustomBrand, shortNameFor, themeFor, notificationIcon } from './branding.js'
 
 describe('colores', () => {
   it('contraste WCAG y texto sobre el acento', () => {
@@ -56,5 +56,13 @@ describe('nombre', () => {
     expect(isCustomBrand(null)).toBe(false)
     expect(shortNameFor({ appName: 'Gimnasio Centro Norte', shortName: '' })).toBe('Gimnasio Cen')
     expect(shortNameFor({ appName: 'Gimnasio Centro Norte', shortName: 'Centro' })).toBe('Centro')
+  })
+})
+
+describe('notificaciones', () => {
+  it('la foto es el ícono del gym con logo propio; si no, el de lauyim', () => {
+    expect(notificationIcon({ logo: 7 })).toBe('/api/branding/icon-192.png?v=7')
+    expect(notificationIcon({ logo: null })).toBe('icon-512.png?v=3')
+    expect(notificationIcon(null)).toBe('icon-512.png?v=3')
   })
 })

@@ -164,8 +164,9 @@ self.addEventListener('push', e => {
   const data = e.data ? e.data.json() : {}
   e.waitUntil(self.registration.showNotification(data.title || 'lauyim', {
     body: data.body || '',
-    // Notifications are more consistently rendered from PNGs on Android.
-    icon: 'icon-512.png?v=3',
+    // Notifications are more consistently rendered from PNGs on Android. The server sends the
+    // gym's logo as data.icon (api/push-send.js); without one, lauyim's, precached for offline.
+    icon: data.icon || 'icon-512.png?v=3',
     badge: 'icon-180.png?v=3',
     tag: data.tag || 'lauyim',
     renotify: true,
