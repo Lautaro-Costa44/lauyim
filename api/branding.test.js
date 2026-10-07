@@ -71,6 +71,17 @@ test('brandPush: foto del gym con logo propio, nada sin logo; nombre del gym si 
   assert.deepEqual(plain, { title: 'Hoy toca', body: 'x', tag: 't' });
   const gym = brandingOf(JSON.stringify({ appName: 'Gimnasio Centro Norte', logo: 7 }));
   assert.equal(brandPush({ title: 'Hoy toca' }, gym).icon, '/api/branding/icon-192.png?v=7');
+  assert.equal(brandPush({ title: 'Hoy toca' }, gym).badge, '/api/branding/badge-96.png?v=7');
   assert.equal(brandPush({ body: 'x' }, gym).title, 'Gimnasio Centro Norte');
   assert.equal(brandPush({ body: 'x' }, brandingOf(null)).title, 'lauyim');
+});
+
+test('validateAssets: la silueta de las notificaciones puede faltar (logos de antes); si viene, se valida', () => {
+  const { ['badge-96.png']: badge, ...rest } = allAssets();
+  assert.ok(badge);
+  assert.equal(validateAssets(rest).error, undefined);
+  assert.equal(validateAssets(rest).value['badge-96.png'], undefined);
+  assert.equal(validateAssets({ ...rest, 'badge-96.png': 'data:image/png;base64,' + fakePng(64).toString('base64') }).error, 'badge-96.png tiene que medir 96×96');
+  const { ['icon-192.png']: _, ...noIcon } = allAssets();
+  assert.equal(validateAssets(noIcon).error, 'Falta icon-192.png');
 });

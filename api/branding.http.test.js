@@ -99,7 +99,19 @@ test('con logo: config, manifest, íconos con caché larga y la passkey con el n
   assert.equal((await call(null, 'GET', '/api/branding/icon-192.png')).status, 302);
 });
 
-test('un logo tipo foto se guarda (los cinco íconos en el peor caso)', async () => {
+test('un logo sin silueta de notificaciones (app vieja): se guarda y la silueta redirige a la de lauyim', async () => {
+  const { ['badge-96.png']: _, ...old } = assets();
+  const put = await call('owner', 'PUT', '/api/owner/branding', { appName: 'Gym Viejo', assets: old });
+  assert.equal(put.status, 200, JSON.stringify(put.body));
+  const badge = await call(null, 'GET', `/api/branding/badge-96.png?v=${put.body.branding.logo}`);
+  assert.equal(badge.status, 302);
+  assert.equal(badge.headers.get('location'), '/badge-96.png');
+  const full = await call('owner', 'PUT', '/api/owner/branding', { appName: 'Gym Viejo', assets: assets() });
+  assert.equal((await call(null, 'GET', `/api/branding/badge-96.png?v=${full.body.branding.logo}`)).status, 200);
+  await call('owner', 'PUT', '/api/owner/branding', { appName: 'Gym Viejo', removeLogo: true });
+});
+
+test('un logo tipo foto se guarda (todos los íconos en el peor caso)', async () => {
   const body = { appName: 'Gym Foto', assets: assets({ noise: true }) };
   assert.ok(JSON.stringify(body).length > 4 * 1024 * 1024);
   const put = await call('owner', 'PUT', '/api/owner/branding', body);

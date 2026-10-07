@@ -203,7 +203,7 @@ test('tick del scheduler: endpoints privados no conectan y el resto de los socio
 test('pushBody: el push sale con la personalización guardada en ese momento', () => {
   assert.equal(JSON.parse(pushBody({ title: 'Hoy toca' })).icon, undefined);
   db.setAdminSetting('branding', JSON.stringify({ appName: 'Gym Centro', logo: 3 }));
-  assert.deepEqual(JSON.parse(pushBody({ body: 'x', tag: 't' })), { body: 'x', tag: 't', title: 'Gym Centro', icon: '/api/branding/icon-192.png?v=3' });
+  assert.deepEqual(JSON.parse(pushBody({ body: 'x', tag: 't' })), { body: 'x', tag: 't', title: 'Gym Centro', icon: '/api/branding/icon-192.png?v=3', badge: '/api/branding/badge-96.png?v=3' });
   db.setAdminSetting('branding', '{}');
 });
 

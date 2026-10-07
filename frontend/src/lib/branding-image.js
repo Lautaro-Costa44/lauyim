@@ -9,6 +9,8 @@
 // transparencia (JPG), el color de los bordes de la imagen, así el fondo del logo llena el ícono.
 // Una imagen que no es cuadrada se encaja centrada y nunca se recorta. Lo único que se saca son los
 // márgenes transparentes alrededor del logo (muchos PNG los traen), para que no quede chico.
+//   badge-96              silueta blanca sobre transparente: el íconito de la barra de estado de
+//                         Android, que solo usa la transparencia (un logo a color queda un cuadrado)
 
 export const MAX_LOGO_BYTES = 5 * 1024 * 1024
 export const MIN_LOGO_SIDE = 192
@@ -72,6 +74,58 @@ export function containRect(srcW, srcH, side, pad = 0) {
   return { x: (side - w) / 2, y: (side - h) / 2, w, h }
 }
 
+// ---- silueta para la barra de estado (badge-96.png) ----
+
+export const BADGE_SIDE = 96
+const BADGE_PAD = 0.06
+// Distancia de color al fondo (0..1) desde la que un píxel es parte del logo: entre las dos, borde suave.
+const BADGE_NEAR = 0.1
+const BADGE_FAR = 0.22
+// Silueta que llena más que esto del rectángulo donde se dibuja: se ve como una mancha.
+export const BADGE_BLOB = 0.75
+
+const rgbOf = hexColor => [1, 3, 5].map(i => parseInt(hexColor.slice(i, i + 2), 16))
+
+// Píxeles RGBA del logo → la silueta, en el mismo arreglo: blanco, y la opacidad dice qué es logo.
+// Con transparencia, lo opaco del logo. Sin transparencia (JPG), lo que se distingue del color de
+// los bordes, que es el fondo.
+export function badgePixels(data, { transparent, edgeColor }) {
+  const bg = !transparent && edgeColor ? rgbOf(edgeColor) : null
+  for (let i = 0; i < data.length; i += 4) {
+    let alpha = data[i + 3]
+    if (bg) {
+      const d = Math.hypot(data[i] - bg[0], data[i + 1] - bg[1], data[i + 2] - bg[2]) / (255 * Math.sqrt(3))
+      alpha = alpha * Math.min(1, Math.max(0, (d - BADGE_NEAR) / (BADGE_FAR - BADGE_NEAR)))
+    }
+    data[i] = data[i + 1] = data[i + 2] = 255
+    data[i + 3] = alpha
+  }
+  return data
+}
+
+// Color más repetido entre los píxeles opacos (agrupados de a 16 tonos por canal), o null. En un
+// logo tipo escudo (círculo lleno con letras) es el del escudo.
+export function dominantColor(data) {
+  const buckets = new Map()
+  for (let i = 0; i < data.length; i += 4) {
+    if (data[i + 3] < 128) continue
+    const key = (data[i] >> 4) << 8 | (data[i + 1] >> 4) << 4 | data[i + 2] >> 4
+    const b = buckets.get(key) || [0, 0, 0, 0]
+    b[0] += data[i]; b[1] += data[i + 1]; b[2] += data[i + 2]; b[3]++
+    buckets.set(key, b)
+  }
+  let best = null
+  for (const b of buckets.values()) if (!best || b[3] > best[3]) best = b
+  return best ? hex(best[0] / best[3], best[1] / best[3], best[2] / best[3]) : null
+}
+
+// Opacidad total de la silueta (0..1) sobre el área del rectángulo donde está dibujada.
+export function badgeFill(data, area) {
+  let sum = 0
+  for (let i = 3; i < data.length; i += 4) sum += data[i]
+  return area > 0 ? sum / 255 / area : 0
+}
+
 // Archivo elegido → { error } o null si sirve (tipo y peso; el tamaño se ve al cargarlo).
 export function checkLogoFile(file) {
   if (!file) return { error: 'Elegí una imagen' }
@@ -128,4 +182,36 @@ export function renderIcons(img, background, crop = { x: 0, y: 0, w: img.natural
     out[name] = c.toDataURL('image/png')
   }
   return out
+}
+
+// Imagen + análisis (+ recorte) → { dataUrl, fill } de la silueta. No depende del fondo de los
+// íconos. La silueta se recorta a lo que quedó visible, así un logo con mucho fondo no queda chico.
+// Un PNG transparente que queda como mancha (escudo lleno) se reintenta sacando su color dominante:
+// quedan las letras o el dibujo de adentro.
+// fill: cuánto llena (ver BADGE_BLOB); 0 si no se distingue nada del fondo.
+export function renderBadge(img, analysis, crop = { x: 0, y: 0, w: img.naturalWidth, h: img.naturalHeight }) {
+  const scale = Math.min(1, 256 / Math.max(crop.w, crop.h))
+  const ww = Math.max(1, Math.round(crop.w * scale)), wh = Math.max(1, Math.round(crop.h * scale))
+  const work = document.createElement('canvas'); work.width = ww; work.height = wh
+  const wctx = work.getContext('2d', { willReadFrequently: true })
+  wctx.imageSmoothingQuality = 'high'
+  wctx.drawImage(img, crop.x, crop.y, crop.w, crop.h, 0, 0, ww, wh)
+  const source = wctx.getImageData(0, 0, ww, wh)
+  const draw = background => {
+    const pixelsOf = new ImageData(new Uint8ClampedArray(source.data), ww, wh)
+    badgePixels(pixelsOf.data, background)
+    wctx.putImageData(pixelsOf, 0, 0)
+    const box = analyzePixels(pixelsOf.data, ww, wh).box
+    const c = canvasOf(BADGE_SIDE)
+    const ctx = c.getContext('2d', { willReadFrequently: true })
+    ctx.imageSmoothingQuality = 'high'
+    const r = containRect(box.w, box.h, BADGE_SIDE, BADGE_PAD)
+    ctx.drawImage(work, box.x, box.y, box.w, box.h, r.x, r.y, r.w, r.h)
+    return { dataUrl: c.toDataURL('image/png'), fill: badgeFill(ctx.getImageData(0, 0, BADGE_SIDE, BADGE_SIDE).data, r.w * r.h) }
+  }
+  const first = draw(analysis)
+  if (!analysis.transparent || first.fill <= BADGE_BLOB) return first
+  const dominant = dominantColor(source.data)
+  const inner = dominant && draw({ transparent: false, edgeColor: dominant })
+  return inner && inner.fill > 0.05 && inner.fill < first.fill ? inner : first
 }

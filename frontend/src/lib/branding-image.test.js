@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { analyzePixels, defaultIconBackground, containRect, checkLogoFile } from './branding-image.js'
+import { analyzePixels, defaultIconBackground, containRect, checkLogoFile, badgePixels, badgeFill, dominantColor, BADGE_BLOB } from './branding-image.js'
 
 // Imagen w×h de RGBA a partir de una función (x, y) → [r, g, b, a].
 const pixels = (w, h, at) => {
@@ -49,5 +49,42 @@ describe('márgenes transparentes', () => {
     const data = pixels(20, 10, (x, y) => x >= 5 && x < 15 && y >= 2 && y < 8 ? [255, 100, 0, 255] : [0, 0, 0, 0])
     expect(analyzePixels(data, 20, 10).box).toEqual({ x: 5, y: 2, w: 10, h: 6 })
     expect(analyzePixels(pixels(4, 4, () => [0, 0, 0, 0]), 4, 4).box).toEqual({ x: 0, y: 0, w: 4, h: 4 })
+  })
+})
+
+describe('silueta de las notificaciones', () => {
+  const alphaAt = (data, w, x, y) => data[(y * w + x) * 4 + 3]
+
+  it('PNG con transparencia: la silueta es lo opaco del logo, en blanco', () => {
+    const data = pixels(4, 4, (x, y) => x === 1 && y === 1 ? [200, 30, 30, 255] : x === 2 && y === 2 ? [0, 0, 255, 128] : [0, 0, 0, 0])
+    badgePixels(data, { transparent: true, edgeColor: null })
+    expect([...data.slice(4 * 5, 4 * 5 + 4)]).toEqual([255, 255, 255, 255])
+    expect(alphaAt(data, 4, 2, 2)).toBe(128)
+    expect(alphaAt(data, 4, 0, 0)).toBe(0)
+  })
+
+  it('JPG (sin transparencia): lo que se distingue del color de los bordes; el fondo queda transparente', () => {
+    // logo verde sobre negro, con un píxel casi negro (ruido del JPG) que no tiene que contar
+    const data = pixels(4, 4, (x, y) => x === 1 && y === 1 ? [0, 255, 0, 255] : x === 2 && y === 2 ? [12, 10, 8, 255] : [0, 0, 0, 255])
+    badgePixels(data, { transparent: false, edgeColor: '#000000' })
+    expect(alphaAt(data, 4, 1, 1)).toBe(255)
+    expect(alphaAt(data, 4, 2, 2)).toBe(0)
+    expect(alphaAt(data, 4, 0, 0)).toBe(0)
+    expect(data[0]).toBe(255)
+  })
+
+  it('cuánto llena: un cuadrado lleno es una mancha; una silueta con aire no', () => {
+    const full = pixels(4, 4, () => [255, 255, 255, 255])
+    expect(badgeFill(full, 16)).toBe(1)
+    expect(badgeFill(full, 16) > BADGE_BLOB).toBe(true)
+    const ring = pixels(4, 4, (x, y) => x === 0 || y === 0 ? [255, 255, 255, 255] : [255, 255, 255, 0])
+    expect(badgeFill(ring, 16)).toBeCloseTo(7 / 16)
+    expect(badgeFill(pixels(4, 4, () => [255, 255, 255, 0]), 16)).toBe(0)
+  })
+
+  it('color dominante: el del escudo, ignorando lo transparente', () => {
+    const shield = pixels(4, 4, (x, y) => x === 0 && y === 0 ? [0, 0, 0, 0] : x === 1 && y === 1 ? [250, 204, 21, 255] : [17, 17, 17, 255])
+    expect(dominantColor(shield)).toBe('#111111')
+    expect(dominantColor(pixels(2, 2, () => [0, 0, 0, 0]))).toBeNull()
   })
 })

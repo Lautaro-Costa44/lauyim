@@ -2127,6 +2127,9 @@ button.wh-row{font:inherit;color:inherit;border:0;cursor:pointer}
 .bi-iphone{border-radius:13px}
 .bi-login{width:56px;height:56px;border-radius:12px;background:var(--bg);border:1px solid var(--sep);display:flex;align-items:center;justify-content:center}
 .bi-login img{width:44px;height:44px;object-fit:contain}
+/* Barra de estado de Android: oscura en los dos temas, la silueta siempre blanca. */
+.bi-badge{width:56px;height:56px;border-radius:12px;background:#1c1c1e;display:flex;align-items:center;justify-content:center}
+.bi-badge img{width:32px;height:32px;object-fit:contain}
 .branding-logo-actions{display:flex;flex-direction:column;align-items:flex-start;gap:6px;flex:1;min-width:200px}
 .branding-bg{margin-top:12px;display:flex;flex-direction:column;gap:8px}
 .swatch-none{background:repeating-linear-gradient(45deg,var(--surface-2) 0 6px,var(--surface) 6px 12px);border:1px solid var(--sep)}

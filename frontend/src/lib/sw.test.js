@@ -195,10 +195,19 @@ describe('service worker caches', () => {
     expect(sw.fetchEvent('https://gym.test/api/me')).toBeUndefined()
   })
 
-  it("a push shows the gym logo the server sends, or lauyim's precached icon without one", async () => {
+  it("a push shows the gym logo and silhouette the server sends, or lauyim's precached ones without them", async () => {
     sw = boot(releaseCache('r2', 200))
-    await sw.push({ title: 'Hoy toca', body: 'x', icon: '/api/branding/icon-192.png?v=7' })
+    await sw.push({ title: 'Hoy toca', body: 'x', icon: '/api/branding/icon-192.png?v=7', badge: '/api/branding/badge-96.png?v=7' })
     await sw.push({ title: 'Hoy toca', body: 'x' })
-    expect(sw.shown.map(n => n.options.icon)).toEqual(['/api/branding/icon-192.png?v=7', 'icon-512.png?v=3'])
+    expect(sw.shown.map(n => [n.options.icon, n.options.badge])).toEqual([
+      ['/api/branding/icon-192.png?v=7', '/api/branding/badge-96.png?v=7'],
+      ['icon-512.png?v=3', 'badge-96.png']
+    ])
+  })
+
+  it('install precaches the default notification silhouette', async () => {
+    sw = boot({})
+    await sw.run('install')
+    expect(sw.caches.store.get('lauyim-release-r2').has('./badge-96.png')).toBe(true)
   })
 })

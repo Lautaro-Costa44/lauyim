@@ -6,7 +6,7 @@ import { t } from '../../lib/i18n.js'
 import { errorText } from '../../lib/errors.js'
 import { ACCENTS } from '../../lib/format.js'
 import { contrastWarnings, shortNameFor, DEFAULT_APP_NAME, MAX_SHORT_NAME } from '../../lib/branding.js'
-import { checkLogoFile, loadImage, analyzeImage, defaultIconBackground, renderIcons } from '../../lib/branding-image.js'
+import { checkLogoFile, loadImage, analyzeImage, defaultIconBackground, renderIcons, renderBadge, BADGE_BLOB } from '../../lib/branding-image.js'
 import { Button, Segmented, Switch, TextField } from '../../components/ui.jsx'
 import Icon from '../../components/Icon.jsx'
 import BrandingPreview from '../../components/BrandingPreview.jsx'
@@ -15,8 +15,8 @@ import { confirmSheet } from '../../sheets.jsx'
 // Admin → Personalización (solo el owner): nombre de la app, frase del login, logo y color del gym,
 // con vista previa antes de guardar (api/branding.js, lib/branding.js, lib/branding-image.js).
 const DEFAULT_TAGLINE = 'Tus entrenamientos. Tus pesos. Tus perfiles.'
-const ICON_FILES = ['logo.png', 'icon-192.png', 'icon-512.png', 'icon-maskable-512.png', 'apple-touch-icon.png']
-const FACTORY_ICONS = { 'logo.png': 'logo-perf.svg?v=3', 'icon-192.png': 'icon-192.png?v=3', 'icon-512.png': 'icon-512.png?v=3', 'icon-maskable-512.png': 'icon-512.png?v=3', 'apple-touch-icon.png': 'icon-180.png?v=3' }
+const ICON_FILES = ['logo.png', 'icon-192.png', 'icon-512.png', 'icon-maskable-512.png', 'apple-touch-icon.png', 'badge-96.png']
+const FACTORY_ICONS = { 'logo.png': 'logo-perf.svg?v=3', 'icon-192.png': 'icon-192.png?v=3', 'icon-512.png': 'icon-512.png?v=3', 'icon-maskable-512.png': 'icon-512.png?v=3', 'apple-touch-icon.png': 'icon-180.png?v=3', 'badge-96.png': 'badge-96.png' }
 const draftOf = b => ({ appName: b.appName, shortName: b.shortName || '', tagline: b.tagline || '', color: b.color, lockColor: !!b.lockColor, theme: b.theme || 'dark', lockTheme: b.lockTheme !== false })
 const THEME_OPTIONS = [
   { value: 'dark', icon: 'moon', label: 'Oscuro' },
@@ -28,7 +28,7 @@ export default function Personalizacion() {
   const toast = useUI(s => s.toast)
   const [saved, setSaved] = useState(null)
   const [draft, setDraft] = useState(null)
-  // logo: { kind: 'saved' | 'new' | 'none', img?, analysis?, background?, icons?, blurry? }
+  // logo: { kind: 'saved' | 'new' | 'none', img?, analysis?, background?, icons?, blurry?, badgeFill? }
   const [logo, setLogo] = useState({ kind: 'saved' })
   const [errors, setErrors] = useState({})
   const [busy, setBusy] = useState(false)
@@ -63,10 +63,12 @@ export default function Personalizacion() {
       const { analysis, crop, small, blurry } = analyzeImage(img)
       if (small) return toast(t('El logo tiene que medir al menos 192 px de lado'))
       const background = defaultIconBackground(analysis)
-      setLogo({ kind: 'new', img, analysis, crop, background, blurry, icons: renderIcons(img, background, crop) })
+      // La silueta de las notificaciones no depende del fondo: se arma una sola vez.
+      const badge = renderBadge(img, analysis, crop)
+      setLogo({ kind: 'new', img, analysis, crop, background, blurry, badgeFill: badge.fill, icons: { ...renderIcons(img, background, crop), 'badge-96.png': badge.dataUrl } })
     } catch (err) { toast(errorText(err, t('No se pudo leer la imagen'))) }
   }
-  const setBackground = background => setLogo(l => ({ ...l, background, icons: renderIcons(l.img, background, l.crop) }))
+  const setBackground = background => setLogo(l => ({ ...l, background, icons: { ...renderIcons(l.img, background, l.crop), 'badge-96.png': l.icons['badge-96.png'] } }))
 
   const save = async () => {
     setBusy(true)
@@ -138,6 +140,7 @@ export default function Personalizacion() {
           <figure><img className="bi-android" src={icons['icon-maskable-512.png']} alt="" /><figcaption>Android</figcaption></figure>
           <figure><img className="bi-iphone" src={icons['apple-touch-icon.png']} alt="" /><figcaption>iPhone</figcaption></figure>
           <figure><span className="bi-login"><img src={icons['logo.png']} alt="" /></span><figcaption>{t('Login')}</figcaption></figure>
+          <figure><span className="bi-badge"><img src={icons['badge-96.png']} alt="" /></span><figcaption>{t('Notificación')}</figcaption></figure>
         </div>
         <div className="branding-logo-actions">
           <input ref={fileRef} type="file" accept="image/png,image/jpeg" hidden onChange={pickFile} />
@@ -151,6 +154,9 @@ export default function Personalizacion() {
           ? t('Tu logo tiene fondo transparente: elegí el color de fondo de los íconos (iPhone no admite transparencia).')
           : t('Tu imagen tiene fondo propio: lo extendimos para que llene el ícono. Podés cambiarlo.')}</div>
         {logo.blurry && <div className="access-warn small" role="note">{t('La imagen mide menos de 512 px: el ícono puede verse borroso.')}</div>}
+        {(logo.badgeFill === 0 || logo.badgeFill > BADGE_BLOB) && <div className="access-warn small" role="note">{logo.badgeFill === 0
+          ? t('En la barra de notificaciones de Android el logo no se distingue del fondo. Probá con un PNG de fondo transparente.')
+          : t('En la barra de notificaciones de Android el logo se ve como una mancha. Se lee mejor un PNG de fondo transparente.')}</div>}
         <div className="swatches">
           {bgChoices.map(c => <button key={c} type="button" className={'swatch' + (logo.background === c ? ' on' : '')} style={{ background: c }} aria-label={c} onClick={() => setBackground(c)} />)}
           <label className="swatch swatch-picker" title={t('Otro color')}>
