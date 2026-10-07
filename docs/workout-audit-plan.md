@@ -271,3 +271,18 @@ B1, B2, B3, B4, M1, M2, M4, V1–V8: confirmados tal cual están descritos.
 | 7 Reemplazar / reordenar (N4–N6, D1) | hecho: "⋯" en cada tarjeta de la tira → Reemplazar (`ExerciseReplacementSheet`, pool = biblioteca filtrada por equipamiento activo), Elegir de la biblioteca (`exercisePicker`), Quitar (confirm de siempre); última tarjeta "Reordenar" → sheet vertical con `useDragReorder` (D1). Lógica pura `reorderUnits` / `replacementEntry` en `history.js`. Con isométrico corriendo no se ofrece (toast). `progressHighWater` se re-basa cuando cambia la lista de ids. Verificado en navegador. Tests en `history.test.js` y `Workout.test.jsx` |
 | 8 Avance uniforme | hecho: al completar una unidad singleton que no abre `TopWeight` (cardio, isométrico, peso corporal o peso ya confirmado) y no es la última, pasa sola a la siguiente con el descanso corriendo; el toast queda. Tests en `Workout.test.jsx` |
 | 9 Peso "esta vez no" | ya implementado (C1); test en `bw-skip.test.jsx` (arranca sin pesaje, sin registrar peso, switch intacto) |
+
+## 8. Ronda de pruebas en dev (2026-10-06): fixes
+
+Reportado por Lautaro tras probar en el teléfono. Todo en `feat/workout-audit`, un commit por fix.
+
+| Reporte | Causa | Fix |
+|---|---|---|
+| Cardio aparece con series, reps y peso | El entreno daba prioridad a un `mode` guardado (sesión empezada antes de cambiar la configuración); la configuración solo ofrece la forma de cardio | `modeOf`: un ejercicio de cardio siempre es cardio (`3beea4c`) |
+| Texto de RIR/RPE informal | | "Repeticiones en reserva…", "Esfuerzo percibido…" (`a033f95`) |
+| "+ Bajada / + Ráfaga" bajo la serie actual sobra | Decisión D2 | Se quitan; "⋯" sobre el número de la serie actual y un tip de una vez por dispositivo (`03879c1`) |
+| Anterior/Siguiente flotando sobre filas y timer | Barra sticky | Fijos debajo del ejercicio, sin flotar (`a01f0b3`) |
+| Modo avión muestra versión vieja | Por diseño: la actualización no se aplica con un entreno en curso, y offline se sirve la versión instalada | Sin cambio. Probar offline después de terminar el entreno y aceptar la actualización |
+| La biblioteca no se cierra al elegir | `ExercisePicker` nunca se cierra solo | En el entreno se cierra al elegir (reemplazar y agregar); el editor de rutinas no cambia (`042f7c1`) |
+| Reordenar: "superset", el panel se mueve o se cierra, solo desde la manija | El gesto de cerrar el sheet tomaba el arrastre; `useDragReorder` solo con manija | `data-nodrag` en la lista; `rowProps` con mantener apretado 300 ms en toda la fila; texto "superserie" (`bb4b0d5`) |
+| Hoja de peso de trabajo siempre | | `workingWeightCheck`: solo sin peso registrado o con peso mayor al mejor anterior; la primera vez guarda sin preguntar (`5842b5c`) |
