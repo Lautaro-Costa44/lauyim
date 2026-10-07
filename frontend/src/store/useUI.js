@@ -4,6 +4,7 @@ import { beep, vibrate } from '../lib/sound.js'
 import { api } from '../lib/api.js'
 import { t } from '../lib/i18n.js'
 import { useStore } from './useStore.js'
+import { notificationImages, cachedBranding } from '../lib/branding.js'
 
 // Fire-and-forget: lets the server push a "rest over" alert if this tab gets suspended
 // before the local timer completes. No-ops for guests / offline.
@@ -35,12 +36,13 @@ const maybeRestNotification = async () => {
   try {
     // Android Chrome forbids the Notification constructor (Illegal constructor) - the
     // service-worker registration path is the one that actually pops there.
+    const options = { body: t('Rest over — next set!'), ...notificationImages(useStore.getState().config?.branding ?? cachedBranding()) }
     const reg = await navigator.serviceWorker?.getRegistration?.()
     if (reg?.showNotification) {
-      reg.showNotification(t('Rest over — next set!'), { body: t('Rest over — next set!') })
+      reg.showNotification(t('Rest over — next set!'), options)
       return
     }
-    new Notification(t('Rest over — next set!'), { body: t('Rest over — next set!') })
+    new Notification(t('Rest over — next set!'), options)
   } catch {
     // Intentionally ignore: notification APIs vary by browser and policy in edge cases.
   }

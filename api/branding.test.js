@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { brandingOf, validateBranding, validateAssets, pngSize, buildManifest, BRANDING_ASSETS } from './branding.js';
+import { brandingOf, validateBranding, validateAssets, pngSize, buildManifest, brandPush, BRANDING_ASSETS } from './branding.js';
 import { fakePng } from './fake-png.js';
 
 const allAssets = (opts) => Object.fromEntries(Object.entries(BRANDING_ASSETS).map(([name, side]) => [name, 'data:image/png;base64,' + fakePng(side, opts).toString('base64')]));
@@ -64,4 +64,24 @@ test('buildManifest: nombre, nombre corto e íconos propios o los de lauyim', ()
   assert.equal(plain.background_color, '#0c0e12');
   assert.equal(buildManifest(brandingOf(JSON.stringify({ theme: 'light' }))).background_color, '#f2f2f7');
   assert.equal(buildManifest(brandingOf(JSON.stringify({ theme: 'light', lockTheme: false }))).background_color, '#0c0e12');
+});
+
+test('brandPush: foto del gym con logo propio, nada sin logo; nombre del gym si falta el título', () => {
+  const plain = brandPush({ title: 'Hoy toca', body: 'x', tag: 't' }, brandingOf(null));
+  assert.deepEqual(plain, { title: 'Hoy toca', body: 'x', tag: 't' });
+  const gym = brandingOf(JSON.stringify({ appName: 'Gimnasio Centro Norte', logo: 7 }));
+  assert.equal(brandPush({ title: 'Hoy toca' }, gym).icon, '/api/branding/icon-192.png?v=7');
+  assert.equal(brandPush({ title: 'Hoy toca' }, gym).badge, '/api/branding/badge-96.png?v=7');
+  assert.equal(brandPush({ body: 'x' }, gym).title, 'Gimnasio Centro Norte');
+  assert.equal(brandPush({ body: 'x' }, brandingOf(null)).title, 'lauyim');
+});
+
+test('validateAssets: la silueta de las notificaciones puede faltar (logos de antes); si viene, se valida', () => {
+  const { ['badge-96.png']: badge, ...rest } = allAssets();
+  assert.ok(badge);
+  assert.equal(validateAssets(rest).error, undefined);
+  assert.equal(validateAssets(rest).value['badge-96.png'], undefined);
+  assert.equal(validateAssets({ ...rest, 'badge-96.png': 'data:image/png;base64,' + fakePng(64).toString('base64') }).error, 'badge-96.png tiene que medir 96×96');
+  const { ['icon-192.png']: _, ...noIcon } = allAssets();
+  assert.equal(validateAssets(noIcon).error, 'Falta icon-192.png');
 });

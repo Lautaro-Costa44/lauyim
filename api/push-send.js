@@ -5,7 +5,8 @@ import https from 'node:https';
 import dns from 'node:dns';
 import net from 'node:net';
 import webpush from 'web-push';
-import { deleteSubscription } from './database.js';
+import { deleteSubscription, getAdminSetting } from './database.js';
+import { BRANDING_SETTING, brandingOf, brandPush } from './branding.js';
 
 export const PUSH_TIMEOUT_MS = 10000;
 
@@ -110,6 +111,10 @@ export function pushEndpointError(raw) {
   if (!isAllowedPushHost(host)) return 'endpoint host is not a known push service';
   return null;
 }
+
+// Payload de un push → el cuerpo que se envía, con la personalización actual del gym (foto y
+// nombre). Todos los push lo arman acá, así un logo nuevo sale en el próximo aviso.
+export const pushBody = payload => JSON.stringify(brandPush(payload, brandingOf(getAdminSetting(BRANDING_SETTING))));
 
 /**
  * Envía un push a una suscripción guardada ({ endpoint, keys }; keys puede venir como JSON).

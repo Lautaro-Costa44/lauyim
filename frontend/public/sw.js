@@ -119,6 +119,7 @@ self.addEventListener('install', event => {
       './logo-perf.svg',
       './icon-512.png',
       './icon-180.png',
+      './badge-96.png',
       ...manifest.files.map(file => './' + file).filter(file => file !== './sw.js')
     ]
 
@@ -164,9 +165,12 @@ self.addEventListener('push', e => {
   const data = e.data ? e.data.json() : {}
   e.waitUntil(self.registration.showNotification(data.title || 'lauyim', {
     body: data.body || '',
-    // Notifications are more consistently rendered from PNGs on Android.
-    icon: 'icon-512.png?v=3',
-    badge: 'icon-180.png?v=3',
+    // Notifications are more consistently rendered from PNGs on Android. The server sends the
+    // gym's logo as data.icon and its white silhouette as data.badge (api/push-send.js); without
+    // them, lauyim's, precached for offline. Android only uses the badge's alpha: it must be a
+    // silhouette, a full-colour icon shows up as a white square.
+    icon: data.icon || 'icon-512.png?v=3',
+    badge: data.badge || 'badge-96.png',
     tag: data.tag || 'lauyim',
     renotify: true,
     data: data.data || {}

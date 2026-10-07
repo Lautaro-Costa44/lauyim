@@ -41,6 +41,17 @@ beforeEach(async () => {
 afterEach(async () => { await act(async () => { root.unmount() }); container.remove(); useStore.setState({ config: null }) })
 
 describe('Personalización', () => {
+  it('muestra la silueta de las notificaciones: la de lauyim sin logo, la del gym con logo', async () => {
+    await mount(<Personalizacion />)
+    const badge = () => container.querySelector('.bi-badge img')
+    expect(badge().getAttribute('src')).toBe('badge-96.png')
+    expect(container.textContent).toContain('Notificación')
+    await act(async () => { root.unmount() }); container.remove()
+    apiMock.mockImplementation(() => Promise.resolve({ branding: { ...FACTORY, logo: 9 } }))
+    await mount(<Personalizacion />)
+    expect(badge().getAttribute('src')).toBe('/api/branding/badge-96.png?v=9')
+  })
+
   it('nombre, color y "solo el del gym"; guarda y la app cambia en el acto', async () => {
     await mount(<Personalizacion />)
     expect(button('Guardar').disabled).toBe(true)

@@ -13,7 +13,7 @@ import {
 } from '@simplewebauthn/server';
 import { dayReminderPush, gymFeePush, restTimerPush, testPush } from './push-messages.js';
 import { startScheduler } from './scheduler.js';
-import { sendPushToSubscription, pushEndpointError } from './push-send.js';
+import { sendPushToSubscription, pushEndpointError, pushBody } from './push-send.js';
 import { verifyError } from './verify-error.js';
 import { clientIpFrom } from './client-ip.js';
 import { processSyncBatch } from './sync.js';
@@ -512,7 +512,7 @@ async function sendPush(userId, payload) {
   if (!user || isInactiveAccount(user)) return;
   const subs = getSubscriptionsByUserId(userId);
   if (!subs.length) return;
-  const body = JSON.stringify(payload);
+  const body = pushBody(payload);
   let next = 0;
   const worker = async () => {
     while (next < subs.length) {
@@ -4378,7 +4378,7 @@ const routes = {
       }
     };
 
-    const payloadStr = JSON.stringify(payload);
+    const payloadStr = pushBody(payload);
     let sent = 0;
     for (const s of rawSubs) {
       try {

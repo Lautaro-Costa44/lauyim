@@ -17,7 +17,7 @@ process.env.DATA_DIR = dataDir;
 process.env.PUSH_HOST_ALLOWLIST = ' push.gym.test , *.extra.test ';
 
 const db = await import('./database.js');
-const { isPrivateAddr, isAllowedPushHost, pushEndpointError, sendPushToSubscription, PUSH_AGENT, PUSH_TIMEOUT_MS } = await import('./push-send.js');
+const { isPrivateAddr, isAllowedPushHost, pushEndpointError, sendPushToSubscription, pushBody, PUSH_AGENT, PUSH_TIMEOUT_MS } = await import('./push-send.js');
 const { runSchedulerTick } = await import('./scheduler.js');
 db.initDatabase();
 
@@ -198,6 +198,13 @@ test('tick del scheduler: endpoints privados no conectan y el resto de los socio
   assert.equal(connect.mock.callCount(), 0);
   // Bloqueado no es 404/410: la suscripción se conserva, igual que antes.
   assert.equal(db.getSubscriptionsByUserId('bad').length, PRIVATE_ENDPOINTS.length + 1);
+});
+
+test('pushBody: el push sale con la personalización guardada en ese momento', () => {
+  assert.equal(JSON.parse(pushBody({ title: 'Hoy toca' })).icon, undefined);
+  db.setAdminSetting('branding', JSON.stringify({ appName: 'Gym Centro', logo: 3 }));
+  assert.deepEqual(JSON.parse(pushBody({ body: 'x', tag: 't' })), { body: 'x', tag: 't', title: 'Gym Centro', icon: '/api/branding/icon-192.png?v=3', badge: '/api/branding/badge-96.png?v=3' });
+  db.setAdminSetting('branding', '{}');
 });
 
 test('ningún archivo de api/ llama a webpush.sendNotification fuera de push-send.js', () => {

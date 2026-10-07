@@ -14,7 +14,7 @@ export const THEMES = ['dark', 'light', 'system'];
 const MANIFEST_BG = { dark: '#0c0e12', light: '#f2f2f7' };
 // Un PNG de 512×512 con transparencia que no se comprime (foto, degradado) pesa hasta ~1 MB.
 export const MAX_ASSET_BYTES = 1200 * 1024;
-// Cuerpo del PUT con los cinco íconos en base64, en el peor caso (~4,4 MB, cerca del límite general de 5 MB).
+// Cuerpo del PUT con los íconos en base64, en el peor caso (~4,5 MB, cerca del límite general de 5 MB).
 export const MAX_BRANDING_BODY = 8 * 1024 * 1024;
 
 // Archivos que se generan a partir del logo, con su lado exacto en píxeles.
@@ -23,8 +23,12 @@ export const BRANDING_ASSETS = Object.freeze({
   'icon-192.png': 192,          // Android
   'icon-512.png': 512,          // Android y pantalla de carga
   'icon-maskable-512.png': 512, // Android: lo recorta en círculo o gota (logo dentro de la zona segura)
-  'apple-touch-icon.png': 180   // iPhone (sin transparencia)
+  'apple-touch-icon.png': 180,  // iPhone (sin transparencia)
+  'badge-96.png': 96            // barra de estado de Android: silueta blanca sobre transparente
 });
+// Puede faltar: los logos subidos antes de que existiera (y una app vieja todavía abierta) no lo
+// traen. Sin él, /api/branding/badge-96.png redirige al de lauyim.
+const OPTIONAL_ASSETS = new Set(['badge-96.png']);
 
 // Los de lauyim, en frontend/public: si la instancia no tiene logo propio.
 export const DEFAULT_ASSETS = Object.freeze({
@@ -32,7 +36,8 @@ export const DEFAULT_ASSETS = Object.freeze({
   'icon-192.png': '/icon-192.png',
   'icon-512.png': '/icon-512.png',
   'icon-maskable-512.png': '/icon-512.png',
-  'apple-touch-icon.png': '/icon-180.png'
+  'apple-touch-icon.png': '/icon-180.png',
+  'badge-96.png': '/badge-96.png'
 });
 
 const clean = value => typeof value === 'string' ? value.replace(/[\u0000-\u001f\u007f<>]/g, ' ').replace(/\s+/g, ' ').trim() : null;
@@ -89,6 +94,7 @@ export function validateAssets(assets) {
   const value = {};
   for (const [name, side] of Object.entries(BRANDING_ASSETS)) {
     const raw = assets[name];
+    if (raw === undefined && OPTIONAL_ASSETS.has(name)) continue;
     if (typeof raw !== 'string' || !raw) return { error: `Falta ${name}` };
     const buffer = Buffer.from(raw.replace(/^data:image\/png;base64,/, ''), 'base64');
     if (buffer.length > MAX_ASSET_BYTES) return { error: `${name} pesa demasiado` };
@@ -103,6 +109,18 @@ export function validateAssets(assets) {
 }
 
 const assetUrl = (branding, name) => branding.logo ? `/api/branding/${name}?v=${branding.logo}` : DEFAULT_ASSETS[name];
+
+// Push → el mismo push con el logo del gym como foto (icon) y como silueta de la barra de estado
+// (badge), y su nombre si no trae título. Sin logo propio no agrega ninguno: el service worker pone
+// los de lauyim, que ya tiene guardados sin conexión.
+export function brandPush(payload, branding) {
+  const out = { ...payload, title: payload.title || branding.appName };
+  if (branding.logo) {
+    out.icon = assetUrl(branding, 'icon-192.png');
+    out.badge = assetUrl(branding, 'badge-96.png');
+  }
+  return out;
+}
 
 // Manifest de la PWA: nombre, nombre corto, color e íconos de la instancia.
 export function buildManifest(branding) {
