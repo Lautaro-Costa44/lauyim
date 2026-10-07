@@ -862,7 +862,7 @@ export default {
   'Finish the timed set first': 'Primero terminá la serie con tiempo',
   'Reorder': 'Reordenar',
   'Reorder exercises': 'Reordenar ejercicios',
-  'Drag by the handle. A superset moves as one.': 'Arrastrá desde la manija. Un superset se mueve entero.',
+  'Press and hold an exercise, then drag it. A superset moves as one.': 'Mantené apretado un ejercicio y arrastralo. Una superserie se mueve entera.',
   'Move {0}': 'Mover {0}',
   'Workout options': 'Opciones del entreno',
   'Discard workout': 'Descartar entreno',

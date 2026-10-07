@@ -107,11 +107,12 @@ function ReorderSheet({ onCommit }) {
   const drag = useDragReorder(ids, next => onCommit(next.map(id => ids.indexOf(id))))
   return <>
     <h3>{t('Reorder exercises')}</h3>
-    <div className="muted small" style={{ marginBottom: 12 }}>{t('Drag by the handle. A superset moves as one.')}</div>
-    <div className="list">
+    <div className="muted small" style={{ marginBottom: 12 }}>{t('Press and hold an exercise, then drag it. A superset moves as one.')}</div>
+    {/* data-nodrag: a drag here moves an exercise, never the sheet (its swipe-to-close). */}
+    <div className="list" data-nodrag>
       {drag.order.map(id => {
         const names = units[ids.indexOf(id)].map(i => exerciseNameFor(exOr(entries[i].id))).join(' + ')
-        return <div key={id} ref={drag.rowRef(id)} className={'reo-row' + (drag.draggingId === id ? ' dragging' : '')}>
+        return <div key={id} ref={drag.rowRef(id)} {...drag.rowProps(id)} className={'reo-row' + (drag.draggingId === id ? ' dragging' : '')}>
           <div className="grow capitalize">{names}</div>
           <span className="drag-handle" role="button" tabIndex={0} aria-label={t('Move {0}', names)} {...drag.handleProps(id)}><Icon name="grip" /></span>
         </div>
