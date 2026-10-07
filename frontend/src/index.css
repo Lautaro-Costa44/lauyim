@@ -899,10 +899,16 @@ body.resting .wnav{bottom:calc(212px + var(--sab))}
 .subrow .stp.mini button{width:26px;height:30px}
 .subrow .stp.mini .num{font-size:13px}
 .subrow .iconbtn{width:26px;height:26px;font-size:11px;flex:none}
-.setextra{display:flex;flex-wrap:wrap;gap:6px;margin:2px 0 8px 36px}
-.setextra .chip.add{display:inline-flex;align-items:center;gap:4px;color:var(--acc)}
-.setextra .chip.add svg{width:13px;height:13px}
-.setextra .chip.add:disabled{opacity:.35}
+/* "⋯" on the current set's number: says the number opens the row's actions (+ Drop, + Burst) */
+.setrow .n.more{position:relative}
+.n-more{
+  position:absolute;right:-5px;bottom:-5px;width:15px;height:15px;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;font-size:11px;--icon-stroke:3;
+  background:var(--acc);color:var(--on-acc);box-shadow:0 0 0 2px var(--surface);
+}
+.settip{display:flex;align-items:center;gap:8px;margin:-4px 0 10px;padding:8px 6px 8px 10px;border-radius:10px;background:var(--acc-soft);font-size:13px;line-height:1.35;color:var(--label)}
+.settip>.icn{color:var(--acc);flex:none}
+.settip .iconbtn{width:28px;height:28px;font-size:13px;background:none;color:var(--label-2)}
 /* why the next target is what it is (issue #17) */
 .progline{
   display:flex;align-items:flex-start;gap:7px;margin:6px 0 2px;

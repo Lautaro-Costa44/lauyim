@@ -296,13 +296,30 @@ describe('set rows (audit phase 5)', () => {
     expect(mocks.S.active.entries[0].sets[0].phase).toBeUndefined()
   })
 
-  it('shows + Drop / + Burst only under the current set, and any set reaches them from its number', async () => {
+  it('reaches + Drop / + Burst only through the set number, marked on the current set', async () => {
     await mount([exercise('bench', [true, false, false])])
-    expect(container.querySelectorAll('.setextra')).toHaveLength(1)
+    expect(container.querySelectorAll('.setextra')).toHaveLength(0)
+    expect([...container.querySelectorAll('.setrow .n')].map(n => n.classList.contains('more'))).toEqual([false, true, false])
     await click(container.querySelectorAll('.setrow .n')[0])
     const menu = await openedSheet()
     await click(itemByText(menu, /Drop|Bajada/))
     expect(mocks.S.active.entries[0].sets[0].drops).toHaveLength(1)
+  })
+
+  it('shows the set-menu tip once, until a set menu is opened', async () => {
+    const store = new Map()
+    globalThis.localStorage = { getItem: k => store.get(k) ?? null, setItem: (k, v) => store.set(k, String(v)) }
+    try {
+      await mount([exercise('bench', [false, false])])
+      expect(container.querySelector('.settip')).toBeTruthy()
+      await click(container.querySelector('.setrow .n'))
+      expect(container.querySelector('.settip')).toBeNull()
+      await unmount()
+      await mount([exercise('bench', [false, false])])
+      expect(container.querySelector('.settip')).toBeNull()
+    } finally {
+      delete globalThis.localStorage
+    }
   })
 
   it('logs effort by tapping the number and picking a value', async () => {

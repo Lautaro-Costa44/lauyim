@@ -75,6 +75,11 @@ function Elapsed({ start }) {
   return <span>{t}</span>
 }
 
+/* ---------- one-time tip for the set-number menu (per device: a convenience, not data) ---------- */
+const SET_MENU_TIP_KEY = 'lauyim_tip_setmenu'
+const setMenuTipPending = () => { try { return localStorage.getItem(SET_MENU_TIP_KEY) !== '1' } catch { return false } }
+const dismissSetMenuTip = () => { try { localStorage.setItem(SET_MENU_TIP_KEY, '1') } catch { /* storage off */ } }
+
 /* ---------- effort picker: RIR 0–5 or RPE 6–10 in the profile's own steps ---------- */
 function EffortPicker({ kind, value, onPick }) {
   const e = EFFORT[kind]
@@ -214,7 +219,10 @@ function ExerciseBlock({ entryIdx, compact, onToggle, onField, onAddSet, onRemov
     if (!entry.sets[i]?.done) return onRemoveSetAt(i)
     confirmSheet({ title: t('Remove set?'), message: t('This set is already logged. Removing it deletes what you recorded.'), confirmText: t('Remove'), danger: true, onConfirm: () => onRemoveSetAt(i) })
   }
+  const [tipOn, setTipOn] = useState(setMenuTipPending)
+  const dismissTip = () => { setTipOn(false); dismissSetMenuTip() }
   const rowMenu = (i, label, canExtend) => {
+    if (tipOn) dismissTip()
     const s = entry.sets[i]
     useUI.getState().openSheet(close => <>
       <h3>{label}</h3>
@@ -293,6 +301,12 @@ function ExerciseBlock({ entryIdx, compact, onToggle, onField, onAddSet, onRemov
     </div>}
     <div className="card" style={{ marginTop: 10, marginBottom: 0 }}>
       {/* the header carries the same eff3 sizing as the rows, or the labels drift off their columns */}
+      {/* Once per device: how to reach drops, bursts and removing a set. Gone for good after the
+          first time a set menu is opened or the tip is closed. */}
+      {tipOn && mode === 'reps' && !compact && <div className="settip">
+        <Icon name="lightbulb" /><span className="grow">{t('Tip: tap a set’s number to add a drop or a burst, or to remove it.')}</span>
+        <button className="iconbtn" aria-label={t('Close')} onClick={dismissTip}><Icon name="xmark" /></button>
+      </div>}
       <div className={'sethead' + (col3 ? ' eff3' : '')}><span className="n-sp" /><span className="w-sp">{col1.hd}</span>{col2 && <span className="r-sp">{col2.hd}</span>}{col3 && <span className="eff-sp">{col3.hd}</span>}{timed && <span className="ck-sp" />}<span className="ck-sp" /></div>
       {entry.sets.map((s, i) => {
         const warm = isWarmupRow(s)
@@ -306,7 +320,10 @@ function ExerciseBlock({ entryIdx, compact, onToggle, onField, onAddSet, onRemov
           {isFirstWarmup && <div className="setph">{t('Warm-up')}</div>}
           {!warm && warmBefore && <div className="setsep" />}
           <div className={'setrow' + (s.done ? ' done' : '') + (col3 ? ' eff3' : '') + (timed ? ' timed' : '')}>
-            <button className="n" aria-label={t('Options for {0}', label)} onClick={() => rowMenu(i, label, canExtend)}>{phaseNum}</button>
+            {/* The set you are on carries a small "⋯" so the number reads as something to tap. */}
+            <button className={'n' + (i === currentRow && canExtend ? ' more' : '')} aria-label={t('Options for {0}', label)} onClick={() => rowMenu(i, label, canExtend)}>
+              {phaseNum}{i === currentRow && canExtend && <span className="n-more" aria-hidden="true"><Icon name="more" /></span>}
+            </button>
             {cell(s, i, col1, 'w')}
             {col2 && cell(s, i, col2, 'r')}
             {col3 && <button className="effv" aria-label={col3.hd} onClick={() => effortPicker(i)}>{s[eff.f] != null ? fmtNum(s[eff.f]) : '–'}</button>}
@@ -336,12 +353,6 @@ function ExerciseBlock({ entryIdx, compact, onToggle, onField, onAddSet, onRemov
                 <button className="iconbtn" aria-label={t('Remove burst')} onClick={() => removeCluster(i, ci)}><Icon name="xmark" /></button>
               </div>
             ))}
-            {/* Only under the set you are on: on every row they were most of the card. Any other
-                row reaches the same actions through its number. */}
-            {i === currentRow && <div className="setextra">
-              {!isRestPauseSet(s) && <button className="chip add" onClick={() => addDropRow(i)}><Icon name="arrowDown" />{t('+ Drop')}</button>}
-              {!isDropSet(s) && <button className="chip add" onClick={() => addBurstRow(i)}><Icon name="bolt" />{t('+ Burst')}</button>}
-            </div>}
           </>}
         </div>
       })}

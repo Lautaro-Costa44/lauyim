@@ -867,6 +867,7 @@ export default {
   'Workout options': 'Opciones del entreno',
   'Discard workout': 'Descartar entreno',
   'Done: {0}': 'Hecho: {0}',
+  'Tip: tap a set’s number to add a drop or a burst, or to remove it.': 'Tip: tocá el número de una serie para agregarle una bajada o una ráfaga, o para quitarla.',
   'Set {0}': 'Serie {0}',
   'Warm-up {0}': 'Calentamiento {0}',
   'Options for {0}': 'Opciones de {0}',
