@@ -186,6 +186,18 @@ export function exLine(cfg, unit) {
   return `${n} × ${repsVal}${load}${split}`
 }
 
+// Finishing a loaded exercise: does the "confirm your working weight" sheet need to open?
+// Only when there is something to confirm — no weight logged at all (ask for it), or a weight
+// above the previous best (a record worth a look). With no previous best the weight just done
+// is saved as is; matching or staying under it needs nothing.
+export function workingWeightCheck(S, entry) {
+  const top = Math.max(0, ...(entry?.sets || []).filter(s => s.done && !isWarmupRow(s)).map(s => s.w || 0))
+  if (!(top > 0)) return { ask: true, save: false, top }
+  const prev = Math.max((S?.exWeights?.[entry.id] || {}).w || 0, bestWeightFor(S, entry.id))
+  if (!(prev > 0)) return { ask: false, save: true, top }
+  return { ask: top > prev, save: false, top }
+}
+
 // The session's units in a new order. `order` lists the old unit indexes (supersetUnits) in
 // their new positions; a superset moves as one. `map[oldIdx]` is each entry's new index, so the
 // caller can carry the current exercise across.

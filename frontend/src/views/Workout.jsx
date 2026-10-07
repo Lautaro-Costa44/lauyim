@@ -4,7 +4,7 @@ import { useStore } from '../store/useStore.js'
 import { useUI } from '../store/useUI.js'
 import { exOr, imgSrc, gifSrc, allExercises, isCardio, isStretch } from '../lib/exercises.js'
 import { exAvailable } from '../lib/equipment.js'
-import { effectiveRoutine, lastEntryFor, bestWeightFor, buildSets, freestyleConfig, defaultConfig, setsDoneActive, supersetUnits, unitOf, setLabel, modeOf, isBw, isPerSide, sideReps, repStep, EFFORT, effortOf, cascadeWeight, insertWarmupRow, removeRowAt, pairAdjacent, unpairSuperset, cleanupSg, applyIntensifierPlan, pinnedNoteFor, exNoteFor, isEmptySet, restFor, reorderUnits, replacementEntry } from '../lib/history.js'
+import { effectiveRoutine, lastEntryFor, bestWeightFor, buildSets, freestyleConfig, defaultConfig, setsDoneActive, supersetUnits, unitOf, setLabel, modeOf, isBw, isPerSide, sideReps, repStep, EFFORT, effortOf, cascadeWeight, insertWarmupRow, removeRowAt, pairAdjacent, unpairSuperset, cleanupSg, applyIntensifierPlan, pinnedNoteFor, exNoteFor, isEmptySet, restFor, reorderUnits, replacementEntry, workingWeightCheck } from '../lib/history.js'
 import { fmtNum, fmtDate, todayISO, exCount, DAYN } from '../lib/format.js'
 import { beep, vibrate } from '../lib/sound.js'
 import { t, exerciseNameFor, instrFor } from '../lib/i18n.js'
@@ -637,7 +637,7 @@ function ActiveWorkout() {
     if (!entry?.sets?.[i]) return
     const m = modeOf({ ...(entry.target || {}), id: entry.id })
     const cardioEntry = m === 'cardio'
-    let askTop = false, exJustDone = false, workoutDone = false, checked = false
+    let askTop = false, exJustDone = false, workoutDone = false, checked = false, saveTop = 0
     mutEntry(idx, (e, draft) => {
       e.sets[i].done = !e.sets[i].done
       checked = e.sets[i].done
@@ -648,9 +648,20 @@ function ActiveWorkout() {
         // plank has nothing to put in that slider, and neither does a set of push-ups
         // (issue #32: the fewest taps that still record what happened).
         const loaded = m === 'reps' && !(isBw({ ...(e.target || {}), id: e.id }) && !e.sets.some(x => x.w > 0))
-        if (e.sets.every(x => x.done)) { exJustDone = true; if (loaded && !e.asked) { e.asked = true; askTop = true } }
+        if (e.sets.every(x => x.done)) {
+          exJustDone = true
+          // The sheet opens only when there is something to confirm — see workingWeightCheck.
+          if (loaded && !e.asked) {
+            e.asked = true
+            const check = workingWeightCheck(st, e)
+            if (check.ask) askTop = true
+            else if (check.save) saveTop = check.top
+          }
+        }
       }
     })
+    // First time with this exercise: the weight just done becomes its working weight, no sheet.
+    if (saveTop) update(s => { s.exWeights[entry.id] = { w: saveTop, d: todayISO() } })
     if (checked) { beep(st.sound, 1040, 0.12); vibrate(30) }
     // Only progress beyond this exercise's high-water mark may navigate, open the finish prompt
     // or change rest. This prevents an uncheck/re-check of finished work from replaying them.

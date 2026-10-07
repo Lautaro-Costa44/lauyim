@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { modeOf, isTimed, fmtSec, setLabel, defaultConfig, buildSets, freestyleConfig, exLine, workoutVolume, bestWeightFor, bestWeightForEntry, effortOf, stepEffort, capEffort, isBw, isPerSide, sideReps, repStep, cascadeWeight, insertWarmupRow, removeRowAt, workSetsDone, pairAdjacent, unpairSuperset, supersetUnits, applyIntensifierPlan, pinnedNoteFor, exNoteFor, evalWeek, weeklyTarget, markedDoneWorkout, planTargetNow, stampWeekTargets, streakSummary, streakLevel, nextStreakLevel, bestStreak, isEmptySet, restFor, reorderUnits, replacementEntry } from './history.js'
+import { modeOf, isTimed, fmtSec, setLabel, defaultConfig, buildSets, freestyleConfig, exLine, workoutVolume, bestWeightFor, bestWeightForEntry, effortOf, stepEffort, capEffort, isBw, isPerSide, sideReps, repStep, cascadeWeight, insertWarmupRow, removeRowAt, workSetsDone, pairAdjacent, unpairSuperset, supersetUnits, applyIntensifierPlan, pinnedNoteFor, exNoteFor, evalWeek, weeklyTarget, markedDoneWorkout, planTargetNow, stampWeekTargets, streakSummary, streakLevel, nextStreakLevel, bestStreak, isEmptySet, restFor, reorderUnits, replacementEntry, workingWeightCheck } from './history.js'
 import { localDayStartOf, localNoonOf, workoutTime } from './format.js'
 import { buildCompletedWorkout } from './finish-workout.js'
 import { EXDB } from './exercises.js'
@@ -1146,5 +1146,17 @@ describe('replacementEntry', () => {
     expect(next.sets).toHaveLength(3)
     expect(next.sets.every(s => !s.done)).toBe(true)
     expect(next.target).not.toHaveProperty('id')
+  })
+})
+
+describe('workingWeightCheck', () => {
+  const S = w => ({ workouts: [], exWeights: w ? { bench: { w } } : {} })
+  const e = (...ws) => ({ id: 'bench', sets: [{ w: 20, r: 5, phase: 'warmup', done: true }, ...ws.map(w => ({ w, r: 5, done: true }))] })
+  it('asks when nothing was lifted, saves silently the first time, asks only for a new best after that', () => {
+    expect(workingWeightCheck(S(60), e(0, 0))).toMatchObject({ ask: true })
+    expect(workingWeightCheck(S(), e(55, 60))).toEqual({ ask: false, save: true, top: 60 })
+    expect(workingWeightCheck(S(60), e(60))).toMatchObject({ ask: false, save: false })
+    expect(workingWeightCheck(S(60), e(57.5))).toMatchObject({ ask: false, save: false })
+    expect(workingWeightCheck(S(60), e(62.5))).toMatchObject({ ask: true, top: 62.5 })
   })
 })

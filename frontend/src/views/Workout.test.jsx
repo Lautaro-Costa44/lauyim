@@ -178,7 +178,7 @@ describe('Workout set completion flow', () => {
       exercise('superset-a', [true, true, true], { sg: group, asked: true }),
       exercise('superset-b', [true, true, false], { sg: group }),
       exercise('next-exercise', [false, false, false]),
-    ], 1)
+    ], 1, { exWeights: { 'superset-b': { w: 50 } } })   // 60 beats 50: the sheet opens
     await toggleSet(5)
 
     expect(mocks.topWeightSheet).toHaveBeenCalledWith(1)
@@ -448,10 +448,43 @@ describe('moving on after a finished exercise (audit phase 8)', () => {
   })
 
   it('leaves the choice to the top-weight sheet when it opens', async () => {
-    await mount([exercise('bench', [true, false]), next()])
+    await mount([exercise('bench', [true, false]), next()], 0, { exWeights: { bench: { w: 50 } } })
     await toggleSet(1)
     expect(mocks.topWeightSheet).toHaveBeenCalledWith(0)
     expect(mocks.S.active.cur).toBe(0)
+  })
+})
+
+describe('working-weight sheet only when there is something to confirm', () => {
+  const next = () => exercise('next', [false])
+  const lift = (w, extra) => exercise('bench', [true, false], { sets: [{ w, r: 5, done: true }, { w, r: 5, done: false }], ...extra })
+
+  it('first time with the exercise: saves the weight just done, no sheet, moves on', async () => {
+    await mount([lift(60), next()])
+    await toggleSet(1)
+    expect(mocks.topWeightSheet).not.toHaveBeenCalled()
+    expect(mocks.S.exWeights.bench.w).toBe(60)
+    expect(mocks.S.active.cur).toBe(1)
+  })
+
+  it('matching or staying under the previous best: no sheet', async () => {
+    await mount([lift(60), next()], 0, { exWeights: { bench: { w: 60 } } })
+    await toggleSet(1)
+    expect(mocks.topWeightSheet).not.toHaveBeenCalled()
+    expect(mocks.S.active.cur).toBe(1)
+  })
+
+  it('a weight above the previous best opens the sheet', async () => {
+    await mount([lift(65), next()], 0, { exWeights: { bench: { w: 60 } } })
+    await toggleSet(1)
+    expect(mocks.topWeightSheet).toHaveBeenCalledWith(0)
+  })
+
+  it('no weight logged on a loaded exercise: the sheet asks for it', async () => {
+    await mount([lift(0), next()], 0, { exWeights: { bench: { w: 60 } } })
+    await toggleSet(1)   // empty-set guard: 0 kg on a loaded lift asks first
+    await act(async () => { mocks.confirmSheet.mock.calls.at(-1)[0].onConfirm() })
+    expect(mocks.topWeightSheet).toHaveBeenCalledWith(0)
   })
 })
 
