@@ -763,8 +763,7 @@ function ActiveWorkout() {
     </div> : <div className="empty"><div className="ico"><Icon name="shuffle" /></div>{t('Freestyle workout — add your first exercise.')}</div>}
     </div>
 
-    {/* Sticky above the tab bar (and the rest timer), so they are reachable without scrolling
-        to the end of a long exercise. Swiping the card does the same. */}
+    {/* Right under the exercise. Swiping the card or the strip above are the quick ways. */}
     {units.length > 1 && <div className="wnav">
       <button type="button" className="wnav-b" disabled={!canPrev} onClick={() => goToUnit(unitIdx - 1)}><Icon name="chevronLeft" />{t('Prev')}</button>
       <button type="button" className="wnav-b" disabled={!canNext} onClick={() => goToUnit(unitIdx + 1)}>{t('Next')}<Icon name="chevronRight" /></button>

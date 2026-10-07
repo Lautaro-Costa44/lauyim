@@ -804,25 +804,21 @@ input[type="search"]::-webkit-search-cancel-button{display:none;-webkit-appearan
 .wcard-in.prev{animation:wcardprev var(--med) var(--ease)}
 @keyframes wcardnext{from{opacity:0;transform:translateX(24px)}to{opacity:1;transform:none}}
 @keyframes wcardprev{from{opacity:0;transform:translateX(-24px)}to{opacity:1;transform:none}}
-/* Prev/Next stick to the bottom of the screen, above the tab bar and above the rest timer when it
-   shows, so they are reachable without scrolling to the end of a long exercise. A full-width bar
-   rather than floating buttons: a floating "next" at the edge sat right on top of the checkboxes. */
-.wnav{
-  position:sticky;bottom:calc(92px + var(--sab));z-index:40;display:flex;gap:6px;margin-top:12px;padding:4px;
-  border-radius:14px;background:color-mix(in srgb,var(--surface) 94%,transparent);
-  -webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);box-shadow:0 8px 24px -10px rgba(0,0,0,.55);
-}
-body.resting .wnav{bottom:calc(212px + var(--sab))}
+/* Prev/Next sit right under the exercise, where they always were. Swiping the card and the strip
+   above are the quick ways to move; a floating bar covered rows and stacked over the rest timer. */
+.wnav{display:flex;gap:8px;margin-top:12px}
 .wnav-b{
-  flex:1;height:40px;border-radius:10px;display:flex;align-items:center;justify-content:center;gap:4px;
-  font-size:15px;font-weight:500;color:var(--label);background:var(--surface-2);
+  flex:1;height:44px;border-radius:12px;display:flex;align-items:center;justify-content:center;gap:4px;
+  font-size:15px;font-weight:500;color:var(--label);background:var(--surface);
 }
 .wnav-b .icn{font-size:16px}
-.wnav-b:active{background:var(--surface-3)}
-.wnav-b:disabled{opacity:.35}@media (prefers-reduced-motion:reduce){
+.wnav-b:active{background:var(--surface-2)}
+.wnav-b:disabled{opacity:.35}
+@media (prefers-reduced-motion:reduce){
   .wcard,.wcard-in.next,.wcard-in.prev{transition:none;animation:none}
   .wseg-bar i.cur{animation:none}
-}.exmedia{position:relative;border-radius:var(--r-lg);overflow:hidden;background:#fff;margin-bottom:12px}
+}
+.exmedia{position:relative;border-radius:var(--r-lg);overflow:hidden;background:#fff;margin-bottom:12px}
 .exmedia img{width:100%;height:320px;object-fit:contain;display:block}
 .exmedia .gifhint,.exmedia .giftoggle{
   position:absolute;bottom:9px;display:inline-flex;align-items:center;gap:4px;
@@ -1305,10 +1301,7 @@ body.resting .wnav{bottom:calc(212px + var(--sab))}
   #timer{left:50%;right:auto;margin-left:-260px;width:520px;bottom:112px}
   /* 520px fits the clock, the bar and all three controls on one line again */
   #timer.rest{flex-direction:row;align-items:center;gap:14px}
-  #timer.rest .head{flex:1;min-width:0}
-  .wnav{bottom:100px}
-  body.resting .wnav{bottom:184px}
-  .exmedia img{height:380px}
+  #timer.rest .head{flex:1;min-width:0}  .exmedia img{height:380px}
   .exmedia.exmap:not(.compact):not(.mini){height:380px}
   .hm-wrap{display:flex;flex-direction:column;align-items:center}
   /* admin: fixed side menu instead of the app tab bar; the content next to it gets up to
