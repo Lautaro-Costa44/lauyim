@@ -55,12 +55,26 @@ function ExerciseReplacementSheet({ exActual, poolSeguro, usadosEnSemana, onReem
 
   const listaAMostrar = resultadosBusqueda !== null ? resultadosBusqueda : [...altsIniciales, ...masAlts]
 
+  // Laid out like the exercise picker: search on top, one tappable row per alternative (the row
+  // is the choice), details behind the ⓘ. No inner scroll box — the sheet itself scrolls.
   return <>
-    <h3>{t('Reemplazar {0}', nombreActual)}</h3>
-    <div className="muted small" style={{ marginBottom: 14 }}>
-      {tipo === 'cardio' ? t('Seleccioná una alternativa de cardio según tu equipo disponible:') :
-       tipo === 'stretch' ? t('Seleccioná un estiramiento alternativo:') :
-       t('Seleccioná una alternativa equivalente para este ejercicio:')}
+    <h3 style={{ marginBottom: 2 }}>{t('Replace')}</h3>
+    <div className="muted small capitalize" style={{ marginBottom: 12 }}>{nombreActual}</div>
+
+    <input {...NO_AUTOFILL} name="app-exercise-replacement-search"
+      className="input"
+      type="search"
+      placeholder={tipo === 'cardio' ? t('Buscar cardio...') :
+                   tipo === 'stretch' ? t('Buscar estiramientos...') :
+                   t('Buscar en {0}...', exActualObj.tg ? t(exActualObj.tg) : t('mismo grupo'))}
+      value={query}
+      onChange={e => setQuery(e.target.value)}
+    />
+    <div className="muted small" style={{ margin: '12px 2px 8px' }}>
+      {query ? t('Results') :
+       tipo === 'cardio' ? t('Cardio alternatives for your equipment') :
+       tipo === 'stretch' ? t('Alternative stretches') :
+       t('Equivalent alternatives')}
     </div>
 
     {listaAMostrar.length === 0 ? (
@@ -68,38 +82,22 @@ function ExerciseReplacementSheet({ exActual, poolSeguro, usadosEnSemana, onReem
         {query ? t('No se encontraron ejercicios.') : t('No hay otras alternativas disponibles.')}
       </div>
     ) : (
-      <div className="list" style={{ maxHeight: 360, overflowY: 'auto' }}>
+      <div className="list">
         {listaAMostrar.map(alt => {
-          const nombreAlt = exerciseNameFor(alt) || alt.n || alt.id
-          const musculos = musclesOf(alt)
-          const musculosPrimarios = Object.entries(musculos)
-            .filter(([_, peso]) => peso >= 0.8)
-            .map(([slug, _]) => t(MUSCLE_NAME[slug]))
+          const musculosPrimarios = Object.entries(musclesOf(alt))
+            .filter(([, peso]) => peso >= 0.8)
+            .map(([slug]) => t(MUSCLE_NAME[slug]))
             .slice(0, 2)
+          const meta = [musculosPrimarios.join(', '), alt.eq ? t(alt.eq) : null].filter(Boolean).join(' · ')
           return (
-            <div key={alt.id} className="item" style={{ padding: '12px 16px', borderBottom: 'var(--hair) solid var(--sep)', display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+            <div key={alt.id} className="item rep-item" onClick={() => { onReemplazar(alt); close() }}>
               <Thumb ex={alt} />
-              <div className="grow" style={{ minWidth: 0 }}>
-                <div className="tt" style={{ fontWeight: 600, marginBottom: 4 }}>{nombreAlt}</div>
-                <div className="ss muted" style={{ fontSize: 12, marginBottom: 6 }}>
-                  {musculosPrimarios.length > 0 && <span>{musculosPrimarios.join(', ')}</span>}
-                  {alt.eq && <span style={{ display: 'block', fontSize: 11 }}>{alt.eq}</span>}
-                </div>
-                <button
-                  className="lrow" style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', gap: 6, marginBottom: 4 }}
-                  onClick={() => exerciseDetailSheetNoAdd(alt)}
-                >
-                  <span style={{ fontSize: 13, color: 'var(--acc)', fontWeight: 600 }}>{t('Ver detalles')}</span>
-                  <Icon name="chevronRight" style={{ fontSize: 13, color: 'var(--acc)' }} />
-                </button>
+              <div className="grow">
+                <div className="tt capitalize rep-name">{exerciseNameFor(alt) || alt.n || alt.id}</div>
+                {meta && <div className="ss capitalize">{meta}</div>}
               </div>
-              <button
-                className="tag acc"
-                style={{ background: 'var(--acc-soft)', color: 'var(--acc)', border: 'none', cursor: 'pointer', borderRadius: 6, padding: '6px 12px', fontSize: 13, fontWeight: 600, flexShrink: 0 }}
-                onClick={e => { e.stopPropagation(); onReemplazar(alt); close() }}
-              >
-                {t('Elegir')}
-              </button>
+              <button type="button" className="iconbtn" aria-label={t('Ver detalles')}
+                onClick={e => { e.stopPropagation(); exerciseDetailSheetNoAdd(alt) }}><Icon name="info" /></button>
             </div>
           )
         })}
@@ -107,28 +105,10 @@ function ExerciseReplacementSheet({ exActual, poolSeguro, usadosEnSemana, onReem
     )}
 
     {!query && !verMasCargado && listaAMostrar.length > 0 && (
-      <div style={{ margin: '10px 0 6px' }}>
-        <Button size="sm" variant="tinted" icon="plus" onClick={cargarMas} style={{ width: '100%' }}>
-          {t('Ver más alternativas (+5)')}
-        </Button>
+      <div style={{ marginTop: 10 }}>
+        <Button variant="ghost" icon="plus" onClick={cargarMas}>{t('Ver más alternativas (+5)')}</Button>
       </div>
     )}
-
-    <div style={{ marginTop: 12 }}>
-      <input {...NO_AUTOFILL} name="app-exercise-replacement-search"
-        className="input"
-        type="text"
-        placeholder={tipo === 'cardio' ? t('Buscar cardio...') :
-                     tipo === 'stretch' ? t('Buscar estiramientos...') :
-                     t('Buscar en {0}...', exActualObj.tg || t('mismo grupo'))}
-        value={query}
-        onChange={e => setQuery(e.target.value)}
-        style={{ fontSize: 14 }}
-      />
-    </div>
-
-    <div style={{ height: 12 }} />
-    <Button variant="ghost" className="dim" onClick={close}>{t('Cancelar')}</Button>
   </>
 }
 
