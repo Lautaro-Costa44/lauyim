@@ -51,6 +51,8 @@ export default function MarkedWorkoutEditor({ iso, routine = null, workout = nul
   const [typing, setTyping] = useState(false)
   const listRef = useRef(null)
   const name = workout?.name || routine?.name || t('Freestyle')
+  // "La última vez" sin el marcado que se está editando: si no, se lee a sí mismo.
+  const history = workout ? { ...st, workouts: st.workouts.filter(w => w.id !== workout.id) } : st
 
   const patch = (key, fn) => setItems(list => list.map(it => (it.key === key ? fn(it) : it)))
   const setRows = (key, fn) => patch(key, it => ({ ...it, rows: fn(it.rows) }))
@@ -90,7 +92,7 @@ export default function MarkedWorkoutEditor({ iso, routine = null, workout = nul
 
   const table = it => {
     const cols = columnsFor(it.cfg, effort)
-    const last = lastEntryFor(st, it.id)
+    const last = lastEntryFor(history, it.id)
     const total = it.rows.length * cols.length
     const head = f => (f === effort ? effortHd : f === 'w' && cols.includes('r') && isBw(it.cfg) ? '+kg' : HEAD[f])
     return <div className="mwe-table" style={{ '--cols': cols.length }}>

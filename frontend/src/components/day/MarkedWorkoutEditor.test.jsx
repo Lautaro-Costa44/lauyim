@@ -138,6 +138,15 @@ describe('editor de series: celular', () => {
     expect(cells(items()[0]).map(c => c.value)).toEqual(['60', '8', '60', '7'])
   })
 
+  it('al editar un marcado, "la última vez" es la anterior, no él mismo', async () => {
+    const prev = { id: 'p', d: '2026-09-20', start: Date.parse('2026-09-20T15:00:00Z'), end: Date.parse('2026-09-20T16:00:00Z'), name: 'Push A', entries: [{ id: '0025', sets: [{ done: true, w: 60, r: 8 }] }] }
+    const self = { id: 'm1', d: ISO, start: Date.parse('2026-10-01T15:00:00Z'), end: Date.parse('2026-10-01T15:00:00Z'), name: 'Push A', routineId: 'r1', marked: true, vol: 500, entries: [{ id: '0025', target: { id: '0025' }, sets: [{ done: true, w: 62.5, r: 8 }] }] }
+    setS({ workouts: [prev, self] })
+    await open({ workout: self })
+    await click(items()[0].querySelector('.mwe-item-main'))
+    expect(host.querySelector('.mwe-last').textContent).toContain('60×8')
+  })
+
   it('abrir un ejercicio lo sube arriba de todo (la tabla queda sobre el teclado)', async () => {
     const spy = vi.fn()
     Element.prototype.scrollIntoView = spy
