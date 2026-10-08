@@ -130,12 +130,12 @@ describe('editor de series: celular', () => {
   })
 
   it('"Igual que la última vez" copia las series de la última vez', async () => {
-    setS({ workouts: [{ id: 'p', d: '2026-09-20', start: Date.parse('2026-09-20T15:00:00Z'), end: Date.parse('2026-09-20T16:00:00Z'), name: 'Push A', entries: [{ id: '0025', sets: [{ done: true, w: 60, r: 8 }, { done: true, w: 60, r: 7 }] }] }] })
+    setS({ workouts: [{ id: 'p', d: '2026-09-20', start: Date.parse('2026-09-20T15:00:00Z'), end: Date.parse('2026-09-20T16:00:00Z'), name: 'Push A', entries: [{ id: '0025', sets: [{ done: true, w: 62.5, r: 8 }, { done: true, w: 60, r: 7 }] }] }] })
     await open()
     await click(items()[0].querySelector('.mwe-item-main'))
-    expect(cells(items()[0])[0].placeholder).toBe('60')
+    expect(cells(items()[0])[0].placeholder).toBe('62,5')
     await click(btn('Igual que la última vez'))
-    expect(cells(items()[0]).map(c => c.value)).toEqual(['60', '8', '60', '7'])
+    expect(cells(items()[0]).map(c => c.value)).toEqual(['62,5', '8', '60', '7'])   // con la coma, como se escribe
   })
 
   it('al editar un marcado, "la última vez" es la anterior, no él mismo', async () => {

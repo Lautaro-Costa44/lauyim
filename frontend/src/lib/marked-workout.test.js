@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { localDayStartOf, localNoonOf } from './format.js'
-import { buildMarkedWorkout, columnsFor, dayMode, itemSummary, markedDraft, markedRowOf, markedSetOf, modeTag, putWorkout } from './marked-workout.js'
+import { buildMarkedWorkout, columnsFor, dayMode, itemSummary, markedDraft, markedItem, markedRowOf, markedSetOf, modeTag, putWorkout } from './marked-workout.js'
 
 const localAt = (y, m, d, h, min = 0) => new Date(y, m - 1, d, h, min).getTime()
 const bench = { id: '0025', sets: 2, reps: 8, weight: 60 }
@@ -38,14 +38,19 @@ describe('markedSetOf / markedRowOf', () => {
   it('peso corporal: alcanzan las reps (w queda en 0)', () => {
     expect(markedSetOf({ r: '12' }, { id: '0025', bodyweight: true }, 'none')).toEqual({ done: true, r: 12, w: 0 })
   })
-  it('el esfuerzo se guarda solo con el ajuste, y se topea', () => {
+  it('el esfuerzo se guarda en su escala, y se topea', () => {
     expect(markedSetOf({ w: '60', r: '8', rir: '2' }, { id: '0025' }, 'rir')).toEqual({ done: true, w: 60, r: 8, rir: 2 })
-    expect(markedSetOf({ w: '60', r: '8', rir: '2' }, { id: '0025' }, 'none')).toEqual({ done: true, w: 60, r: 8 })
+    expect(markedSetOf({ w: '60', r: '8' }, { id: '0025' }, 'none')).toEqual({ done: true, w: 60, r: 8 })
     expect(markedSetOf({ w: '60', r: '8', rir: '14' }, { id: '0025' }, 'rir').rir).toBe(10)
   })
   it('tiempo y cardio', () => {
     expect(markedSetOf({ sec: '45' }, { id: '0025', mode: 'time' }, 'none')).toEqual({ done: true, sec: 45 })
     expect(markedSetOf({ min: '20', speed: '9,5' }, { id: '0025', mode: 'cardio' }, 'none')).toEqual({ done: true, min: 20, speed: 9.5 })
+  })
+  it('el esfuerzo cargado en la otra escala no se pierde ni se reescribe', () => {
+    expect(markedSetOf({ w: '60', r: '8', rir: '2' }, { id: '0025' }, 'rpe')).toEqual({ done: true, w: 60, r: 8, rir: 2 })
+    expect(markedSetOf({ w: '60', r: '8', rpe: '8' }, { id: '0025' }, 'none')).toEqual({ done: true, w: 60, r: 8, rpe: 8 })
+    expect(markedSetOf({ w: '60', r: '8', rir: '2', rpe: '9' }, { id: '0025' }, 'rpe')).toEqual({ done: true, w: 60, r: 8, rpe: 9 })
   })
   it('markedRowOf vuelve a texto solo lo que tiene valor', () => {
     expect(markedRowOf({ done: true, w: 62.5, r: 8 })).toEqual({ w: '62.5', r: '8' })
@@ -60,7 +65,9 @@ describe('buildMarkedWorkout', () => {
     expect(w).toMatchObject({ id: 'x', d: '2026-03-10', name: 'Push A', routineId: 'push', marked: true, entries: [], vol: 0 })
     expect(w.end).toBe(w.start)
     expect(w.muscleLoad.intensity).toBe('medium')
-    expect(w.muscleLoad.muscles.length).toBeGreaterThan(0)
+    expect(w.muscleLoad.muscles).toContain('chest')
+    expect(w.muscleLoad.muscles).toContain('quadriceps')
+    expect(w.muscleLoad.muscles).not.toContain('triceps')   // de apoyo en el press: no se fatiga como el principal
   })
 
   it('"Otra cosa": sin rutina ni carga muscular', () => {
@@ -112,6 +119,14 @@ describe('markedDraft', () => {
   })
 })
 
+describe('markedItem', () => {
+  it('un ejercicio del editor: config con su id y una fila vacía por serie', () => {
+    const it = markedItem('0025', { sets: 2, reps: 8 })
+    expect(it).toMatchObject({ id: '0025', cfg: { id: '0025', sets: 2, reps: 8 }, rows: [{}, {}] })
+    expect(it.key).toBeTruthy()
+  })
+})
+
 describe('itemSummary', () => {
   it('cuenta y describe solo las series completas', () => {
     expect(itemSummary({ id: '0025', cfg: { id: '0025' }, rows: [{ w: '80', r: '8' }, { w: '80' }, {}] }, 'none')).toEqual({ count: 1, text: '80×8' })
@@ -125,10 +140,15 @@ describe('putWorkout', () => {
     putWorkout(list, { id: 'b', d: '2026-03-10', start: localNoonOf('2026-03-10') })
     expect(list.map(w => w.id)).toEqual(['a', 'b', 'c'])
   })
-  it('reemplaza el mismo id y conserva la nota', () => {
-    const list = [{ id: 'm', d: '2026-03-10', start: 1, note: 'pesado', muscleLoad: { muscles: ['chest'] } }]
-    putWorkout(list, { id: 'm', d: '2026-03-10', start: 1, entries: [] })
-    expect(list).toEqual([{ id: 'm', d: '2026-03-10', start: 1, entries: [], note: 'pesado' }])
+  it('reemplaza el mismo id: conserva lo que no arma el editor (nota, objetivo de la semana) y saca la carga muscular', () => {
+    const list = [{ id: 'm', d: '2026-03-10', start: 1, note: 'pesado', weekTarget: 3, muscleLoad: { muscles: ['chest'] }, entries: [] }]
+    putWorkout(list, { id: 'm', d: '2026-03-10', start: 1, entries: [{ id: '0025', sets: [] }] })
+    expect(list).toEqual([{ id: 'm', d: '2026-03-10', start: 1, note: 'pesado', weekTarget: 3, entries: [{ id: '0025', sets: [] }] }])
+  })
+  it('reemplazar con carga muscular nueva la actualiza', () => {
+    const list = [{ id: 'm', d: '2026-03-10', start: 1, muscleLoad: { muscles: ['chest'] } }]
+    putWorkout(list, { id: 'm', d: '2026-03-10', start: 1, muscleLoad: { muscles: ['quadriceps'] } })
+    expect(list[0].muscleLoad.muscles).toEqual(['quadriceps'])
   })
 })
 

@@ -68,6 +68,10 @@ describe('hoja del día: registrar', () => {
     expect(btn(host, 'Entrené')).toBeUndefined()
     await act(async () => { btn(host, 'Agregar otro entrenamiento').click() })
     expect(btn(host, 'Entrené')).toBeTruthy()
+    expect(btn(host, 'No entrené')).toBeUndefined()   // ese día ya entrenó: es cancelar, no "no entrené"
+    await act(async () => { btn(host, 'Cancelar').click() })
+    expect(useUI.getState().sheets).toHaveLength(1)   // la hoja sigue abierta
+    expect(btn(host, 'Agregar otro entrenamiento')).toBeTruthy()
     await unmount()
   })
 
@@ -169,6 +173,8 @@ describe('el marcado en el calendario, el historial y el detalle', () => {
     const r = createRoot(host)
     await act(async () => { r.render(<WorkoutRow w={marked} onClick={() => {}} />) })
     expect(host.querySelector('.tt').textContent).toContain('Marcado')
+    expect(host.querySelector('.ss').textContent).toContain('Sin series')
+    expect(host.querySelector('.ss').textContent).not.toContain('0 series')
     await act(async () => r.unmount()); host.remove()
   })
 

@@ -87,7 +87,8 @@ function plannedRoutine(S, iso) {
 }
 
 // "¿Entrenaste?": marcar el día (sin series) o pasar a cargarlas. "No entrené" no escribe nada.
-function MarkStep({ iso, planned, close }) {
+// onCancel: el día ya tiene entrenos y esto es "agregar otro": en vez de "No entrené", Cancelar.
+function MarkStep({ iso, planned, close, onCancel = null }) {
   const st = useStore(s => s.S)
   const [did, setDid] = useState(false)
   const [pick, setPick] = useState(planned ? planned.id : null)   // id de rutina | FREE | null
@@ -103,7 +104,7 @@ function MarkStep({ iso, planned, close }) {
   return <div className="day-mark">
     <div className="day-mark-q">
       <button type="button" className={'day-mark-btn' + (did ? ' on' : '')} aria-pressed={did} onClick={() => setDid(true)}><Icon name="check" />{t('Entrené')}</button>
-      <button type="button" className="day-mark-btn" onClick={close}>{t('No entrené')}</button>
+      <button type="button" className="day-mark-btn" onClick={onCancel || close}>{onCancel ? t('Cancelar') : t('No entrené')}</button>
     </div>
     {did && <>
       <h4 className="sec">{t('¿Qué entrenaste?')}</h4>
@@ -154,7 +155,7 @@ export function DaySheet({ iso, close }) {
         <DayClasses classes={dayClasses} myClasses={myClasses} close={close} />
       </>}
       {nothing || adding
-        ? <MarkStep iso={iso} planned={planned} close={close} />
+        ? <MarkStep iso={iso} planned={planned} close={close} onCancel={nothing ? null : () => setAdding(false)} />
         : <Button variant="plain" icon="plus" className="day-add" onClick={() => setAdding(true)}>{t('Agregar otro entrenamiento')}</Button>}
     </>}
     {mode === 'future' && dayClasses.length > 0 && <>

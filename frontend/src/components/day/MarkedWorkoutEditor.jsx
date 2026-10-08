@@ -7,9 +7,10 @@ import { useStore } from '../../store/useStore.js'
 import { useUI } from '../../store/useUI.js'
 import { t, exerciseNameFor } from '../../lib/i18n.js'
 import { exOr } from '../../lib/exercises.js'
-import { fmtDate, fmtNum, uid } from '../../lib/format.js'
+import { fmtDate, uid } from '../../lib/format.js'
+import { dateLocale } from '../../lib/i18n-core.js'
 import { defaultConfig, effortOf, lastEntryFor, isBw, setLabel, EFFORT } from '../../lib/history.js'
-import { buildMarkedWorkout, columnsFor, itemSummary, markedDraft, markedRowOf, modeTag, putWorkout } from '../../lib/marked-workout.js'
+import { buildMarkedWorkout, columnsFor, emptyRows, itemSummary, markedDraft, markedItem, markedRowOf, modeTag, putWorkout } from '../../lib/marked-workout.js'
 import { Button } from '../ui.jsx'
 import Icon from '../Icon.jsx'
 
@@ -31,8 +32,11 @@ function useWide() {
 const HEAD = { w: 'kg', r: 'reps', sec: 'seg', min: 'min', speed: 'km/h' }
 const DECIMAL = new Set(['w', 'speed', 'rir', 'rpe'])
 const nameOf = id => exerciseNameFor(exOr(id))
-const emptyRows = n => Array.from({ length: Math.max(1, n || 1) }, () => ({}))
-const newItem = id => { const cfg = { ...defaultConfig(id), id }; return { key: uid(), id, cfg, rows: emptyRows(cfg.sets) } }
+const newItem = id => markedItem(id, defaultConfig(id))
+// Un número como se escribe en el idioma de la app (62,5): solo el separador decimal. fmtNum no
+// sirve acá: agrega separador de miles (1.200) y eso, leído de vuelta, sería 1,2.
+const decimalSep = () => (1.5).toLocaleString(dateLocale()).charAt(1)
+const asTyped = v => String(v).replace('.', decimalSep())
 // sheets.jsx importa este archivo (detalle de un marcado): la biblioteca se trae al usarla. Al
 // elegir se cierra, como al reemplazar un ejercicio en el entreno en vivo (Workout.jsx).
 const pickExercise = onPick => import('../../sheets.jsx').then(({ exercisePicker }) => {
@@ -112,7 +116,7 @@ export default function MarkedWorkoutEditor({ iso, routine = null, workout = nul
         {cols.map((f, j) => <input key={f} className="input mwe-cell" data-f={f} type="text"
           inputMode={DECIMAL.has(f) ? 'decimal' : 'numeric'} enterKeyHint={i * cols.length + j === total - 1 ? 'done' : 'next'}
           aria-label={t('Serie {0} · {1}', i + 1, head(f))} value={row[f] ?? ''}
-          placeholder={last?.sets[i]?.[f] != null ? fmtNum(last.sets[i][f]) : ''}
+          placeholder={last?.sets[i]?.[f] != null ? asTyped(last.sets[i][f]) : ''}
           onChange={e => { const v = e.target.value; setRows(it.key, rows => rows.map((r, k) => (k === i ? { ...r, [f]: v } : r))) }}
           onKeyDown={onKey} />)}
         <button type="button" className="iconbtn mwe-x" aria-label={t('Borrar serie {0}', i + 1)}
@@ -120,7 +124,7 @@ export default function MarkedWorkoutEditor({ iso, routine = null, workout = nul
       </div>)}
       <div className="mwe-tools">
         <Button size="sm" variant="plain" icon="plus" onClick={() => setRows(it.key, rows => [...rows, {}])}>{t('Serie')}</Button>
-        {last && <Button size="sm" variant="plain" icon="copy" onClick={() => setRows(it.key, () => last.sets.map(markedRowOf))}>{t('Igual que la última vez')}</Button>}
+        {last && <Button size="sm" variant="plain" icon="copy" onClick={() => setRows(it.key, () => last.sets.map(s => Object.fromEntries(Object.entries(markedRowOf(s)).map(([f, v]) => [f, asTyped(v)]))))}>{t('Igual que la última vez')}</Button>}
       </div>
     </div>
   }

@@ -7,7 +7,8 @@
 // `muscleLoad`, igual que una clase. El servidor guarda `marked` y `muscleLoad` en `meta`.
 import { localDayStartOf, localNoonOf, workoutTime } from './format.js'
 import { modeOf, isBw, isEmptySet, workoutVolume, setLabel, EFFORT, capEffort } from './history.js'
-import { loadOfRoutine } from './muscles.js'
+import { loadOfRoutine, musclesOf } from './muscles.js'
+import { EXIDX } from './exercises.js'
 
 /** 'past' | 'today' | 'future': qué ofrece la hoja de ese día. */
 export const dayMode = (iso, today) => (iso < today ? 'past' : iso === today ? 'today' : 'future')
@@ -34,6 +35,14 @@ export function markedSetOf(row, cfg, effort = 'none') {
     const n = num(row?.[f])
     if (n != null) set[f] = f === effort ? capEffort(effort, n) : n
   }
+  // Un esfuerzo cargado en la otra escala (o con el ajuste apagado) se conserva tal cual: una serie
+  // lleva rir o rpe y nunca se reescribe (effort.js). Solo si no se cargó uno en la escala de ahora.
+  if (set.rir == null && set.rpe == null) {
+    for (const k of ['rir', 'rpe']) {
+      const n = k === effort ? null : num(row?.[k])
+      if (n != null) { set[k] = capEffort(k, n); break }
+    }
+  }
   if (modeOf(cfg) === 'reps' && isBw(cfg) && set.w == null) set.w = 0
   return isEmptySet(set, cfg) ? null : set
 }
@@ -59,22 +68,37 @@ export function buildMarkedWorkout(iso, { routine = null, routineId = routine ? 
   w.vol = workoutVolume(w)
   if (!entries.length && routine) {
     const load = loadOfRoutine(routine)
-    const muscles = Object.keys(load).filter(s => load[s] > 0).sort((a, b) => load[b] - load[a])
+    const muscles = [...primaryMuscles(routine)].sort((a, b) => (load[b] || 0) - (load[a] || 0))
     if (muscles.length) w.muscleLoad = { muscles, intensity: 'medium' }
   }
   return w
 }
 
+// Los músculos principales de una rutina: en cada ejercicio, el de más peso. Un músculo de apoyo
+// (tríceps en un press de banca) no entra: muscleLoad le da a cada uno la carga entera.
+function primaryMuscles(routine) {
+  const out = new Set()
+  for (const c of routine?.ex || []) {
+    const m = musclesOf(c.muscleWeights ? c : (EXIDX[c.id] || c))
+    const top = Math.max(0, ...Object.values(m))
+    for (const slug in m) if (top > 0 && m[slug] === top) out.add(slug)
+  }
+  return out
+}
+
 let seq = 0
 const keyOf = () => 'mi' + (++seq)
-const emptyRows = n => Array.from({ length: Math.max(1, n || 1) }, () => ({}))
+/** n filas vacías del editor (mínimo una). */
+export const emptyRows = n => Array.from({ length: Math.max(1, n || 1) }, () => ({}))
+/** Un ejercicio del editor: su config (con el id) y una fila vacía por serie. */
+export const markedItem = (id, cfg = {}) => ({ key: keyOf(), id, cfg: { ...cfg, id }, rows: emptyRows(cfg.sets) })
 
 /** Borrador del editor: las series de un marcado que ya las tiene, o la rutina con filas vacías. */
 export function markedDraft({ routine = null, workout = null } = {}) {
   if (workout?.entries?.length) {
     return workout.entries.map(e => ({ key: keyOf(), id: e.id, cfg: { ...(e.target || {}), id: e.id }, rows: (e.sets || []).map(markedRowOf) }))
   }
-  return (routine?.ex || []).map(c => ({ key: keyOf(), id: c.id, cfg: { ...c }, rows: emptyRows(c.sets) }))
+  return (routine?.ex || []).map(c => markedItem(c.id, c))
 }
 
 /** Lo que dice la fila cerrada de un ejercicio: cuántas series completas y cuáles. */
@@ -84,15 +108,17 @@ export function itemSummary(item, effort = 'none') {
 }
 
 /**
- * Guarda `w` en la lista de workouts: si ya está (mismo id) lo reemplaza, conservando su nota;
- * si no, lo inserta en orden por hora (un día pasado no va al final: "la última vez" lee la
+ * Guarda `w` en la lista de workouts. Si ya está (mismo id), le pisa lo que arma el editor y conserva
+ * el resto (la nota, el objetivo de la semana que guardó la racha); la carga muscular solo queda si
+ * `w` la trae. Si no, lo inserta en orden por hora (un día pasado no va al final: "la última vez" lee la
  * lista en orden). Muta `list`.
  */
 export function putWorkout(list, w) {
   const i = list.findIndex(x => x.id === w.id)
   if (i >= 0) {
-    const note = list[i].note
-    list[i] = note && !w.note ? { ...w, note } : w
+    const next = { ...list[i], ...w }
+    if (!w.muscleLoad) delete next.muscleLoad
+    list[i] = next
     return list
   }
   const at = list.findIndex(x => workoutTime(x) > workoutTime(w))
