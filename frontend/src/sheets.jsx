@@ -4,7 +4,7 @@ import { useUI } from './store/useUI.js'
 import { EXDB, EXIDX, BODYPARTS, isCardio, isStretch, isBodyweightEq, allExercises, equipmentOf, smOf, matchExercise, exOr } from './lib/exercises.js'
 import { activeProfile, exAvailable, ALL_EQUIPMENT, newProfile } from './lib/equipment.js'
 import { fmtDate, fmtNum, fmtVol, fmtDur, durPart, todayISO, isoOf, uid, exCount, DAYN, MONTHS_LONG, ACCENTS } from './lib/format.js'
-import { evalWeek, lastEntryFor, bestWeightFor, buildSets, effectiveRoutineId, workoutVolume, setsDone, setsDoneActive, lastBW, supersetUnits, unitOf, setLabel, defaultConfig, cleanupSg, modeOf, effortOf, isBw, isPerSide, sideReps, workSetsDone, applyIntensifierPlan, MAX_PLANNED_WARMUPS, MAX_REST_SEC, NOTE_MAX, intensifierConfig, markedDoneWorkout } from './lib/history.js'
+import { evalWeek, lastEntryFor, bestWeightFor, buildSets, effectiveRoutineId, workoutVolume, setsDone, setsDoneActive, lastBW, supersetUnits, unitOf, setLabel, defaultConfig, cleanupSg, modeOf, effortOf, isBw, isPerSide, sideReps, workSetsDone, applyIntensifierPlan, MAX_PLANNED_WARMUPS, MAX_REST_SEC, NOTE_MAX, intensifierConfig } from './lib/history.js'
 import { beep, vibrate } from './lib/sound.js'
 import { t, instrFor, exerciseNameFor, getLang, INSTR_LANGS } from './lib/i18n.js'
 import { nav } from './lib/nav.js'
@@ -25,8 +25,8 @@ import ClassWorkoutDetail from './components/workout/ClassWorkoutDetail.jsx'
 import { isClassWorkout } from './lib/workout-history.js'
 import { useMyClasses } from './components/useMyClasses.js'
 import { classesByDate } from './lib/classes.js'
-import { classSheet } from './components/ClassSheet.jsx'
 import { streakSheet } from './components/StreakSheet.jsx'
+import { DaySheet } from './components/day/DaySheet.jsx'
 import { exerciseMuscleSnapshot, loadOfWorkouts, MUSCLES, MUSCLE_NAME, normalizeMuscleGroups, hasExplicitMuscleMetadata } from './lib/muscles.js'
 import { parseImport, mergeImport } from './lib/import-csv.js'
 import { buildPlanBundle, parsePlan, mergePlan, printPlan } from './lib/plan-share.js'
@@ -1225,93 +1225,8 @@ function PlanImport({ bundle, close }) {
 }
 
 /* ============================ day override / assign ============================ */
-// La hoja de un día (semana de Inicio y calendario): arriba las clases de ese día (hechas o
-// reservadas); debajo, qué rutina toca. Elegir rutina, descanso o "realizado" nunca toca las clases.
-const keepClasses = (workouts, iso) => workouts.filter(w => w.d !== iso || isClassWorkout(w))
-function DayOverride({ iso, close }) {
-  const st = useStore(s => s.S)
-  const myClasses = useMyClasses()
-  const dayClasses = classesByDate(myClasses?.occurrences, st.workouts)[iso] || []
-  const wd = new Date(iso + 'T12:00:00').getDay()
-  const weeklyR = st.routines.find(r => r.id === st.week[wd])
-  const ovVal = st.dayPlan[iso]
-  const trainedThatDay = st.workouts.some(w => w.d === iso && !isClassWorkout(w))
-  const hasOvr = ovVal !== undefined || trainedThatDay
-  const effId = effectiveRoutineId(st, iso)
-
-  const currentStatus = typeof ovVal === 'object' && ovVal ? ovVal.estado : (ovVal === 'rest' ? 'descanso' : (typeof ovVal === 'string' && ovVal ? 'rutina' : (trainedThatDay ? 'completado' : null)))
-  const openClass = c => {
-    close()
-    if (c.workout) workoutDetailSheet(c.workout)
-    else classSheet(c.occ, { today: myClasses?.today, tz: myClasses?.tz, cancelHours: myClasses?.settings?.cancelHours ?? 2 })
-  }
-  const currentRoutineId = typeof ovVal === 'object' && ovVal ? ovVal.rutinaId : (typeof ovVal === 'string' && ovVal !== 'rest' ? ovVal : effId)
-
-  const setEstado = (nuevoEstado, rutinaId = null) => {
-    update(s => {
-      if (nuevoEstado !== 'completado') {
-        s.workouts = keepClasses(s.workouts, iso)
-      }
-      if (!nuevoEstado) {
-        delete s.dayPlan[iso]
-      } else {
-        s.dayPlan[iso] = {
-          fecha: iso,
-          estado: nuevoEstado,
-          rutinaId: nuevoEstado === 'rutina' ? rutinaId : null,
-        }
-      }
-    })
-    close()
-    if (!nuevoEstado) toast(t('Back to weekly plan'))
-    else if (nuevoEstado === 'descanso') toast(t('{0} set to rest', fmtDate(iso)))
-    else if (nuevoEstado === 'rutina') toast(t('{0} planned for {1}', (st.routines.find(r => r.id === rutinaId) || {}).name, fmtDate(iso)))
-  }
-
-  const markDone = (routine) => {
-    update(s => {
-      s.workouts = keepClasses(s.workouts, iso)
-      s.workouts.push(markedDoneWorkout(iso, routine, { id: uid(), name: routine ? routine.name : t('Freestyle') }))
-      s.dayPlan[iso] = {
-        fecha: iso,
-        estado: 'completado',
-        rutinaId: null,
-      }
-    })
-    close()
-    toast(t('Entrenamiento marcado como realizado'))
-  }
-
-  return <>
-    <h3>{fmtDate(iso, true)}</h3>
-    {dayClasses.length > 0 && <>
-      <h4 className="sec" style={{ marginTop: 0 }}>{t('Clases de este día')}</h4>
-      <div className="list day-classes">{dayClasses.map(c => <div key={c.key} className="item" role="button" tabIndex={0} onClick={() => openClass(c)}>
-        <span className="class-bar" style={{ background: c.color || 'var(--acc)' }} aria-hidden="true" />
-        <div className="grow"><div className="tt">{c.name}</div>
-          <div className="ss">{[c.start, c.done ? t('Hecha') : c.waitlist ? t('En espera') : t('Anotado')].filter(Boolean).join(' · ')}</div></div>
-        {c.done && <Icon name="checkCircle" className="accent" />}
-        <Icon name="chevronRight" className="chev" />
-      </div>)}</div>
-      <h4 className="sec">{t('Rutina de este día')}</h4>
-    </>}
-    <div className="muted small" style={{ marginBottom: 12 }}>{t('Weekly plan:')} {weeklyR ? weeklyR.name : t('Rest')}{hasOvr && <span style={{ color: 'var(--orange)' }}> · {t('changed for this day')}</span>}<br />{t('Sick, missed a day or want a different session? Pick what to train instead.')}</div>
-    <div className="list">
-      <div className="item" onClick={() => markDone(st.routines.find(r => r.id === effId) || st.routines[0])}>
-        <span className="lrow-i" style={{ background: 'var(--acc)', color: '#000' }}><Icon name="checkCircle" /></span>
-        <div className="grow"><div className="tt">{t('Marcar como realizado en esta fecha')}</div></div>
-        {currentStatus === 'completado' && <Icon name="check" className="accent" />}
-      </div>
-      {st.routines.map(r => <div key={r.id} className="item" onClick={() => setEstado('rutina', r.id)}>
-        <span className="lrow-i"><Icon name={glyphOf(r.emoji)} /></span>
-        <div className="grow"><div className="tt">{r.name}</div><div className="ss">{exCount(r.ex.length)}</div></div>
-        {currentStatus === 'rutina' && currentRoutineId === r.id && <Icon name="check" className="accent" />}</div>)}
-      <div className="item" onClick={() => setEstado('descanso')}><span className="lrow-i" style={{ background: 'var(--surface-3)' }}><Icon name="moon" /></span><div className="grow"><div className="tt">{t('Rest / skip this day')}</div></div>{currentStatus === 'descanso' && <Icon name="check" className="accent" />}</div>
-      {hasOvr && <div className="item" onClick={() => setEstado(null)}><span className="lrow-i" style={{ background: 'var(--surface-3)' }}><Icon name="reset" /></span><div className="grow"><div className="tt">{t('Back to weekly plan')}</div></div></div>}
-    </div>
-  </>
-}
-export const dayOverrideSheet = iso => ui().openSheet(close => <DayOverride iso={iso} close={close} />)
+// La hoja de un día vive en components/day/DaySheet.jsx.
+export const dayOverrideSheet = iso => ui().openSheet(close => <DaySheet iso={iso} close={close} />)
 
 function DayAssign({ day, close }) {
   const st = useStore(s => s.S)
