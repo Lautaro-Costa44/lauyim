@@ -57,7 +57,7 @@ Planificar (`setEstado`) deja de tocar `workouts`: solo cambia `dayPlan`. Así e
   - `inputMode="decimal"` en kg y km/h; `inputMode="numeric"` en reps, seg, min y esfuerzo. `enterKeyHint="next"`: Enter pasa a la celda siguiente y, al final de la fila, a la serie siguiente. En la última celda, `enterKeyHint="done"` cierra el teclado.
   - El botón Guardar se oculta mientras hay un campo enfocado y el teclado está abierto (`--keyboard-offset > 0`).
   - Se apoya en lo que ya existe en `lib/keyboard.js` (`--keyboard-offset`, `keepFocusedFieldVisible`).
-- **PC / tablet (≥ 768 px):** panel centrado de unos 760 px (`kind: 'panel'`) con **lista + detalle**.
+- **PC / tablet (≥ 700 px, el mismo corte que el panel centrado):** panel centrado de unos 780 px (`kind: 'panel'`) con **lista + detalle**.
   - Izquierda: la lista de ejercicios y "＋ Agregar ejercicio".
   - Derecha: la tabla del ejercicio elegido, con "⇄ Cambiar" y "✕ Quitar" como botones con texto.
   - Tab recorre las celdas; Enter pasa a la serie siguiente.
@@ -134,11 +134,11 @@ Los workouts marcados antes de este cambio tienen series inventadas y no llevan 
 
 - `frontend/src/components/day/DaySheet.jsx` (nuevo): hoja del día; elige el modo según la fecha. Reemplaza a `DayOverride`. `dayOverrideSheet` sigue exportado desde `sheets.jsx` con la misma firma, así los llamadores (`Home.jsx`, `CalendarSheet`) no cambian.
 - `frontend/src/components/day/MarkedWorkoutEditor.jsx` (nuevo): paso 2, el acordeón en celular y lista + detalle en PC.
-- `frontend/src/lib/history.js`: `buildMarkedWorkout(iso, routine, draft, opts)` pura, que reemplaza a `markedDoneWorkout`. Más un helper de resumen de series de una fila.
+- `frontend/src/lib/marked-workout.js` (nuevo, puro): `buildMarkedWorkout`, el borrador del editor, el resumen de una fila y la inserción ordenada. Reemplaza a `markedDoneWorkout`, que se borra de `lib/history.js`. Va en un archivo propio porque `history.js` ya es muy grande.
 - `frontend/src/sheets.jsx`: se saca `DayOverride`; `setEstado` deja de tocar `workouts`; `TrainingDetail` suma lo del marcado.
 - Lista del historial: etiqueta "Marcado".
 - `frontend/src/index.css`: estilos de la hoja y del editor.
-- `frontend/src/locales/es.js`: textos nuevos.
+- Textos: claves en español con `t('…')`. No hace falta tocar `locales/es.js`, porque una clave que no está se muestra tal cual.
 
 ## Pruebas
 
