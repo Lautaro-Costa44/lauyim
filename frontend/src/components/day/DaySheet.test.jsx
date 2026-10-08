@@ -15,6 +15,8 @@ const { setLang } = await import('../../lib/i18n.js')
 const { dayOverrideSheet } = await import('../../sheets.jsx')
 
 const TODAY = '2026-10-05'   // lunes
+const PAST = '2026-09-28'    // lunes anterior: tocaba Piernas
+const FUTURE = '2026-10-12'  // lunes que viene
 const piernas = { id: 'r1', name: 'Piernas', emoji: 'legs', ex: [{ id: '0024', sets: 3 }] }
 const live = (id, d) => ({ id, d, start: Date.parse(d + 'T15:00:00Z'), end: Date.parse(d + 'T16:00:00Z'), name: 'Piernas', routineId: 'r1', vol: 1200, entries: [{ id: '0024', sets: [{ done: true, w: 100, r: 5 }] }] })
 
@@ -27,6 +29,7 @@ async function openLastSheet() {
   for (let i = 0; i < 4; i++) await tick()
   return { host, unmount: async () => { await act(async () => r.unmount()); host.remove() } }
 }
+const btn = (host, text) => [...host.querySelectorAll('button')].find(b => b.textContent.trim() === text)
 const item = (host, text) => [...host.querySelectorAll('.item')].find(i => i.textContent.includes(text))
 const setS = patch => useStore.setState({ S: { ...useStore.getState().S, routines: [piernas], week: { 1: 'r1' }, dayPlan: {}, workouts: [], effort: 'none', onboardingCompletado: true, planIniciado: true, ...patch } })
 
@@ -49,6 +52,98 @@ describe('hoja del día: planificar', () => {
     const { host, unmount } = await openLastSheet()
     await act(async () => { item(host, 'Descansar / saltar este día').click() })
     expect(useStore.getState().S.workouts.map(w => w.id)).toEqual(['t1'])
+    await unmount()
+  })
+})
+
+describe('hoja del día: registrar', () => {
+  it('pasado con un entreno: lo muestra y no ofrece nada que lo borre ni planificar', async () => {
+    setS({ workouts: [live('t1', PAST)] })
+    dayOverrideSheet(PAST)
+    const { host, unmount } = await openLastSheet()
+    expect(host.querySelector('.day-workouts').textContent).toContain('Piernas')
+    expect(host.querySelector('.day-plan')).toBeNull()
+    expect(item(host, 'Descansar / saltar este día')).toBeUndefined()
+    expect(btn(host, 'Agregar otro entrenamiento')).toBeTruthy()
+    expect(btn(host, 'Entrené')).toBeUndefined()
+    await act(async () => { btn(host, 'Agregar otro entrenamiento').click() })
+    expect(btn(host, 'Entrené')).toBeTruthy()
+    await unmount()
+  })
+
+  it('pasado sin nada: "Entrené" con la rutina planificada elegida; marcar agrega un marcado sin series', async () => {
+    dayOverrideSheet(PAST)
+    const { host, unmount } = await openLastSheet()
+    expect(host.querySelector('.day-tocaba').textContent).toBe('Tocaba: Piernas')
+    await act(async () => { btn(host, 'Entrené').click() })
+    expect(btn(host, 'Piernas').getAttribute('aria-pressed')).toBe('true')
+    await act(async () => { btn(host, 'Marcar como entrenado').click() })
+    const [w] = useStore.getState().S.workouts
+    expect(w).toMatchObject({ d: PAST, routineId: 'r1', name: 'Piernas', marked: true, entries: [], vol: 0 })
+    expect(w.end).toBe(w.start)
+    expect(useStore.getState().S.dayPlan[PAST]).toBeUndefined()   // el workout es lo que vale
+    await unmount()
+  })
+
+  it('un día que no tenía rutina: no hay nada elegido y no se puede marcar hasta elegir', async () => {
+    const sunday = '2026-09-27'
+    dayOverrideSheet(sunday)
+    const { host, unmount } = await openLastSheet()
+    expect(host.querySelector('.day-tocaba').textContent).toBe('Tocaba: descanso')
+    await act(async () => { btn(host, 'Entrené').click() })
+    expect(host.querySelectorAll('.chip[aria-pressed="true"]')).toHaveLength(0)
+    expect(btn(host, 'Marcar como entrenado').disabled).toBe(true)
+    await act(async () => { btn(host, 'Otra cosa').click() })
+    await act(async () => { btn(host, 'Marcar como entrenado').click() })
+    expect(useStore.getState().S.workouts[0].routineId).toBeNull()
+    await unmount()
+  })
+
+  it('"No entrené" cierra sin escribir nada', async () => {
+    dayOverrideSheet(PAST)
+    const { host, unmount } = await openLastSheet()
+    await act(async () => { btn(host, 'No entrené').click() })
+    expect(useStore.getState().S.workouts).toEqual([])
+    expect(useUI.getState().sheets).toHaveLength(0)
+    await unmount()
+  })
+
+  it('"Cargar series" abre el editor con la rutina elegida', async () => {
+    dayOverrideSheet(PAST)
+    const { host, unmount } = await openLastSheet()
+    await act(async () => { btn(host, 'Entrené').click() })
+    await act(async () => { btn(host, 'Cargar series (opcional)').click() })
+    const sheets = useUI.getState().sheets
+    expect(sheets).toHaveLength(1)
+    expect(sheets[0].kind).toBe('panel')
+    await unmount()
+  })
+
+  it('un marcado del día ofrece cargar series', async () => {
+    setS({ workouts: [{ id: 'm1', d: PAST, start: Date.parse(PAST + 'T15:00:00Z'), end: Date.parse(PAST + 'T15:00:00Z'), name: 'Piernas', routineId: 'r1', marked: true, entries: [], vol: 0 }] })
+    dayOverrideSheet(PAST)
+    const { host, unmount } = await openLastSheet()
+    expect(host.querySelector('.day-workouts').textContent).toContain('Marcado')
+    expect(host.querySelector('.day-workouts').textContent).toContain('Sin series · cuenta para tu racha')
+    expect(btn(host, 'Cargar series')).toBeTruthy()
+    await unmount()
+  })
+
+  it('futuro: solo planificar, sin marcar', async () => {
+    dayOverrideSheet(FUTURE)
+    const { host, unmount } = await openLastSheet()
+    expect(btn(host, 'Entrené')).toBeUndefined()
+    expect(host.querySelector('.day-tocaba')).toBeNull()
+    expect(host.querySelector('.day-plan')).toBeTruthy()
+    expect(item(host, 'Marcar como realizado en esta fecha')).toBeUndefined()
+    await unmount()
+  })
+
+  it('hoy: registrar y planificar', async () => {
+    dayOverrideSheet(TODAY)
+    const { host, unmount } = await openLastSheet()
+    expect(btn(host, 'Entrené')).toBeTruthy()
+    expect(host.querySelector('.day-plan')).toBeTruthy()
     await unmount()
   })
 })

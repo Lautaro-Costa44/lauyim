@@ -2497,3 +2497,13 @@ button.wh-row{font:inherit;color:inherit;border:0;cursor:pointer}
   .mwe.wide .mwe-foot{justify-content:flex-end}
   .mwe.wide .mwe-foot > .btn{flex:0 0 auto}
 }
+
+/* Hoja del día (components/day/DaySheet.jsx). */
+.day-tocaba{margin:-8px 0 12px}
+.day-mark-q{display:flex;gap:8px;margin:4px 0 12px}
+.day-mark-btn{flex:1;display:flex;align-items:center;justify-content:center;gap:6px;padding:14px 8px;border-radius:var(--r);border:0;background:var(--surface);color:var(--label);font:inherit;font-weight:600;cursor:pointer}
+.day-mark-btn.on{background:var(--acc);color:#000}
+.day-mark-card{background:var(--surface);border-radius:var(--r);padding:10px 12px;margin:10px 0}
+.day-mark > .btn{width:100%;margin-top:8px}
+.day-workout > .grow{cursor:pointer}
+.day-add{margin-top:10px}
