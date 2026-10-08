@@ -940,6 +940,7 @@ const MERGE_ERRORS = {
   ficha_has_app: [409, 'La ficha ya tiene acceso a la app'],
   target_without_app: [409, 'La cuenta destino no tiene acceso a la app'],
   target_is_staff: [409, 'No se puede unir una ficha a un admin'],
+  ficha_has_role: [409, 'Quitale el rol a la ficha antes de unirla'],
   billing_conflict: [409, 'Las dos tienen plan: elegí cuál conservar (keepBilling)'],
   dni_conflict: [409, 'La ficha y la cuenta tienen DNI distintos']
 };

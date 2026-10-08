@@ -828,8 +828,9 @@ export function UserDetail({ id, billingEnabled = true, users, openUser, onChang
       onClick={() => openSheet((c, { setOnBack }) => <AdminManageSheet userId={u.id} userName={u.name} healthConsent={d.healthConsent ?? null} tabs={manageTabs} close={c} setOnBack={setOnBack} />, { locked: true, fullScreen: true, backGesture: true })}>
       {manageLabel}
     </Button>}
-    {/* Un rol por persona; "Ninguno" es un socio más. Con la cuenta no activa solo se puede quitar. */}
-    {hasApp && !u.owner && allowed('roles.assign') && <button className="btn primary" style={{ margin: '12px 0 4px' }} disabled={inactive && !u.role}
+    {/* Un rol por persona; "Ninguno" es un socio más. Con la cuenta no activa solo se puede quitar.
+        También en una ficha sin app: al vincular el celular entra con ese rol. */}
+    {!u.owner && allowed('roles.assign') && <button className="btn primary" style={{ margin: '12px 0 4px' }} disabled={inactive && !u.role}
       onClick={manageRoles}>{t('Gestionar roles')}</button>}
     {allowed('members.edit') && !u.admin && !u.owner && <button className={'btn ' + (u.disabled ? 'primary' : 'danger')} style={{ margin: '8px 0 4px' }}
       onClick={() => u.disabled ? setDisabled(false)

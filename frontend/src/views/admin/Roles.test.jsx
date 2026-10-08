@@ -95,15 +95,19 @@ describe('Roles', () => {
     expect(JSON.parse(opts.body)).toMatchObject({ name: 'Caja', feeExempt: true, permissions: ['members.view', 'fees.view', 'fees.manage'] })
   })
 
-  it('asignar: solo cuentas activas con la app; tocar asigna y tocar de nuevo quita', async () => {
+  it('asignar: cuentas activas, también fichas sin app (con su etiqueta); tocar asigna y tocar de nuevo quita', async () => {
     await mount({ id: 'o', owner: true })
     await click(document.querySelector('[aria-label="Asignar Recepción"]'))
     const rows = () => [...document.querySelectorAll('.role-assign-list .lrow')]
     // Como en Usuarios: nombre y apellido de la ficha y, en gris y entre corchetes, el usuario.
-    expect(rows().map(r => r.querySelector('.lrow-t').textContent)).toEqual(['Ana Pérez [ana]', 'beto'])
+    expect(rows().map(r => r.querySelector('.lrow-t').textContent)).toEqual(['Ana Pérez [ana]', 'beto', 'fichaSin app'])
+    expect(rows().filter(r => r.querySelector('.tag.nocap')).map(r => r.querySelector('.lrow-t').firstChild.textContent)).toEqual(['ficha'])
+    await click(rows()[2])
+    expect(JSON.parse(apiMock.mock.calls.find(([u]) => u === '/api/admin/users/role')[1].body)).toEqual({ userId: 'ficha', roleId: 'reception' })
+    apiMock.mockClear()
     expect(rows()[0].querySelector('.unick').textContent).toBe(' [ana]')
     expect(rows()[0].getAttribute('aria-pressed')).toBe('true')
-    await click(rows()[1])
+    await click(rows().find(r => r.textContent.includes('beto')))
     expect(JSON.parse(apiMock.mock.calls.find(([u]) => u === '/api/admin/users/role')[1].body)).toEqual({ userId: 'beto', roleId: 'reception' })
     expect(useUI.getState().toastMsg).toBe('beto: Ninguno → Recepción')
     await click(rows().find(r => r.textContent.includes('Ana')))
