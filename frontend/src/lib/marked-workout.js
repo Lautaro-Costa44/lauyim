@@ -8,6 +8,7 @@
 import { localDayStartOf, localNoonOf, workoutTime } from './format.js'
 import { modeOf, isBw, isEmptySet, workoutVolume, setLabel, EFFORT, capEffort } from './history.js'
 import { loadOfRoutine, musclesOf } from './muscles.js'
+import { isWarmupRow } from './workout-model.js'
 import { EXIDX } from './exercises.js'
 
 /** 'past' | 'today' | 'future': qué ofrece la hoja de ese día. */
@@ -86,6 +87,32 @@ function primaryMuscles(routine) {
   return out
 }
 
+/**
+ * Un entreno ya hecho (con la app), corregido en el editor. Se pisan solo los valores que el editor
+ * muestra: una serie conserva lo demás (drops, rest-pause, notas), un valor vaciado se borra, y los
+ * calentamientos y las series sin completar vuelven tal cual. Un ejercicio sin series de trabajo
+ * sale. El resto del entreno (hora, nota, récords festejados, objetivo de la semana) no cambia.
+ */
+export function buildEditedWorkout(workout, items, effort = 'none') {
+  const entries = []
+  for (const it of items) {
+    const edited = (it.rows || []).map(r => {
+      const set = markedSetOf(r, it.cfg, effort)
+      if (!set || !r.orig) return set
+      const merged = { ...r.orig, ...set }
+      for (const f of FIELDS) if (set[f] == null) delete merged[f]
+      return merged
+    }).filter(Boolean)
+    if (!edited.length) continue
+    const keep = it.orig ? it.keep || [] : []
+    const sets = [...keep.filter(isWarmupRow), ...edited, ...keep.filter(s => !isWarmupRow(s))]
+    entries.push(it.orig ? { ...it.orig, sets } : { id: it.id, target: { ...it.cfg, id: it.id }, sets })
+  }
+  const w = { ...workout, entries }
+  w.vol = workoutVolume(w)
+  return w
+}
+
 let seq = 0
 const keyOf = () => 'mi' + (++seq)
 /** n filas vacías del editor (mínimo una). */
@@ -93,10 +120,20 @@ export const emptyRows = n => Array.from({ length: Math.max(1, n || 1) }, () => 
 /** Un ejercicio del editor: su config (con el id) y una fila vacía por serie. */
 export const markedItem = (id, cfg = {}) => ({ key: keyOf(), id, cfg: { ...cfg, id }, rows: emptyRows(cfg.sets) })
 
-/** Borrador del editor: las series de un marcado que ya las tiene, o la rutina con filas vacías. */
+/**
+ * Borrador del editor: las series de un entreno que ya las tiene, o la rutina con filas vacías.
+ * De un entreno se muestran solo las series de trabajo hechas; cada fila guarda su serie original
+ * (`orig`) y lo que no se muestra (calentamientos, series sin completar) queda en `keep`, para
+ * devolverlo tal cual al guardar.
+ */
 export function markedDraft({ routine = null, workout = null } = {}) {
   if (workout?.entries?.length) {
-    return workout.entries.map(e => ({ key: keyOf(), id: e.id, cfg: { ...(e.target || {}), id: e.id }, rows: (e.sets || []).map(markedRowOf) }))
+    return workout.entries.map(e => {
+      const { sets = [], ...orig } = e
+      const shown = s => s?.done && !isWarmupRow(s)
+      return { key: keyOf(), id: e.id, cfg: { ...(e.target || {}), id: e.id }, orig,
+        rows: sets.filter(shown).map(s => ({ ...markedRowOf(s), orig: s })), keep: sets.filter(s => !shown(s)) }
+    })
   }
   return (routine?.ex || []).map(c => markedItem(c.id, c))
 }

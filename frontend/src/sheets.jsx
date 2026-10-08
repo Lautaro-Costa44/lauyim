@@ -27,7 +27,7 @@ import { useMyClasses } from './components/useMyClasses.js'
 import { classesByDate } from './lib/classes.js'
 import { streakSheet } from './components/StreakSheet.jsx'
 import { DaySheet } from './components/day/DaySheet.jsx'
-import { markedEditorSheet } from './components/day/MarkedWorkoutEditor.jsx'
+import { workoutEditorSheet } from './components/day/MarkedWorkoutEditor.jsx'
 import { exerciseMuscleSnapshot, loadOfWorkouts, MUSCLES, MUSCLE_NAME, normalizeMuscleGroups, hasExplicitMuscleMetadata } from './lib/muscles.js'
 import { parseImport, mergeImport } from './lib/import-csv.js'
 import { buildPlanBundle, parsePlan, mergePlan, printPlan } from './lib/plan-share.js'
@@ -1293,14 +1293,15 @@ function TrainingDetail({ w, close }) {
       if (text) rec.note = text; else delete rec.note
     })
   }, [])
-  // Un día marcado a mano: cargar (o editar) sus series. "Repetir" solo si hay series que repetir.
+  // Corregir las series de un entreno ya hecho (o cargarlas, en uno marcado sin series). "Repetir"
+  // solo si hay series que repetir.
   const done = setsDone(w)
   const routine = st.routines.find(r => r.id === w.routineId) || null
   const footer = <>
-    {w.marked && <div className="marked-note" style={{ marginBottom: 12 }}>
-      <div className="small muted" style={{ marginBottom: 6 }}>{done ? t('Marcado a mano: estas series las cargaste después.') : t('Marcado a mano, sin series: cuenta para tu racha.')}</div>
-      <Button variant="plain" icon="plus" onClick={() => { close?.(); markedEditorSheet({ iso: w.d, routine, workout: w }) }}>{done ? t('Editar series') : t('Cargar series')}</Button>
-    </div>}
+    <div className="marked-note" style={{ marginBottom: 12 }}>
+      {w.marked && <div className="small muted" style={{ marginBottom: 6 }}>{done ? t('Marcado a mano: estas series las cargaste después.') : t('Marcado a mano, sin series: cuenta para tu racha.')}</div>}
+      <Button variant="plain" icon={w.marked && !done ? 'plus' : 'pencil'} onClick={() => { close?.(); workoutEditorSheet({ iso: w.d, routine, workout: w }) }}>{w.marked && !done ? t('Cargar series') : t('Editar series')}</Button>
+    </div>
     <div className="small muted" style={{ margin: '4px 0 6px' }}>{t('Session note')}</div>
     <textarea {...NO_AUTOFILL} name="app-session-note-history" className="input" rows={2} maxLength={NOTE_MAX} value={note}
       placeholder={t('How the session went as a whole.')}
@@ -1416,7 +1417,7 @@ function Calendar({ start, close }) {
       {Object.keys(classDays).length > 0 && <span><i className="cal-legend-cls" />{t('Clase')}</span>}
       <span className="cal-legend-flame"><Icon name="flame" />{t('Semana cumplida')}</span>
     </div>
-    <div className="small dim" style={{ textAlign: 'center', marginTop: 10 }}>{t('Tap a trained day for details · tap any other day to plan a session')}</div>
+    <div className="small dim" style={{ textAlign: 'center', marginTop: 10 }}>{t('Tocá un día para ver lo que hiciste, marcarlo o planificarlo.')}</div>
   </>
 }
 export const calendarSheet = start => ui().openSheet(close => <Calendar start={start} close={close} />)

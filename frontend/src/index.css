@@ -2479,9 +2479,6 @@ button.wh-row{font:inherit;color:inherit;border:0;cursor:pointer}
 .mwe-cell{text-align:center;padding:8px 4px;min-width:0;background:var(--surface-2)}
 .mwe-x{color:var(--label-3)}
 .mwe-tools{display:flex;justify-content:space-between;flex-wrap:wrap;gap:6px;margin-top:6px}
-.mwe-confirm{margin:0 12px 12px;padding:10px 12px;border-radius:var(--r-sm);background:var(--surface-2)}
-.mwe-confirm.danger{box-shadow:inset 0 0 0 1px var(--red)}
-.mwe-confirm .row{gap:8px;margin-top:8px}
 .mwe-add{margin-top:6px}
 .mwe-spacer{height:55vh}
 .mwe-foot{position:sticky;bottom:0;display:flex;gap:10px;padding:10px 0 2px;background:var(--bg-el);box-shadow:0 28px 0 var(--bg-el)}
@@ -2507,3 +2504,13 @@ button.wh-row{font:inherit;color:inherit;border:0;cursor:pointer}
 .day-mark > .btn{width:100%;margin-top:8px}
 .day-workout > .grow{cursor:pointer}
 .day-add{margin-top:10px}
+
+/* Hoja del día: menú de un entreno (portal en body, flota sobre todo y no corre nada), descanso y cierre. */
+.day-more{flex:none;color:var(--label-2)}
+.day-menu-back{position:fixed;inset:0;z-index:1000}
+.day-menu{position:fixed;z-index:1001;min-width:180px;padding:5px;border-radius:var(--r);background:var(--surface-2);box-shadow:0 14px 40px -8px rgba(0,0,0,.55);display:flex;flex-direction:column}
+.day-menu button{display:flex;align-items:center;gap:10px;padding:11px 12px;border:0;border-radius:var(--r-sm);background:none;color:var(--label);font:inherit;text-align:left;cursor:pointer}
+.day-menu button:hover,.day-menu button:active{background:var(--surface-3)}
+.day-menu button.danger{color:var(--red)}
+.day-closed{display:flex;align-items:center;gap:8px;margin:-6px 0 12px;padding:9px 12px;border-radius:var(--r-sm);background:color-mix(in srgb, var(--orange) 14%, transparent);color:var(--orange)}
+.day-rest{margin-top:4px}

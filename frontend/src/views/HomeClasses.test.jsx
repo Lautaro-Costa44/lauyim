@@ -98,13 +98,13 @@ describe('clases en las vistas', () => {
     expect(container.querySelector('.today-classes')).toBeNull()
   })
 
-  it('hoja del día: muestra las clases y elegir descanso no borra nada', async () => {
-    setS({ workouts: [classWorkout('w1', TODAY, { classBookingId: 'b1' }), { id: 't1', d: TODAY, start: 1, end: 2, name: 'Piernas', routineId: 'r1', entries: [] }] })
+  it('hoja del día: muestra las clases y elegir descanso no las borra', async () => {
+    setS({ workouts: [classWorkout('w1', TODAY, { classBookingId: 'b1' })] })
     dayOverrideSheet(TODAY)
     const { host, unmount } = await openLastSheet()
     expect(host.querySelector('.day-classes').textContent).toContain('Spinning')
     await act(async () => { [...host.querySelectorAll('.item')].find(i => i.textContent.includes('Descansar / saltar este día')).click() })
-    expect(useStore.getState().S.workouts.map(w => w.id)).toEqual(['w1', 't1'])
+    expect(useStore.getState().S.workouts.map(w => w.id)).toEqual(['w1'])
     expect(useStore.getState().S.dayPlan[TODAY].estado).toBe('descanso')
     await unmount()
   })

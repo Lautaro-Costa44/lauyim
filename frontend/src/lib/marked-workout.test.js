@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { localDayStartOf, localNoonOf } from './format.js'
-import { buildMarkedWorkout, columnsFor, dayMode, itemSummary, markedDraft, markedItem, markedRowOf, markedSetOf, modeTag, putWorkout } from './marked-workout.js'
+import { buildEditedWorkout, buildMarkedWorkout, columnsFor, dayMode, itemSummary, markedDraft, markedItem, markedRowOf, markedSetOf, modeTag, putWorkout } from './marked-workout.js'
 
 const localAt = (y, m, d, h, min = 0) => new Date(y, m - 1, d, h, min).getTime()
 const bench = { id: '0025', sets: 2, reps: 8, weight: 60 }
@@ -112,7 +112,7 @@ describe('markedDraft', () => {
     const workout = { entries: [{ id: '0025', target: { id: '0025', sets: 3 }, sets: [{ done: true, w: 60, r: 8 }] }] }
     const d = markedDraft({ routine: { id: 'r', ex: [{ id: '0024', sets: 2 }] }, workout })
     expect(d.map(i => i.id)).toEqual(['0025'])
-    expect(d[0].rows).toEqual([{ w: '60', r: '8' }])
+    expect(d[0].rows).toMatchObject([{ w: '60', r: '8' }])
   })
   it('sin rutina ni series: vacío', () => {
     expect(markedDraft({})).toEqual([])
@@ -158,5 +158,44 @@ describe('modeTag', () => {
     expect(modeTag({ id: '0025', bodyweight: true })).toBe('peso corporal')
     expect(modeTag({ id: '0025', mode: 'time' })).toBe('tiempo')
     expect(modeTag({ id: '0025', mode: 'cardio' })).toBe('cardio')
+  })
+})
+
+describe('editar un entreno ya hecho', () => {
+  const warm = { done: true, w: 40, r: 10, warmup: true }
+  const drop = { done: true, w: 80, r: 6, type: 'dropset', drops: [{ w: 60, r: 6 }] }
+  const done = { id: 'w1', d: '2026-03-10', start: 100, end: 3700, name: 'Pull', routineId: 'r', note: 'ok', prs: [{ id: '0025' }], weekTarget: 3, vol: 0,
+    entries: [{ id: '0025', note: 'agarre', target: { id: '0025', mode: 'reps' }, sets: [warm, { done: true, w: 80, r: 8, rir: 2 }, drop, { done: false, w: 80, r: 0 }] }] }
+
+  it('el borrador muestra solo las series de trabajo hechas; lo demás queda guardado aparte', () => {
+    const [it] = markedDraft({ workout: done })
+    expect(it.rows.map(r => [r.w, r.r])).toEqual([['80', '8'], ['80', '6']])
+    expect(it.keep).toEqual([warm, { done: false, w: 80, r: 0 }])
+  })
+
+  it('corrige valores y conserva calentamientos, drop sets, notas, hora y lo demás del entreno', () => {
+    const items = markedDraft({ workout: done })
+    items[0].rows[0] = { ...items[0].rows[0], w: '85' }
+    const w = buildEditedWorkout(done, items, 'rir')
+    expect(w).toMatchObject({ id: 'w1', start: 100, end: 3700, note: 'ok', prs: [{ id: '0025' }], weekTarget: 3, routineId: 'r' })
+    expect(w.marked).toBeUndefined()
+    expect(w.entries[0].note).toBe('agarre')
+    expect(w.entries[0].sets).toEqual([warm, { done: true, w: 85, r: 8, rir: 2 }, drop, { done: false, w: 80, r: 0 }])
+    expect(w.vol).toBe(85 * 8 + 80 * 6 + 60 * 6)
+  })
+
+  it('un valor vaciado se borra de la serie; una serie vacía se borra', () => {
+    const items = markedDraft({ workout: done })
+    items[0].rows[0] = { ...items[0].rows[0], rir: '' }
+    items[0].rows[1] = { orig: items[0].rows[1].orig }
+    const w = buildEditedWorkout(done, items, 'rir')
+    expect(w.entries[0].sets).toEqual([warm, { done: true, w: 80, r: 8 }, { done: false, w: 80, r: 0 }])
+  })
+
+  it('un ejercicio cambiado o nuevo entra sin lo del anterior; uno sin series de trabajo sale', () => {
+    const items = [{ ...markedItem('0024', { sets: 1 }), rows: [{ w: '100', r: '5' }] }]
+    const w = buildEditedWorkout(done, items, 'none')
+    expect(w.entries).toEqual([{ id: '0024', target: { id: '0024', sets: 1 }, sets: [{ done: true, w: 100, r: 5 }] }])
+    expect(buildEditedWorkout(done, [{ ...markedDraft({ workout: done })[0], rows: [] }], 'none').entries).toEqual([])
   })
 })

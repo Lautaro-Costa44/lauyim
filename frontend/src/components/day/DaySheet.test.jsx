@@ -46,12 +46,21 @@ beforeEach(async () => {
 afterEach(() => { vi.useRealTimers(); useStore.setState({ config: null }) })
 
 describe('hoja del día: planificar', () => {
-  it('hoy: elegir otra rutina o descanso solo cambia el plan, no borra el entreno', async () => {
+  it('hoy ya entrenado: no se ofrece planificar (ni descanso ni otra rutina)', async () => {
     setS({ workouts: [live('t1', TODAY)] })
     dayOverrideSheet(TODAY)
     const { host, unmount } = await openLastSheet()
+    expect(host.querySelector('.day-plan')).toBeNull()
+    expect(host.querySelector('.day-tocaba').textContent).toBe('Tocaba: Piernas')
+    await unmount()
+  })
+
+  it('hoy sin entrenar: planificar solo cambia el plan; arriba dice qué tocaba y no se repite', async () => {
+    dayOverrideSheet(TODAY)
+    const { host, unmount } = await openLastSheet()
+    expect(host.querySelector('.day-plan').textContent).not.toContain('Plan semanal')
     await act(async () => { item(host, 'Descansar / saltar este día').click() })
-    expect(useStore.getState().S.workouts.map(w => w.id)).toEqual(['t1'])
+    expect(useStore.getState().S.dayPlan[TODAY].estado).toBe('descanso')
     await unmount()
   })
 })
@@ -103,12 +112,23 @@ describe('hoja del día: registrar', () => {
     await unmount()
   })
 
-  it('"No entrené" cierra sin escribir nada', async () => {
+  it('"Descansé" deja el día como descanso; después se ve con Deshacer y "Al final entrené"', async () => {
+    dayOverrideSheet(PAST)
+    const first = await openLastSheet()
+    await act(async () => { btn(first.host, 'Descansé').click() })
+    expect(useStore.getState().S.workouts).toEqual([])
+    expect(useStore.getState().S.dayPlan[PAST].estado).toBe('descanso')
+    expect(useUI.getState().sheets).toHaveLength(0)
+    await first.unmount()
     dayOverrideSheet(PAST)
     const { host, unmount } = await openLastSheet()
-    await act(async () => { btn(host, 'No entrené').click() })
-    expect(useStore.getState().S.workouts).toEqual([])
-    expect(useUI.getState().sheets).toHaveLength(0)
+    expect(host.querySelector('.day-tocaba').textContent).toBe('Tocaba: Piernas')   // lo del plan, no el descanso
+    expect(host.querySelector('.day-rest').textContent).toContain('Descansaste este día')
+    await act(async () => { btn(host, 'Al final entrené').click() })
+    expect(btn(host, 'Entrené')).toBeTruthy()
+    await act(async () => { btn(host, 'Cancelar').click() })
+    await act(async () => { btn(host, 'Deshacer').click() })
+    expect(useStore.getState().S.dayPlan[PAST]).toBeUndefined()
     await unmount()
   })
 
@@ -129,8 +149,28 @@ describe('hoja del día: registrar', () => {
     const { host, unmount } = await openLastSheet()
     expect(host.querySelector('.day-workouts').textContent).toContain('Marcado')
     expect(host.querySelector('.day-workouts').textContent).toContain('Sin series · cuenta para tu racha')
-    expect(btn(host, 'Cargar series')).toBeTruthy()
+    expect(document.querySelector('.day-menu')).toBeNull()
+    await act(async () => { host.querySelector('[aria-label^="Opciones de"]').click() })
+    expect([...document.querySelectorAll('.day-menu button')].map(b => b.textContent)).toEqual(['Cargar series', 'Borrar'])
+    await act(async () => { document.querySelector('.day-menu-back').click() })   // tocar afuera lo cierra
+    expect(document.querySelector('.day-menu')).toBeNull()
     await unmount()
+  })
+
+  it('borrar un entreno desde su menú pide confirmación con el diálogo de la app', async () => {
+    setS({ workouts: [live('t1', PAST)] })
+    dayOverrideSheet(PAST)
+    const day = await openLastSheet()
+    await act(async () => { day.host.querySelector('[aria-label^="Opciones de"]').click() })
+    expect([...document.querySelectorAll('.day-menu button')].map(b => b.textContent)).toEqual(['Editar series', 'Borrar'])
+    await act(async () => { [...document.querySelectorAll('.day-menu button')].find(b => b.textContent === 'Borrar').click() })
+    await tick()
+    expect(useUI.getState().sheets.at(-1).kind).toBe('center')
+    expect(useStore.getState().S.workouts).toHaveLength(1)   // todavía no
+    const dialog = await openLastSheet()
+    await act(async () => { dialog.host.querySelector('.confirm-dialog .btn.danger').click() })
+    expect(useStore.getState().S.workouts).toEqual([])
+    await dialog.unmount(); await day.unmount()
   })
 
   it('futuro: solo planificar, sin marcar', async () => {
@@ -178,6 +218,16 @@ describe('el marcado en el calendario, el historial y el detalle', () => {
     await act(async () => r.unmount()); host.remove()
   })
 
+  it('el detalle de un entreno ya hecho ofrece corregir sus series', async () => {
+    const w = live('t1', PAST)
+    setS({ workouts: [w] })
+    workoutDetailSheet(w)
+    const { host, unmount } = await openLastSheet()
+    expect(btn(host, 'Editar series')).toBeTruthy()
+    expect(btn(host, 'Repetir este entreno')).toBeTruthy()
+    await unmount()
+  })
+
   it('el detalle de un marcado sin series ofrece cargarlas y no "Repetir"', async () => {
     setS({ workouts: [marked] })
     workoutDetailSheet(marked)
@@ -186,6 +236,21 @@ describe('el marcado en el calendario, el historial y el detalle', () => {
     expect(btn(host, 'Repetir este entreno')).toBeUndefined()
     await act(async () => { btn(host, 'Cargar series').click() })
     expect(useUI.getState().sheets.at(-1).kind).toBe('panel')
+    await unmount()
+  })
+})
+
+describe('hoja del día: gimnasio cerrado', () => {
+  it('un día de cierre lo dice arriba, con el motivo', async () => {
+    useStore.setState({ config: { classes_available: true } })
+    apiMock.mockImplementation(url => url.startsWith('/api/classes')
+      ? Promise.resolve({ enabled: true, today: TODAY, tz: null, settings: { cancelHours: 2 }, occurrences: [], closures: [{ id: 'k', from: FUTURE, to: FUTURE, reason: 'Feriado' }] })
+      : Promise.resolve({}))
+    const { myClassesList } = await import('../useMyClasses.js')
+    await myClassesList({ force: true })
+    dayOverrideSheet(FUTURE)
+    const { host, unmount } = await openLastSheet()
+    expect(host.querySelector('.day-closed').textContent).toBe('El gimnasio está cerrado · Feriado')
     await unmount()
   })
 })

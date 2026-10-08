@@ -1,7 +1,8 @@
-// Cargar series de un día marcado (la hoja del día y el detalle de un marcado). Celular: acordeón
-// a pantalla completa, un ejercicio abierto a la vez; abrir uno lo sube arriba de todo para que su
-// tabla quede sobre el teclado. Desde 700px: panel centrado con lista + detalle. Nada es
-// obligatorio: un ejercicio sin series no se guarda, y guardar todo vacío es marcar el día.
+// Cargar series de un día marcado, o corregir las de un entreno ya hecho con la app (la hoja del
+// día y el detalle del entreno). Celular: acordeón a pantalla completa, un ejercicio abierto a la
+// vez; abrir uno lo sube arriba de todo para que su tabla quede sobre el teclado. Desde 700px: panel
+// centrado con lista + detalle. En un marcado nada es obligatorio: un ejercicio sin series no se
+// guarda, y guardar todo vacío es marcar el día.
 import { useEffect, useRef, useState } from 'react'
 import { useStore } from '../../store/useStore.js'
 import { useUI } from '../../store/useUI.js'
@@ -10,7 +11,7 @@ import { exOr } from '../../lib/exercises.js'
 import { fmtDate, uid } from '../../lib/format.js'
 import { dateLocale } from '../../lib/i18n-core.js'
 import { defaultConfig, effortOf, lastEntryFor, isBw, setLabel, EFFORT } from '../../lib/history.js'
-import { buildMarkedWorkout, columnsFor, emptyRows, itemSummary, markedDraft, markedItem, markedRowOf, modeTag, putWorkout } from '../../lib/marked-workout.js'
+import { buildEditedWorkout, buildMarkedWorkout, columnsFor, emptyRows, itemSummary, markedDraft, markedItem, markedRowOf, modeTag, putWorkout } from '../../lib/marked-workout.js'
 import { Button } from '../ui.jsx'
 import Icon from '../Icon.jsx'
 
@@ -37,11 +38,13 @@ const newItem = id => markedItem(id, defaultConfig(id))
 // sirve acá: agrega separador de miles (1.200) y eso, leído de vuelta, sería 1,2.
 const decimalSep = () => (1.5).toLocaleString(dateLocale()).charAt(1)
 const asTyped = v => String(v).replace('.', decimalSep())
-// sheets.jsx importa este archivo (detalle de un marcado): la biblioteca se trae al usarla. Al
-// elegir se cierra, como al reemplazar un ejercicio en el entreno en vivo (Workout.jsx).
+// sheets.jsx importa este archivo (detalle de un entreno): la biblioteca y el diálogo de confirmar
+// se traen al usarlos. La biblioteca se cierra al elegir, como al reemplazar un ejercicio mientras
+// se entrena (Workout.jsx).
 const pickExercise = onPick => import('../../sheets.jsx').then(({ exercisePicker }) => {
   const picker = exercisePicker(ex => { picker?.close(); onPick(ex) })
 })
+const confirm = opts => import('../../sheets.jsx').then(({ confirmSheet }) => confirmSheet(opts))
 
 export default function MarkedWorkoutEditor({ iso, routine = null, workout = null, close }) {
   const st = useStore(s => s.S)
@@ -51,18 +54,18 @@ export default function MarkedWorkoutEditor({ iso, routine = null, workout = nul
   const [initial] = useState(() => { const draft = markedDraft({ routine, workout }); return { draft, open: isWide() ? draft[0]?.key ?? null : null } })
   const [items, setItems] = useState(initial.draft)
   const [openKey, setOpenKey] = useState(initial.open)
-  const [confirm, setConfirm] = useState(null)   // { key, type: 'remove' } | { key, type: 'swap', to }
   const [typing, setTyping] = useState(false)
   const listRef = useRef(null)
   const scrollTo = useRef(null)   // el ejercicio recién abierto, para subirlo cuando ya está en pantalla
   const name = workout?.name || routine?.name || t('Freestyle')
-  // "La última vez" sin el marcado que se está editando: si no, se lee a sí mismo.
-  const history = workout ? { ...st, workouts: st.workouts.filter(w => w.id !== workout.id) } : st
+  // Un entreno ya hecho con la app (no marcado): se corrige lo cargado, sin tocar lo demás.
+  const editing = !!workout && !workout.marked
+  // "La última vez" es la sesión anterior a ese día: ni este entreno ni una posterior.
+  const history = { ...st, workouts: st.workouts.filter(w => w.d < iso) }
 
   const patch = (key, fn) => setItems(list => list.map(it => (it.key === key ? fn(it) : it)))
   const setRows = (key, fn) => patch(key, it => ({ ...it, rows: fn(it.rows) }))
   const open = key => {
-    setConfirm(null)
     const next = !wide && openKey === key ? null : key
     setOpenKey(next)
     if (next && !wide) scrollTo.current = next
@@ -78,21 +81,36 @@ export default function MarkedWorkoutEditor({ iso, routine = null, workout = nul
   const remove = key => {
     const rest = items.filter(it => it.key !== key)
     setItems(rest)
-    setConfirm(null)
     if (openKey === key) setOpenKey(wide ? rest[0]?.key ?? null : null)
   }
-  const swap = (key, to) => {
-    patch(key, it => ({ ...newItem(to.id), key, rows: emptyRows(it.rows.length) }))
-    setConfirm(null)
+  const swap = (key, to) => patch(key, it => ({ ...newItem(to.id), key, rows: emptyRows(it.rows.length) }))
+  // Quitar y cambiar se confirman con el diálogo de toda la app; dice cuántas series se pierden.
+  const lostOf = it => itemSummary(it, effort).count
+  const askRemove = it => {
+    const n = lostOf(it)
+    confirm({
+      title: t('¿Quitar {0}?', nameOf(it.id)),
+      message: [n === 1 ? t('Se pierde la serie que cargaste.') : n > 1 ? t('Se pierden las {0} series que cargaste.', n) : null, editing ? null : t('La rutina no cambia.')].filter(Boolean).join(' ') || t('La rutina no cambia.'),
+      confirmText: t('Quitar'), danger: true, onConfirm: () => remove(it.key),
+    })
   }
-  const askSwap = it => pickExercise(ex => { if (ex.id !== it.id) setConfirm({ key: it.key, type: 'swap', to: ex }) })
+  const askSwap = it => pickExercise(ex => {
+    if (ex.id === it.id) return
+    const n = lostOf(it)
+    confirm({
+      title: t('¿Cambiar {0} por {1}?', nameOf(it.id), nameOf(ex.id)),
+      message: n === 1 ? t('La serie que cargaste se borra: era de otro ejercicio.') : n > 1 ? t('Las {0} series que cargaste se borran: eran de otro ejercicio.', n) : t('La rutina no cambia.'),
+      confirmText: t('Cambiar'), onConfirm: () => swap(it.key, ex),
+    })
+  })
   const add = () => pickExercise(ex => { const it = newItem(ex.id); setItems(list => [...list, it]); open(it.key) })
   const save = () => {
-    const w = buildMarkedWorkout(iso, { routine, routineId: workout ? workout.routineId ?? null : undefined, name, items, effort },
-      { id: workout?.id || uid(), start: workout?.start })
+    const w = editing ? buildEditedWorkout(workout, items, effort)
+      : buildMarkedWorkout(iso, { routine, routineId: workout ? workout.routineId ?? null : undefined, name, items, effort },
+        { id: workout?.id || uid(), start: workout?.start })
     useStore.getState().update(s => { putWorkout(s.workouts, w) })
     close()
-    useUI.getState().toast(workout ? t('Series guardadas') : t('Marcado como entrenado'))
+    useUI.getState().toast(editing ? t('Cambios guardados') : workout ? t('Series guardadas') : t('Marcado como entrenado'))
   }
   // Enter: la celda siguiente (kg → reps → esfuerzo → serie siguiente); en la última, cerrar el teclado.
   const onKey = e => {
@@ -110,6 +128,7 @@ export default function MarkedWorkoutEditor({ iso, routine = null, workout = nul
     const head = f => (f === effort ? effortHd : f === 'w' && cols.includes('r') && isBw(it.cfg) ? '+kg' : HEAD[f])
     return <div className="mwe-table" style={{ '--cols': cols.length }}>
       {last && <div className="mwe-last">{t('Última vez: {0}', last.sets.map(s => setLabel(it.id, s, it.cfg)).join(', '))}</div>}
+      {it.keep?.length > 0 && <div className="mwe-last">{it.keep.length === 1 ? t('1 serie de calentamiento o sin completar: se conserva.') : t('{0} series de calentamiento o sin completar: se conservan.', it.keep.length)}</div>}
       <div className="mwe-tr"><span />{cols.map(f => <span key={f} className="mwe-th">{head(f)}</span>)}<span /></div>
       {it.rows.map((row, i) => <div key={i} className="mwe-tr">
         <span className="mwe-n">{i + 1}</span>
@@ -129,27 +148,9 @@ export default function MarkedWorkoutEditor({ iso, routine = null, workout = nul
     </div>
   }
 
-  const confirmBox = it => {
-    if (confirm?.key !== it.key) return null
-    const n = itemSummary(it, effort).count
-    if (confirm.type === 'remove') {
-      const lost = n === 1 ? t('Se pierde la serie que cargaste.') : n > 1 ? t('Se pierden las {0} series que cargaste.', n) : null
-      return <div className="mwe-confirm danger" role="alert">
-        <b>¿{t('Quitar')} <span className="capitalize">{nameOf(it.id)}</span>?</b>
-        <div className="small muted">{[lost, t('La rutina no cambia.')].filter(Boolean).join(' ')}</div>
-        <div className="row"><Button size="sm" onClick={() => setConfirm(null)}>{t('Cancelar')}</Button><Button size="sm" variant="danger" onClick={() => remove(it.key)}>{t('Quitar')}</Button></div>
-      </div>
-    }
-    return <div className="mwe-confirm" role="alert">
-      <b>¿{t('Cambiar')} <span className="capitalize">{nameOf(it.id)}</span> {t('por')} <span className="capitalize">{nameOf(confirm.to.id)}</span>?</b>
-      <div className="small muted">{n === 1 ? t('La serie que cargaste se borra: era de otro ejercicio.') : n > 1 ? t('Las {0} series que cargaste se borran: eran de otro ejercicio.', n) : t('La rutina no cambia.')}</div>
-      <div className="row"><Button size="sm" onClick={() => setConfirm(null)}>{t('Cancelar')}</Button><Button size="sm" variant="primary" onClick={() => swap(it.key, confirm.to)}>{t('Cambiar')}</Button></div>
-    </div>
-  }
-
   const actions = it => <>
-    <button type="button" className="iconbtn" aria-label={t('Cambiar {0}', nameOf(it.id))} onClick={() => askSwap(it)}><Icon name="reset" /></button>
-    <button type="button" className="iconbtn" aria-label={t('Quitar {0}', nameOf(it.id))} onClick={() => setConfirm({ key: it.key, type: 'remove' })}><Icon name="trash" /></button>
+    <button type="button" className="iconbtn" aria-label={t('Cambiar {0}', nameOf(it.id))} onClick={() => askSwap(it)}><Icon name="swap" /></button>
+    <button type="button" className="iconbtn" aria-label={t('Quitar {0}', nameOf(it.id))} onClick={() => askRemove(it)}><Icon name="trash" /></button>
   </>
 
   const row = it => {
@@ -165,7 +166,6 @@ export default function MarkedWorkoutEditor({ iso, routine = null, workout = nul
         </button>
         {!wide && actions(it)}
       </div>
-      {!wide && confirmBox(it)}
       {!wide && isOpen && table(it)}
     </div>
   }
@@ -178,13 +178,13 @@ export default function MarkedWorkoutEditor({ iso, routine = null, workout = nul
       {!wide && <button type="button" className="iconbtn" aria-label={t('Volver')} onClick={close}><Icon name="chevronLeft" /></button>}
       <div className="grow">
         <h3>{name} · {fmtDate(iso)}</h3>
-        <div className="small muted">{effortHd ? t('Series opcionales · {0} según tus ajustes', effortHd) : t('Series opcionales')}</div>
+        <div className="small muted">{editing ? t('Corregí lo que cargaste. Los drop sets y las notas se conservan.') : effortHd ? t('Series opcionales · {0} según tus ajustes', effortHd) : t('Series opcionales')}</div>
       </div>
     </div>
     <div className="mwe-body">
       <div className="mwe-list" ref={listRef}>
         {items.map(row)}
-        {!items.length && <div className="empty small">{t('Sin ejercicios. Agregá uno, o guardá así: cuenta para tu racha.')}</div>}
+        {!items.length && <div className="empty small">{editing ? t('Sin ejercicios. Agregá uno.') : t('Sin ejercicios. Agregá uno, o guardá así: cuenta para tu racha.')}</div>}
         <Button variant="plain" icon="plus" className="mwe-add" onClick={add}>{t('Agregar ejercicio')}</Button>
       </div>
       {wide && <div className="mwe-detail">{current ? <>
@@ -192,7 +192,6 @@ export default function MarkedWorkoutEditor({ iso, routine = null, workout = nul
           <b className="grow capitalize">{nameOf(current.id)}</b>
           {actions(current)}
         </div>
-        {confirmBox(current)}
         {table(current)}
         <div className="small muted mwe-keys">{t('Tab: celda siguiente · Enter: serie siguiente')}</div>
       </> : <div className="empty small">{t('Elegí un ejercicio de la lista.')}</div>}</div>}
@@ -200,13 +199,13 @@ export default function MarkedWorkoutEditor({ iso, routine = null, workout = nul
     {!wide && <div className="mwe-spacer" aria-hidden="true" />}
     <div className={'mwe-foot' + (typing && !wide ? ' hidden' : '')}>
       {wide && <Button variant="ghost" className="dim" onClick={close}>{t('Cancelar')}</Button>}
-      <Button variant="primary" onClick={save}>{t('Guardar entrenamiento')}</Button>
+      <Button variant="primary" disabled={editing && !items.some(it => itemSummary(it, effort).count)} onClick={save}>{editing ? t('Guardar cambios') : t('Guardar entrenamiento')}</Button>
     </div>
   </div>
 }
 
 /** Abre el editor: pantalla completa en el celular, panel centrado desde 700px. */
-export function markedEditorSheet({ iso, routine = null, workout = null }) {
+export function workoutEditorSheet({ iso, routine = null, workout = null }) {
   // locked: un deslizón no tira lo cargado; atrás del sistema y la X del panel siguen cerrando.
   return useUI.getState().openSheet(close => <MarkedWorkoutEditor iso={iso} routine={routine} workout={workout} close={close} />,
     { kind: 'panel', fullScreen: !isWide(), locked: true, backGesture: true })

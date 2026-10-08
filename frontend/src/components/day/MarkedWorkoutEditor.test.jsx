@@ -5,13 +5,16 @@ import React, { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-const picks = vi.hoisted(() => ({ onPick: null }))
-vi.mock('../../sheets.jsx', () => ({ exercisePicker: vi.fn(onPick => { picks.onPick = onPick; return { close: vi.fn() } }) }))
+const picks = vi.hoisted(() => ({ onPick: null, confirm: null }))
+vi.mock('../../sheets.jsx', () => ({
+  exercisePicker: vi.fn(onPick => { picks.onPick = onPick; return { close: vi.fn() } }),
+  confirmSheet: vi.fn(opts => { picks.confirm = opts }),
+}))
 
 const { useStore } = await import('../../store/useStore.js')
 const { useUI } = await import('../../store/useUI.js')
 const { setLang } = await import('../../lib/i18n.js')
-const { markedEditorSheet } = await import('./MarkedWorkoutEditor.jsx')
+const { workoutEditorSheet } = await import('./MarkedWorkoutEditor.jsx')
 
 const ISO = '2026-10-01'
 const push = { id: 'r1', name: 'Push A', emoji: 'chest', ex: [{ id: '0025', sets: 2, reps: 8, weight: 60 }, { id: '0024', sets: 1 }] }
@@ -21,7 +24,7 @@ const wait = ms => act(async () => { await new Promise(r => setTimeout(r, ms)) }
 
 let host, root
 async function open(opts = {}) {
-  markedEditorSheet({ iso: ISO, routine: push, ...opts })
+  workoutEditorSheet({ iso: ISO, routine: push, ...opts })
   const sheet = useUI.getState().sheets.at(-1)
   host = document.createElement('div'); document.body.appendChild(host)
   root = createRoot(host)
@@ -46,6 +49,7 @@ beforeEach(async () => {
   useUI.setState({ sheets: [], toastMsg: '' })
   setS()
   picks.onPick = null
+  picks.confirm = null
 })
 afterEach(async () => {
   if (root) await act(async () => root.unmount())
@@ -83,14 +87,14 @@ describe('editor de series: celular', () => {
     expect(w.muscleLoad.intensity).toBe('medium')
   })
 
-  it('quitar pide confirmación en la fila; cancelar no cambia nada', async () => {
+  it('quitar pide confirmación con el diálogo de la app; sin confirmar no cambia nada', async () => {
     await open()
     await click(items()[1].querySelector('[aria-label^="Quitar"]'))
-    expect(host.querySelector('.mwe-confirm.danger').textContent).toContain('La rutina no cambia.')
-    await click(btn('Cancelar'))
+    await wait(10)                                   // el import dinámico del diálogo
+    expect(picks.confirm).toMatchObject({ confirmText: 'Quitar', danger: true, message: 'La rutina no cambia.' })
+    expect(picks.confirm.title).toMatch(/^¿Quitar /)
     expect(items()).toHaveLength(2)
-    await click(items()[1].querySelector('[aria-label^="Quitar"]'))
-    await click(btn('Quitar'))
+    await act(async () => { picks.confirm.onConfirm() })
     expect(items()).toHaveLength(1)
   })
 
@@ -102,12 +106,14 @@ describe('editor de series: celular', () => {
     await click(items()[0].querySelector('[aria-label^="Cambiar"]'))
     await wait(10)                                   // el import dinámico de la biblioteca
     await act(async () => { picks.onPick({ id: '0025' }) })
-    expect(host.querySelector('.mwe-confirm')).toBeNull()   // el mismo ejercicio: nada
+    await wait(10)
+    expect(picks.confirm).toBeNull()   // el mismo ejercicio: nada
     await click(items()[0].querySelector('[aria-label^="Cambiar"]'))
     await wait(10)
     await act(async () => { picks.onPick({ id: '0024' }) })
-    expect(host.querySelector('.mwe-confirm').textContent).toContain('La serie que cargaste se borra')
-    await click(btn('Cambiar'))
+    await wait(10)
+    expect(picks.confirm).toMatchObject({ confirmText: 'Cambiar', message: 'La serie que cargaste se borra: era de otro ejercicio.' })
+    await act(async () => { picks.confirm.onConfirm() })
     expect(items()[0].querySelector('.mwe-sum').textContent).toBe('Sin series')
     expect(items()).toHaveLength(2)
   })
@@ -190,6 +196,37 @@ describe('editor de series: celular', () => {
   })
 })
 
+describe('editor de series: corregir un entreno ya hecho', () => {
+  const warm = { done: true, w: 40, r: 10, warmup: true }
+  const done = { id: 'w1', d: ISO, start: Date.parse('2026-10-01T15:00:00Z'), end: Date.parse('2026-10-01T16:00:00Z'), name: 'Push A', routineId: 'r1', note: 'bien', vol: 1240,
+    entries: [{ id: '0025', target: { id: '0025', sets: 2 }, sets: [warm, { done: true, w: 80, r: 8 }, { done: true, w: 80, r: 7 }] }] }
+
+  it('corrige un valor y guarda sin tocar el calentamiento ni el resto', async () => {
+    setS({ workouts: [done] })
+    await open({ workout: done })
+    expect(host.querySelector('.mwe-head').textContent).toContain('Corregí lo que cargaste')
+    await click(items()[0].querySelector('.mwe-item-main'))
+    expect(host.querySelector('.mwe-table').textContent).toContain('1 serie de calentamiento o sin completar: se conserva.')
+    const cs = cells(items()[0])
+    expect(cs.map(c => c.value)).toEqual(['80', '8', '80', '7'])
+    await typeIn(cs[2], '82,5')
+    await click(btn('Guardar cambios'))
+    const [w] = useStore.getState().S.workouts
+    expect(w).toMatchObject({ id: 'w1', note: 'bien', start: done.start, end: done.end })
+    expect(w.marked).toBeUndefined()
+    expect(w.entries[0].sets).toEqual([warm, { done: true, w: 80, r: 8 }, { done: true, w: 82.5, r: 7 }])
+    expect(w.vol).toBe(80 * 8 + 82.5 * 7)
+  })
+
+  it('no deja guardar un entreno sin ninguna serie', async () => {
+    setS({ workouts: [done] })
+    await open({ workout: done })
+    await click(items()[0].querySelector('.mwe-item-main'))
+    for (const c of cells(items()[0])) await typeIn(c, '')
+    expect(btn('Guardar cambios').disabled).toBe(true)
+  })
+})
+
 describe('editor de series: PC', () => {
   it('panel centrado con lista + detalle; el primero elegido; quitar confirma en el detalle', async () => {
     setWide(true)
@@ -200,7 +237,8 @@ describe('editor de series: PC', () => {
     expect(items()[0].classList.contains('open')).toBe(true)
     expect(host.querySelector('.mwe-list [aria-label^="Quitar"]')).toBeNull()   // las acciones están en el detalle
     await click(host.querySelector('.mwe-detail').querySelector('[aria-label^="Quitar"]'))
-    expect(host.querySelector('.mwe-detail .mwe-confirm.danger')).toBeTruthy()
+    await wait(10)
+    expect(picks.confirm).toMatchObject({ confirmText: 'Quitar', danger: true })
     await click(items()[1].querySelector('.mwe-item-main'))
     expect(items()[1].classList.contains('open')).toBe(true)
     expect(host.querySelector('.mwe-foot').textContent).toContain('Cancelar')
