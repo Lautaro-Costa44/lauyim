@@ -12,7 +12,7 @@ vi.mock('../../lib/onboarding.js', () => ({ startTourA: () => {} }))
 const { useStore } = await import('../../store/useStore.js')
 const { useUI } = await import('../../store/useUI.js')
 const { setLang } = await import('../../lib/i18n.js')
-const { dayOverrideSheet } = await import('../../sheets.jsx')
+const { dayOverrideSheet, calendarSheet, workoutDetailSheet, WorkoutRow } = await import('../../sheets.jsx')
 
 const TODAY = '2026-10-05'   // lunes
 const PAST = '2026-09-28'    // lunes anterior: tocaba Piernas
@@ -144,6 +144,42 @@ describe('hoja del día: registrar', () => {
     const { host, unmount } = await openLastSheet()
     expect(btn(host, 'Entrené')).toBeTruthy()
     expect(host.querySelector('.day-plan')).toBeTruthy()
+    await unmount()
+  })
+})
+
+describe('el marcado en el calendario, el historial y el detalle', () => {
+  const marked = { id: 'm1', d: PAST, start: Date.parse(PAST + 'T15:00:00Z'), end: Date.parse(PAST + 'T15:00:00Z'), name: 'Piernas', routineId: 'r1', marked: true, entries: [], vol: 0 }
+
+  it('el calendario abre siempre la hoja del día, aunque el día tenga un entreno', async () => {
+    setS({ workouts: [live('t1', PAST)] })
+    calendarSheet(PAST)
+    const cal = await openLastSheet()
+    const day = [...cal.host.querySelectorAll('.cal-d')].find(b => b.querySelector('span')?.textContent === '28')
+    await act(async () => { day.click() })
+    await cal.unmount()
+    const sheet = await openLastSheet()
+    expect(sheet.host.querySelector('.day-sheet')).toBeTruthy()
+    await sheet.unmount()
+  })
+
+  it('el historial etiqueta el marcado', async () => {
+    setS({ workouts: [marked] })
+    const host = document.createElement('div'); document.body.appendChild(host)
+    const r = createRoot(host)
+    await act(async () => { r.render(<WorkoutRow w={marked} onClick={() => {}} />) })
+    expect(host.querySelector('.tt').textContent).toContain('Marcado')
+    await act(async () => r.unmount()); host.remove()
+  })
+
+  it('el detalle de un marcado sin series ofrece cargarlas y no "Repetir"', async () => {
+    setS({ workouts: [marked] })
+    workoutDetailSheet(marked)
+    const { host, unmount } = await openLastSheet()
+    expect(btn(host, 'Cargar series')).toBeTruthy()
+    expect(btn(host, 'Repetir este entreno')).toBeUndefined()
+    await act(async () => { btn(host, 'Cargar series').click() })
+    expect(useUI.getState().sheets.at(-1).kind).toBe('panel')
     await unmount()
   })
 })

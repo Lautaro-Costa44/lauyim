@@ -27,6 +27,7 @@ import { useMyClasses } from './components/useMyClasses.js'
 import { classesByDate } from './lib/classes.js'
 import { streakSheet } from './components/StreakSheet.jsx'
 import { DaySheet } from './components/day/DaySheet.jsx'
+import { markedEditorSheet } from './components/day/MarkedWorkoutEditor.jsx'
 import { exerciseMuscleSnapshot, loadOfWorkouts, MUSCLES, MUSCLE_NAME, normalizeMuscleGroups, hasExplicitMuscleMetadata } from './lib/muscles.js'
 import { parseImport, mergeImport } from './lib/import-csv.js'
 import { buildPlanBundle, parsePlan, mergePlan, printPlan } from './lib/plan-share.js'
@@ -1292,14 +1293,21 @@ function TrainingDetail({ w, close }) {
       if (text) rec.note = text; else delete rec.note
     })
   }, [])
+  // Un día marcado a mano: cargar (o editar) sus series. "Repetir" solo si hay series que repetir.
+  const done = setsDone(w)
+  const routine = st.routines.find(r => r.id === w.routineId) || null
   const footer = <>
+    {w.marked && <div className="marked-note" style={{ marginBottom: 12 }}>
+      <div className="small muted" style={{ marginBottom: 6 }}>{done ? t('Marcado a mano: estas series las cargaste después.') : t('Marcado a mano, sin series: cuenta para tu racha.')}</div>
+      <Button variant="plain" icon="plus" onClick={() => { close?.(); markedEditorSheet({ iso: w.d, routine, workout: w }) }}>{done ? t('Editar series') : t('Cargar series')}</Button>
+    </div>}
     <div className="small muted" style={{ margin: '4px 0 6px' }}>{t('Session note')}</div>
     <textarea {...NO_AUTOFILL} name="app-session-note-history" className="input" rows={2} maxLength={NOTE_MAX} value={note}
       placeholder={t('How the session went as a whole.')}
       onChange={e => setNote(e.target.value)} onBlur={saveNote} />
     <div style={{ height: 14 }} />
-    <Button variant="primary" icon="reset" onClick={() => { if (repeatWorkout(w)) close?.() }}>{t('Repetir este entreno')}</Button>
-    <div style={{ height: 8 }} />
+    {done > 0 && <><Button variant="primary" icon="reset" onClick={() => { if (repeatWorkout(w)) close?.() }}>{t('Repetir este entreno')}</Button>
+      <div style={{ height: 8 }} /></>}
     <Button variant="danger" onClick={() => confirmSheet({ title: t('Delete workout?'), message: t('This removes it from your history for good.'), confirmText: t('Delete'), danger: true, onConfirm: () => { update(s => { s.workouts = s.workouts.filter(x => x.id !== w.id) }); close?.(); toast(t('Workout deleted')) } })}>{t('Delete workout')}</Button>
   </>
   return <WorkoutDetailView w={w} data={{ workouts: st.workouts, unit: st.unit }} showBw={!noHealth} footer={footer} />
@@ -1364,12 +1372,9 @@ function Calendar({ start, close }) {
   const monthVol = monthWs.reduce((a, w) => a + (w.vol || 0), 0)
   const monthMs = monthWs.reduce((a, w) => a + Math.max(0, (w.end || w.start) - w.start), 0)
   const today = todayISO()
-  const openDay = (iso, ws, cls) => {
-    // Con clases, la hoja del día (las clases y la rutina); si no, como siempre.
-    if (!ws || cls) { close(); dayOverrideSheet(iso); return }
-    if (ws.length === 1) { close(); workoutDetailSheet(ws[0]); return }
-    close(); ui().openSheet(c2 => <><h3>{fmtDate(iso, true)}</h3><div className="list">{ws.map(w => <WorkoutRow key={w.id} w={w} onClick={() => { c2(); workoutDetailSheet(w) }} />)}</div></>)
-  }
+  // Siempre la hoja del día: ahí están los entrenos de ese día, agregar otro y cargar series de
+  // uno marcado (lo mismo que desde la semana de Inicio).
+  const openDay = iso => { close(); dayOverrideSheet(iso) }
   const cells = []
   const totalCells = Math.ceil((startOffset + daysIn) / 7) * 7
   for (let i = 0; i < totalCells; i++) {
@@ -1381,7 +1386,7 @@ function Calendar({ start, close }) {
       const dotCls = ws ? '' : ovr && effId ? 'ovr' : effId ? 'plan' : ''
       const cls = classDays[iso]?.[0]
       cells.push(<button key={d} className={'cal-d' + (ws ? ' has' : '') + (iso === today ? ' today' : '') + (cls ? ' cls' : '')}
-        style={cls ? { '--cls': cls.color || 'var(--acc)' } : undefined} onClick={() => openDay(iso, ws, cls)}
+        style={cls ? { '--cls': cls.color || 'var(--acc)' } : undefined} onClick={() => openDay(iso)}
         aria-label={fmtDate(iso, true) + (ws ? ' · ' + t('Trained') : '') + (cls ? ' · ' + cls.name : '')}>
         <span>{d}</span><i className={dotCls} /></button>)
     }
@@ -1429,7 +1434,7 @@ export function WorkoutRow({ w, onClick }) {
   const glyph = glyphOf((st.routines.find(r => r.id === w.routineId) || {}).emoji)
   return <div className="item" onClick={onClick}>
     <span className="lrow-i" style={{ width: 34, height: 34, borderRadius: 8, fontSize: 19 }}><Icon name={glyph} /></span>
-    <div className="grow"><div className="tt">{w.name}</div>
+    <div className="grow"><div className="tt">{w.name}{w.marked && <> <span className="tag nocap">{t('Marcado')}</span></>}</div>
       <div className="ss">{[fmtDate(w.d, true), ...durPart(w.end - w.start), t('{0} sets', setsDone(w)), fmtVol(w.vol, st.unit)].join(' · ')}</div></div>
     {w.prs && w.prs.length > 0 && <span className="pr"><Icon name="trophy" />{w.prs.length} PR</span>}
     <Icon name="chevronRight" className="chev" />
