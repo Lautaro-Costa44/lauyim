@@ -8,6 +8,7 @@ import { streakSummary } from '../lib/history.js'
 import { DAYS, isoOf } from '../lib/format.js'
 import { classesByDate } from '../lib/classes.js'
 import { useMyClasses } from './useMyClasses.js'
+import { useClosures } from '../store/useClosures.js'
 import { Button } from './ui.jsx'
 import Icon from './Icon.jsx'
 
@@ -27,18 +28,22 @@ const joinWords = (words, sep) => words.length > 1 ? `${words.slice(0, -1).join(
 
 // Qué le falta a la semana, en una línea.
 function weekLine(cur, today) {
+  if (cur.frozen && !cur.complete) return t('Semana cerrada: tu racha queda en pausa.')
   if (cur.complete) return t('Semana cumplida ✓')
+  // Días cerrados del gimnasio que bajaron el objetivo de esta semana.
+  const note = cur.closedPlanned ? ' ' + t('(objetivo {0} por días cerrados)', cur.target) : ''
   const words = cur.pendingDays.map(iso => dayWord(iso, today))
   const left = cur.left === 1 ? t('Falta 1') : t('Faltan {0}', cur.left)
-  if (!words.length) return cur.left === 1 ? t('Falta 1 día de entreno para sumar la semana.') : t('Faltan {0} días de entreno para sumar la semana.', cur.left)
-  return `${left}: ${joinWords(words, cur.left < words.length ? t('o') : t('y'))}`
+  if (!words.length) return (cur.left === 1 ? t('Falta 1 día de entreno para sumar la semana.') : t('Faltan {0} días de entreno para sumar la semana.', cur.left)) + note
+  return `${left}: ${joinWords(words, cur.left < words.length ? t('o') : t('y'))}` + note
 }
 
 function Streak({ close, onCalendar }) {
   const S = useStore(s => s.S)
   const myClasses = useMyClasses()
+  const closures = useClosures(s => s.closures)
   const now = new Date()
-  const { streak, best, level, next, current } = streakSummary(S, now, classesByDate(myClasses?.occurrences, S.workouts))
+  const { streak, best, level, next, current } = streakSummary(S, now, classesByDate(myClasses?.occurrences, S.workouts), closures)
   const today = current.days.find(d => d.today)?.iso
   const routineOf = id => id ? S.routines.find(r => r.id === id) || null : null
   const sub = streak && streak >= best ? t('Tu mejor racha')
@@ -51,15 +56,16 @@ function Streak({ close, onCalendar }) {
       <div className="small muted">{sub}</div>
     </div>
     <div className="streak-now">
-      <div className="streak-now-head">{t('Esta semana')} · {current.target === 1 ? t('{0} de 1 día', current.done) : t('{0} de {1} días', current.done, current.target)}</div>
+      <div className="streak-now-head">{t('Esta semana')} · {current.frozen && !current.complete ? t('en pausa') : current.target === 1 ? t('{0} de 1 día', current.done) : t('{0} de {1} días', current.done, current.target)}</div>
       <div className="streak-days" role="list">
         {current.days.map(d => {
           // Lo planeado se ve con sus puntos, como en Inicio: la rutina (gris) y la clase (en su color).
           const r = routineOf(d.routineId), cls = d.classes[0]
           const what = [r?.name, cls?.name].filter(Boolean).join(' + ')
-          return <div key={d.iso} role="listitem" className={'streak-day' + (d.done ? ' done' : d.planned ? ' plan' : '') + (d.today ? ' today' : '') + (d.past ? ' past' : '')}
+          return <div key={d.iso} role="listitem" className={'streak-day' + (d.done ? ' done' : d.planned ? ' plan' : '') + (d.closed && !d.done ? ' closed' : '') + (d.today ? ' today' : '') + (d.past ? ' past' : '')}
           aria-label={`${t(DAY_LONG[weekdayOf(d.iso)])}${d.done ? ' · ' + t('Entrenado') : what ? ' · ' + what : ''}`} title={what || undefined}>
           <span className="streak-dot">{d.done ? <Icon name="check" />
+            : d.closed ? <Icon name="lock" />
             : d.planned ? <span className="dots">{d.routineId && <i className="dot plan" />}{cls && <i className="dot cls" style={{ background: cls.color || 'var(--acc)' }} />}</span>
             : d.today ? t('hoy') : null}</span>
           <span className="streak-day-lbl">{t(DAYS[weekdayOf(d.iso)]).charAt(0)}</span>

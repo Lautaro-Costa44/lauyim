@@ -94,7 +94,8 @@ describe('Plan → Clases', () => {
 
 describe('día cerrado', () => {
   it('el chip lleva candado y el día muestra el aviso en lugar de la lista', async () => {
-    apiMock.mockImplementation(url => url.startsWith('/api/classes') ? Promise.resolve({ ...listBody(), closures: [{ id: 'k', from: '2026-10-06', to: '2026-10-06', reason: 'Feriado' }] }) : Promise.resolve({}))
+    apiMock.mockImplementation(url => url === '/api/closures' ? Promise.resolve({ today: '2026-10-05', closures: [{ id: 'k', from: '2026-10-06', to: '2026-10-06', reason: 'Feriado' }] })
+      : url.startsWith('/api/classes') ? Promise.resolve(listBody()) : Promise.resolve({}))
     await mount(<Clases />)
     const chip = buttons().find(b => b.getAttribute('role') === 'tab' && b.textContent === 'Mañana')
     expect(chip.classList.contains('closed')).toBe(true)

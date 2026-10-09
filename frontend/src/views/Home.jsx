@@ -20,6 +20,8 @@ import { isClassWorkout } from '../lib/workout-history.js'
 import { loadOfRoutine, MUSCLE_NAME } from '../lib/muscles.js'
 import { streakSheet } from '../components/StreakSheet.jsx'
 import ClosureBanner from '../components/closures/ClosureBanner.jsx'
+import { useClosures } from '../store/useClosures.js'
+import { closureOn, weekClosedDays, closureLabel } from '../lib/closures.js'
 
 
 // Home = what to do now + a quick glance. Deep charts & history live in Stats.
@@ -36,6 +38,8 @@ export default function Home() {
   const [weekOffset, setWeekOffset] = useState(0)
   // Clases del socio (reservadas y hechas) por fecha: el punto de clase en la semana y "Hoy".
   const myClasses = useMyClasses()
+  // Cierres del gimnasio: días rayados con candado, objetivo de la semana y racha.
+  const closures = useClosures(s => s.closures)
 
   useEffect(() => {
     if (user && !S.onboardingCompletado) {
@@ -72,17 +76,19 @@ export default function Home() {
   for (let i = 0; i < 7; i++) {
     const d = new Date(monday); d.setDate(monday.getDate() + i)
     const iso = isoOf(d)
+    const closed = closureOn(closures, iso)
     const eff = effectiveRoutineId(S, iso), ovr = S.dayPlan[iso] !== undefined, done = doneDays.has(iso)
     const doneW = done ? S.workouts.filter(w => w.d === iso && !isClassWorkout(w)).at(-1) : null
     const r = doneW ? byRoutine(doneW.routineId) : eff ? byRoutine(eff) : null
     const cls = classDays[iso]?.[0]
     const trained = done || (classDays[iso] || []).some(c => c.done)
     const label = [r?.name, cls?.name].filter(Boolean).join(' + ')
-    strip.push(<button key={i} type="button" className={'wday' + (iso === todayISO() ? ' today' : '') + (trained ? ' trained' : '')} onClick={() => dayOverrideSheet(iso)}
-      aria-label={`${t(DAYS[d.getDay()])} ${d.getDate()}${label ? ' · ' + label : ''}`}>
+    strip.push(<button key={i} type="button" className={'wday' + (iso === todayISO() ? ' today' : '') + (trained ? ' trained' : '') + (closed && !trained ? ' closed' : '')} onClick={() => dayOverrideSheet(iso)}
+      aria-label={`${t(DAYS[d.getDay()])} ${d.getDate()}${label ? ' · ' + label : ''}${closed ? ' · ' + t('cerrado') : ''}`}>
       <div className="lbl">{t(DAYS[d.getDay()])}</div><div className="num">{d.getDate()}</div>
       <div className="dots">
-        {(doneW || eff) && <div className={'dot' + (doneW ? ' done' : ovr ? ' ovr' : ' plan')} />}
+        {(doneW || (eff && !closed)) && <div className={'dot' + (doneW ? ' done' : ovr ? ' ovr' : ' plan')} />}
+        {closed && !trained && <div className="lock-mini" aria-hidden="true"><Icon name="lock" /></div>}
         {cls && <div className="dot cls" style={{ background: cls.color || 'var(--acc)' }} />}
       </div></button>)
   }
@@ -91,11 +97,11 @@ export default function Home() {
 
   // Progreso de la semana que se ve: el mismo cálculo que la racha (objetivo del plan con el que
   // empezó la semana; las clases cuentan como entrenos).
-  const shownWeek = evalWeek(S, monday)
+  const shownWeek = evalWeek(S, monday, closures)
   const weekClasses = S.workouts.filter(w => isClassWorkout(w) && weekKey(w.d) === weekKey(isoOf(monday))).length
   const weekTarget = shownWeek.objetivoSemanal || 1
   const weekFill = Math.min(1, shownWeek.rutinasCompletadas / weekTarget)
-  const streak = streakWeeks(S)
+  const streak = streakWeeks(S, new Date(), closures)
   const bwPoints = S.bodyweight.slice(-30).map(b => ({ t: b.t || new Date(b.d).getTime(), y: b.w, d: b.d }))
 
   // today's session shown right under the week strip
@@ -141,8 +147,17 @@ export default function Home() {
       </div>
       <div className="week-progress">
         <div className="week-bar" aria-hidden="true"><span style={{ width: `${Math.round(weekFill * 100)}%` }} className={shownWeek.completa ? 'ok' : ''} /></div>
-        <div className="small muted">{shownWeek.completa ? t('Semana cumplida ✓') : t('{0} de {1} días', shownWeek.rutinasCompletadas, shownWeek.objetivoSemanal || 1)}{weekClasses ? ' · ' + (weekClasses === 1 ? t('1 clase') : t('{0} clases', weekClasses)) : ''}</div>
+        <div className="small muted">{shownWeek.completa ? t('Semana cumplida ✓') : shownWeek.congelada ? t('Semana en pausa') : t('{0} de {1} días', shownWeek.rutinasCompletadas, shownWeek.objetivoSemanal || 1)}{weekClasses ? ' · ' + (weekClasses === 1 ? t('1 clase') : t('{0} clases', weekClasses)) : ''}</div>
       </div>
+      {(() => {
+        // Días cerrados en la semana que se ve: por qué cambió el objetivo (o la pausa de la racha).
+        const days = weekClosedDays(closures, isoOf(monday))
+        if (!days.length) return null
+        const c = closureOn(closures, days[0])
+        const text = shownWeek.congelada ? t('Semana cerrada: tu racha queda en pausa.')
+          : t('{0} cerrado{1}.', closureLabel(c), c.reason ? ' · ' + c.reason : '') + (shownWeek.cerradosPlanificados ? ' ' + t('Esta semana tu objetivo es {0}.', shownWeek.objetivoSemanal) : '')
+        return <div className="week-closed small" role="status"><Icon name="lock" /><span>{text}</span></div>
+      })()}
       <div className="week">{strip}</div>
       {/* Once today's session is logged the row stops asking for it. The week strip already
           knew (its dot goes 'done'); this row did not, so a finished day kept showing the
@@ -156,6 +171,7 @@ export default function Home() {
               style={doneToday && !S.active ? { color: 'var(--green)' } : undefined} />
           </span>
           <div style={{ minWidth: 0 }}>
+            {closureOn(closures, todayISO()) && <div className="today-closed small">{t('Hoy el gimnasio está cerrado')}</div>}
             <div className="lbl2">{t('Today')}</div>
             <div className="ttl">{S.active ? t('{0} — in progress', S.active.name)
               : doneToday ? (doneToday.name ? t('{0} — done', doneToday.name) : t('Workout done'))

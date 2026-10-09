@@ -1,6 +1,7 @@
 import { Fragment, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useStore } from '../store/useStore.js'
+import { useClosures } from '../store/useClosures.js'
 import { EXIDX } from '../lib/exercises.js'
 import { streakWeeks, setLabel, modeOf, effortOf, metricModeForEntry, metricRowsForEntry, bestWeightForEntry, effectiveRoutine, calcularHorasPromedioEntreno } from '../lib/history.js'
 import { fmtNum, fmtDate, fmtVol, todayISO, weekKey, workoutTime } from '../lib/format.js'
@@ -276,6 +277,7 @@ function EffortCard({ S }) {
 export default function Stats() {
   const nav = useNavigate()
   const S = useStore(s => s.S)
+  const closures = useClosures(s => s.closures)
   const workouts = S.workouts || []
 
   useEffect(() => {
@@ -397,7 +399,7 @@ export default function Stats() {
     <div className="tiles">
       <div className="tile"><div className="l"><Icon name="dumbbell" />{t('Workouts')}</div><div className="v">{workouts.length}</div></div>
       <div className="tile"><div className="l"><Icon name="calendar" />{t('This month')}</div><div className="v">{monthW}</div></div>
-      <div className="tile"><div className="l"><Icon name="flame" />{t('Week streak')}</div><div className="v">{streakWeeks(S)}</div></div>
+      <div className="tile"><div className="l"><Icon name="flame" />{t('Week streak')}</div><div className="v">{streakWeeks(S, new Date(), closures)}</div></div>
       <div className="tile"><div className="l"><Icon name="clock" />{t('Horas promedio')}</div><div className="v" style={{ fontSize: 22 }}>{fmtNum(avgWorkoutHours)} <span className="dim small">h/sesión</span></div></div>
 
     </div>
