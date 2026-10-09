@@ -238,13 +238,8 @@ export function shareListText({ occ, booked = [], waitlist = [], full = false })
   return lines.join('\n')
 }
 
-// ---- cierres del gimnasio ----
-
-const dm = date => `${Number(date.slice(8, 10))}/${Number(date.slice(5, 7))}`
-// "Lun 12/10" o "2/1 al 15/1".
-export const closureLabel = c => c.from === c.to ? `${shortDay(c.from)}/${Number(c.from.slice(5, 7))}` : `${dm(c.from)} al ${dm(c.to)}`
-// El cierre que toca una fecha (o null).
-export const closureOn = (closures, date) => (closures || []).find(c => c.from <= date && date <= c.to) || null
+// ---- cierres del gimnasio: pasaron a closures.js ----
+export { closureOn, closureLabel } from './closures.js'
 
 // ---- límite de clases por plan ----
 
