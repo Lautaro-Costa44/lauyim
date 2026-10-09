@@ -95,6 +95,7 @@ Nueva tarjeta **"Suplementos"** entre **Peso corporal** y **Resumen nutricional 
   - Sección "Cafeína del día": total contra el techo ("180 de 400 mg · estimado") con barra y los botones rápidos (ver "Cafeína del día"). La barra pasa a rojo al superar el techo, con el aviso de exceso.
   - Accesos: **Guía**, **Mis suplementos** (configurar), **＋ Agregar**.
 - **Aviso sin aceptar**: la tarjeta muestra solo "🔒 Para ver la guía y registrar suplementos, leé y aceptá el aviso" y el botón **Leer el aviso**. El resto de Nutrición funciona normal.
+- La guía y "Mis suplementos" se abren en pantalla completa con un botón ✕ para cerrar.
 - **PC/tablet**: la tarjeta ocupa el mismo lugar y reparte en dos columnas (momentos a la izquierda, cafeína a la derecha); la guía y el alta abren como panel centrado (`kind: 'panel'`): la guía con lista + ficha, el alta en dos columnas.
 
 Toda la vista (tarjeta, guía, seguimiento) existe solo si el socio dio el consentimiento de salud: sin consentimiento, Nutrición ya no se muestra (`App.jsx`, ruta `/nutricion`), y por lo tanto tampoco esto. Se mantiene así.
@@ -119,6 +120,7 @@ Acciones: **Dejar de tomar** (archiva; conserva el historial y la racha pasada) 
 ## Seguimiento
 
 - Se marca **hoy y hasta 7 días atrás**, nunca el futuro (desde el historial del suplemento).
+- Un suplemento **cuenta desde su alta o desde la primera toma registrada**, la que sea antes: quien agrega hoy lo que ya venía tomando puede marcar los 7 días anteriores y esas tomas suman a la racha, al cumplimiento y al heatmap (decisión de la prueba en el navegador, 2026-10-09).
 - **Racha propia** por suplemento: días seguidos cumplidos entre los días que le tocaban (un "solo días de entreno" no corta la racha los días sin entreno). No suma a la racha de entrenamiento de la app.
 - **Cumplimiento 30 días** por suplemento (%).
 - **Heatmap tipo GitHub** por suplemento (y uno combinado en "Mis suplementos"), reutilizando el de Stats (`components/Heatmap.jsx`). Intensidad:
