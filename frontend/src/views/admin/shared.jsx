@@ -723,16 +723,18 @@ export function AdminManageSheet({ userId, userName, healthConsent = null, close
 // Cumplimiento del plan de la semana del gym: cada día con ícono y color (nunca solo color).
 const DAY_STATES = {
   done: ['check', 'Entrenó'], missed: ['xmark', 'Planeado, no entrenó'], pending: ['dot', 'Planeado, pendiente'], rest: ['minus', 'Descanso'],
+  closed: ['lock', 'Gimnasio cerrado'],
 }
 const WEEKDAYS = ['L', 'M', 'M', 'J', 'V', 'S', 'D']
 export function AdherenceStrip({ d }) {
   if (!d.today) return null
-  const a = weekAdherence({ workouts: d.workouts, week: d.week, dayPlan: d.dayPlan }, d.today)
+  const a = weekAdherence({ workouts: d.workouts, week: d.week, dayPlan: d.dayPlan, closures: d.closures || [] }, d.today)
   const extras = a.days.filter(x => x.extra).length
   return <div className="adh" aria-label={t('Cumplimiento de la semana')}>
     <div className="adh-t">{!a.hasPlan ? t('Sin plan semanal')
       : t('Esta semana: {0} de {1} días planeados', a.done, a.planned) + (a.pending ? ' · ' + t('{0} pendiente' + (a.pending === 1 ? '' : 's'), a.pending) : '')
-        + (extras ? ' · ' + t(extras === 1 ? '+{0} día extra' : '+{0} días extra', extras) : '')}</div>
+        + (extras ? ' · ' + t(extras === 1 ? '+{0} día extra' : '+{0} días extra', extras) : '')
+        + (a.closed ? ' · ' + t(a.closed === 1 ? '1 día cerrado' : '{0} días cerrados', a.closed) : '')}</div>
     <ol className="adh-days">{a.days.map((x, i) => {
       const [icon, label] = DAY_STATES[x.state]
       return <li key={x.iso} className={'adh-d ' + x.state + (x.today ? ' today' : '') + (x.extra ? ' extra' : '')} title={`${x.iso} · ${t(label)}${x.extra ? ' · ' + t('no estaba planeado') : ''}`}>

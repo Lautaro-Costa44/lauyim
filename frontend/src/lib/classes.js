@@ -89,10 +89,6 @@ export const classesApi = {
   calendar: (from, days) => api(`/api/admin/classes/calendar?from=${from}&days=${days}`),
   session: occ => api(`/api/admin/classes/session?${occQuery(occ)}`),
   adminBooking: id => api(`/api/admin/classes/booking?id=${encodeURIComponent(id)}`),
-  closures: () => api('/api/admin/classes/closures'),
-  closurePreview: (from, to) => api(`/api/admin/classes/closures/preview?from=${from}&to=${to}`),
-  addClosure: body => post('/api/admin/classes/closures', body),
-  deleteClosure: id => post('/api/admin/classes/closures/delete', { id }),
   member: userId => api(`/api/admin/classes/member?userId=${encodeURIComponent(userId)}`),
   cancelForMember: bookingId => post('/api/admin/classes/member/cancel', { bookingId }),
   resetPenalty: userId => post('/api/admin/classes/member/penalty-reset', { userId }),
@@ -238,13 +234,8 @@ export function shareListText({ occ, booked = [], waitlist = [], full = false })
   return lines.join('\n')
 }
 
-// ---- cierres del gimnasio ----
-
-const dm = date => `${Number(date.slice(8, 10))}/${Number(date.slice(5, 7))}`
-// "Lun 12/10" o "2/1 al 15/1".
-export const closureLabel = c => c.from === c.to ? `${shortDay(c.from)}/${Number(c.from.slice(5, 7))}` : `${dm(c.from)} al ${dm(c.to)}`
-// El cierre que toca una fecha (o null).
-export const closureOn = (closures, date) => (closures || []).find(c => c.from <= date && date <= c.to) || null
+// ---- cierres del gimnasio: pasaron a closures.js ----
+export { closureOn, closureLabel } from './closures.js'
 
 // ---- límite de clases por plan ----
 

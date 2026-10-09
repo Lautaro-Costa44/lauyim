@@ -1,4 +1,5 @@
 import ClassAfterPrompt from './components/ClassAfterPrompt.jsx'
+import ClosureNotice from './components/closures/ClosureNotice.jsx'
 import { HashRouter, Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom'
 import { lazy, Suspense, useEffect, useLayoutEffect, useState } from 'react'
 import { useStore, billingExempt, healthOff } from './store/useStore.js'
@@ -246,6 +247,7 @@ function Shell() {
       <ErrorBoundary><Modals /></ErrorBoundary>
       <Toast />
       {!isCheckin && !accountEnded && !licenseExpired && !blocked && <ClassAfterPrompt />}
+      {!isCheckin && !accountEnded && !licenseExpired && !blocked && <ClosureNotice />}
       <UpdateGate />
     </>
   )

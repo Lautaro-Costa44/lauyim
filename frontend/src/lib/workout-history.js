@@ -145,26 +145,29 @@ function plannedOn(plan, iso) {
 /**
  * Cumplimiento de la semana del gym (lunes a domingo) que contiene `today`.
  *   day.state: 'done' (entrenó; `extra` si no estaba planeado) · 'missed' (planeado, día pasado,
- *   no entrenó) · 'pending' (planeado, hoy o después) · 'rest'.
- * → { hasPlan, planned, done, pending, days: [{ iso, state, extra, today }] }
+ *   no entrenó) · 'pending' (planeado, hoy o después) · 'closed' (gimnasio cerrado y no entrenó: no
+ *   cuenta como planeado) · 'rest'. closures: cierres del gimnasio ([{ from, to }]).
+ * → { hasPlan, planned, done, pending, closed, days: [{ iso, state, extra, today }] }
  */
-export function weekAdherence({ workouts, week, dayPlan }, today) {
+export function weekAdherence({ workouts, week, dayPlan, closures = [] }, today) {
   const offset = (weekdayOf(today) + 6) % 7                 // lunes = 0
   const monday = shift(today, -offset)
   const trained = new Set((workouts || []).map(w => w.d))
   const plan = { week, dayPlan }
   const hasPlan = Object.values(week || {}).some(Boolean) || Object.keys(dayPlan || {}).length > 0
-  let planned = 0, done = 0, pending = 0
+  let planned = 0, done = 0, pending = 0, closed = 0
   const days = []
   for (let i = 0; i < 7; i++) {
     const iso = shift(monday, i)
     const isPlanned = !!plannedOn(plan, iso)
     const didTrain = trained.has(iso)
+    const isClosed = (closures || []).some(c => c.from <= iso && iso <= c.to)
+    if (isClosed && !didTrain) { closed++; days.push({ iso, state: 'closed', extra: false, today: iso === today }); continue }
     let state = 'rest', extra = false
     if (isPlanned) planned++
     if (didTrain) { state = 'done'; extra = !isPlanned; if (isPlanned) done++ }
     else if (isPlanned) { if (iso < today) state = 'missed'; else { state = 'pending'; pending++ } }
     days.push({ iso, state, extra, today: iso === today })
   }
-  return { hasPlan, planned, done, pending, days }
+  return { hasPlan, planned, done, pending, closed, days }
 }

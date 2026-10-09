@@ -265,3 +265,79 @@ describe('resumen de esta semana (hoja de la llama)', () => {
     expect(r.current).toMatchObject({ done: 3, target: 3, left: 0, complete: true })
   })
 })
+
+describe('cierres del gimnasio', () => {
+  // Plan de 4 días: lunes, martes, jueves y viernes.
+  const PLAN4 = { 1: 'a', 2: 'b', 4: 'c', 5: 'a' }
+  const feriadoLun = [{ from: '2026-09-28', to: '2026-09-28' }]
+  const lunAVie = [{ from: '2026-09-28', to: '2026-10-02' }]
+  const sabado = [{ from: '2026-10-03', to: '2026-10-03' }]
+
+  it('feriado en día planificado: objetivo 4 → 3; con 3 días cumple', () => {
+    const S = state({ week: PLAN4, workouts: [W('2026-09-29'), W('2026-10-01'), W('2026-10-02')] })
+    const w = evalWeek(S, mon('2026-09-28'), feriadoLun)
+    expect([w.objetivoBase, w.cerradosPlanificados, w.objetivoSemanal, w.completa, w.congelada]).toEqual([4, 1, 3, true, false])
+    expect(evalWeek(S, mon('2026-09-28')).completa).toBe(false)
+  })
+
+  it('feriado con 2 días: no cumple', () => {
+    const S = state({ week: PLAN4, workouts: [W('2026-09-29'), W('2026-10-01')] })
+    expect(evalWeek(S, mon('2026-09-28'), feriadoLun).completa).toBe(false)
+  })
+
+  it('todos los días planificados cerrados y sin entrenar: congelada, no corta la racha', () => {
+    // Semanas del 14 y del 21 cumplidas, la del 28 cerrada, la actual (5/10) cumplida.
+    const ws = ['2026-09-14', '2026-09-15', '2026-09-17', '2026-09-18', '2026-09-21', '2026-09-22', '2026-09-24', '2026-09-25', '2026-10-05', '2026-10-06', '2026-10-07', '2026-10-08'].map(d => W(d))
+    const S = state({ week: PLAN4, workouts: ws })
+    const w = evalWeek(S, mon('2026-09-28'), lunAVie)
+    expect([w.objetivoSemanal, w.congelada, w.completa]).toEqual([0, true, false])
+    const now = new Date('2026-10-08T12:00:00')
+    expect(streakWeeks(S, now)).toBe(1)
+    expect(streakWeeks(S, now, lunAVie)).toBe(3)
+    expect(bestStreak(S, now, lunAVie)).toBe(3)
+  })
+
+  it('congelada pero entrenó un día (en casa): cuenta como cumplida', () => {
+    const S = state({ week: PLAN4, workouts: [W('2026-09-30')] })
+    const w = evalWeek(S, mon('2026-09-28'), lunAVie)
+    expect([w.congelada, w.completa]).toEqual([true, true])
+  })
+
+  it('cierre en un día no planificado: igual que siempre', () => {
+    const S = state({ week: PLAN4 })
+    const w = evalWeek(S, mon('2026-09-28'), sabado)
+    expect([w.objetivoSemanal, w.cerradosPlanificados, w.congelada]).toEqual([4, 0, false])
+  })
+
+  it('sin plan: los cierres no cambian nada', () => {
+    const S = state({ workouts: [W('2026-09-30')] })
+    expect(evalWeek(S, mon('2026-09-28'), lunAVie)).toMatchObject({ objetivoSemanal: 0, congelada: false, completa: true })
+  })
+
+  it('semana actual congelada sin entrenar: muestra la racha de antes', () => {
+    const ws = ['2026-09-28', '2026-09-29', '2026-10-01', '2026-10-02'].map(d => W(d))
+    const S = state({ week: PLAN4, workouts: ws })
+    const now = new Date('2026-10-07T12:00:00')
+    expect(streakWeeks(S, now, [{ from: '2026-10-05', to: '2026-10-09' }])).toBe(1)
+  })
+
+  it('streakSummary: días cerrados marcados y no planeados; objetivo reducido o pausa', () => {
+    const S = state({ week: PLAN4 })
+    const now = new Date('2026-10-05T12:00:00')
+    const r = streakSummary(S, now, {}, [{ from: '2026-10-05', to: '2026-10-05' }])
+    expect(r.current).toMatchObject({ target: 3, baseTarget: 4, closedPlanned: 1, frozen: false })
+    expect(r.current.days[0]).toMatchObject({ iso: '2026-10-05', closed: true, planned: false })
+    const f = streakSummary(S, now, {}, [{ from: '2026-10-05', to: '2026-10-09' }])
+    expect(f.current).toMatchObject({ frozen: true, target: 0 })
+  })
+})
+
+describe('weekAdherence con cierres', () => {
+  it('un día cerrado no es "planeado, no entrenó"', async () => {
+    const { weekAdherence } = await import('./workout-history.js')
+    const a = weekAdherence({ workouts: [], week: { 1: 'a', 3: 'b' }, dayPlan: {}, closures: [{ from: '2026-10-05', to: '2026-10-05' }] }, '2026-10-07')
+    expect(a.days[0].state).toBe('closed')
+    expect([a.planned, a.closed]).toEqual([1, 1])
+    expect(a.days[2].state).toBe('pending')
+  })
+})

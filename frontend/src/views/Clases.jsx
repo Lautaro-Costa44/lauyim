@@ -4,7 +4,9 @@ import { useEffect, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 import { t } from '../lib/i18n.js'
 import { errorText } from '../lib/errors.js'
-import { buttonState, capacityText, timeRange, dayChips, shortDay, classesApi, closureOn, planLine } from '../lib/classes.js'
+import { buttonState, capacityText, timeRange, dayChips, shortDay, classesApi, planLine } from '../lib/classes.js'
+import { closureOn } from '../lib/closures.js'
+import { useClosures, loadClosures } from '../store/useClosures.js'
 import { classSheet, classAction } from '../components/ClassSheet.jsx'
 import { GearButton } from '../components/TeacherClass.jsx'
 import { shareMyClasses } from '../components/useMyClasses.js'
@@ -18,10 +20,11 @@ export default function Clases() {
   const [error, setError] = useState(null)
   const [day, setDay] = useState(asked || null)
   const [busyKey, setBusyKey] = useState(null)
+  const closures = useClosures(s => s.closures)
 
   const load = () => classesApi.list().then(d => { shareMyClasses(d); setData(d); setError(null); setDay(cur => cur && d.occurrences.some(o => o.date === cur) ? cur : cur || d.today) })
     .catch(e => setError(errorText(e, t('No se pudieron cargar las clases'))))
-  useEffect(() => { load() }, [])
+  useEffect(() => { load(); loadClosures() }, [])
 
   if (error) return <div className="empty">{error}<div style={{ height: 10 }} /><Button size="sm" onClick={load}>{t('Reintentar')}</Button></div>
   if (!data) return <div className="dim small" aria-busy="true">{t('Loading…')}</div>
@@ -50,14 +53,14 @@ export default function Clases() {
     <div className="chips class-days" role="tablist" aria-label={t('Días')}>
       {chips.map(c => {
         const has = data.occurrences.some(o => o.date === c.date && !o.cancelled)
-        const closed = closureOn(data.closures, c.date)
+        const closed = closureOn(closures, c.date)
         return <button key={c.date} role="tab" aria-selected={c.date === day} aria-label={closed ? t('{0}, cerrado', t(c.label)) : undefined}
           className={'chip' + (c.date === day ? ' on' : '') + (has ? '' : ' dim') + (closed ? ' closed' : '')} onClick={() => setDay(c.date)}>
           {closed && <Icon name="lock" />}{t(c.label)}</button>
       })}
     </div>
     {/* Día cerrado (feriado, vacaciones): el aviso en lugar de la lista. */}
-    {closureOn(data.closures, day) ? <div className="empty class-closed-day"><Icon name="lock" /><div>{t('El gimnasio está cerrado')}{closureOn(data.closures, day).reason ? ' · ' + closureOn(data.closures, day).reason : ''}</div></div>
+    {closureOn(closures, day) ? <div className="empty class-closed-day"><Icon name="lock" /><div>{t('El gimnasio está cerrado')}{closureOn(closures, day).reason ? ' · ' + closureOn(closures, day).reason : ''}</div></div>
       : ofDay.length === 0
       ? <div className="empty">{t('No hay clases este día.')}</div>
       : <div className="list class-list">

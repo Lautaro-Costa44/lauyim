@@ -1900,6 +1900,8 @@ input[type="search"]::-webkit-search-cancel-button{display:none;-webkit-appearan
     background:var(--surface-2);color:var(--label-2);border:0;cursor:pointer;align-items:center;justify-content:center
   }
   .sheet.panel .panel-close:hover{color:var(--label)}
+  /* Ícono SVG y no el carácter ×: el glifo cae más abajo según la fuente (en Windows, Segoe UI). */
+  .sheet.panel .panel-close .icn{width:16px;height:16px}
 }
 /* Cada ingreso abre el detalle del socio. */
 button.checkin-log-row{width:100%;background:none;border:0;color:inherit;font:inherit;text-align:left;cursor:pointer;border-radius:var(--r-sm);padding-left:6px;padding-right:6px}
@@ -2515,3 +2517,44 @@ button.wh-row{font:inherit;color:inherit;border:0;cursor:pointer}
 .day-menu button.danger{color:var(--red)}
 .day-closed{display:flex;align-items:center;gap:8px;margin:-6px 0 12px;padding:9px 12px;border-radius:var(--r-sm);background:color-mix(in srgb, var(--orange) 14%, transparent);color:var(--orange)}
 .day-rest{margin-top:4px}
+
+/* Cierres del gimnasio: aviso del día (cartel) y banner de Inicio */
+.closure-notice{text-align:center;display:flex;flex-direction:column;gap:8px;align-items:stretch}
+.closure-notice-icon{font-size:34px;color:var(--orange)}
+.closure-notice h3{margin:4px 0 0}
+.closure-banner{display:flex;align-items:center;gap:10px;padding:10px 12px;margin:0 0 12px;border-radius:12px;
+  background:color-mix(in srgb,var(--orange) 14%,transparent);border:1px solid color-mix(in srgb,var(--orange) 45%,transparent)}
+.closure-banner>.icn{color:var(--orange);font-size:18px;flex:none}
+.closure-banner b{color:var(--orange)}
+.wday.closed{background:repeating-linear-gradient(135deg,var(--surface-2) 0 5px,var(--surface) 5px 10px)}
+.lock-mini{font-size:9px;line-height:1;color:var(--orange)}
+.week-closed{display:flex;align-items:center;gap:6px;margin:6px 0 2px;padding:6px 8px;border-radius:8px;color:var(--orange);background:color-mix(in srgb,var(--orange) 12%,transparent)}
+.week-closed>.icn{flex:none}
+.today-closed{color:var(--orange)}
+.cal-d.closed{background:repeating-linear-gradient(135deg,var(--surface) 0 5px,var(--surface-2) 5px 10px);color:var(--orange)}
+.cal-wk.frozen{color:var(--orange);display:flex;align-items:center;justify-content:center}
+.streak-day.closed .streak-dot{color:var(--orange)}
+.cal-legend-closed{display:inline-flex;align-items:center;gap:3px;color:var(--orange)}
+.closure-sheet .closure-cols{display:grid;gap:12px}
+/* PC: el panel (desde 700px) se ensancha para las dos columnas, sin pasarse de la pantalla. */
+@media (min-width:700px){
+  .sheet.panel:has(.closure-sheet){width:min(820px,calc(100vw - 48px))}
+  .closure-sheet .closure-cols{grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:20px;align-items:start}
+  .closure-sheet .closure-cols>div{min-width:0}
+  .closure-sheet .closure-actions{flex-direction:row;justify-content:flex-end}
+  .closure-sheet .closure-actions .btn{width:auto;flex:0 0 auto;min-width:150px}
+}
+.closure-sheet .class-closure-preview{margin-bottom:4px}
+.closure-sheet .chips{flex-wrap:wrap}
+.cal-d .cal-lock{width:11px;height:11px;color:var(--orange)}
+.closure-toggle{display:flex;align-items:center;gap:10px;padding:10px 12px;margin:8px 0;border-radius:12px;background:var(--surface-2)}
+/* El texto ocupa el ancho y el interruptor (o el botón) queda contra el borde derecho. */
+.closure-toggle>.grow,.closure-row>.grow,.closure-banner>.grow{flex:1;min-width:0}
+.closure-toggle>.sw{flex:none}
+.closure-days{width:80px;margin-top:6px}
+/* Celular: botones apilados, el principal arriba. PC: en fila, a la derecha. */
+.closure-actions{display:flex;flex-direction:column-reverse;gap:8px;margin-top:14px}
+.closure-actions .btn{width:100%}
+.closures-card h3{gap:6px}
+.closures-card .closure-row{display:flex;align-items:center;gap:8px;padding-top:10px;margin-top:10px;border-top:1px solid var(--sep)}
+.adh-d.closed .adh-i{color:var(--orange)}

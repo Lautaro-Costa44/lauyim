@@ -12,7 +12,9 @@ import { effectiveRoutineId, setsDone } from '../../lib/history.js'
 import { isClassWorkout } from '../../lib/workout-history.js'
 import { buildMarkedWorkout, dayMode, putWorkout } from '../../lib/marked-workout.js'
 import { useMyClasses } from '../useMyClasses.js'
-import { classesByDate, closureOn } from '../../lib/classes.js'
+import { classesByDate } from '../../lib/classes.js'
+import { closureOn } from '../../lib/closures.js'
+import { useClosures } from '../../store/useClosures.js'
 import { classSheet } from '../ClassSheet.jsx'
 import { glyphOf } from '../../lib/glyphs.js'
 import { Button } from '../ui.jsx'
@@ -184,7 +186,8 @@ export function DaySheet({ iso, close, setOnBack }) {
   const dayClasses = classesByDate(myClasses?.occurrences, st.workouts)[iso] || []
   const dayWorkouts = st.workouts.filter(w => w.d === iso && !isClassWorkout(w))
   const planned = plannedRoutine(st, iso)
-  const closed = closureOn(myClasses?.closures, iso)
+  const closures = useClosures(s => s.closures)
+  const closed = closureOn(closures, iso)
   const rested = isRest(st.dayPlan[iso])
   const [adding, setAdding] = useState(false)
   const [menu, setMenu] = useState(null)   // { id, style }: el entreno con el menú abierto y dónde se dibuja

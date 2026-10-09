@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { billingDuePush, dayReminderPush, gymFeePush, restTimerPush, testPush } from './push-messages.js';
+import { billingDuePush, dayReminderPush, gymFeePush, restTimerPush, testPush, closureAnnouncePush, closureReopenPush } from './push-messages.js';
 
 test('localizes every server-generated notification in Spanish', () => {
   assert.deepEqual(restTimerPush('es'), {
@@ -167,4 +167,21 @@ test('reserva fija sin lugar en el plan', async () => {
   assert.deepEqual([p.title, p.body], ['No pudimos anotarte', 'Tu reserva fija de Spinning del lunes 5 no se hizo: tu plan incluye 2 clases por semana y esa semana ya tenés 2.']);
   assert.equal(classChangePush('plan_limit', { name: 'GAP', date: '2026-10-05', today: '2026-10-02', start: '19:00', sessionId: 'x', limit: 1, period: 'month' }).body,
     'Tu reserva fija de GAP del lunes 5 no se hizo: tu plan incluye 1 clase por mes y ese mes ya la tenés.');
+});
+
+test('closureAnnouncePush y closureReopenPush', () => {
+  const one = closureAnnouncePush({ from: '2026-10-12', to: '2026-10-12', today: '2026-10-09', reason: 'Feriado' });
+  assert.equal(one.title, 'El lunes 12 el gimnasio cierra');
+  assert.equal(one.body, 'Feriado. Podés seguir usando la app para entrenar en casa o cargar tus comidas.');
+  assert.equal(one.tag, 'gym-closure-2026-10-12');
+  assert.equal(one.data.redirectUrl, '/#/home');
+  const today = closureAnnouncePush({ from: '2026-10-09', to: '2026-10-09', today: '2026-10-09', reason: '' });
+  assert.equal(today.title, 'Hoy el gimnasio está cerrado');
+  assert.equal(today.body, 'Podés seguir usando la app para entrenar en casa o cargar tus comidas.');
+  const range = closureAnnouncePush({ from: '2026-12-24', to: '2027-01-02', today: '2026-10-09', reason: 'Vacaciones' });
+  assert.equal(range.title, 'El gimnasio cierra del 24/12 al 2/1');
+  const reopen = closureReopenPush({ from: '2026-10-10', today: '2026-10-09' });
+  assert.equal(reopen.title, 'Al final el gimnasio abre mañana');
+  assert.equal(reopen.tag, 'gym-closure-2026-10-10');
+  assert.equal(closureReopenPush({ from: '2026-10-09', today: '2026-10-09' }).title, 'Al final el gimnasio abre hoy');
 });

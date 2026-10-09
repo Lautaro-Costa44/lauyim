@@ -25,6 +25,8 @@ import ClassWorkoutDetail from './components/workout/ClassWorkoutDetail.jsx'
 import { isClassWorkout } from './lib/workout-history.js'
 import { useMyClasses } from './components/useMyClasses.js'
 import { classesByDate } from './lib/classes.js'
+import { useClosures } from './store/useClosures.js'
+import { closureOn } from './lib/closures.js'
 import { streakSheet } from './components/StreakSheet.jsx'
 import { DaySheet } from './components/day/DaySheet.jsx'
 import { workoutEditorSheet } from './components/day/MarkedWorkoutEditor.jsx'
@@ -1362,6 +1364,7 @@ function Calendar({ start, close }) {
   const st = useStore(s => s.S)
   const myClasses = useMyClasses()
   const classDays = classesByDate(myClasses?.occurrences, st.workouts)
+  const closures = useClosures(s => s.closures)
   const [cur, setCur] = useState(() => { const d = start ? new Date(start) : new Date(); d.setDate(1); return d })
   const y = cur.getFullYear(), mo = cur.getMonth()
   const byDay = {}
@@ -1384,21 +1387,27 @@ function Calendar({ start, close }) {
     else {
       const iso = y + '-' + String(mo + 1).padStart(2, '0') + '-' + String(d).padStart(2, '0')
       const ws = byDay[iso], effId = effectiveRoutineId(st, iso), ovr = st.dayPlan[iso] !== undefined
-      const dotCls = ws ? '' : ovr && effId ? 'ovr' : effId ? 'plan' : ''
+      const closed = !ws && closureOn(closures, iso)
+      const dotCls = ws || closed ? '' : ovr && effId ? 'ovr' : effId ? 'plan' : ''
       const cls = classDays[iso]?.[0]
-      cells.push(<button key={d} className={'cal-d' + (ws ? ' has' : '') + (iso === today ? ' today' : '') + (cls ? ' cls' : '')}
+      cells.push(<button key={d} className={'cal-d' + (ws ? ' has' : '') + (iso === today ? ' today' : '') + (cls ? ' cls' : '') + (closed ? ' closed' : '')}
         style={cls ? { '--cls': cls.color || 'var(--acc)' } : undefined} onClick={() => openDay(iso)}
-        aria-label={fmtDate(iso, true) + (ws ? ' · ' + t('Trained') : '') + (cls ? ' · ' + cls.name : '')}>
-        <span>{d}</span><i className={dotCls} /></button>)
+        aria-label={fmtDate(iso, true) + (ws ? ' · ' + t('Trained') : '') + (cls ? ' · ' + cls.name : '') + (closed ? ' · ' + t('cerrado') : '')}>
+        <span>{d}</span>{closed ? <Icon name="lock" className="cal-lock" /> : <i className={dotCls} />}</button>)
     }
     // Fin de la semana (domingo): llama si se cumplió (de las semanas que ya empezaron).
     if (i % 7 === 6) {
       const sunday = new Date(y, mo, d)
       const mondayDate = new Date(y, mo, d - 6, 12)
       const begun = isoOf(mondayDate) <= today
-      const done = begun && evalWeek(st, mondayDate).completa
+      const wk = evalWeek(st, mondayDate, closures)
+      const done = begun && wk.completa
+      // Semana congelada por un cierre (sin entrenar): un candado en lugar de la llama, también en
+      // las que vienen (así se ve de antemano que esa semana no corta la racha).
+      const frozen = wk.congelada && !done
       cells.push(done
         ? <button key={'w' + i} type="button" className="cal-wk on" onClick={() => { close(); streakSheet({ onCalendar: () => calendarSheet(isoOf(sunday)) }) }} aria-label={t('Semana cumplida')}><Icon name="flame" /></button>
+        : frozen ? <div key={'w' + i} className="cal-wk frozen" aria-label={t('Semana en pausa (gimnasio cerrado)')} title={t('Semana en pausa (gimnasio cerrado)')}><Icon name="lock" /></div>
         : <div key={'w' + i} className="cal-wk" />)
     }
   }
@@ -1416,6 +1425,7 @@ function Calendar({ start, close }) {
       <span><i style={{ background: 'var(--orange)' }} />{t('Rescheduled')}</span>
       {Object.keys(classDays).length > 0 && <span><i className="cal-legend-cls" />{t('Clase')}</span>}
       <span className="cal-legend-flame"><Icon name="flame" />{t('Semana cumplida')}</span>
+      {closures.length > 0 && <span className="cal-legend-closed"><Icon name="lock" />{t('Cerrado')}</span>}
     </div>
     <div className="small dim" style={{ textAlign: 'center', marginTop: 10 }}>{t('Tocá un día para ver lo que hiciste, marcarlo o planificarlo.')}</div>
   </>

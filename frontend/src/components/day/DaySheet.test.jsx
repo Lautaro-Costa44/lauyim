@@ -249,17 +249,14 @@ describe('el marcado en el calendario, el historial y el detalle', () => {
 })
 
 describe('hoja del día: gimnasio cerrado', () => {
-  it('un día de cierre lo dice arriba, con el motivo', async () => {
-    useStore.setState({ config: { classes_available: true } })
-    apiMock.mockImplementation(url => url.startsWith('/api/classes')
-      ? Promise.resolve({ enabled: true, today: TODAY, tz: null, settings: { cancelHours: 2 }, occurrences: [], closures: [{ id: 'k', from: FUTURE, to: FUTURE, reason: 'Feriado' }] })
-      : Promise.resolve({}))
-    const { myClassesList } = await import('../useMyClasses.js')
-    await myClassesList({ force: true })
+  it('un día de cierre lo dice arriba, con el motivo (también sin clases)', async () => {
+    const { useClosures } = await import('../../store/useClosures.js')
+    useClosures.setState({ closures: [{ id: 'k', from: FUTURE, to: FUTURE, reason: 'Feriado' }] })
     dayOverrideSheet(FUTURE)
     const { host, unmount } = await openLastSheet()
     expect(host.querySelector('.day-closed').textContent).toBe('El gimnasio está cerrado · Feriado')
     await unmount()
+    useClosures.setState({ closures: [] })
   })
 })
 

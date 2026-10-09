@@ -617,7 +617,25 @@ export function weeklyTarget(S, mondayDate) {
   return Object.keys(S?.week || {}).filter(k => S.week[k]).length
 }
 
-export function evalWeek(S, mondayDate) {
+// Días con rutina en el plan de la semana (`weekPlan`, por día de la semana) que caen en un cierre
+// del gimnasio. closures: [{ from, to }] (YYYY-MM-DD, extremos incluidos).
+export function closedPlannedDays(weekPlan, mondayDate, closures) {
+  if (!closures?.length) return []
+  const out = []
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(mondayDate)
+    d.setDate(mondayDate.getDate() + i)
+    const iso = isoOf(d)
+    const planned = (weekPlan || {})[d.getDay()]
+    if (planned && planned !== 'rest' && closures.some(c => c.from <= iso && iso <= c.to)) out.push(iso)
+  }
+  return out
+}
+
+// closures: cierres del gimnasio ([{ from, to }]). Los días planificados que cayeron cerrados se
+// descuentan del objetivo; si no queda ninguno, la semana queda congelada (no suma ni corta la
+// racha, salvo que se haya entrenado igual: entonces cuenta como cumplida).
+export function evalWeek(S, mondayDate, closures = []) {
   const diasProgramados = []
   const diasCompletados = []
 
@@ -644,7 +662,10 @@ export function evalWeek(S, mondayDate) {
   }
 
   // Once the first session identifies a group, later group switches cannot change this week.
-  const target = weeklyTarget(S, mondayDate)
+  const base = weeklyTarget(S, mondayDate)
+  const cerrados = base > 0 ? closedPlannedDays(weekPlan, mondayDate, closures).length : 0
+  const target = Math.max(0, base - cerrados)
+  const congelada = base > 0 && target === 0
   // Días entrenados (no entrenos): rutina y clase el mismo día, o dos entrenos, suman uno.
   const rutinasCompletadas = new Set(workouts.map(w => w.d)).size
 
@@ -658,11 +679,14 @@ export function evalWeek(S, mondayDate) {
     diasCompletados,
     rutinasCompletadas,
     objetivoSemanal: target,
+    objetivoBase: base,
+    cerradosPlanificados: cerrados,
+    congelada,
     completa,
   }
 }
 
-export function streakWeeks(S, now = new Date()) {
+export function streakWeeks(S, now = new Date(), closures = []) {
   if (!S || !S.workouts || !S.workouts.length) return 0
 
   const day = (now.getDay() + 6) % 7
@@ -673,18 +697,16 @@ export function streakWeeks(S, now = new Date()) {
   let streak = 0
   let checkDate = new Date(currentMonday)
 
-  const curWeek = evalWeek(S, checkDate)
+  const curWeek = evalWeek(S, checkDate, closures)
   if (curWeek.completa) streak++
 
   checkDate.setDate(checkDate.getDate() - 7)
   for (let w = 0; w < 520; w++) {
-    const weekInfo = evalWeek(S, checkDate)
-    if (weekInfo.completa) {
-      streak++
-      checkDate.setDate(checkDate.getDate() - 7)
-    } else {
-      break
-    }
+    const weekInfo = evalWeek(S, checkDate, closures)
+    // Una semana congelada por un cierre (sin entrenar) no suma ni corta: se sigue mirando atrás.
+    if (weekInfo.completa) streak++
+    else if (!weekInfo.congelada) break
+    checkDate.setDate(checkDate.getDate() - 7)
   }
 
   return streak
@@ -697,7 +719,7 @@ export const streakLevel = n => STREAK_LEVELS.filter(x => n >= x).length
 export const nextStreakLevel = n => STREAK_LEVELS.find(x => x > n) ?? null
 
 // La racha más larga del historial (semanas cumplidas seguidas, la de ahora incluida).
-export function bestStreak(S, now = new Date()) {
+export function bestStreak(S, now = new Date(), closures = []) {
   const ds = (S?.workouts || []).map(w => w?.d).filter(Boolean).sort()
   if (!ds.length) return 0
   const m = new Date(ds[0] + 'T12:00:00')
@@ -705,22 +727,24 @@ export function bestStreak(S, now = new Date()) {
   const today = isoOf(now)
   let best = 0, run = 0
   for (let i = 0; i < 1040 && isoOf(m) <= today; i++) {
-    run = evalWeek(S, m).completa ? run + 1 : 0
+    const wk = evalWeek(S, m, closures)
+    run = wk.completa ? run + 1 : wk.congelada ? run : 0
     best = Math.max(best, run)
     m.setDate(m.getDate() + 7)
   }
-  return Math.max(best, streakWeeks(S, now))
+  return Math.max(best, streakWeeks(S, now, closures))
 }
 
 // La racha para mostrarla (la hoja de la llama): semanas seguidas, la mejor, el color (nivel) y
 // cuándo cambia, y esta semana día por día: entrenado (rutina o clase), hoy, y lo que queda
 // planeado (rutina del plan o clase reservada, de hoy en adelante y sin entrenar todavía).
 // classDays: { iso: [clases] } (classesByDate), para contar las clases reservadas.
-export function streakSummary(S, now = new Date(), classDays = {}) {
+// closures: cierres del gimnasio (los días cerrados no se cuentan como planeados).
+export function streakSummary(S, now = new Date(), classDays = {}, closures = []) {
   const monday = new Date(now)
   monday.setHours(12, 0, 0, 0)
   monday.setDate(monday.getDate() - ((monday.getDay() + 6) % 7))
-  const week = evalWeek(S, monday)
+  const week = evalWeek(S, monday, closures)
   const today = isoOf(now)
   const trained = new Set((S?.workouts || []).map(w => w.d))
   const days = []
@@ -731,14 +755,16 @@ export function streakSummary(S, now = new Date(), classDays = {}) {
     const done = trained.has(iso)
     const routineId = effectiveRoutineId(S, iso) || null
     const classes = (classDays[iso] || []).filter(c => !c.done)
-    const planned = !done && iso >= today && !!(routineId || classes.length)
-    days.push({ iso, done, planned, today: iso === today, past: iso < today, routineId: planned ? routineId : null, classes: planned ? classes : [] })
+    const closed = (closures || []).some(c => c.from <= iso && iso <= c.to)
+    const planned = !done && !closed && iso >= today && !!(routineId || classes.length)
+    days.push({ iso, done, planned, closed, today: iso === today, past: iso < today, routineId: planned ? routineId : null, classes: planned ? classes : [] })
   }
-  const streak = streakWeeks(S, now)
-  const target = week.objetivoSemanal || 1
+  const streak = streakWeeks(S, now, closures)
+  const target = week.congelada ? 0 : (week.objetivoSemanal || 1)
   return {
-    streak, best: bestStreak(S, now), level: streakLevel(streak), next: nextStreakLevel(streak),
+    streak, best: bestStreak(S, now, closures), level: streakLevel(streak), next: nextStreakLevel(streak),
     current: { done: week.rutinasCompletadas, target, complete: week.completa, left: Math.max(0, target - week.rutinasCompletadas),
+      frozen: week.congelada, closedPlanned: week.cerradosPlanificados, baseTarget: week.objetivoBase,
       days, pendingDays: days.filter(d => d.planned).map(d => d.iso) }
   }
 }

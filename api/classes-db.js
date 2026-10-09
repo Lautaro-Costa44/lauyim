@@ -4,6 +4,9 @@
 // a migrateClasses.
 import crypto from 'node:crypto';
 import { getDatabase } from './database.js';
+import { migrateClosures } from './closures-db.js';
+// Los cierres pasaron a closures-db.js; se re-exportan para classes-routes y el seed de la demo.
+export { getClosures, getClosure, addClosure, deleteClosure } from './closures-db.js';
 
 export function migrateClasses(db) {
   migrateClassTables(db);
@@ -25,6 +28,7 @@ export function migrateClasses(db) {
     created_by TEXT,
     created_at TEXT NOT NULL
   );`);
+  migrateClosures(db);
 }
 
 function migrateClassTables(db) {
@@ -414,29 +418,7 @@ export function getUserBookingsBetween(userId, from, to) {
   return getDatabase().prepare(`${JOIN_SESSION} WHERE b.user_id = ? AND s.date >= ? AND s.date < ? ORDER BY s.date, s.start`).all(userId, from, to).map(withSession);
 }
 
-// ---- cierres del gimnasio ----
-
-const closureFromRow = r => r && ({ id: r.id, from: r.from_date, to: r.to_date, reason: r.reason || '', createdBy: r.created_by || null, createdAt: r.created_at });
-
-// Los cierres que tocan [from, to] (fechas incluidas). Sin rango, todos.
-export function getClosures({ from, to } = {}) {
-  const db = getDatabase();
-  const rows = from && to
-    ? db.prepare('SELECT * FROM class_closures WHERE to_date >= ? AND from_date <= ? ORDER BY from_date').all(from, to)
-    : db.prepare('SELECT * FROM class_closures ORDER BY from_date').all();
-  return rows.map(closureFromRow);
-}
-
-export const getClosure = id => closureFromRow(getDatabase().prepare('SELECT * FROM class_closures WHERE id = ?').get(id));
-
-export function addClosure({ from, to, reason = '', createdBy = null }) {
-  const id = newId('k');
-  getDatabase().prepare('INSERT INTO class_closures (id, from_date, to_date, reason, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?)')
-    .run(id, from, to, reason, createdBy, nowIso());
-  return getClosure(id);
-}
-
-export const deleteClosure = id => getDatabase().prepare('DELETE FROM class_closures WHERE id = ?').run(id).changes > 0;
+// ---- cierres del gimnasio: pasaron a closures-db.js (re-exportados arriba) ----
 
 // ---- penalización levantada por el staff ----
 

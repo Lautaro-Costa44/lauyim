@@ -160,6 +160,9 @@ import {
 } from './approval.js';
 import { membersCsv } from './member-export.js';
 import { classRoutes, classSettingsNow, classesAvailable } from './classes-routes.js';
+import { closureRoutes, closureNotifyHour, CLOSURE_NOTIFY_HOUR_SETTING } from './closures-routes.js';
+import { getClosures, getExtensions } from './closures-db.js';
+import { extensionDaysSince } from './closures.js';
 import {
   readCheckinSettings, validateCheckinSettings, CHECKIN_SETTINGS, createDevice, findDevice, touchDevice,
   listDevices, revokeDevice, revokeAllDevices, lookup as checkinLookup, confirm as checkinConfirm,
@@ -3461,6 +3464,8 @@ const routes = {
       week: S.week || {},
       dayPlan: S.dayPlan || {},
       today: billingToday(billingSettingsNow()),
+      // Cierres de alrededor de hoy: la adherencia no cuenta como esperado un día cerrado.
+      closures: (() => { const today = billingToday(billingSettingsNow()); return getClosures({ from: addDays(today, -7), to: addDays(today, 7) }).map(c => ({ from: c.from, to: c.to, reason: c.reason })); })(),
       names: Object.fromEntries((S.customEx || []).filter(ex => ex && ex.id).map(ex => [ex.id, ex.n || ex.name || ex.id])),
       // Tampoco el peso corporal anotado en cada entreno (bw).
       workouts: (S.workouts || []).slice().reverse().map(w => (hideHealth && w && 'bw' in w ? (({ bw, ...rest }) => rest)(w) : w))
@@ -3741,12 +3746,16 @@ const routes = {
     if (payment.source === 'import') return json(res, 409, { error: 'Un pago importado no se puede anular' });
     if (getLatestActivePayment(userId)?.id !== payment.id) return json(res, 409, { error: 'Solo se puede anular el último pago registrado del socio' });
     const current = getMemberBilling(userId);
-    if (current.dueDate !== payment.periodEnd || current.planId !== payment.planId) {
+    // Cierres que corrieron el vencimiento después de este pago (y no se devolvieron): el pago sigue
+    // siendo el último, solo que su vencimiento quedó corrido esos días.
+    const shifted = extensionDaysSince(getExtensions({ userId }), payment.created || 0);
+    const expectedDue = shifted && payment.periodEnd ? addDays(payment.periodEnd, shifted) : payment.periodEnd;
+    if (current.dueDate !== expectedDue || current.planId !== payment.planId) {
       return json(res, 409, { error: 'El vencimiento cambió después de este pago; no se puede anular' });
     }
-    // Se puede volver a un vencimiento anterior o a la prueba que el pago cerró.
-    const backTo = payment.previousDueDate ?? null;
-    const backToTrial = payment.previousTrialUntil ?? null;
+    // Se puede volver a un vencimiento anterior o a la prueba que el pago cerró, con los días corridos.
+    const backTo = payment.previousDueDate ? addDays(payment.previousDueDate, shifted) : null;
+    const backToTrial = payment.previousTrialUntil ? addDays(payment.previousTrialUntil, shifted) : null;
     if (backTo == null && backToTrial == null) return json(res, 409, { error: 'Este pago no guarda el vencimiento anterior; no se puede anular' });
 
     const reason = body.reason ? body.reason.trim() || null : null;
@@ -3759,20 +3768,25 @@ const routes = {
     json(res, 200, { billing, payment: getPaymentById(paymentId) });
   },
 
-  /* ---------- horario de avisos de cuota ---------- */
-  // Hora del gym (gym_tz) desde la que salen el aviso de vencimiento y el recordatorio manual.
+  /* ---------- horarios de avisos (cuota y cierre) ---------- */
+  // Hora del gym (gym_tz) desde la que salen el aviso de vencimiento y el recordatorio manual, y la
+  // del aviso general de un cierre del gimnasio.
   'GET /api/admin/notifications/settings': async (req, res) => {
     if (!requireAdmin(req, res)) return;
-    json(res, 200, { billing_notify_hour: getBillingNotifyHour(getDatabase()), gym_tz: billingSettingsNow().gym_tz });
+    json(res, 200, { billing_notify_hour: getBillingNotifyHour(getDatabase()), closure_notify_hour: closureNotifyHour(), gym_tz: billingSettingsNow().gym_tz });
   },
 
   'PUT /api/admin/notifications/settings': async (req, res) => {
     const admin = requireAdmin(req, res); if (!admin) return;
     const body = await readBody(req);
-    if (!isValidNotifyHour(body.billing_notify_hour)) return json(res, 400, { error: 'billing_notify_hour debe tener el formato HH:MM' });
-    setAdminSetting(BILLING_NOTIFY_HOUR_SETTING, body.billing_notify_hour);
-    audit(req, 'admin.notifications.settings', { user: admin, summary: `Avisos de cuota desde las ${body.billing_notify_hour}` });
-    json(res, 200, { billing_notify_hour: getBillingNotifyHour(getDatabase()), gym_tz: billingSettingsNow().gym_tz });
+    const keys = ['billing_notify_hour', 'closure_notify_hour'].filter(k => body[k] !== undefined);
+    if (!keys.length) return json(res, 400, { error: 'Mandá billing_notify_hour o closure_notify_hour' });
+    for (const k of keys) if (!isValidNotifyHour(body[k])) return json(res, 400, { error: `${k} debe tener el formato HH:MM` });
+    if (body.billing_notify_hour !== undefined) setAdminSetting(BILLING_NOTIFY_HOUR_SETTING, body.billing_notify_hour);
+    if (body.closure_notify_hour !== undefined) setAdminSetting(CLOSURE_NOTIFY_HOUR_SETTING, body.closure_notify_hour);
+    const summary = [body.billing_notify_hour && `Avisos de cuota desde las ${body.billing_notify_hour}`, body.closure_notify_hour && `Avisos de cierre a las ${body.closure_notify_hour}`].filter(Boolean).join(' · ');
+    audit(req, 'admin.notifications.settings', { user: admin, summary });
+    json(res, 200, { billing_notify_hour: getBillingNotifyHour(getDatabase()), closure_notify_hour: closureNotifyHour(), gym_tz: billingSettingsNow().gym_tz });
   },
 
   /* ---------- aviso de privacidad ---------- */
@@ -4427,6 +4441,7 @@ const routes = {
   },
   // Clases grupales (classes-routes.js).
   ...classRoutes({ json, readBody, readSession, requireAdmin, requireOwner, audit, sendPush, can, isMembershipBlocked, isStaff: user => !!user && isStaff(user), isInactiveAccount, gymTz: () => billingSettingsNow().gym_tz }),
+  ...closureRoutes({ json, readBody, readSession, requireAdmin, audit, sendPush, can, isFeeExempt }),
 };
 
 http.createServer(async (req, res) => {

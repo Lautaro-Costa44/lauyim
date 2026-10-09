@@ -7,6 +7,7 @@ import { sendPushToSubscription, pushBody } from './push-send.js';
 import { dayReminderPush, gymFeePush, billingDuePush } from './push-messages.js';
 import { getBillingSettings, gymClock, shouldSendDuePush, daysBetween, isBillingEnabled, getBillingNotifyHour } from './billing.js';
 import { materializeRecurring, sendClassReminders, sendTeacherReminders, runAfterClass, dropTeacherBookings, classClock } from './classes-routes.js';
+import { sendPendingAnnouncements } from './closures-routes.js';
 
 // Avisos de cuota en vuelo (user_id:due_date). El envío es asíncrono y el tick corre cada
 // minuto: sin esto, un push lento se volvería a disparar antes de guardar push_sent_for_due.
@@ -319,6 +320,15 @@ export function runSchedulerTick({ now = Date.now(), sendToUser = sendPushToUser
     runAfterClass({ send, now: clock });
   } catch (err) {
     console.error('[Scheduler] Error en clases:', err);
+  }
+  // Cierres del gimnasio: el aviso general que ya toca (una vez por cierre).
+  try {
+    sendPendingAnnouncements({
+      nowMs: now,
+      send: (userId, payload) => { sendToUser(userId, payload).catch(err => console.error(`[Scheduler] Error al enviar aviso de cierre a user_id=${userId}:`, err)); }
+    });
+  } catch (err) {
+    console.error('[Scheduler] Error en cierres:', err);
   }
 }
 

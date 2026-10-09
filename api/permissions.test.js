@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   PERMISSIONS, PERMISSION_CODES, withDependencies, withoutDependents, permissionsOf, can, isSubset,
-  validateRole, DEFAULT_ROLES, ADMIN_ROLE_ID
+  validateRole, DEFAULT_ROLES, ADMIN_ROLE_ID, ROUTE_PERMISSIONS
 } from './permissions.js';
 
 test('catálogo: códigos únicos y dependencias que existen', () => {
@@ -59,4 +59,17 @@ test('clases: cinco permisos encadenados; Profesor/a sus clases, Recepción anot
   assert.equal(perms(ADMIN_ROLE_ID).length, 5);
   assert.ok(can(['classes.view_all'], ['classes.attendance', 'classes.view_all']));
   assert.ok(!can(['fees.view'], ['classes.attendance', 'classes.view_all']));
+});
+
+test('gym.closures: en el catálogo (Operación), sin dependencias; las rutas viejas de clases ya no existen', () => {
+  const p = PERMISSIONS.find(x => x.code === 'gym.closures');
+  assert.ok(p, 'falta gym.closures');
+  assert.equal(p.area, 'Operación');
+  assert.deepEqual(p.requires, []);
+  assert.equal(ROUTE_PERMISSIONS['POST /api/admin/classes/closures'], undefined);
+  assert.equal(ROUTE_PERMISSIONS['POST /api/admin/closures'], 'gym.closures');
+  assert.equal(ROUTE_PERMISSIONS['POST /api/admin/closures/delete'], 'gym.closures');
+  assert.equal(ROUTE_PERMISSIONS['GET /api/admin/closures/preview'], 'gym.closures');
+  assert.deepEqual(ROUTE_PERMISSIONS['GET /api/admin/closures'], ['gym.closures', 'stats.view', 'classes.view_all', 'classes.attendance']);
+  assert.ok(DEFAULT_ROLES.find(r => r.id === ADMIN_ROLE_ID).permissions.includes('gym.closures'));
 });

@@ -106,7 +106,7 @@ test('el panel del dueño, la recepción y la profe responde sin errores', async
     '/api/admin/users', `/api/admin/user?id=${idOf('lucia')}`, '/api/admin/billing', '/api/admin/billing/plans', '/api/admin/billing/settings',
     '/api/admin/approval', '/api/admin/checkin', '/api/admin/attendance-heatmap', '/api/admin/audit', '/api/admin/roles', '/api/admin/members/settings',
     '/api/admin/presets', '/api/admin/programs/usage', '/api/admin/classes/types', `/api/admin/classes/calendar?from=${today}&days=7`,
-    '/api/admin/classes/stats?weeks=4', '/api/admin/classes/closures', `/api/admin/classes/member?userId=${idOf('sofia')}`,
+    '/api/admin/classes/stats?weeks=4', '/api/admin/closures', `/api/admin/classes/member?userId=${idOf('sofia')}`,
     '/api/owner/branding', '/api/owner/privacy', '/api/owner/classes/settings'
   ];
   for (const url of urls) {

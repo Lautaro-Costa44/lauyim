@@ -8,6 +8,7 @@ const RULES = [
   ['auth', /^(admin|owner)\.denied$/],
   ['classes', /^classes\./],
   ['classes', /^owner\.classes\./],
+  ['classes', /^gym\.closure\./],
   ['billing', /^(admin|owner)\.billing\./],
   ['billing', /^admin\.notifications\./],          // la hora de los avisos de cuota
   ['checkin', /^checkin\./],

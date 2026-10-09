@@ -492,6 +492,17 @@ function migrateRoles(db) {
     coach: perms => perms.includes('classes.manage') ? [...perms.filter(c => !['classes.manage', 'classes.view_all', 'classes.book_members'].includes(c)), 'classes.own'] : perms,
     reception: add(['classes.book_members'])
   });
+  // Cierres del gimnasio con permiso propio (antes los hacía classes.manage): quien podía cerrar
+  // sigue pudiendo. Una sola vez; si el owner se lo saca, no vuelve.
+  if (!db.prepare("SELECT value FROM admin_settings WHERE key = 'closures_perm_seeded'").get()) {
+    for (const row of db.prepare('SELECT id, permissions FROM roles').all()) {
+      const perms = JSON.parse(row.permissions || '[]');
+      if (row.id === ADMIN_ROLE_ID || perms.includes('classes.manage')) {
+        db.prepare('UPDATE roles SET permissions = ? WHERE id = ?').run(JSON.stringify(withDependencies([...perms, 'gym.closures'])), row.id);
+      }
+    }
+    db.prepare("INSERT INTO admin_settings (key, value, updated_at) VALUES ('closures_perm_seeded', 'true', ?)").run(Date.now());
+  }
 }
 
 const roleFromRow = (row, members = 0) => row && ({

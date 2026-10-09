@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef } from 'react'
 import { useUI } from '../store/useUI.js'
+import Icon from './Icon.jsx'
 
 // One bottom sheet (or centered dialog) with swipe-to-dismiss.
 function Sheet({ sheet }) {
@@ -101,7 +102,7 @@ function Sheet({ sheet }) {
         onMouseDown={onMouseDown} onMouseMove={onMouseMove} onMouseUp={onMouseUp} onMouseLeave={onMouseUp}
         {...(sheet.kind === 'panel' ? { role: 'dialog', 'aria-modal': 'true' } : {})}>
         {!sheet.fullScreen && <div className="grab" />}
-        {sheet.kind === 'panel' && <button type="button" className="panel-close iconbtn" onClick={close} aria-label="Cerrar">×</button>}
+        {sheet.kind === 'panel' && <button type="button" className="panel-close iconbtn" onClick={close} aria-label="Cerrar"><Icon name="xmark" /></button>}
         {sheet.render(close, { setOnBack })}
       </div>
     </div>

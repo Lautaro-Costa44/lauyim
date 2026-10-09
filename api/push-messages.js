@@ -150,6 +150,23 @@ export function closurePush({ from, to, today, reason, items }) {
   return { title, body: reason ? `${reason}. ${what}` : what, tag: `class-closure-${from}`, data: { redirectUrl: `/#/plan/clases?d=${from}` } };
 }
 
+// Aviso general de un cierre (a todos, a la hora de avisos). Un mismo tag por cierre: el de reabrir lo reemplaza.
+const WEEKDAY = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
+const dayName = date => `${WEEKDAY[new Date(date + 'T12:00:00Z').getUTCDay()]} ${Number(date.slice(8, 10))}`;
+export function closureAnnouncePush({ from, to, today, reason }) {
+  const title = from !== to ? `El gimnasio cierra del ${MONTH_DAY(from)} al ${MONTH_DAY(to)}`
+    : from === today ? 'Hoy el gimnasio está cerrado'
+    : `El ${dayName(from)} el gimnasio cierra`;
+  const rest = 'Podés seguir usando la app para entrenar en casa o cargar tus comidas.';
+  return { title, body: reason ? `${reason}. ${rest}` : rest, tag: `gym-closure-${from}`, data: { redirectUrl: '/#/home' } };
+}
+
+// Se reabrió un cierre que era de hoy o mañana y ya se había avisado.
+export function closureReopenPush({ from, today }) {
+  const when = from === today ? 'hoy' : 'mañana';
+  return { title: `Al final el gimnasio abre ${when}`, body: 'Se canceló el cierre.', tag: `gym-closure-${from}`, data: { redirectUrl: '/#/home' } };
+}
+
 // El staff levantó la penalización por ausencias.
 export function penaltyResetPush() {
   return { title: 'Ya podés volver a reservar clases', body: 'El gimnasio levantó tu penalización por ausencias.', tag: 'class-penalty', data: { redirectUrl: '/#/plan/clases' } };

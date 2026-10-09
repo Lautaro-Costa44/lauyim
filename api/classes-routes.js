@@ -5,12 +5,12 @@ import {
   CLASS_DEFAULTS, REMINDER_OPTIONS, classSettingsOf, validateClassSettings, validateClassType, validateSlot,
   addMinutes, addDays, weekdayOf, occurrencesBetween, overlapConflicts, conflictText, bookingState, cancelKind, canPromote, remindersDue, minutesLeft, buildIcs,
   canAsk, resolveAttendance, canTakeAttendance, canRate, afterPushDue, classWorkout, classStats, penaltyOf, capOf,
-  TEACHER_REMINDER_OPTIONS, teacherReminderDue, validateClosure, periodRange, planUsed
+  TEACHER_REMINDER_OPTIONS, teacherReminderDue, periodRange, planUsed
 } from './classes.js';
 import * as cdb from './classes-db.js';
 import { getAllUsers, getUserById, getAdminSetting, setAdminSetting, getDatabase, getMemberBilling, getPlanById } from './database.js';
 import { gymClock, getBillingSettings, isBillingEnabled } from './billing.js';
-import { classChangePush, classReminderPush, classAfterPush, classMessagePush, teacherReminderPush, closurePush, penaltyResetPush } from './push-messages.js';
+import { classChangePush, classReminderPush, classAfterPush, classMessagePush, teacherReminderPush, penaltyResetPush } from './push-messages.js';
 
 export const CLASS_SETTINGS_KEY = 'classes';
 const CHECK_WEEKS = 8;          // superposición de un bloque semanal: contra las próximas 8 semanas
@@ -49,6 +49,21 @@ export function loadOccurrences(from, days) {
     sessions: cdb.getClassSessions({ from, to: addDays(from, days) }), from, days, userNames,
     closures: cdb.getClosures({ from, to: addDays(from, days - 1) })
   });
+}
+// Lo que afecta un cierre: las fechas que todavía se dan en esos días y, por persona con reserva
+// activa, sus fechas (la profe que da la clase no cuenta). La usan las rutas de cierres.
+export function closureImpact({ from, to }) {
+  const days = Math.round((Date.parse(to) - Date.parse(from)) / 86400000) + 1;
+  const occs = loadOccurrences(from, days).filter(o => !o.cancelled);
+  const bySession = new Map(occs.filter(o => o.sessionId).map(o => [o.sessionId, o]));
+  const people = new Map();
+  for (const b of cdb.getBookingsForSessions([...bySession.keys()])) {
+    const occ = bySession.get(b.sessionId);
+    if (!['booked', 'waitlist'].includes(b.status) || teachesOcc(occ, b.userId)) continue;
+    if (!people.has(b.userId)) people.set(b.userId, []);
+    people.get(b.userId).push(occ);
+  }
+  return { occs, people };
 }
 const occOfKey = (date, key) => loadOccurrences(date, 1).find(o => o.key === key) || null;
 const occOfSession = session => session ? occOfKey(session.date, session.slotId ? `${session.slotId}:${session.date}` : session.id) : null;
@@ -237,21 +252,6 @@ export function classRoutes(d) {
     }
   };
   const activeUsers = sessionId => cdb.getBookingsForSessions([sessionId]).filter(b => ['booked', 'waitlist'].includes(b.status)).map(b => b.userId);
-  // Lo que afecta un cierre: las fechas que todavía se dan en esos días y, por persona con reserva
-  // activa, sus fechas (la profe que da la clase no cuenta).
-  const closureImpact = ({ from, to }) => {
-    const days = Math.round((Date.parse(to) - Date.parse(from)) / 86400000) + 1;
-    const occs = loadOccurrences(from, days).filter(o => !o.cancelled);
-    const bySession = new Map(occs.filter(o => o.sessionId).map(o => [o.sessionId, o]));
-    const people = new Map();
-    for (const b of cdb.getBookingsForSessions([...bySession.keys()])) {
-      const occ = bySession.get(b.sessionId);
-      if (!['booked', 'waitlist'].includes(b.status) || teachesOcc(occ, b.userId)) continue;
-      if (!people.has(b.userId)) people.set(b.userId, []);
-      people.get(b.userId).push(occ);
-    }
-    return { occs, people };
-  };
   // Permisos de clases (permissions.js): todas (manage), las suyas (own), ver todas (view_all),
   // anotar socios en cualquiera (book_members) y tomar lista en las suyas (attendance).
   const has = (user, ...codes) => codes.some(c => d.can(user, c));
@@ -706,44 +706,6 @@ export function classRoutes(d) {
     json(res, 200, { ok: true });
   },
 
-  // ---- cierres del gimnasio (feriado, vacaciones) ----
-  'GET /api/admin/classes/closures': async (req, res) => {
-    const user = d.requireAdmin(req, res); if (!user) return;
-    json(res, 200, { closures: cdb.getClosures().filter(c => c.to >= now().date) });
-  },
-  'GET /api/admin/classes/closures/preview': async (req, res) => {
-    const user = d.requireAdmin(req, res); if (!user) return;
-    const q = new URL(req.url, 'http://x').searchParams;
-    const v = validateClosure({ from: q.get('from'), to: q.get('to') }, { today: now().date });
-    if (v.error) return json(res, 400, v);
-    const { occs, people } = closureImpact(v.value);
-    json(res, 200, { classes: occs.length, people: people.size });
-  },
-  'POST /api/admin/classes/closures': async (req, res) => {
-    const user = d.requireAdmin(req, res); if (!user) return;
-    const today = now().date;
-    const v = validateClosure(await readBody(req), { today, existing: cdb.getClosures() });
-    if (v.error) return json(res, v.error === 'closure_overlap' ? 409 : 400, v);
-    const { occs, people } = closureImpact(v.value);
-    // Las reservas se cancelan (sin promover a nadie); las fechas no se suspenden una por una: al
-    // reabrir, vuelven.
-    for (const occ of occs) if (occ.sessionId) cdb.cancelSessionBookings(occ.sessionId);
-    const closure = cdb.addClosure({ ...v.value, createdBy: user.id });
-    for (const [uid, items] of people) {
-      d.sendPush(uid, closurePush({ ...v.value, today, items: items.map(o => ({ name: o.type.name, start: o.start, date: o.date })) })).catch(() => {});
-    }
-    d.audit(req, 'classes.closure.add', { user, msg: `${auditRange(v.value)}${v.value.reason ? ' · ' + v.value.reason : ''}: ${auditCount(occs.length, 'clase', 'clases')}, ${auditCount(people.size, 'persona', 'personas')}` });
-    json(res, 200, { closure, notified: people.size, classes: occs.length });
-  },
-  'POST /api/admin/classes/closures/delete': async (req, res) => {
-    const user = d.requireAdmin(req, res); if (!user) return;
-    const { id } = await readBody(req);
-    const closure = cdb.getClosure(id);
-    if (!closure) return json(res, 404, { error: 'not_found' });
-    cdb.deleteClosure(id);
-    d.audit(req, 'classes.closure.delete', { user, msg: auditRange(closure) + (closure.reason ? ' · ' + closure.reason : '') });
-    json(res, 200, { ok: true });
-  },
   'GET /api/admin/classes/stats': async (req, res) => {
     const user = d.requireAdmin(req, res); if (!user) return;
     const weeks = new URL(req.url, 'http://x').searchParams.get('weeks') === '12' ? 12 : 4;
@@ -786,7 +748,7 @@ export function classRoutes(d) {
     }
     json(res, 200, {
       planLimit,
-      enabled: true, today, from, days, closures: cdb.getClosures({ from, to: addDays(from, days - 1) }), tz: d.gymTz(), settings: publicSettings(s), reminderDefaults: memberReminderDefaults(user.id), teacherReminder: cdb.getTeacherReminder(user.id), penalty: penaltyNow(user.id, today), slots,
+      enabled: true, today, from, days, tz: d.gymTz(), settings: publicSettings(s), reminderDefaults: memberReminderDefaults(user.id), teacherReminder: cdb.getTeacherReminder(user.id), penalty: penaltyNow(user.id, today), slots,
       occurrences: occs.map(o => ({ ...memberView(o, counts[o.sessionId], teachesOcc(o, user.id) ? null : mine.get(o.sessionId), fixed.has(o.slotId), bookingState({ occ: o, now: clock, settings: s })), teaching: teachesOcc(o, user.id) }))
     });
   },

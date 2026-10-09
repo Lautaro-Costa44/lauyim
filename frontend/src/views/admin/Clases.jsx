@@ -13,7 +13,6 @@ import { Button } from '../../components/ui.jsx'
 import Icon from '../../components/Icon.jsx'
 import { classEditorSheet } from './clases/ClassEditor.jsx'
 import { sessionSheet, looseClassSheet, classSettingsSheet } from './clases/SessionSheet.jsx'
-import { closureSheet, ClosureList } from './clases/ClosureSheet.jsx'
 
 const ui = () => useUI.getState()
 const toMin = time => Number(time.slice(0, 2)) * 60 + Number(time.slice(3, 5))
@@ -36,20 +35,18 @@ export default function AdminClases() {
   const [day, setDay] = useState(null)          // día visible en el celular
   const [data, setData] = useState(null)
   const [types, setTypes] = useState(null)
-  const [closures, setClosures] = useState([])   // próximos cierres del gimnasio
 
   const load = (from = week) => classesApi.calendar(from || '', 7).then(d => {
     setData(d)
     if (!from) { const monday = mondayOf(d.today); setWeek(monday); setDay(d.today); if (monday !== d.from) return classesApi.calendar(monday, 7).then(setData) }
   }).catch(e => ui().toast(errorText(e, t('Failed to load'))))
   const loadTypes = () => classesApi.types().then(setTypes).catch(() => {})
-  const loadClosures = () => classesApi.closures().then(d => setClosures(d.closures || [])).catch(() => {})
-  useEffect(() => { load(null); loadTypes(); loadClosures() }, [])
+  useEffect(() => { load(null); loadTypes() }, [])
 
   if (!data || !week) return <div className="page-loading" aria-busy="true" />
   const canManage = data.canManage
   const canCreate = canManage || data.canOwn
-  const reload = () => { load(week); loadTypes(); loadClosures() }
+  const reload = () => { load(week); loadTypes() }
   const goWeek = n => { const w = addDays(week, 7 * n); setWeek(w); setDay(addDays(day, 7 * n)); load(w) }
   const goToday = () => { const w = mondayOf(data.today); setWeek(w); setDay(data.today); load(w) }
   const goDay = n => {
@@ -74,7 +71,6 @@ export default function AdminClases() {
           {canCreate && editable.length > 0 && <Button size="sm" icon="calendar" onClick={() => looseClassSheet({ types: editable, today: data.today, onChange: reload })}>{t('Clase suelta')}</Button>}
           {editable.length > 0 && <Button size="sm" icon="list" onClick={listTypes}>{canManage ? t('Clases') : t('Mis clases')}</Button>}
           <Button size="sm" icon="chart" onClick={classStatsSheet}>{t('Estadísticas')}</Button>
-          {canManage && <Button size="sm" icon="lock" onClick={() => closureSheet({ today: data.today, onChange: reload })}>{t('Cerrar el gimnasio')}</Button>}
           {user?.owner && <Button size="sm" icon="gear" onClick={() => classSettingsSheet({ onChange: reload })}>{t('Ajustes')}</Button>}
         </div>
       </div>
@@ -85,7 +81,6 @@ export default function AdminClases() {
         <div><b>{s.lateCancels}</b><span>{t('cancelaciones tardías')}</span></div>
         <div><b>{s.waitlist}</b><span>{t('en lista de espera')}</span></div>
       </div>
-      <ClosureList closures={closures} canManage={canManage} onChange={reload} />
     </div>
 
     <div className="row between class-weeknav">
