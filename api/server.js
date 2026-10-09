@@ -160,7 +160,7 @@ import {
 } from './approval.js';
 import { membersCsv } from './member-export.js';
 import { classRoutes, classSettingsNow, classesAvailable } from './classes-routes.js';
-import { closureRoutes } from './closures-routes.js';
+import { closureRoutes, closureNotifyHour, CLOSURE_NOTIFY_HOUR_SETTING } from './closures-routes.js';
 import { getClosures } from './closures-db.js';
 import {
   readCheckinSettings, validateCheckinSettings, CHECKIN_SETTINGS, createDevice, findDevice, touchDevice,
@@ -3763,20 +3763,25 @@ const routes = {
     json(res, 200, { billing, payment: getPaymentById(paymentId) });
   },
 
-  /* ---------- horario de avisos de cuota ---------- */
-  // Hora del gym (gym_tz) desde la que salen el aviso de vencimiento y el recordatorio manual.
+  /* ---------- horarios de avisos (cuota y cierre) ---------- */
+  // Hora del gym (gym_tz) desde la que salen el aviso de vencimiento y el recordatorio manual, y la
+  // del aviso general de un cierre del gimnasio.
   'GET /api/admin/notifications/settings': async (req, res) => {
     if (!requireAdmin(req, res)) return;
-    json(res, 200, { billing_notify_hour: getBillingNotifyHour(getDatabase()), gym_tz: billingSettingsNow().gym_tz });
+    json(res, 200, { billing_notify_hour: getBillingNotifyHour(getDatabase()), closure_notify_hour: closureNotifyHour(), gym_tz: billingSettingsNow().gym_tz });
   },
 
   'PUT /api/admin/notifications/settings': async (req, res) => {
     const admin = requireAdmin(req, res); if (!admin) return;
     const body = await readBody(req);
-    if (!isValidNotifyHour(body.billing_notify_hour)) return json(res, 400, { error: 'billing_notify_hour debe tener el formato HH:MM' });
-    setAdminSetting(BILLING_NOTIFY_HOUR_SETTING, body.billing_notify_hour);
-    audit(req, 'admin.notifications.settings', { user: admin, summary: `Avisos de cuota desde las ${body.billing_notify_hour}` });
-    json(res, 200, { billing_notify_hour: getBillingNotifyHour(getDatabase()), gym_tz: billingSettingsNow().gym_tz });
+    const keys = ['billing_notify_hour', 'closure_notify_hour'].filter(k => body[k] !== undefined);
+    if (!keys.length) return json(res, 400, { error: 'Mandá billing_notify_hour o closure_notify_hour' });
+    for (const k of keys) if (!isValidNotifyHour(body[k])) return json(res, 400, { error: `${k} debe tener el formato HH:MM` });
+    if (body.billing_notify_hour !== undefined) setAdminSetting(BILLING_NOTIFY_HOUR_SETTING, body.billing_notify_hour);
+    if (body.closure_notify_hour !== undefined) setAdminSetting(CLOSURE_NOTIFY_HOUR_SETTING, body.closure_notify_hour);
+    const summary = [body.billing_notify_hour && `Avisos de cuota desde las ${body.billing_notify_hour}`, body.closure_notify_hour && `Avisos de cierre a las ${body.closure_notify_hour}`].filter(Boolean).join(' · ');
+    audit(req, 'admin.notifications.settings', { user: admin, summary });
+    json(res, 200, { billing_notify_hour: getBillingNotifyHour(getDatabase()), closure_notify_hour: closureNotifyHour(), gym_tz: billingSettingsNow().gym_tz });
   },
 
   /* ---------- aviso de privacidad ---------- */

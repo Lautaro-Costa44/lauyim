@@ -124,3 +124,15 @@ test('GET /api/admin/user trae los cierres de alrededor de hoy (para la adherenc
   assert.deepEqual(u.body.closures, [{ from: today, to: today, reason: 'Feriado' }]);
   assert.equal((await call('owner', 'POST', '/api/admin/closures/delete', { id: made.body.closure.id })).status, 200);
 });
+
+test('hora de avisos de cierre: 08:00 por defecto, se cambia sola sin tocar la de cuotas', async () => {
+  const g = await call('owner', 'GET', '/api/admin/notifications/settings');
+  assert.equal(g.body.closure_notify_hour, '08:00');
+  const before = g.body.billing_notify_hour;
+  const p = await call('owner', 'PUT', '/api/admin/notifications/settings', { closure_notify_hour: '07:30' });
+  assert.equal(p.status, 200, JSON.stringify(p.body));
+  assert.deepEqual([p.body.closure_notify_hour, p.body.billing_notify_hour], ['07:30', before]);
+  assert.equal((await call('owner', 'PUT', '/api/admin/notifications/settings', { closure_notify_hour: '7:30' })).status, 400);
+  assert.equal((await call('owner', 'PUT', '/api/admin/notifications/settings', {})).status, 400);
+  assert.equal((await call('owner', 'PUT', '/api/admin/notifications/settings', { closure_notify_hour: '08:00' })).status, 200);
+});
