@@ -2613,3 +2613,25 @@ button.wh-row{font:inherit;color:inherit;border:0;cursor:pointer}
 .supp-age{margin:12px 0}
 .supp-notice .btn.primary{width:100%;margin-top:14px}
 @media (min-width:768px){.supp-card-cols{display:grid;grid-template-columns:1fr 1fr;gap:0 22px;align-items:start}}
+.supp-water{background:color-mix(in srgb,var(--blue) 15%,transparent);border:1px solid color-mix(in srgb,var(--blue) 50%,transparent);border-radius:12px;padding:9px 10px;margin:10px 0;font-size:13px}
+.supp-lvl-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;margin:14px 0 6px;color:var(--lvl);display:flex;align-items:center;gap:6px}
+.supp-lvl-title i{width:9px;height:9px;border-radius:3px;background:var(--lvl)}
+.supp-item{display:flex;align-items:center;gap:8px;width:100%;text-align:left;background:var(--surface-2);border:none;border-radius:10px;padding:9px 10px;margin:4px 0;color:inherit;font:inherit}
+.supp-item.sel{outline:1.5px solid var(--acc)}
+.supp-other{background:none;color:var(--acc)}
+.supp-mine{font-size:11.5px;color:var(--acc)}
+.supp-level{display:inline-block;font-size:10.5px;font-weight:700;border-radius:6px;padding:2px 7px;color:var(--lvl);background:color-mix(in srgb,var(--lvl) 18%,transparent)}
+.supp-how{display:grid;grid-template-columns:22px 1fr;gap:6px;margin:5px 0}
+.supp-list{margin:0;padding-left:18px}
+.supp-back{color:var(--acc);background:none;border:none;padding:4px 0;font:inherit}
+.supp-ficha .btn{width:100%;margin-top:14px}
+@media (max-width:767px){.supp-hide-phone{display:none}}
+@media (min-width:768px){.supp-guide-cols{display:grid;grid-template-columns:280px 1fr;gap:18px}.supp-back{display:none}}
+.supp-field{margin:10px 0}
+.supp-num{max-width:110px}
+.supp-macros{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.supp-time{max-width:120px;margin-left:10px}
+.supp-preview{text-align:center;margin:12px 0 4px}
+.supp-config>.btn.primary{width:100%}
+.supp-edit-actions{display:flex;justify-content:space-between;margin-top:10px}
+@media (min-width:768px){.supp-form-cols{display:grid;grid-template-columns:1fr 1fr;gap:0 20px}}
