@@ -19,11 +19,23 @@ export function notifStepKind({ ios = isIOS(), standalone = isStandalone(), supp
 }
 
 const key = uid => 'gym_notif_step:' + uid
+// Cuándo se mostró: el cartel de Inicio espera unos días antes de volver a ofrecer (notif-ask.js).
+const atKey = uid => 'gym_notif_step_at:' + uid
 export function notifStepDone(uid) {
   try { return localStorage.getItem(key(uid)) === '1' } catch { return true }
 }
-export function markNotifStepDone(uid) {
-  try { localStorage.setItem(key(uid), '1') } catch { /* storage off: igual se cierra en memoria */ }
+export function markNotifStepDone(uid, now = Date.now()) {
+  try {
+    localStorage.setItem(key(uid), '1')
+    localStorage.setItem(atKey(uid), String(now))
+  } catch { /* storage off: igual se cierra en memoria */ }
+}
+// Milisegundos de cuando se cerró el paso, o null si no hay fecha (no se mostró, o es de antes).
+export function notifStepDoneAt(uid) {
+  try {
+    const v = Number(localStorage.getItem(atKey(uid)))
+    return v > 0 ? v : null
+  } catch { return null }
 }
 
 // iOS: en Safari solo se pueden dar instrucciones para instalar. La primera vez que abre la app

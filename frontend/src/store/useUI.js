@@ -12,27 +12,12 @@ const pushRestTimer = sec => { if (useStore.getState().user) api('/api/push/rest
 const cancelPushRestTimer = () => { if (useStore.getState().user) api('/api/push/rest-timer/cancel', { method: 'POST', body: '{}' }).catch(() => {}) }
 
 const notificationsSupported = () => typeof window !== 'undefined' && 'Notification' in window
-let requestRestNotificationPermissionP = null
-
-const requestRestNotificationPermission = async () => {
-  if (!notificationsSupported()) return false
-  if (Notification.permission === 'granted') return true
-  if (Notification.permission === 'denied') return false
-  if (!requestRestNotificationPermissionP) {
-    requestRestNotificationPermissionP = Notification.requestPermission()
-      .then(perm => perm === 'granted')
-      .catch(() => false)
-      .finally(() => {
-        requestRestNotificationPermissionP = null
-      })
-  }
-  return requestRestNotificationPermissionP
-}
-
 const maybeRestNotification = async () => {
   if (!notificationsSupported()) return
   if (!document.hidden && document.visibilityState !== 'hidden') return
-  if (Notification.permission !== 'granted' && !(await requestRestNotificationPermission())) return
+  // Sin permiso, nada: pedirlo acá (sin explicar, en medio del entreno) podía bloquear todos los
+  // avisos para siempre. Se ofrece con la línea del descanso (RestTimer) y desde Ajustes.
+  if (Notification.permission !== 'granted') return
   try {
     // Android Chrome forbids the Notification constructor (Illegal constructor) - the
     // service-worker registration path is the one that actually pops there.
@@ -123,7 +108,6 @@ export const useUI = create((set, get) => ({
     if (!(sec > 0)) return
     const endsAt = Date.now() + sec * 1000
     set({ timer: { left: sec, total: sec, endsAt } })
-    requestRestNotificationPermission()
     pushRestTimer(sec)
     timerTick = () => {
       const tm = get().timer

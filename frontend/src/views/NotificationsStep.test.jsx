@@ -75,10 +75,10 @@ describe('paso de notificaciones', () => {
 
   it('permiso negado: no traba, sigue igual con un aviso', async () => {
     await mount()
-    enablePush.mockRejectedValue(new Error('denied'))
+    enablePush.mockRejectedValue(Object.assign(new Error('Bloqueaste los avisos en este navegador.'), { denied: true }))
     await click(button('Activar'))
     expect(text()).not.toContain('¿Activamos las notificaciones?')
-    expect(useUI.getState().toastMsg).toBe('No se activaron. Podés hacerlo cuando quieras desde Ajustes.')
+    expect(useUI.getState().toastMsg).toBe('Bloqueaste los avisos. Para activarlos, mirá Ajustes → Notificaciones.')
   })
 
   it('"Ahora no" sigue y no vuelve a aparecer', async () => {

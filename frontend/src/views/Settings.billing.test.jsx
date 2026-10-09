@@ -12,7 +12,7 @@ vi.mock('../lib/api.js', async importOriginal => ({ ...(await importOriginal()),
 // Push "soportado" y ya suscripto, para que se vea la sección completa de notificaciones.
 Object.defineProperty(navigator, 'serviceWorker', {
   configurable: true,
-  value: { ready: Promise.resolve({ pushManager: { getSubscription: () => Promise.resolve({ endpoint: 'x' }) } }) }
+  value: (() => { const reg = { pushManager: { getSubscription: () => Promise.resolve({ endpoint: 'x' }) } }; return { ready: Promise.resolve(reg), getRegistration: () => Promise.resolve(reg) } })()
 })
 window.PushManager = class {}
 window.Notification = { permission: 'granted' }

@@ -77,7 +77,10 @@ function ClaimDeviceSheet({ close }) {
     <Button variant="ghost" className="dim" onClick={close}>{t('Cancelar')}</Button>
   </>
 }
-import { pushSupported, enablePush, disablePush, sendTestPush } from '../lib/push.js'
+import { enablePush, disablePush, sendTestPush } from '../lib/push.js'
+import { unblockSteps } from '../lib/notif-ask.js'
+import { usePushStatus, useNotifReasons, joinReasons } from '../components/notif/usePushStatus.js'
+import { iosInstallSheet } from '../components/notif/IosInstallSheet.jsx'
 import { wakeLockSupported } from '../lib/wakelock.js'
 import { errorText } from '../lib/errors.js'
 import { classesApi, reminderLabel, REMINDER_OPTIONS as CLASS_REMINDER_OPTIONS } from '../lib/classes.js'
@@ -700,9 +703,11 @@ function ClassReminderDefaults({ toast }) {
 }
 
 function PushCard({ S, update, toast }) {
-  const [on, setOn] = useState(false)
   const [busy, setBusy] = useState(false)
-  const supported = pushSupported()
+  // Estado real del dispositivo (permiso + suscripción): 'on' | 'off' | 'denied' | 'ios-install' | 'unsupported'.
+  const status = usePushStatus()
+  const on = status === 'on'
+  const reasons = useNotifReasons()
   // Con un plan asignado por el gym (Cuotas v1), el vencimiento y su aviso los maneja el gym:
   // el recordatorio manual de cuota se reemplaza por esta fila de solo lectura. Con cuotas
   // apagado en el gym, el recordatorio manual vuelve para todos (!billingEnabled || !hasPlan).
@@ -712,16 +717,11 @@ function PushCard({ S, update, toast }) {
   const planRow = hasPlan && <Row icon="calendar" iconTint="var(--teal)" title={t('Cuota del gym')} subtitle={billing.planName || null}
     value={billing.dueDate ? t('Vence el {0}', fmtDateDMY(billing.dueDate)) : null} />
 
-  useEffect(() => {
-    if (!supported) return
-    navigator.serviceWorker.ready.then(reg => reg.pushManager.getSubscription()).then(sub => setOn(!!sub)).catch(() => {})
-  }, [supported])
-
   const toggle = async v => {
     setBusy(true)
     try {
-      if (!v) { await disablePush(); setOn(false); toast(t('Notifications off')) }
-      else { await enablePush(); setOn(true); toast(t('Notifications on')) }
+      if (!v) { await disablePush(); toast(t('Notifications off')) }
+      else { await enablePush(); toast(t('Notifications on')) }
     } catch (e) { toast(errorText(e, t('Could not change notification settings'))) }
     setBusy(false)
   }
@@ -731,10 +731,20 @@ function PushCard({ S, update, toast }) {
       toast(errorText(e, t('Test failed')))
     }
   }
+  const unblock = () => useUI.getState().openSheet(close => <>
+    <h3>{t('Cómo desbloquear los avisos')}</h3>
+    <p className="muted">{t('Los bloqueaste en este navegador, así que la app no puede volver a pedirlos. Se cambia desde acá:')}</p>
+    <ol className="notif-step-list">{unblockSteps().map(s => <li key={s}>{s}</li>)}</ol>
+    <Button variant="primary" onClick={close}>{t('Entendido')}</Button>
+  </>)
 
-  if (!supported) return (
+  if (status === 'unsupported' || status === 'ios-install' || status === 'denied') return (
     <Section title={t('Notifications')}>
-      <Row icon="bellSlash" iconTint="var(--grey)" title={t('Not supported in this browser.')} />
+      {status === 'unsupported' && <Row icon="bellSlash" iconTint="var(--grey)" title={t('Not supported in this browser.')} />}
+      {status === 'ios-install' && <Row icon="bellSlash" iconTint="var(--grey)" title={t('Instalá la app para recibir avisos')}
+        subtitle={t('En iPhone los avisos llegan solo con la app en tu pantalla de inicio.')} accessory="chevron" onClick={iosInstallSheet} />}
+      {status === 'denied' && <Row icon="bellSlash" iconTint="var(--red)" title={t('Bloqueadas en este navegador')}
+        subtitle={t('Tocá para ver cómo desbloquearlas.')} accessory="chevron" onClick={unblock} />}
       {planRow}
     </Section>
   )
@@ -747,8 +757,8 @@ function PushCard({ S, update, toast }) {
           (S.reminder?.tz ? ' ' + t('Timezone: {0} (auto-detected, updates if you travel).', S.reminder.tz) : '')
         : null}
     >
-      <Row icon="bell" iconTint="var(--red)" title={t('Push notifications')} subtitle={t('Rest-timer alerts, even if the app is closed.')}>
-        <Switch checked={on} disabled={busy} onChange={toggle} />
+      <Row icon="bell" iconTint="var(--red)" title={t('Push notifications')} subtitle={t('Te avisamos {0}.', joinReasons(reasons))}>
+        <Switch checked={on} disabled={busy || status == null} onChange={toggle} />
       </Row>
       {on && (
         <Row icon="calendar" iconTint="var(--orange)" title={t('Workout day reminder')}>

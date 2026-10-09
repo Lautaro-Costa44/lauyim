@@ -30,6 +30,7 @@ import { getUpdater } from './lib/update.js'
 import { CHECKIN_ROUTE, getCheckinToken } from './lib/checkin-device.js'
 import { clearIosReoffer, markIosReoffer, markNotifStepDone, notifStepFor } from './lib/notif-step.js'
 import { isStaffUser } from './lib/permissions.js'
+import { syncPush } from './lib/push.js'
 // Keep every authenticated screen out of the initial payload. The service worker
 // caches each chunk after first use, so repeat visits remain instant without
 // forcing a large first download on mobile connections.
@@ -150,6 +151,15 @@ function Shell() {
   // que quedar prendida (el mismo Wake Lock que Ajustes → "Mantener la pantalla encendida").
   useWakeLock((!!S.active && S.keepAwake !== false) || loc.pathname === CHECKIN_ROUTE)
   useWorkoutPresence(signedIn, S.active?.id)
+  // Con el permiso ya dado, la suscripción de este dispositivo al día (lib/push.js). También al
+  // volver a la app: si desbloqueó los avisos desde el navegador, se activan solos.
+  useEffect(() => {
+    if (!user?.id) return
+    const run = () => { if (document.visibilityState === 'visible') syncPush(user.id) }
+    run()
+    document.addEventListener('visibilitychange', run)
+    return () => document.removeEventListener('visibilitychange', run)
+  }, [user?.id])
 
   // La configuración del backend es la única fuente de verdad para invitados.
   const allowGuest = guestAllowed(config)

@@ -14,6 +14,7 @@ import { Button } from './ui.jsx'
 import BodyMap from './BodyMap.jsx'
 import Icon from './Icon.jsx'
 import { GearButton } from './TeacherClass.jsx'
+import { maybeAskNotif } from './notif/NotifAskSheet.jsx'
 
 const ui = () => useUI.getState()
 const WEEKDAY_PLURAL = ['domingos', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábados']
@@ -42,6 +43,8 @@ export async function classAction(occ, { cancelHours = 2, onChange } = {}) {
       const { booking } = await classesApi.book(occ)
       toast(booking.status === 'booked' ? t('Te anotaste a {0}', occ.name) : t('Quedaste en la lista de espera (n.º {0})', booking.waitlistPos))
       onChange && onChange()
+      // Justo ahora los avisos sirven: el recordatorio de la clase o el lugar que se libera.
+      maybeAskNotif(booking.status === 'booked' ? 'class' : 'waitlist')
     }
   } catch (e) { toast(bookingErrorText(e, t('No se pudo anotar'))) }
 }
@@ -99,6 +102,7 @@ function ClassDetail({ occ: initial, today, tz, cancelHours, onChange, close }) 
       const [text, ...args] = bookWeekText(r)
       ui().toast(r.limited ? t('{0}. {1} no entraron por el límite de tu plan.', t(text, ...args), r.limited) : t(text, ...args))
       await refresh()
+      maybeAskNotif('class')
     } catch (e) { ui().toast(bookingErrorText(e, t('No se pudo anotar'))) }
     setBusy(false)
   }
@@ -111,6 +115,7 @@ function ClassDetail({ occ: initial, today, tz, cancelHours, onChange, close }) 
       const days = t(WEEKDAY_PLURAL[slot.weekday])
       ui().toast(on ? t('Te anotamos todos los {0} a las {1}', days, slot.start) : t('Ya no te anotamos los {0} a las {1}', days, slot.start))
       await refresh()
+      if (on) maybeAskNotif('class')
     } catch (e) { mark(!on); ui().toast(errorText(e, t('No se pudo guardar'))) }
   }
   const otherDates = week.bookable.filter(o => o.key !== occ.key)
