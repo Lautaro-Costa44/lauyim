@@ -19,6 +19,7 @@ import { classesByDate, classOverlap } from '../lib/classes.js'
 import { isClassWorkout } from '../lib/workout-history.js'
 import { loadOfRoutine, MUSCLE_NAME } from '../lib/muscles.js'
 import { streakSheet } from '../components/StreakSheet.jsx'
+import ClosureBanner from '../components/closures/ClosureBanner.jsx'
 
 
 // Home = what to do now + a quick glance. Deep charts & history live in Stats.
@@ -124,6 +125,8 @@ export default function Home() {
         <button className="iconbtn" data-tour="settings-btn" onClick={() => nav('/settings')} aria-label={t('Settings')}><Icon name="gear" /></button>
       </div>
     </div>
+
+    <ClosureBanner />
 
     {/* Tu semana: progreso, racha (la llama abre su hoja), los días con sus íconos y Hoy. */}
     <div className="card week-card">

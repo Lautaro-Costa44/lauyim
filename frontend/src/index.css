@@ -2515,3 +2515,12 @@ button.wh-row{font:inherit;color:inherit;border:0;cursor:pointer}
 .day-menu button.danger{color:var(--red)}
 .day-closed{display:flex;align-items:center;gap:8px;margin:-6px 0 12px;padding:9px 12px;border-radius:var(--r-sm);background:color-mix(in srgb, var(--orange) 14%, transparent);color:var(--orange)}
 .day-rest{margin-top:4px}
+
+/* Cierres del gimnasio: aviso del día (cartel) y banner de Inicio */
+.closure-notice{text-align:center;display:flex;flex-direction:column;gap:8px;align-items:stretch}
+.closure-notice-icon{font-size:34px;color:var(--orange)}
+.closure-notice h3{margin:4px 0 0}
+.closure-banner{display:flex;align-items:center;gap:10px;padding:10px 12px;margin:0 0 12px;border-radius:12px;
+  background:color-mix(in srgb,var(--orange) 14%,transparent);border:1px solid color-mix(in srgb,var(--orange) 45%,transparent)}
+.closure-banner>.icn{color:var(--orange);font-size:18px;flex:none}
+.closure-banner b{color:var(--orange)}
