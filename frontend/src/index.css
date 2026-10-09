@@ -2548,6 +2548,9 @@ button.wh-row{font:inherit;color:inherit;border:0;cursor:pointer}
 .closure-sheet .chips{flex-wrap:wrap}
 .cal-d .cal-lock{width:11px;height:11px;color:var(--orange)}
 .closure-toggle{display:flex;align-items:center;gap:10px;padding:10px 12px;margin:8px 0;border-radius:12px;background:var(--surface-2)}
+/* El texto ocupa el ancho y el interruptor (o el botón) queda contra el borde derecho. */
+.closure-toggle>.grow,.closure-row>.grow,.closure-banner>.grow{flex:1;min-width:0}
+.closure-toggle>.sw{flex:none}
 .closure-days{width:80px;margin-top:6px}
 /* Celular: botones apilados, el principal arriba. PC: en fila, a la derecha. */
 .closure-actions{display:flex;flex-direction:column-reverse;gap:8px;margin-top:14px}
