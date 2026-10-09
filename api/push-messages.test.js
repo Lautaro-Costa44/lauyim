@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { billingDuePush, dayReminderPush, gymFeePush, restTimerPush, testPush, closureAnnouncePush, closureReopenPush } from './push-messages.js';
+import { billingDuePush, dayReminderPush, gymFeePush, restTimerPush, testPush, closureAnnouncePush, closureReopenPush, supplementReminderPush } from './push-messages.js';
 
 test('localizes every server-generated notification in Spanish', () => {
   assert.deepEqual(restTimerPush('es'), {
@@ -184,4 +184,12 @@ test('closureAnnouncePush y closureReopenPush', () => {
   assert.equal(reopen.title, 'Al final el gimnasio abre mañana');
   assert.equal(reopen.tag, 'gym-closure-2026-10-10');
   assert.equal(closureReopenPush({ from: '2026-10-09', today: '2026-10-09' }).title, 'Al final el gimnasio abre hoy');
+});
+
+test('supplementReminderPush: nombre del catálogo, dosis por toma y abre Nutrición', () => {
+  const p = supplementReminderPush({ catalogId: 'betaalanina', dose: 3.2, unit: 'g', doses: 2 });
+  assert.equal(p.title, 'Beta-alanina: te falta la de hoy');
+  assert.equal(p.body, '1,6 g. Tocá para marcarla.');
+  assert.equal(p.data.redirectUrl, '/#/nutricion');
+  assert.equal(supplementReminderPush({ catalogId: null, name: 'Ashwagandha', dose: null }).title, 'Ashwagandha: te falta la de hoy');
 });
