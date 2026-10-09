@@ -111,17 +111,16 @@ function PushNotificationCard() {
   )
 }
 
-// Hora del gym desde la que salen el aviso de vencimiento y el recordatorio manual de cuota.
-// Se guarda sola: un reloj con flechas dispara varios cambios seguidos, así que espera a que
-// el valor se quede quieto antes de mandarlo.
-function NotifyHourCard() {
+// Una hora del gym (gym_tz) que se guarda sola: la de los avisos de cuota o la del aviso de un cierre.
+// Un reloj con flechas dispara varios cambios seguidos, así que espera a que el valor se quede quieto.
+function NotifyHourCard({ field, name, title, help }) {
   const toast = useUI(s => s.toast)
   const [hour, setHour] = useState(null)
   const saved = useRef(null)
   const timer = useRef(null)
   useEffect(() => {
     api('/api/admin/notifications/settings')
-      .then(d => { saved.current = d.billing_notify_hour; setHour(d.billing_notify_hour) })
+      .then(d => { saved.current = d[field]; setHour(d[field]) })
       .catch(e => toast(errorText(e, t('Failed to load'))))
     return () => clearTimeout(timer.current)
   }, [])
@@ -130,22 +129,25 @@ function NotifyHourCard() {
     clearTimeout(timer.current)
     if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(value) || value === saved.current) return
     timer.current = setTimeout(() => {
-      api('/api/admin/notifications/settings', { method: 'PUT', body: JSON.stringify({ billing_notify_hour: value }) })
-        .then(d => { saved.current = d.billing_notify_hour; toast(t('Horario de avisos guardado')) })
+      api('/api/admin/notifications/settings', { method: 'PUT', body: JSON.stringify({ [field]: value }) })
+        .then(d => { saved.current = d[field]; toast(t('Horario de avisos guardado')) })
         .catch(e => toast(errorText(e, t('Failed to save setting'))))
     }, 600)
   }
   return <div className="card">
     <div className="row between" style={{ gap: 12 }}>
-      <h3 style={{ margin: 0 }}>{t('Horario de avisos de cuota')}</h3>
+      <h3 style={{ margin: 0 }}>{title}</h3>
       {hour == null ? <span className="dim small">{t('Loading…')}</span>
-        : <input {...NO_AUTOFILL} name="app-admin-billing-notify-hour" type="time" className="timef" aria-label={t('Horario de avisos de cuota')}
+        : <input {...NO_AUTOFILL} name={name} type="time" className="timef" aria-label={title}
           value={hour} onChange={e => change(e.target.value)} />}
     </div>
-    <div className="small muted" style={{ marginTop: 8 }}>{t('Se usa para el aviso de vencimiento y el recordatorio de cuota')}</div>
+    <div className="small muted" style={{ marginTop: 8 }}>{help}</div>
   </div>
 }
 
 export default function Notificaciones() {
-  return <div className="admin-cards"><PushNotificationCard /><NotifyHourCard /></div>
+  return <div className="admin-cards"><PushNotificationCard />
+    <NotifyHourCard field="billing_notify_hour" name="app-admin-billing-notify-hour" title={t('Horario de avisos de cuota')} help={t('Se usa para el aviso de vencimiento y el recordatorio de cuota')} />
+    <NotifyHourCard field="closure_notify_hour" name="app-admin-closure-notify-hour" title={t('Horario de avisos de cierre')} help={t('A esta hora sale el aviso a todos los socios cuando cerrás el gimnasio')} />
+  </div>
 }

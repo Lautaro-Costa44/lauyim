@@ -7,6 +7,7 @@ import { api } from '../../lib/api.js'
 import { t } from '../../lib/i18n.js'
 import Icon from '../../components/Icon.jsx'
 import { UserDetail } from './shared.jsx'
+import ClosuresCard from './closures/ClosuresCard.jsx'
 import { errorText } from '../../lib/errors.js'
 
 const dur = ms => { const m = Math.max(0, Math.floor(ms / 60000)); return m < 60 ? m + 'm' : Math.floor(m / 60) + 'h' + (m % 60) + 'm' }
@@ -95,6 +96,8 @@ export default function Resumen() {
       <div className="tile"><div className="l">{t('Active 7d')}</div><div className="v">{users ? activeCount : '—'}</div></div>
       <div className="tile"><div className="l">{t('Disabled')}</div><div className="v">{users ? disabledCount : '—'}</div></div>
     </div>}
+
+    <ClosuresCard />
 
     <div className="admin-split">
     {liveUsers.length > 0 && <div className="card" style={{ borderColor: 'var(--acc)' }}>

@@ -2533,3 +2533,11 @@ button.wh-row{font:inherit;color:inherit;border:0;cursor:pointer}
 .cal-wk.frozen{color:var(--orange);display:flex;align-items:center;justify-content:center}
 .streak-day.closed .streak-dot{color:var(--orange)}
 .cal-legend-closed{color:var(--orange)}
+.closure-sheet .closure-cols{display:grid;gap:12px}
+@media (min-width:768px){.closure-sheet{min-width:680px}.closure-sheet .closure-cols{grid-template-columns:1fr 1fr}}
+.closure-toggle{display:flex;align-items:center;gap:10px;padding:10px 12px;margin:8px 0;border-radius:12px;background:var(--surface-2)}
+.closure-days{width:80px;margin-top:6px}
+.closure-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:12px}
+.closures-card h3{gap:6px}
+.closures-card .closure-row{display:flex;align-items:center;gap:8px;padding-top:10px;margin-top:10px;border-top:1px solid var(--sep)}
+.adh-d.closed .adh-i{color:var(--orange)}
