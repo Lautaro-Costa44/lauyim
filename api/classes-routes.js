@@ -706,44 +706,6 @@ export function classRoutes(d) {
     json(res, 200, { ok: true });
   },
 
-  // ---- cierres del gimnasio (feriado, vacaciones) ----
-  'GET /api/admin/classes/closures': async (req, res) => {
-    const user = d.requireAdmin(req, res); if (!user) return;
-    json(res, 200, { closures: cdb.getClosures().filter(c => c.to >= now().date) });
-  },
-  'GET /api/admin/classes/closures/preview': async (req, res) => {
-    const user = d.requireAdmin(req, res); if (!user) return;
-    const q = new URL(req.url, 'http://x').searchParams;
-    const v = validateClosure({ from: q.get('from'), to: q.get('to') }, { today: now().date });
-    if (v.error) return json(res, 400, v);
-    const { occs, people } = closureImpact(v.value);
-    json(res, 200, { classes: occs.length, people: people.size });
-  },
-  'POST /api/admin/classes/closures': async (req, res) => {
-    const user = d.requireAdmin(req, res); if (!user) return;
-    const today = now().date;
-    const v = validateClosure(await readBody(req), { today, existing: cdb.getClosures() });
-    if (v.error) return json(res, v.error === 'closure_overlap' ? 409 : 400, v);
-    const { occs, people } = closureImpact(v.value);
-    // Las reservas se cancelan (sin promover a nadie); las fechas no se suspenden una por una: al
-    // reabrir, vuelven.
-    for (const occ of occs) if (occ.sessionId) cdb.cancelSessionBookings(occ.sessionId);
-    const closure = cdb.addClosure({ ...v.value, createdBy: user.id });
-    for (const [uid, items] of people) {
-      d.sendPush(uid, closurePush({ ...v.value, today, items: items.map(o => ({ name: o.type.name, start: o.start, date: o.date })) })).catch(() => {});
-    }
-    d.audit(req, 'classes.closure.add', { user, msg: `${auditRange(v.value)}${v.value.reason ? ' · ' + v.value.reason : ''}: ${auditCount(occs.length, 'clase', 'clases')}, ${auditCount(people.size, 'persona', 'personas')}` });
-    json(res, 200, { closure, notified: people.size, classes: occs.length });
-  },
-  'POST /api/admin/classes/closures/delete': async (req, res) => {
-    const user = d.requireAdmin(req, res); if (!user) return;
-    const { id } = await readBody(req);
-    const closure = cdb.getClosure(id);
-    if (!closure) return json(res, 404, { error: 'not_found' });
-    cdb.deleteClosure(id);
-    d.audit(req, 'classes.closure.delete', { user, msg: auditRange(closure) + (closure.reason ? ' · ' + closure.reason : '') });
-    json(res, 200, { ok: true });
-  },
   'GET /api/admin/classes/stats': async (req, res) => {
     const user = d.requireAdmin(req, res); if (!user) return;
     const weeks = new URL(req.url, 'http://x').searchParams.get('weeks') === '12' ? 12 : 4;

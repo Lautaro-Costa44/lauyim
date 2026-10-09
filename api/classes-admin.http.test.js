@@ -215,26 +215,6 @@ test('la reserva de un socio vista por el staff (historial en la ficha)', async 
   assert.equal((await call('owner', 'GET', '/api/admin/classes/booking?id=nada')).status, 404);
 });
 
-test('cierre del gimnasio: vista previa, cierra con un aviso por persona, no se superpone y se reabre', async () => {
-  const next = dayAfter(day, 7);   // el mismo día de la semana que viene (hay Pilates y Spinning con su horario)
-  const cal = (await call('owner', 'GET', `/api/admin/classes/calendar?from=${next}&days=1`)).body.occurrences.filter(o => !o.cancelled);
-  assert.ok(cal.length >= 1);
-  for (const o of cal) await call('recep', 'POST', '/api/admin/classes/sessions/add', { slotId: o.slotId, date: next, userId: 'socio2' });
-  assert.equal((await call('recep', 'GET', `/api/admin/classes/closures/preview?from=${next}&to=${next}`)).status, 403);
-  const preview = await call('owner', 'GET', `/api/admin/classes/closures/preview?from=${next}&to=${next}`);
-  assert.deepEqual(preview.body, { classes: cal.length, people: 1 });
-  const made = await call('owner', 'POST', '/api/admin/classes/closures', { from: next, to: next, reason: 'Feriado' });
-  assert.equal(made.status, 200, JSON.stringify(made.body));
-  assert.deepEqual([made.body.notified, made.body.closure.reason], [1, 'Feriado']);
-  const after = (await call('owner', 'GET', `/api/admin/classes/calendar?from=${next}&days=1`)).body;
-  assert.ok(after.occurrences.every(o => o.cancelled && o.closed === 'Feriado'));
-  assert.deepEqual(after.closures.map(c => c.from), [next]);
-  assert.equal((await call('owner', 'POST', '/api/admin/classes/closures', { from: next, to: dayAfter(next, 1) })).body.error, 'closure_overlap');
-  assert.deepEqual((await call('recep', 'GET', '/api/admin/classes/closures')).body.closures.map(c => c.id), [made.body.closure.id]);
-  assert.equal((await call('owner', 'POST', '/api/admin/classes/closures/delete', { id: made.body.closure.id })).status, 200);
-  assert.ok((await call('owner', 'GET', `/api/admin/classes/calendar?from=${next}&days=1`)).body.occurrences.some(o => !o.cancelled));
-});
-
 test('eliminar del horario: un día de la semana o la clase entera; avisa, saca las fechas de la vista y borra las fijas', async () => {
   const box = (await call('owner', 'POST', '/api/admin/classes/types/save', typeBody({ name: 'Box', room: 'Sala 7' }))).body.type;
   const a = (await call('owner', 'POST', '/api/admin/classes/slots/save', { classId: box.id, weekday, start: '06:00' })).body.slot;

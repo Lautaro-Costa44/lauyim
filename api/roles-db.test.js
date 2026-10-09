@@ -91,3 +91,18 @@ test('migración v2: Profesor/a con todas las clases (primera versión) pasa a s
   assert.ok(coach.includes('classes.own') && coach.includes('training.manage'));
   assert.ok(!coach.includes('classes.manage') && !coach.includes('classes.view_all'));
 });
+
+test('migración closures_perm_seeded: quien tenía classes.manage recibe gym.closures, una sola vez', () => {
+  const custom = db.saveRole({ name: 'Jefa de clases', color: '#112233', permissions: ['classes.manage'] });
+  db.getDatabase().prepare("DELETE FROM admin_settings WHERE key = 'closures_perm_seeded'").run();
+  db.closeDatabase();
+  db.initDatabase();
+  assert.ok(db.getRole(custom.id).permissions.includes('gym.closures'));
+  assert.ok(db.getRole('admin').permissions.includes('gym.closures'));
+  assert.ok(!db.getRole('reception').permissions.includes('gym.closures'));   // cobra, pero no cerraba
+  // Si el owner se lo saca, no vuelve.
+  db.saveRole({ id: custom.id, name: 'Jefa de clases', color: '#112233', permissions: ['classes.manage'] });
+  db.closeDatabase();
+  db.initDatabase();
+  assert.ok(!db.getRole(custom.id).permissions.includes('gym.closures'));
+});

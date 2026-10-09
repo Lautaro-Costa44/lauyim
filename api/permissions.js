@@ -22,6 +22,7 @@ export const PERMISSIONS = Object.freeze([
   { code: 'checkin.operate', area: 'Operación', name: 'Ingreso físico', help: 'La pantalla de ingreso del mostrador y sus dispositivos.', requires: [] },
   { code: 'notifications.send', area: 'Operación', name: 'Enviar notificaciones', help: 'Avisos a los socios y la configuración de recordatorios.', requires: [] },
   { code: 'stats.view', area: 'Operación', name: 'Resumen y estadísticas', help: 'La asistencia y la actividad del gimnasio.', requires: [] },
+  { code: 'gym.closures', area: 'Operación', name: 'Cerrar el gimnasio', help: 'Feriados y vacaciones: cerrar y reabrir, y avisar a los socios.', requires: [] },
   { code: 'audit.view', area: 'Operación', name: 'Registro de actividad', help: 'Quién hizo qué en el panel.', requires: [] },
   { code: 'roles.assign', area: 'Staff', name: 'Asignar roles', help: 'Dar y quitar roles (solo los que tienen permisos que esta persona también tiene).', requires: ['members.view'] }
 ]);
@@ -153,13 +154,9 @@ export const ROUTE_PERMISSIONS = Object.freeze({
   'POST /api/admin/classes/sessions/attendance': ['classes.attendance', 'classes.manage'],
   'POST /api/admin/classes/sessions/message': ['classes.attendance', 'classes.manage'],
   'GET /api/admin/classes/booking': ['classes.attendance', 'classes.view_all'],
-  'GET /api/admin/classes/closures': ['classes.attendance', 'classes.view_all'],
   'GET /api/admin/classes/member': ['classes.view_all', 'classes.book_members'],
   'POST /api/admin/classes/member/cancel': 'classes.book_members',
   'POST /api/admin/classes/member/penalty-reset': 'classes.manage',
-  'GET /api/admin/classes/closures/preview': 'classes.manage',
-  'POST /api/admin/classes/closures': 'classes.manage',
-  'POST /api/admin/classes/closures/delete': 'classes.manage',
   'GET /api/admin/classes/stats': ['classes.attendance', 'classes.view_all'],
   // Staff
   'GET /api/admin/roles': 'roles.assign',
