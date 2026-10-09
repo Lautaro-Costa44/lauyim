@@ -21,15 +21,24 @@ export const isDueOn = (item, iso, trainingDay) => item.status === 'active'
   && (item.days !== 'training' || !!trainingDay)
 export const takenOn = (logs, itemId, iso) => logs.reduce((n, l) => n + (l.itemId === itemId && l.date === iso ? 1 : 0), 0)
 const doses = item => Math.max(1, item.doses || 1)
+// Desde cuándo cuenta: el alta o la primera toma registrada, la que sea antes (quien agrega hoy lo
+// que ya venía tomando puede marcar los días anteriores y que sumen a la racha).
+export function sinceOf(item, logs) {
+  let since = String(item.createdAt || '').slice(0, 10) || '9999-12-31'
+  for (const l of logs) if (l.itemId === item.id && l.date < since) since = l.date
+  return since
+}
+const counting = (item, logs) => ({ ...item, status: 'active', createdAt: sinceOf(item, logs) })
 const complete = (item, logs, iso) => takenOn(logs, item.id, iso) >= doses(item)
 
 // Días seguidos completos entre los que tocaban. Hoy incompleto no corta (todavía hay tiempo).
 export function streakOf(item, logs, today, trainingDayOf) {
+  const it = counting(item, logs)
   let n = 0
   for (let i = 0; i < 400; i++) {
     const iso = addDays(today, -i)
-    if (iso < String(item.createdAt || '').slice(0, 10)) break
-    if (!isDueOn({ ...item, status: 'active' }, iso, trainingDayOf(iso))) continue
+    if (iso < it.createdAt) break
+    if (!isDueOn(it, iso, trainingDayOf(iso))) continue
     if (complete(item, logs, iso)) n++
     else if (i > 0) break
   }
@@ -37,10 +46,11 @@ export function streakOf(item, logs, today, trainingDayOf) {
 }
 
 export function adherence30(item, logs, today, trainingDayOf) {
+  const it = counting(item, logs)
   let due = 0, done = 0
   for (let i = 0; i < 30; i++) {
     const iso = addDays(today, -i)
-    if (!isDueOn({ ...item, status: 'active' }, iso, trainingDayOf(iso))) continue
+    if (!isDueOn(it, iso, trainingDayOf(iso))) continue
     const ok = complete(item, logs, iso)
     if (i === 0 && !ok) continue
     due++; if (ok) done++
@@ -49,7 +59,7 @@ export function adherence30(item, logs, today, trainingDayOf) {
 }
 
 export function dayLevel(item, logs, iso, trainingDayOf) {
-  if (!isDueOn({ ...item, status: 'active' }, iso, trainingDayOf(iso))) return 0
+  if (!isDueOn(counting(item, logs), iso, trainingDayOf(iso))) return 0
   const taken = takenOn(logs, item.id, iso), need = doses(item)
   if (!taken) return 0
   if (taken < need) return taken * 2 >= need ? 2 : 1
