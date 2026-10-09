@@ -171,3 +171,12 @@ export function closureReopenPush({ from, today }) {
 export function penaltyResetPush() {
   return { title: 'Ya podés volver a reservar clases', body: 'El gimnasio levantó tu penalización por ausencias.', tag: 'class-penalty', data: { redirectUrl: '/#/plan/clases' } };
 }
+
+// Recordatorio de un suplemento: "Creatina: te falta la de hoy" / "5 g. Tocá para marcarla."
+const SUPP_NAMES = { creatina: 'Creatina', cafeina: 'Cafeína', betaalanina: 'Beta-alanina', proteina: 'Proteína', electrolitos: 'Electrolitos', colageno: 'Colágeno', vitaminad: 'Vitamina D', hierro: 'Hierro', omega3: 'Omega-3', magnesio: 'Magnesio', multivitaminico: 'Multivitamínico' };
+const SUPP_UNITS = { g: 'g', mg: 'mg', ml: 'ml', caps: 'cápsulas', ui: 'UI', dosis: 'dosis' };
+export function supplementReminderPush({ name, catalogId, dose, unit, doses }) {
+  const label = SUPP_NAMES[catalogId] || name || 'Suplemento';
+  const per = dose > 0 ? `${Math.round((dose / Math.max(1, doses || 1)) * 100) / 100} ${SUPP_UNITS[unit] || unit || ''}`.trim().replace('.', ',') + '. ' : '';
+  return { title: `${label}: te falta la de hoy`, body: `${per}Tocá para marcarla.`, tag: `supp-${catalogId || 'propio'}`, data: { redirectUrl: '/#/nutricion' } };
+}

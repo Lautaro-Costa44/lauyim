@@ -162,6 +162,7 @@ import {
 import { membersCsv } from './member-export.js';
 import { classRoutes, classSettingsNow, classesAvailable } from './classes-routes.js';
 import { closureRoutes, closureNotifyHour, CLOSURE_NOTIFY_HOUR_SETTING } from './closures-routes.js';
+import { supplementRoutes, supplementsOn } from './supplements-routes.js';
 import { getClosures, getExtensions } from './closures-db.js';
 import { extensionDaysSince } from './closures.js';
 import {
@@ -831,10 +832,12 @@ const MEMBERSHIP_GATED = new Set([
   'POST /api/comidas', 'POST /api/comidas/grupo', 'GET /api/comidas', 'GET /api/comidas/historial',
   'DELETE /api/comidas/:id', 'DELETE /api/comidas/grupo/:grupo_id',
   'POST /api/plantillas', 'GET /api/plantillas', 'PUT /api/plantillas/:id', 'DELETE /api/plantillas/:id',
-  'POST /api/comidas-compuestas', 'GET /api/nutrition/goals'
+  'POST /api/comidas-compuestas', 'GET /api/nutrition/goals',
+  'GET /api/supplements', 'POST /api/supplements/ack', 'POST /api/supplements/items', 'POST /api/supplements/items/archive',
+  'POST /api/supplements/items/delete', 'POST /api/supplements/log', 'POST /api/supplements/log/delete'
 ]);
 
-const NUTRITION_ROUTES = new Set([...MEMBERSHIP_GATED].filter(k => /alimentos|comidas|plantillas|nutrition/.test(k)));
+const NUTRITION_ROUTES = new Set([...MEMBERSHIP_GATED].filter(k => /alimentos|comidas|plantillas|nutrition|supplements/.test(k)));
 
 const MAX_PLAN_PRICE = 100000000;      // pesos enteros
 const MAX_PLAN_DAYS = 3660;
@@ -2441,7 +2444,9 @@ const routes = {
       classes_enabled: classSettingsNow().enabled,
       classes_available: classesAvailable(),
       // Pasar el rol de dueño (OWNER_TRANSFER_ENABLED): el panel muestra la opción solo prendido.
-      owner_transfer_enabled: OWNER_TRANSFER_ENABLED
+      owner_transfer_enabled: OWNER_TRANSFER_ENABLED,
+      // Suplementos (interruptor del owner): sin él, Nutrición no muestra la tarjeta ni la guía.
+      supplements_enabled: supplementsOn()
     });
   },
 
@@ -4504,6 +4509,8 @@ const routes = {
   // Clases grupales (classes-routes.js).
   ...classRoutes({ json, readBody, readSession, requireAdmin, requireOwner, audit, sendPush, can, isMembershipBlocked, isStaff: user => !!user && isStaff(user), isInactiveAccount, gymTz: () => billingSettingsNow().gym_tz }),
   ...closureRoutes({ json, readBody, readSession, requireAdmin, audit, sendPush, can, isFeeExempt }),
+  // Suplementos (supplements-routes.js).
+  ...supplementRoutes({ json, readBody, readSession, requireOwner, audit }),
 };
 
 http.createServer(async (req, res) => {
