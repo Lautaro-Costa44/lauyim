@@ -154,6 +154,87 @@ describe('Modals sheet history accounting', () => {
     expect(historyMock.go).not.toHaveBeenCalled()
   })
 
+  // history.go es asíncrono. Cerrar la biblioteca (go -1) y abrir enseguida el diálogo de
+  // confirmar (pushState) hacía que el navegador retrocediera contando desde antes del push: al
+  // cerrar todo, el último "atrás" salía de la app a la página anterior (#/plan, #/progress).
+  it('defers a push while its own rewind is still pending, so the entries stay balanced', async () => {
+    await setSheets([sheet('editor'), sheet('picker')])
+    expect(historyMock.pushState).toHaveBeenCalledTimes(2)
+
+    await setSheets([sheet('editor')])
+    expect(historyMock.go).toHaveBeenLastCalledWith(-1)
+    await setSheets([sheet('editor'), sheet('confirm')])
+    expect(historyMock.pushState).toHaveBeenCalledTimes(2)   // todavía no: el go(-1) no llegó
+
+    await popstate()                                           // llega el go(-1)
+    expect(historyMock.pushState).toHaveBeenCalledTimes(3)
+    expect(mocks.state.sheets.map(item => item.id)).toEqual(['editor', 'confirm'])
+
+    await setSheets([sheet('editor')]); await popstate()
+    await setSheets([]); await popstate()
+    expect(historyMock.go).toHaveBeenCalledTimes(3)            // 3 entradas, 3 retrocesos
+  })
+
+  it('a sheet opened and closed before the pending rewind lands never touches history', async () => {
+    await setSheets([sheet('editor'), sheet('picker')])
+    await setSheets([sheet('editor')])
+    await setSheets([sheet('editor'), sheet('quick')])
+    await setSheets([sheet('editor')])
+    expect(historyMock.go).toHaveBeenCalledTimes(1)
+    await popstate()
+    expect(historyMock.pushState).toHaveBeenCalledTimes(2)
+    expect(mocks.state.sheets.map(item => item.id)).toEqual(['editor'])
+  })
+
+  it('if the rewind popstate never arrives, deferred pushes still happen after a second', async () => {
+    vi.useFakeTimers()
+    try {
+      await setSheets([sheet('editor'), sheet('picker')])
+      await setSheets([sheet('editor')])
+      await setSheets([sheet('editor'), sheet('confirm')])
+      expect(historyMock.pushState).toHaveBeenCalledTimes(2)
+      await act(async () => { vi.advanceTimersByTime(1000) })
+      expect(historyMock.pushState).toHaveBeenCalledTimes(3)
+      // Y una hoja nueva vuelve a empujar enseguida: nada quedó trabado.
+      await setSheets([sheet('editor'), sheet('confirm'), sheet('more')])
+      expect(historyMock.pushState).toHaveBeenCalledTimes(4)
+    } finally { vi.useRealTimers() }
+  })
+
+  it('two rewinds before their popstates arrive do not close the sheet underneath', async () => {
+    await setSheets([sheet('one'), sheet('two'), sheet('three')])
+    await setSheets([sheet('one'), sheet('two')])
+    await setSheets([sheet('one')])
+    await popstate()
+    await popstate()
+    expect(mocks.state.sheets.map(item => item.id)).toEqual(['one'])
+  })
+
+  // Un onBack que maneja el "atrás" (cerrar un menú, volver un paso) deja la hoja abierta: tiene
+  // que recuperar su entrada, o el próximo "atrás" sale de la app en vez de cerrarla.
+  it('a sheet whose onBack handled back gets its entry back, so the next back closes it', async () => {
+    await setSheets([sheet('day')])
+    let handled = 0
+    mocks.state.setSheetOnBack('day', () => { handled++; mocks.state.setSheetOnBack('day', null) })
+    await popstate()
+    expect(handled).toBe(1)
+    expect(mocks.state.sheets.map(item => item.id)).toEqual(['day'])
+    expect(historyMock.pushState).toHaveBeenCalledTimes(2)   // la entrada recuperada
+
+    await popstate()                                          // segundo "atrás": cierra la hoja
+    expect(mocks.state.sheets).toEqual([])
+    expect(historyMock.go).not.toHaveBeenCalled()
+  })
+
+  it('an onBack that closes its own sheet does not leak the recovered entry', async () => {
+    await setSheets([sheet('day')])
+    mocks.state.setSheetOnBack('day', () => mocks.state.closeSheet('day'))
+    await popstate()
+    expect(mocks.state.sheets).toEqual([])
+    expect(historyMock.pushState).toHaveBeenCalledTimes(2)
+    expect(historyMock.go).toHaveBeenCalledWith(-1)          // y se deshace al cerrarse
+  })
+
   it('accounts for a moved-on entry even when popstate has no current sheet', async () => {
     await setSheets([sheet('navigating')])
     locationMock.href = 'https://lauyim.test/#/home'

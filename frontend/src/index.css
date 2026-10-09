@@ -2460,3 +2460,58 @@ button.wh-row{font:inherit;color:inherit;border:0;cursor:pointer}
 .my-class-row .ss{font-size:13px;color:var(--label-2)}
 .my-class-row.cancelled .tt{text-decoration:line-through;color:var(--label-2)}
 .class-suspended .grow{flex:1;min-width:0}
+
+/* Cargar series de un día marcado (components/day/MarkedWorkoutEditor.jsx). Celular: acordeón a
+   pantalla completa; el relleno de abajo deja que hasta el último ejercicio suba sobre el teclado. */
+.mwe-head{display:flex;align-items:flex-start;gap:6px;margin-bottom:10px}
+.mwe-head h3{margin-bottom:2px}
+.mwe-item{background:var(--surface);border-radius:var(--r);margin:6px 0;scroll-margin-top:8px}
+.mwe-item.open{box-shadow:inset 0 0 0 1.5px var(--acc)}
+/* Grilla y no flex: el nombre ocupa lo que sobra y ⇄ 🗑 quedan siempre en sus columnas, a la derecha. */
+.mwe-item-head{display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:center;gap:2px;padding:2px 6px 2px 0}
+.mwe-item-main{width:100%;min-width:0;display:flex;flex-wrap:wrap;align-items:center;gap:2px 6px;padding:9px 12px;background:none;border:0;color:inherit;font:inherit;text-align:left;cursor:pointer}
+.mwe-sum{flex-basis:100%;font-size:12.5px;color:var(--label-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mwe-sum.ok{color:var(--acc)}
+.mwe-table{padding:0 12px 12px}
+.mwe-last{font-size:12px;color:var(--label-2);margin-bottom:6px}
+.mwe-tr{display:grid;grid-template-columns:22px repeat(var(--cols),minmax(0,1fr)) 32px;gap:6px;align-items:center;margin:5px 0}
+.mwe-th{font-size:11px;color:var(--label-3);text-transform:uppercase;text-align:center}
+.mwe-n{font-size:12px;color:var(--label-2);text-align:center}
+.mwe-cell{text-align:center;padding:8px 4px;min-width:0;background:var(--surface-2)}
+.mwe-x{color:var(--label-3)}
+.mwe-tools{display:flex;justify-content:space-between;flex-wrap:wrap;gap:6px;margin-top:6px}
+.mwe-add{margin-top:6px}
+.mwe-spacer{height:55vh}
+.mwe-foot{position:sticky;bottom:0;display:flex;gap:10px;padding:10px 0 2px;background:var(--bg-el);box-shadow:0 28px 0 var(--bg-el)}
+:root[data-theme="light"] .mwe-foot{background:var(--bg);box-shadow:0 28px 0 var(--bg)}
+.mwe-foot > .btn{flex:1}
+.mwe-foot.hidden{display:none}
+@media (min-width:700px){
+  .sheet.panel:has(.mwe.wide){width:min(780px,calc(100vw - 48px))}
+  .mwe.wide .mwe-body{display:grid;grid-template-columns:240px minmax(0,1fr);gap:14px;align-items:start}
+  .mwe.wide .mwe-detail{background:var(--surface);border-radius:var(--r);padding:12px 0 8px;position:sticky;top:0}
+  .mwe.wide .mwe-detail-head{display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:center;gap:4px;padding:0 8px 8px 12px}
+  .mwe.wide .mwe-keys{padding:0 12px}
+  .mwe.wide .mwe-foot{justify-content:flex-end}
+  .mwe.wide .mwe-foot > .btn{flex:0 0 auto;width:auto;padding-left:22px;padding-right:22px}
+}
+
+/* Hoja del día (components/day/DaySheet.jsx). */
+.day-tocaba{margin:-8px 0 12px}
+.day-mark-q{display:flex;gap:8px;margin:4px 0 12px}
+.day-mark-btn{flex:1;display:flex;align-items:center;justify-content:center;gap:6px;padding:14px 8px;border-radius:var(--r);border:0;background:var(--surface);color:var(--label);font:inherit;font-weight:600;cursor:pointer}
+.day-mark-btn.on{background:var(--acc);color:#000}
+.day-mark-card{background:var(--surface);border-radius:var(--r);padding:10px 12px;margin:10px 0}
+.day-mark > .btn{width:100%;margin-top:8px}
+.day-workout > .grow{cursor:pointer}
+.day-add{margin-top:10px}
+
+/* Hoja del día: menú de un entreno (portal en body, flota sobre todo y no corre nada), descanso y cierre. */
+.day-more{flex:none;color:var(--label-2)}
+.day-menu-back{position:fixed;inset:0;z-index:1000}
+.day-menu{position:fixed;z-index:1001;min-width:180px;padding:5px;border-radius:var(--r);background:var(--surface-2);box-shadow:0 14px 40px -8px rgba(0,0,0,.55);display:flex;flex-direction:column}
+.day-menu button{display:flex;align-items:center;gap:10px;padding:11px 12px;border:0;border-radius:var(--r-sm);background:none;color:var(--label);font:inherit;text-align:left;cursor:pointer}
+.day-menu button:hover,.day-menu button:active{background:var(--surface-3)}
+.day-menu button.danger{color:var(--red)}
+.day-closed{display:flex;align-items:center;gap:8px;margin:-6px 0 12px;padding:9px 12px;border-radius:var(--r-sm);background:color-mix(in srgb, var(--orange) 14%, transparent);color:var(--orange)}
+.day-rest{margin-top:4px}

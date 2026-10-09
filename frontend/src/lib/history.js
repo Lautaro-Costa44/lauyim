@@ -1,5 +1,5 @@
 // Pure helpers over the state object S (ported 1:1 from the vanilla app).
-import { todayISO, isoOf, weekKey, fmtNum, workoutTime, localDayStartOf, localNoonOf } from './format.js'
+import { todayISO, isoOf, weekKey, fmtNum, workoutTime } from './format.js'
 import { isCardio, isBodyweightEq } from './exercises.js'
 import { phaseForSet, modeForSet, modeForEntry, isWarmupRow, normalizeMode, extraVolumeOf, nextDropWeight, splitBurstReps } from './workout-model.js'
 const objectOf = value => value && typeof value === 'object' && !Array.isArray(value) ? value : {}
@@ -501,34 +501,6 @@ export function setsDoneActive(A) {
   return n
 }
 export const lastBW = S => (S.bodyweight.length ? S.bodyweight[S.bodyweight.length - 1] : null)
-
-/**
- * Workout record for a day marked done after the fact from the day sheet, with every planned
- * set completed at the routine's targets. It is stamped on its own local day `iso`: noon,
- * pulled back to an hour before `now` when `iso` is today and noon has not come yet, but never
- * before that day's local midnight. The one-hour span is the placeholder duration it always had.
- *
- * @param {string} iso Local calendar day 'YYYY-MM-DD' being marked done.
- * @param {object|null} routine Routine whose exercises become the entries, or null for freestyle.
- * @param {{ id: string, name: string, now?: number }} opts Record id, display name, and clock.
- * @returns {object} Workout record ready to push onto `S.workouts`.
- */
-export function markedDoneWorkout(iso, routine, { id, name, now = Date.now() } = {}) {
-  const start = Math.max(localDayStartOf(iso), Math.min(localNoonOf(iso), now - 3600000))
-  return {
-    id,
-    d: iso,
-    start,
-    end: start + 3600000,
-    name,
-    routineId: routine ? routine.id : null,
-    vol: 0,
-    entries: routine ? (routine.ex || []).map(cfg => ({
-      id: cfg.id,
-      sets: Array.from({ length: cfg.sets || 3 }, () => ({ done: true, r: cfg.reps || 10, w: cfg.weight || 0 })),
-    })) : [],
-  }
-}
 
 export function calcularHorasPromedioEntreno(workouts, now = Date.now()) {
   const cutoff = now - 30 * 86400000

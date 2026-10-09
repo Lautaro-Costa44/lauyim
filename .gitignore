@@ -31,3 +31,6 @@ docker-compose.yml
 
 # Restauración de prueba (scripts/restore.sh): tiene datos reales
 restore-test-data/
+
+# Brainstorming mockups (superpowers visual companion)
+.superpowers/

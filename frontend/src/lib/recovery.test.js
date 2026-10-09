@@ -20,8 +20,8 @@ import {
 import { EXDB, EXIDX, registerCustom } from './exercises.js'
 import { MUSCLES, musclesOf } from './muscles.js'
 import { fatigueStateOf } from './recovery-view.js'
-import { isoOf, localNoonOf, workoutTime } from './format.js'
-import { markedDoneWorkout } from './history.js'
+import { isoOf, localDayStartOf, localNoonOf, workoutTime } from './format.js'
+import { buildMarkedWorkout } from './marked-workout.js'
 
 const HOUR = 60 * 60 * 1000
 const DAY = 24 * HOUR
@@ -231,8 +231,10 @@ describe('RIR per set', () => {
 
   it('reads an old markDone record (w 0, r 10) as RIR 2 sets', () => {
     const iso = isoOf(new Date(NOW))
-    const marked = markedDoneWorkout(iso, { id: 'r', ex: [{ id: 'fx-chest', sets: 3 }] }, { id: 'm', name: 'r', now: NOW + 2 * HOUR })
-    expect(marked.entries[0].sets[0]).toEqual({ done: true, w: 0, r: 10 })
+    // Lo que guardaba el "marcar como realizado" viejo: cada serie de la rutina, hecha, 0 kg × 10.
+    const start = Math.max(localDayStartOf(iso), Math.min(localNoonOf(iso), NOW + HOUR))
+    const marked = { id: 'm', d: iso, start, end: start + HOUR, name: 'r', routineId: 'r', vol: 0,
+      entries: [{ id: 'fx-chest', sets: Array.from({ length: 3 }, () => ({ done: true, w: 0, r: 10 })) }] }
     const at = workoutTime(marked)
     const history = [prior(at - DAY), marked]
     expect(setsOf(fatigueOf(history, at).chest)).toBeCloseTo(3 * FALLBACK_SETS, 10)
@@ -663,8 +665,9 @@ describe('workout time for date and fatigue questions', () => {
     const live = { d: iso, start: localNoonOf(iso), end: localNoonOf(iso) + HOUR, entries: [{ id: WEIGHTED.id, sets }] }
     // a record the old markDone already saved: stamped an hour before it was marked, today
     const legacy = { d: iso, start: now - HOUR, end: now, entries: [{ id: WEIGHTED.id, sets }] }
-    // a record the fixed markDone saves today for the same day
-    const marked = markedDoneWorkout(iso, { id: 'r', ex: [{ id: WEIGHTED.id, sets: 2, reps: 8, weight: 80 }] }, { id: 'm', name: 'r', now })
+    // lo que guarda hoy el marcado con las series cargadas, para el mismo día
+    const marked = buildMarkedWorkout(iso, { routine: { id: 'r', ex: [{ id: WEIGHTED.id, sets: 2 }] }, name: 'r',
+      items: [{ id: WEIGHTED.id, cfg: { id: WEIGHTED.id }, rows: [{ w: '80', r: '8' }, { w: '80', r: '8' }] }] }, { id: 'm', now })
 
     const expected = fatigueOf([live], now)
     expect(fatigueOf([legacy], now)).toEqual(expected)
