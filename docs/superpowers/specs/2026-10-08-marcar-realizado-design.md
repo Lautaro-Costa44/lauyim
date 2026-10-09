@@ -1,93 +1,106 @@
 # Marcar un día como realizado: rediseño
 
-Fecha: 2026-10-08 · Rama: `feat/marcar-realizado`
+Fecha: 2026-10-08 · Rama: `feat/marcar-realizado` · Estado: implementado y probado en dev (tres rondas de prueba).
+
+Este documento describe el comportamiento final. Las decisiones que cambiaron durante las pruebas en dev están al final, en "Historial de decisiones".
 
 ## Por qué
 
-La hoja de un día (`DayOverride`, `frontend/src/sheets.jsx`) se abre desde la semana de Inicio y desde el calendario. Es la misma para cualquier fecha y mezcla planificar (qué toca) con registrar (qué hice). Auditoría:
+La hoja de un día (`DayOverride`, `frontend/src/sheets.jsx`) se abría desde la semana de Inicio y desde el calendario. Era la misma para cualquier fecha y mezclaba planificar (qué toca) con registrar (qué hice). Auditoría:
 
-1. **Pérdida de datos.** `keepClasses` borra los entrenamientos del día que no son clases al tocar "Marcar como realizado", "Descanso", otra rutina o "Volver al plan", sin confirmación. La tira de Inicio abre esta hoja aunque el día ya esté entrenado.
-2. **Datos inventados.** `markedDoneWorkout` carga todas las series de la rutina como hechas con las metas del plan. Como `defaultConfig` deja `weight: 0`, `lastEntryFor` toma esas series y la sesión siguiente arranca en 0 kg. La progresión, el 1RM, el esfuerzo y la recuperación leen éxitos que no existieron.
-3. **Forma incorrecta.** Ejercicios de tiempo y cardio quedan como `r: 10`, sin `sec`/`min`.
-4. **Rutina equivocada.** En un día sin rutina toma `routines[0]` sin preguntar.
-5. **Sin límite de fecha.** Se puede "realizar" un día futuro.
-6. **Duración inventada.** Siempre una hora: ensucia el total del mes y las horas promedio.
+1. **Pérdida de datos.** `keepClasses` borraba los entrenamientos del día que no son clases al tocar "Marcar como realizado", "Descanso", otra rutina o "Volver al plan", sin confirmación. La tira de Inicio abría esta hoja aunque el día ya estuviera entrenado.
+2. **Datos inventados.** `markedDoneWorkout` cargaba todas las series de la rutina como hechas con las metas del plan. Como `defaultConfig` deja `weight: 0`, `lastEntryFor` tomaba esas series y la sesión siguiente arrancaba en 0 kg. La progresión, el 1RM, el esfuerzo y la recuperación leían éxitos que no existieron.
+3. **Forma incorrecta.** Ejercicios de tiempo y cardio quedaban como `r: 10`, sin `sec`/`min`.
+4. **Rutina equivocada.** En un día sin rutina tomaba `routines[0]` sin preguntar.
+5. **Sin límite de fecha.** Se podía "realizar" un día futuro.
+6. **Duración inventada.** Siempre una hora: ensuciaba el total del mes y las horas promedio.
+7. **No se podía corregir** un entreno ya hecho con la app si se cargó algo mal.
 
-## Qué se construye
-
-### Reglas según la fecha
+## Reglas según la fecha
 
 | Día | Hoja |
 |---|---|
-| Pasado | Registrar (nueva). Nunca borra nada. |
-| Hoy | Registrar + planificar. |
-| Futuro | Solo planificar. Sin "marcar como realizado". |
+| Pasado | Registrar: "Entrené" / "Descansé", y lo que hubo ese día. Nunca borra nada sin confirmar. |
+| Hoy, sin entreno | Registrar y "Planificar hoy". |
+| Hoy, con entreno | Lo que hubo y "Agregar otro". Sin planificar: ya entrenaste. Una clase sola no cuenta como entreno para esto. |
+| Futuro | Solo planificar, más las clases reservadas. |
 
-Planificar (`setEstado`) deja de tocar `workouts`: solo cambia `dayPlan`. Así el bug de pérdida de datos queda cerrado también en hoy y futuro.
+Planificar (rutina, descanso, volver al plan) solo cambia `dayPlan`: nunca toca `workouts`.
 
-### Día pasado sin nada registrado (paso 1)
+**"Tocaba"** (pasado y hoy) muestra la rutina planificada para esa fecha (un override de rutina) o, si no hay, la del plan semanal. Un descanso puesto después, o un `estado: 'completado'` viejo, no cambian lo que tocaba. En "hoy" no se repite la línea "Plan semanal: …" de la sección de planificar.
 
-- Título con la fecha y "Tocaba: \<rutina del plan\>" (o "Descanso").
-- Elección grande: **Entrené** / **No entrené**.
-  - "No entrené" solo cierra la hoja: no escribe nada (no hay nada que borrar).
-- Con "Entrené": chips con las rutinas del socio, la planificada preseleccionada, más **Otra cosa** (libre, sin rutina). En un día sin rutina planificada no hay preselección: hay que elegir.
-- Tarjeta resumen de la elección: nombre, cantidad de ejercicios, "cuenta para tu racha".
-- Botón **Marcar como entrenado**: guarda el workout marcado sin series y cierra.
-- Enlace **＋ Cargar series (opcional)**: va al paso 2 con la rutina elegida.
+**Cierre del gimnasio:** si la fecha cae en un cierre (`closures` de `GET /api/classes`), arriba aparece "El gimnasio está cerrado · \<motivo\>". Ocultar el punto de "planificado" en la semana y el calendario queda para la tarea de cierres más allá de las clases.
 
-### Cargar series (paso 2)
+## Hoja del día
 
-- **Celular:** la hoja pasa a pantalla completa. Lista de ejercicios en **acordeón**, con uno abierto a la vez.
-  - Fila cerrada: nombre, etiqueta de tipo (peso corporal / tiempo / cardio) y resumen: "Sin series" o "✓ 3 series · 80 kg × 8, 8, 7".
-  - Fila abierta: "Última vez: …" y una tabla con una fila por serie. Las columnas dependen del modo (`modeOf`):
-    - reps: **kg · reps**; peso corporal: **+kg · reps** (`isBw`);
-    - tiempo: **seg** (+kg opcional); cardio: **min · km/h**.
-  - Columna de esfuerzo **RIR o RPE** solo si `effortOf(S) !== 'none'`. Usa los rangos de `EFFORT`.
-  - Arranca con tantas filas vacías como series tiene la rutina. Si no hay rutina ("Otra cosa"), con una.
-  - Los valores de la última vez (`lastEntryFor`) se muestran como placeholder gris, no como valor. **Igual que la última vez** los copia como valores.
-  - **＋ Serie** agrega una fila. **✕** en la fila la quita, sin confirmación porque es una fila.
-  - **⇄ Cambiar**: abre la biblioteca (`exercisePicker`) encima. Al tocar un ejercicio, la biblioteca se cierra (como en el entreno en vivo, `Workout.jsx:586`). Después aparece la confirmación dentro de la fila: "¿Cambiar X por Y?". Si tenía series: "Las N series que cargaste se borran: eran de otro ejercicio." Elegir el mismo ejercicio no hace nada.
-  - **✕ Quitar ejercicio**: confirmación dentro de la fila, siempre. "¿Quitar X?" + "Se pierden las N series que cargaste." (si las hay) + "La rutina no cambia."
-  - **＋ Agregar ejercicio**: `exercisePicker`, que se cierra al elegir. Se agrega al final, abierto.
-  - **Guardar entrenamiento**: guarda y cierra. Con todo vacío equivale a "Marcar como entrenado".
-- **Teclado (celular):**
-  - Abrir un ejercicio lo desplaza **arriba de todo** en el área con scroll (`block: 'start'`), así la tabla completa queda sobre el teclado.
-  - Al final de la lista hay un espacio de relleno para que el último ejercicio también pueda subir.
-  - Abrir un ejercicio **no** enfoca ninguna celda: el teclado aparece cuando se toca una.
-  - `inputMode="decimal"` en kg y km/h; `inputMode="numeric"` en reps, seg, min y esfuerzo. `enterKeyHint="next"`: Enter pasa a la celda siguiente y, al final de la fila, a la serie siguiente. En la última celda, `enterKeyHint="done"` cierra el teclado.
-  - El botón Guardar se oculta mientras hay un campo enfocado y el teclado está abierto (`--keyboard-offset > 0`).
-  - Se apoya en lo que ya existe en `lib/keyboard.js` (`--keyboard-offset`, `keepFocusedFieldVisible`).
-- **PC / tablet (≥ 700 px, el mismo corte que el panel centrado):** panel centrado de unos 780 px (`kind: 'panel'`) con **lista + detalle**.
-  - Izquierda: la lista de ejercicios y "＋ Agregar ejercicio".
-  - Derecha: la tabla del ejercicio elegido, con "⇄ Cambiar" y "✕ Quitar" como botones con texto.
-  - Tab recorre las celdas; Enter pasa a la serie siguiente.
-  - Abajo a la derecha: Cancelar / Guardar entrenamiento.
+### Sin nada ese día (pasado u hoy)
 
-### Día pasado ya entrenado
+- Dos botones grandes: **Entrené** / **Descansé**.
+  - **Descansé** guarda `dayPlan[iso] = { estado: 'descanso' }` y cierra.
+  - **Entrené** muestra chips con las rutinas del socio, la que tocaba preseleccionada, más **Otra cosa** (libre, sin rutina). Si ese día no tocaba nada, no hay preselección y no se puede marcar hasta elegir.
+- Tarjeta con la elección: nombre, cantidad de ejercicios, "cuenta para tu racha".
+- **Marcar como entrenado**: guarda un marcado sin series y cierra.
+- **＋ Cargar series (opcional)**: abre el editor con la rutina elegida.
 
-- Sección "Ese día": una tarjeta por workout y por clase (`classesByDate`).
-  - Registrado en vivo: "✓ Entrenado", con duración, series y volumen. Toca → `workoutDetailSheet`.
-  - Marcado: etiqueta "Marcado", "Sin series · cuenta para tu racha" o el resumen, y botón **＋ Cargar series**, que abre el paso 2 con lo que ya tenga. Toca la tarjeta → detalle.
-  - Clase: como hoy.
-- **＋ Agregar otro entrenamiento**: abre el paso 1.
-- No hay ninguna acción que borre. Para borrar se abre el detalle, que ya pide confirmación.
-- Un workout registrado en vivo no se edita desde acá.
+### Día pasado marcado como descanso (y sin nada más)
+
+"Descansaste este día" con **Deshacer** (borra el `dayPlan`) y **＋ Al final entrené** (abre el paso anterior; ahí "Descansé" pasa a ser **Cancelar**, que vuelve a la tarjeta de descanso).
+
+### Con entrenos o clases ese día
+
+- Sección "Ese día" (o "Hoy"): una tarjeta por entreno y por clase (`classesByDate`).
+  - Entreno con la app: etiqueta "Entrenado", duración, series y volumen.
+  - Marcado: etiqueta "Marcado", "Sin series · cuenta para tu racha" o "N series".
+  - Clase: como siempre; tocarla abre su detalle.
+- Tocar la tarjeta de un entreno abre su detalle.
+- Cada entreno tiene **"⋯"**, que abre un menú flotante: **Editar series** (o **Cargar series** en un marcado sin series) y **Borrar**.
+  - El menú se dibuja fuera de la hoja (portal en `body`, posición fija desde el botón): flota sobre lo demás sin correr nada y abre hacia arriba si abajo no entra en la pantalla. Tocar afuera lo cierra.
+  - **Borrar** confirma con el diálogo de la app (`confirmSheet`).
+- **＋ Agregar otro entrenamiento**: abre el paso "Entrené", con **Cancelar** en lugar de "Descansé".
 
 ### Desde el calendario
 
-Hoy `openDay` (`CalendarSheet`) abre el detalle directo si el día tiene un solo workout, y una lista si tiene varios. Con este cambio, **el calendario abre siempre la hoja del día**, igual que la tira de Inicio. Es un toque más para ver el detalle, pero se llega a "＋ Agregar otro entrenamiento" y "＋ Cargar series", y los dos lugares se comportan igual.
+El calendario abre siempre la hoja del día, igual que la tira de Inicio. El texto de ayuda dice "Tocá un día para ver lo que hiciste, marcarlo o planificarlo."
 
-### Hoy
+## Editor de series
 
-Arriba, lo de "registrar" (igual que un día pasado). Abajo, las opciones de planificar de hoy: rutinas, descanso, volver al plan. Planificar no toca los workouts.
+Uno solo para dos casos:
+- **Marcado:** cargar series a un día marcado (o al marcar). Nada es obligatorio; guardar todo vacío es marcar el día.
+- **Entreno ya hecho con la app:** corregir lo que se cargó mal. El encabezado dice "Corregí lo que cargaste. Los drop sets y las notas se conservan." y el botón es **Guardar cambios**. No deja guardar si no queda ninguna serie.
 
-### Futuro
+Un entreno en curso (el que se está haciendo ahora) no se edita acá.
 
-La hoja de planificar actual, sin "Marcar como realizado".
+### Celular
+
+- Pantalla completa (`openSheet` con `kind: 'panel'`, `fullScreen`, `locked` y `backGesture`).
+- Lista en **acordeón**, con un ejercicio abierto a la vez.
+  - Fila cerrada: nombre, etiqueta de tipo (peso corporal / tiempo / cardio) y resumen ("Sin series" o "✓ 3 series · 80×8, 80×8, 80×7").
+  - Encabezado de la fila en grilla: el nombre ocupa lo que sobra y **⇄** (ícono nuevo `swap`) y **🗑** quedan siempre en sus columnas a la derecha.
+- Tabla del ejercicio abierto: "Última vez: …" y una fila por serie. Columnas según `modeOf`:
+  - reps: **kg · reps**; peso corporal: **+kg · reps**;
+  - tiempo: **seg · kg**; cardio: **min · km/h**.
+  - Columna **RIR o RPE** solo si `effortOf(S) !== 'none'` (no en cardio).
+- Filas iniciales: las series que ya tiene el entreno o, en un marcado nuevo, tantas vacías como series tiene la rutina (mínimo una).
+- **"Última vez"** es la sesión anterior a ese día (`w.d < iso`): ni el entreno que se edita ni una posterior. Sus valores se muestran como placeholder y **Igual que la última vez** los copia, con el separador decimal del idioma.
+- **＋ Serie** agrega una fila; 🗑 en la fila la borra.
+- **⇄ Cambiar**: abre la biblioteca (`exercisePicker`) encima, que se cierra al elegir (como al reemplazar un ejercicio mientras se entrena). Después confirma con el diálogo de la app: "¿Cambiar X por Y?" y cuántas series se pierden. Elegir el mismo ejercicio no hace nada.
+- **🗑 Quitar**: confirma con el diálogo de la app, con cuántas series se pierden.
+- **＋ Agregar ejercicio**: biblioteca; se agrega al final, abierto.
+- **Teclado:**
+  - Abrir un ejercicio lo sube arriba de todo (`scrollIntoView({ block: 'start' })` en un efecto después del render), con relleno al final de la lista para que hasta el último pueda subir sobre el teclado.
+  - Abrir un ejercicio no enfoca ninguna celda.
+  - `inputMode` decimal en kg, km/h y esfuerzo; numérico en reps, seg y min. `enterKeyHint="next"`: Enter pasa a la celda siguiente; en la última, `done` cierra el teclado.
+  - "Guardar" se oculta mientras hay un campo enfocado.
+
+### PC / tablet (≥ 700 px, el corte del panel centrado)
+
+Panel centrado de unos 780 px con **lista + detalle**: la lista a la izquierda, la tabla del ejercicio elegido a la derecha con ⇄ y 🗑 en su encabezado. Tab recorre las celdas. Abajo: **Cancelar** / **Guardar**.
 
 ## Datos
 
-Un día marcado es un workout común con `marked: true`:
+### Un día marcado
+
+Un workout común con `marked: true`:
 
 ```js
 {
@@ -102,75 +115,91 @@ Un día marcado es un workout común con `marked: true`:
 }
 ```
 
-- **Servidor:** sin cambios ni migración. `marked` y `muscleLoad` viajan en la columna `meta` (`api/row-meta.js`, `WORKOUT_COLUMNS` no los incluye).
-- `start`: la regla actual de `markedDoneWorkout`. Mediodía del día; si es hoy y todavía no es mediodía, una hora antes de ahora, nunca antes de la medianoche local.
-- Series vacías (`isEmptySet` con la config del ejercicio) no se guardan. Un ejercicio sin series no va a `entries`.
-- `target`: la config del ejercicio en la rutina (modo, reps, etc.), como en un workout en vivo, para que `modeOf` y las etiquetas lean bien la sesión.
-- `muscleLoad`: para la recuperación de un marcado sin series. Son los músculos con carga de `loadOfRoutine(routine)`, con la misma forma que el `muscleLoad` de las clases (`recovery.js:307`). Con series cargadas no se escribe: la recuperación usa las series.
-- Marcar ya no escribe `dayPlan[iso] = { estado: 'completado' }`. Los valores viejos se siguen leyendo igual (`effectiveRoutineId`).
-- Editar un marcado existente (paso 2 desde "＋ Cargar series") reemplaza sus `entries`, `vol` y `muscleLoad`, y mantiene `id`, `d`, `start` y `routineId`.
+- **Servidor:** sin cambios ni migración. `marked` y `muscleLoad` viajan en la columna `meta` (`api/row-meta.js`).
+- `start`: mediodía del día; si es hoy y todavía no es mediodía, una hora antes de ahora; nunca antes de la medianoche local. Al editar se conserva el que tenía.
+- Series vacías (`isEmptySet`) no se guardan. Un ejercicio sin series no va a `entries`.
+- Esfuerzo: se guarda en la escala del ajuste. Uno que ya estaba en la otra escala (o con el ajuste apagado) se conserva tal cual: una serie lleva `rir` o `rpe` y nunca se reescribe (`effort.js`).
+- `muscleLoad`: para la recuperación de un marcado sin series. Son los músculos **principales** de la rutina (en cada ejercicio, el de más peso según `musclesOf`), con la misma forma que el de las clases (`recovery.js`). Con series no se escribe.
+- Marcar no escribe `dayPlan[iso] = { estado: 'completado' }`. Los valores viejos se siguen leyendo.
+
+### Un entreno ya hecho, corregido (`buildEditedWorkout`)
+
+- El borrador muestra solo las series de trabajo hechas. Cada fila guarda su serie original (`orig`); los calentamientos y las series sin completar quedan en `keep`.
+- Al guardar, cada serie conserva lo que el editor no muestra (drops, rest-pause, notas) y pisa solo los valores mostrados; un valor vaciado se borra de la serie; una fila vacía se borra.
+- Vuelven los calentamientos (adelante) y las series sin completar (al final).
+- Un ejercicio cambiado o agregado entra sin nada del anterior. Uno que se queda sin series de trabajo sale.
+- El resto del entreno no cambia: hora, duración, nota, récords festejados al terminar, objetivo de la semana. `vol` se recalcula.
+
+### Guardar en la lista (`putWorkout`)
+
+- Mismo id: se pisan los campos que arma el editor y se conserva el resto (la nota, el `weekTarget` que estampó la racha). `muscleLoad` solo queda si el nuevo lo trae.
+- Nuevo: se inserta en orden por hora, no al final ("la última vez" lee la lista en orden).
 
 ### Qué cuenta y dónde
 
-| Consumidor | Marcado sin series | Marcado con series |
+| Consumidor | Marcado sin series | Marcado con series / entreno corregido |
 |---|---|---|
 | Racha, semana, calendario, adherencia del profe | cuenta (día con workout) | cuenta |
 | Récords, 1RM, progresión, "última vez", esfuerzo | nada (no hay series) | las series cargadas (datos reales) |
-| Recuperación muscular | `muscleLoad` de la rutina | las series |
-| Total del mes (tiempo) | 0 | 0 |
-| Historial | etiqueta "Marcado" | etiqueta "Marcado" |
+| Recuperación muscular | `muscleLoad` (músculos principales) | las series |
+| Historial | "Marcado · Sin series" | "Marcado" con series y volumen / igual que antes |
 
-No hace falta filtrar en cada consumidor: todos leen series, y un marcado sin series no tiene.
+No hace falta filtrar en cada consumidor: todos leen series.
 
 ### Datos viejos
 
-Los workouts marcados antes de este cambio tienen series inventadas y no llevan marca. No se tocan: no hay forma segura de distinguirlos de uno real. Es una limitación conocida.
+Los workouts marcados antes de este cambio tienen series inventadas y no llevan marca. No se tocan: no hay forma segura de distinguirlos de uno real.
 
-## Detalle de un marcado
+## Detalle de un entreno
 
-`TrainingDetail` muestra la etiqueta "Marcado" y "＋ Cargar series" (abre el paso 2). Borrar sigue igual, con confirmación. "Repetir este entreno" solo aparece si tiene series.
+`TrainingDetail` suma **Editar series** a cualquier entreno ya hecho, y **Cargar series** a un marcado sin series (con la línea "Marcado a mano…"). "Repetir este entreno" solo aparece si tiene series. Borrar sigue igual, con confirmación.
+
+## Historial del navegador (`Modals.jsx`)
+
+Cada hoja abierta agrega una entrada (`pushState`) y cerrarla retrocede (`history.go`), así el "atrás" de Android cierra la hoja. `history.go` es asíncrono: cerrar la biblioteca y abrir enseguida el diálogo de confirmar hacía que el navegador retrocediera contando desde antes del push, y al cerrar todo la app volvía a la página anterior (#/plan, #/progress). Ahora:
+
+- Con un retroceso propio pendiente, la hoja nueva espera ese `popstate` para hacer su `pushState`.
+- Una hoja que se abre y se cierra antes de que llegue no toca el historial.
+- Los retrocesos pendientes se cuentan (antes era un solo indicador).
+
+Esto también arregla reemplazar un ejercicio mientras se entrena.
 
 ## Archivos
 
-- `frontend/src/components/day/DaySheet.jsx` (nuevo): hoja del día; elige el modo según la fecha. Reemplaza a `DayOverride`. `dayOverrideSheet` sigue exportado desde `sheets.jsx` con la misma firma, así los llamadores (`Home.jsx`, `CalendarSheet`) no cambian.
-- `frontend/src/components/day/MarkedWorkoutEditor.jsx` (nuevo): paso 2, el acordeón en celular y lista + detalle en PC.
-- `frontend/src/lib/marked-workout.js` (nuevo, puro): `buildMarkedWorkout`, el borrador del editor, el resumen de una fila y la inserción ordenada. Reemplaza a `markedDoneWorkout`, que se borra de `lib/history.js`. Va en un archivo propio porque `history.js` ya es muy grande.
-- `frontend/src/sheets.jsx`: se saca `DayOverride`; `setEstado` deja de tocar `workouts`; `TrainingDetail` suma lo del marcado.
-- Lista del historial: etiqueta "Marcado".
-- `frontend/src/index.css`: estilos de la hoja y del editor.
-- Textos: claves en español con `t('…')`. No hace falta tocar `locales/es.js`, porque una clave que no está se muestra tal cual.
+- `frontend/src/lib/marked-workout.js`: lógica pura (`dayMode`, `columnsFor`, `markedSetOf`, `markedRowOf`, `buildMarkedWorkout`, `buildEditedWorkout`, `markedDraft`, `markedItem`, `emptyRows`, `itemSummary`, `putWorkout`, `modeTag`). Reemplaza a `markedDoneWorkout`, que se borró de `lib/history.js`.
+- `frontend/src/components/day/DaySheet.jsx`: la hoja del día. `dayOverrideSheet` sigue exportado desde `sheets.jsx` con la misma firma.
+- `frontend/src/components/day/MarkedWorkoutEditor.jsx`: el editor y `workoutEditorSheet`.
+- `frontend/src/components/Modals.jsx`: historial balanceado.
+- `frontend/src/components/Icon.jsx`: ícono `swap`.
+- `frontend/src/sheets.jsx`: calendario, `WorkoutRow` ("Marcado", "Sin series"), `TrainingDetail`.
+- `frontend/src/index.css`: `.mwe-*` (editor) y `.day-*` (hoja, menú, descanso, cierre).
+- Textos: claves en español con `t('…')`; no hace falta tocar `locales/es.js`.
 
 ## Pruebas
 
-- **Unitarias** (`history.test.js`), sobre `buildMarkedWorkout`:
-  - sin series: `entries: []`, `vol: 0`, `end === start`, `muscleLoad` presente;
-  - series vacías descartadas;
-  - modos reps, peso corporal, tiempo y cardio;
-  - RIR o RPE según el ajuste;
-  - `routineId` null en "Otra cosa";
-  - `start` con la regla actual.
-- **Unitarias:** `lastEntryFor` y `bestWeightFor` no leen un marcado sin series; sí leen uno con series.
-- **Componente** (`DaySheet`):
-  - un día pasado con un workout en vivo no ofrece nada que lo borre;
-  - "Entrené" + "Marcar como entrenado" agrega un workout `marked` sin tocar los existentes;
-  - un día futuro no ofrece marcar;
-  - planificar hoy no borra workouts;
-  - sin rutina planificada no hay preselección.
-- **Componente** (editor):
-  - las confirmaciones de quitar y cambiar, y cancelar no cambia nada;
-  - cambiar borra las series;
-  - la columna de esfuerzo aparece solo con el ajuste;
-  - "Igual que la última vez" copia los valores;
-  - guardar con todo vacío equivale a marcar.
-- **Navegador** (dev):
-  - celular con el ejercicio de abajo y el teclado;
-  - PC lista + detalle con Tab y Enter;
-  - modo claro y oscuro.
+- `lib/marked-workout.test.js`: armado del marcado, edición de un entreno hecho, borrador, resumen, inserción, esfuerzo en la otra escala, músculos principales.
+- `components/day/DaySheet.test.jsx`: reglas por fecha, "Tocaba", descanso con deshacer, menú y borrar con confirmación, cierre, calendario, historial y detalle.
+- `components/day/MarkedWorkoutEditor.test.jsx`: celular y PC, confirmaciones con el diálogo, cambiar con la biblioteca, esfuerzo, "igual que la última vez", teclado, corregir un entreno hecho.
+- `components/Modals.test.jsx`: retroceso pendiente con push diferido, hoja abierta y cerrada antes del popstate, dos retrocesos seguidos.
+- Navegador: celular y PC, tema claro y oscuro, con clases activadas (reservas pasadas, de hoy y futuras, una falta y un feriado).
 
 ## Fuera de alcance
 
-- "Deshacer" en el aviso (`toast` no admite acciones; se borra desde el detalle).
-- Editar workouts registrados en vivo.
+- "Deshacer" en los avisos (`toast` no admite acciones).
 - Sugerencias de reemplazo (`ExerciseReplacementSheet`): solo la biblioteca.
 - Corregir los marcados viejos.
-- Calcular `prs` (los récords de la sesión) para un marcado: no hay festejo. Los récords derivados de series igual los cuentan.
+- Clases pasadas a las que faltaste o que no respondiste: no aparecen en la hoja del día (ya era así).
+- Ocultar el punto "planificado" en la semana y el calendario en un día de cierre (tarea de cierres).
+
+## Historial de decisiones
+
+- **Ronda 1 (diseño):** pasos en dos tiempos (A), editor en acordeón (A), PC con lista + detalle (A), reemplazar con la biblioteca como al entrenar.
+- **Ronda 2 (prueba en dev):**
+  - Hoy con entreno ya no ofrece planificar.
+  - Menú "⋯" flotante en vez de botones a la vista.
+  - Confirmar quitar/cambiar con el diálogo de la app en vez de una tarjeta dentro de la fila.
+  - Ícono ⇄ en vez del de recargar.
+  - Se pueden corregir entrenos ya hechos.
+  - "No entrené" pasó a ser "Descansé" y se guarda.
+  - Cartel de cierre y texto del calendario.
+- **Ronda 3:** historial del navegador balanceado (la vista de fondo saltaba a Plan/Stats) y encabezado del ejercicio en grilla.
