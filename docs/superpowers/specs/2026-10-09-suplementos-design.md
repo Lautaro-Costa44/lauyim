@@ -216,7 +216,7 @@ CREATE TABLE IF NOT EXISTS supplement_profile (
 - **Una toma = una fila** en `supplement_logs`. Varias tomas de un suplemento en un día = varias filas. Desmarcar = borrar la última fila de ese item y día.
 - API del socio (todas detrás del gate de membresía y de `supplements_enabled`, y solo para el propio usuario): `GET /api/supplements` (items + logs de los últimos 400 días + perfil), `POST/PUT /api/supplements/items`, `POST /api/supplements/items/archive`, `POST /api/supplements/items/delete`, `POST /api/supplements/log`, `POST /api/supplements/log/delete`, `POST /api/supplements/ack`. Validan rango de fechas (hoy − 7 … hoy en la zona del socio), unidades y tamaños.
 - **Offline**: caché local + cola (`enqueueRequest`) como las comidas.
-- **Borrar mis datos de salud** (`deleteHealthData`) borra también las tres tablas. **Exportar mis datos** (`api/member-export.js`) las incluye. Borrar la cuenta: `ON DELETE CASCADE`.
+- **Borrar mis datos de salud** (`deleteHealthData`) borra también las tres tablas. Borrar la cuenta: `ON DELETE CASCADE`. El CSV de socios del owner (`api/member-export.js`) **no** las incluye (es un dato de salud y el staff no lo ve en la etapa 1); no existe todavía una exportación de datos para el propio socio.
 - El staff **no** tiene endpoints en la etapa 1.
 
 ## Legal
@@ -233,7 +233,7 @@ CREATE TABLE IF NOT EXISTS supplement_profile (
 - `frontend/src/components/suplementos/` (nuevo): `SuplementosCard.jsx`, `GuiaSheet.jsx`, `FichaSuplemento.jsx`, `ConfigSuplemento.jsx`, `AvisoInicial.jsx`, `CafeinaRapida.jsx`.
 - `frontend/src/components/Heatmap.jsx`: separar `HeatmapGrid`.
 - `frontend/src/views/Nutricion.jsx`: montar la tarjeta.
-- `api/supplements.js` + `api/supplements-routes.js` (nuevos), `api/schema.sql`/`api/database.js` (tablas, `deleteHealthData`), `api/member-export.js`, `api/scheduler.js` (recordatorios), `api/permissions.js` si corresponde, ajuste del owner.
+- `api/supplements.js` + `api/supplements-db.js` + `api/supplements-routes.js` (nuevos), `api/database.js` (migración, `deleteHealthData`), `api/sync.js` (tomas sin conexión), `api/scheduler.js` (recordatorios), `api/push-messages.js`, ajuste del owner.
 - Admin: interruptor del owner.
 - Legal: `PrivacyNotice.jsx`, `TermsNotice.jsx`, `LEGAL_VERSION`.
 
