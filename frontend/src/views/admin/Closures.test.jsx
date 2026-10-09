@@ -93,7 +93,7 @@ describe('hoja de cierre', () => {
     closureSheet({ today: '2026-10-09', onChange })
     const { host, unmount } = await openLastSheet()
     expect(host.textContent).toContain('+1 día a 48 socios al día o por vencer (y 3 en prueba)')
-    await act(async () => { host.querySelector('[name="closure-extend"]').click() })
+    await act(async () => { host.querySelector('[aria-label="Correr los vencimientos"]').click() })
     await act(async () => { host.querySelector('[data-action="confirm-closure"]').click() })
     await tick()
     const post = apiMock.mock.calls.find(([u, o]) => u === '/api/admin/closures' && o?.method === 'POST')

@@ -13,8 +13,6 @@ import { Button } from '../../components/ui.jsx'
 import Icon from '../../components/Icon.jsx'
 import { classEditorSheet } from './clases/ClassEditor.jsx'
 import { sessionSheet, looseClassSheet, classSettingsSheet } from './clases/SessionSheet.jsx'
-import { closureSheet } from './closures/ClosureSheet.jsx'
-import { can } from '../../lib/permissions.js'
 
 const ui = () => useUI.getState()
 const toMin = time => Number(time.slice(0, 2)) * 60 + Number(time.slice(3, 5))
@@ -47,8 +45,6 @@ export default function AdminClases() {
 
   if (!data || !week) return <div className="page-loading" aria-busy="true" />
   const canManage = data.canManage
-  // Cerrar el gimnasio tiene permiso propio (la lista de cierres está en Resumen).
-  const canClose = can(user, 'gym.closures')
   const canCreate = canManage || data.canOwn
   const reload = () => { load(week); loadTypes() }
   const goWeek = n => { const w = addDays(week, 7 * n); setWeek(w); setDay(addDays(day, 7 * n)); load(w) }
@@ -75,7 +71,6 @@ export default function AdminClases() {
           {canCreate && editable.length > 0 && <Button size="sm" icon="calendar" onClick={() => looseClassSheet({ types: editable, today: data.today, onChange: reload })}>{t('Clase suelta')}</Button>}
           {editable.length > 0 && <Button size="sm" icon="list" onClick={listTypes}>{canManage ? t('Clases') : t('Mis clases')}</Button>}
           <Button size="sm" icon="chart" onClick={classStatsSheet}>{t('Estadísticas')}</Button>
-          {canClose && <Button size="sm" icon="lock" onClick={() => closureSheet({ today: data.today, onChange: reload })}>{t('Cerrar el gimnasio')}</Button>}
           {user?.owner && <Button size="sm" icon="gear" onClick={() => classSettingsSheet({ onChange: reload })}>{t('Ajustes')}</Button>}
         </div>
       </div>

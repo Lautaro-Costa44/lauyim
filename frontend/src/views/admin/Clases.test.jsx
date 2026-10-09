@@ -302,34 +302,15 @@ describe('compartir la lista', () => {
   })
 })
 
-describe('cerrar el gimnasio desde Clases', () => {
-  it('el botón abre la hoja nueva (vista previa de /api/admin/closures) y el día cerrado sigue marcado', async () => {
+describe('cierres en Clases', () => {
+  it('el día cerrado sigue marcado y no hay botón de cerrar (está en Resumen)', async () => {
     apiMock.mockImplementation(url => {
       if (url.startsWith('/api/admin/classes/calendar')) return Promise.resolve({ ...calendar(), closures: [{ id: 'k2', from: '2026-10-07', to: '2026-10-07', reason: 'Feriado' }] })
       if (url === '/api/admin/classes/types') return Promise.resolve({ types: [], slots: [], teachers: [], canManage: true, canOwn: true, settings: {} })
-      if (url.startsWith('/api/admin/closures/preview')) return Promise.resolve({ days: 1, classes: 7, booked: 42, appMembers: 80, announceAt: Date.now() })
       return Promise.resolve({})
     })
     await mount(<AdminClases />)
     expect(container.querySelector('.class-week-head span.closed').textContent).toBe('Mié 7')
-    expect(container.querySelector('.class-closure-row')).toBe(null)
-    await act(async () => { button(container, 'Cerrar el gimnasio').click() })
-    const { host, unmount } = await openLastSheet()
-    await act(async () => { await new Promise(r => setTimeout(r, 300)) })
-    expect(apiMock).toHaveBeenCalledWith('/api/admin/closures/preview?from=2026-10-08&to=2026-10-08')
-    expect(host.querySelector('.class-closure-preview').textContent).toContain('se suspenden 7 clases')
-    expect(host.querySelector('.class-closure-preview').textContent).toContain('42 personas con reserva: se les avisa ahora')
-    await unmount()
-  })
-
-  it('sin gym.closures no hay botón', async () => {
-    useStore.setState({ user: { id: 'profe', permissions: ['members.view', 'classes.attendance', 'classes.manage', 'classes.own', 'classes.view_all'] } })
-    apiMock.mockImplementation(url => {
-      if (url.startsWith('/api/admin/classes/calendar')) return Promise.resolve(calendar())
-      if (url === '/api/admin/classes/types') return Promise.resolve({ types: [], slots: [], teachers: [], canManage: true, canOwn: true, settings: {} })
-      return Promise.resolve({})
-    })
-    await mount(<AdminClases />)
     expect(button(container, 'Cerrar el gimnasio')).toBeFalsy()
   })
 })

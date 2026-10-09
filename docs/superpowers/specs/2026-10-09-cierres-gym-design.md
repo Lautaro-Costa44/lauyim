@@ -29,7 +29,7 @@ El cierre **nunca bloquea nada en la app**. El socio sigue entrenando en casa, c
   - Lista de próximos cierres y del que está en curso: fecha o rango, motivo y una línea de estado. Ejemplos: "48 avisados", "aviso: mañana 08:00", "vencimientos +1 día".
   - Botón **"＋ Cerrar"** y, en cada cierre, **"Reabrir"**. Los dos solo con el permiso `gym.closures`.
   - Sin cierres próximos: una sola línea, "No hay cierres programados", y el botón.
-- En **Admin → Clases** queda el botón "Cerrar el gimnasio" como acceso directo a la misma hoja, y el calendario de clases sigue mostrando los días cerrados.
+- **Admin → Clases** ya no tiene botón de cierre: se decidió en la prueba en dev (2026-10-09) que el único lugar sea Resumen. El calendario de clases sigue mostrando los días cerrados.
 
 ### Permiso
 
@@ -104,7 +104,7 @@ En **Admin → Notificaciones**, al lado de "Horario de avisos de cuota": **"Hor
 ### Tira de la semana, calendario y hoja del día
 
 - **Día cerrado:** fondo rayado con 🔒 y **sin** el punto de "planificado". Si ese día se entrenó igual, se ve verde como siempre.
-- **Calendario:** en la columna de la semana, una semana congelada muestra 🔒 en lugar de la llama.
+- **Calendario:** cada día cerrado lleva 🔒 en lugar del punto. En la columna de la semana, una semana congelada muestra 🔒 en lugar de la llama, también en las semanas que todavía no empezaron.
 - **Hoja del día (`DaySheet`):** el aviso "El gimnasio está cerrado · motivo" que ya existe ahora sale también sin el módulo de clases.
 - **Hoja de la racha:** explica el objetivo reducido o la pausa de la semana.
 

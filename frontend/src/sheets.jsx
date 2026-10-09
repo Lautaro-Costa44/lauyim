@@ -1393,17 +1393,18 @@ function Calendar({ start, close }) {
       cells.push(<button key={d} className={'cal-d' + (ws ? ' has' : '') + (iso === today ? ' today' : '') + (cls ? ' cls' : '') + (closed ? ' closed' : '')}
         style={cls ? { '--cls': cls.color || 'var(--acc)' } : undefined} onClick={() => openDay(iso)}
         aria-label={fmtDate(iso, true) + (ws ? ' · ' + t('Trained') : '') + (cls ? ' · ' + cls.name : '') + (closed ? ' · ' + t('cerrado') : '')}>
-        <span>{d}</span><i className={dotCls} /></button>)
+        <span>{d}</span>{closed ? <Icon name="lock" className="cal-lock" /> : <i className={dotCls} />}</button>)
     }
     // Fin de la semana (domingo): llama si se cumplió (de las semanas que ya empezaron).
     if (i % 7 === 6) {
       const sunday = new Date(y, mo, d)
       const mondayDate = new Date(y, mo, d - 6, 12)
       const begun = isoOf(mondayDate) <= today
-      const wk = begun ? evalWeek(st, mondayDate, closures) : null
-      const done = !!wk?.completa
-      // Semana congelada por un cierre (sin entrenar): un candado en lugar de la llama.
-      const frozen = !!wk?.congelada && !done
+      const wk = evalWeek(st, mondayDate, closures)
+      const done = begun && wk.completa
+      // Semana congelada por un cierre (sin entrenar): un candado en lugar de la llama, también en
+      // las que vienen (así se ve de antemano que esa semana no corta la racha).
+      const frozen = wk.congelada && !done
       cells.push(done
         ? <button key={'w' + i} type="button" className="cal-wk on" onClick={() => { close(); streakSheet({ onCalendar: () => calendarSheet(isoOf(sunday)) }) }} aria-label={t('Semana cumplida')}><Icon name="flame" /></button>
         : frozen ? <div key={'w' + i} className="cal-wk frozen" aria-label={t('Semana en pausa (gimnasio cerrado)')} title={t('Semana en pausa (gimnasio cerrado)')}><Icon name="lock" /></div>

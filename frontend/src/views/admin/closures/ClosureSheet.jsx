@@ -8,7 +8,7 @@ import { t } from '../../../lib/i18n.js'
 import { errorText } from '../../../lib/errors.js'
 import { closuresApi, closureLabel } from '../../../lib/closures.js'
 import { addDays } from '../../../lib/classes.js'
-import { Button, Segmented, TextField } from '../../../components/ui.jsx'
+import { Button, Segmented, Switch, TextField } from '../../../components/ui.jsx'
 import Icon from '../../../components/Icon.jsx'
 
 const ui = () => useUI.getState()
@@ -85,18 +85,18 @@ function Closure({ today, onChange, close }) {
             {preview.booked > 0 && <div>{t('{0} con reserva: se les avisa ahora', people(preview.booked))}</div>}
           </>}</div>
         </div>
-        {ready && <label className="closure-toggle">
+        {ready && <div className="closure-toggle">
           <div className="grow">{t('Avisar a todos los socios')}<div className="small muted">{t('{0} con la app', preview.appMembers)} · {whenText(preview.announceAt)}</div></div>
-          <input type="checkbox" role="switch" name="closure-notify" checked={notifyAll} onChange={e => setNotifyAll(e.target.checked)} />
-        </label>}
-        {ready && preview.extend && <label className="closure-toggle">
+          <Switch label={t('Avisar a todos los socios')} checked={notifyAll} onChange={setNotifyAll} />
+        </div>}
+        {ready && preview.extend && <div className="closure-toggle">
           <div className="grow">{t('Correr los vencimientos')}
             <div className="small muted">{extendDays === 1 ? t('+1 día a {0} al día o por vencer', members(preview.extend.members)) : t('+{0} días a {1} al día o por vencer', extendDays, members(preview.extend.members))}{preview.extend.trials ? ' ' + t('(y {0} en prueba)', preview.extend.trials) : ''}</div>
             {extendOn && preview.days > 1 && <input className="input closure-days" type="number" min={1} max={preview.days} value={extendDays} aria-label={t('Días a correr')}
               onChange={e => setExtendDays(Math.max(1, Math.min(preview.days, Number(e.target.value) || 1)))} />}
           </div>
-          <input type="checkbox" role="switch" name="closure-extend" checked={extendOn} onChange={e => setExtendOn(e.target.checked)} />
-        </label>}
+          <Switch label={t('Correr los vencimientos')} checked={extendOn} onChange={setExtendOn} />
+        </div>}
       </div>
     </div>
     <div className="closure-actions">
@@ -124,10 +124,10 @@ function Reopen({ c, canRevert, onChange, close }) {
     <h3>{t('¿Reabrir {0}?', closureLabel(c))}</h3>
     <p className="small muted">{t('Las clases de esos días vuelven a estar disponibles. Las reservas que se cancelaron no vuelven; las fijas se reservan solas de nuevo.')}</p>
     {c.notifyAll && !c.announcedAt && <p className="small muted">{t('El aviso a los socios todavía no salió: se cancela.')}</p>}
-    {canRevert && c.extended > 0 && <label className="closure-toggle">
+    {canRevert && c.extended > 0 && <div className="closure-toggle">
       <div className="grow">{c.extendDays === 1 ? t('Devolver el día corrido a {0}', members(c.extended)) : t('Devolver los {0} días a {1}', c.extendDays, members(c.extended))}</div>
-      <input type="checkbox" role="switch" name="closure-revert" checked={revert} onChange={e => setRevert(e.target.checked)} />
-    </label>}
+      <Switch label={t('Devolver los días corridos')} checked={revert} onChange={setRevert} />
+    </div>}
     <div className="closure-actions">
       <Button variant="ghost" className="dim" onClick={close}>{t('Cancel')}</Button>
       <Button variant="primary" onClick={go}>{t('Reabrir')}</Button>
