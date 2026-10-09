@@ -21,6 +21,13 @@ const { setLang } = await import('../lib/i18n.js')
 
 const tick = () => act(async () => { await new Promise(r => setTimeout(r, 20)) })
 const flush = async () => { for (let i = 0; i < 8; i++) await tick() }
+// Privacy.jsx y sheets.jsx se cargan con import() dinámico. En frío y con la suite completa en
+// paralelo, transformarlos tarda más que los 160 ms de flush(): se espera la condición, no un tiempo.
+async function until(cond, ms = 4000) {
+  const end = Date.now() + ms
+  while (!cond() && Date.now() < end) await tick()
+  expect(cond()).toBeTruthy()
+}
 const text = () => document.body.textContent
 // Las opciones del login son tarjetas: se buscan por su título.
 const button = label => [...document.querySelectorAll('button')].filter(b => b.textContent.trim() === label || b.querySelector('.login-option-t')?.textContent === label).at(-1)
@@ -35,6 +42,8 @@ async function mount(hash, state = {}) {
   document.body.appendChild(container)
   root = createRoot(container)
   await act(async () => { root.render(<App />) })
+  // El fallback del Suspense (vista lazy todavía cargando) desaparece al montar la vista.
+  await until(() => !container.querySelector('.page-loading'))
   await flush()
 }
 
@@ -96,7 +105,7 @@ describe('/privacidad', () => {
     const contact = [...document.querySelectorAll('.privacy-sect')].find(sct => sct.querySelector('h2').textContent === 'Contacto')
     expect(contact.textContent).toContain('privacidad@norte.com.ar')          // el gym, para datos personales
     await click(contact.querySelector('.privacy-support button'))
-    for (let i = 0; i < 20 && !document.querySelector('#modal-root h3'); i++) await tick()
+    await until(() => document.querySelector('#modal-root h3'))
     expect(document.querySelector('#modal-root h3').textContent).toBe('Reportar un problema')
   })
 
