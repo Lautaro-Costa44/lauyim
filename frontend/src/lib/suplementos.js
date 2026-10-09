@@ -1,0 +1,92 @@
+// Lógica pura de suplementos (docs/superpowers/specs/2026-10-09-suplementos-design.md): qué toca
+// cada día, racha, cumplimiento, niveles del heatmap, cafeína del día y etiquetas de dosis.
+import { fichaById, SLOTS, UNITS } from './suplementos-data.js'
+import { effectiveRoutineId } from './history.js'
+
+const dayNum = iso => Date.UTC(+iso.slice(0, 4), +iso.slice(5, 7) - 1, +iso.slice(8, 10)) / 86400000
+export const addDays = (iso, n) => new Date((dayNum(iso) + n) * 86400000).toISOString().slice(0, 10)
+export const canLogDate = (iso, today) => /^\d{4}-\d{2}-\d{2}$/.test(iso || '') && iso <= today && iso >= addDays(today, -7)
+
+const CAFFEINE_DAY_MAX = 400, CAFFEINE_SINGLE_REF = 200
+const round10 = n => Math.round(n / 10) * 10
+export function caffeineRange(weightKg) {
+  if (!(weightKg > 0)) return null
+  return { min: Math.min(CAFFEINE_DAY_MAX, round10(3 * weightKg)), max: Math.min(CAFFEINE_DAY_MAX, round10(6 * weightKg)), dayMax: CAFFEINE_DAY_MAX, singleRef: CAFFEINE_SINGLE_REF }
+}
+export const isOverCaffeine = total => total > CAFFEINE_DAY_MAX
+
+export const isTrainingDay = (S, iso) => !!effectiveRoutineId(S, iso) || (S?.workouts || []).some(w => w.d === iso)
+export const isDueOn = (item, iso, trainingDay) => item.status === 'active'
+  && iso >= String(item.createdAt || '').slice(0, 10)
+  && (item.days !== 'training' || !!trainingDay)
+export const takenOn = (logs, itemId, iso) => logs.reduce((n, l) => n + (l.itemId === itemId && l.date === iso ? 1 : 0), 0)
+const doses = item => Math.max(1, item.doses || 1)
+const complete = (item, logs, iso) => takenOn(logs, item.id, iso) >= doses(item)
+
+// Días seguidos completos entre los que tocaban. Hoy incompleto no corta (todavía hay tiempo).
+export function streakOf(item, logs, today, trainingDayOf) {
+  let n = 0
+  for (let i = 0; i < 400; i++) {
+    const iso = addDays(today, -i)
+    if (iso < String(item.createdAt || '').slice(0, 10)) break
+    if (!isDueOn({ ...item, status: 'active' }, iso, trainingDayOf(iso))) continue
+    if (complete(item, logs, iso)) n++
+    else if (i > 0) break
+  }
+  return n
+}
+
+export function adherence30(item, logs, today, trainingDayOf) {
+  let due = 0, done = 0
+  for (let i = 0; i < 30; i++) {
+    const iso = addDays(today, -i)
+    if (!isDueOn({ ...item, status: 'active' }, iso, trainingDayOf(iso))) continue
+    const ok = complete(item, logs, iso)
+    if (i === 0 && !ok) continue
+    due++; if (ok) done++
+  }
+  return due ? Math.round((done / due) * 100) : null
+}
+
+export function dayLevel(item, logs, iso, trainingDayOf) {
+  if (!isDueOn({ ...item, status: 'active' }, iso, trainingDayOf(iso))) return 0
+  const taken = takenOn(logs, item.id, iso), need = doses(item)
+  if (!taken) return 0
+  if (taken < need) return taken * 2 >= need ? 2 : 1
+  return streakOf(item, logs, iso, trainingDayOf) >= 7 ? 4 : 3
+}
+
+export function caffeineTotal(logs, items, iso) {
+  const caffeineItems = new Set(items.filter(i => i.catalogId === 'cafeina').map(i => i.id))
+  return Math.round(logs.filter(l => l.date === iso && (l.source || caffeineItems.has(l.itemId))).reduce((s, l) => s + (Number(l.amount) || 0), 0))
+}
+
+export function overDose(item, logs, iso) {
+  const max = fichaById(item.catalogId)?.dayMax
+  if (!max) return null
+  const total = logs.filter(l => l.itemId === item.id && l.date === iso).reduce((s, l) => s + (Number(l.amount) || 0), 0)
+  return total > max ? total : null
+}
+
+export const itemName = item => item.catalogId ? (fichaById(item.catalogId)?.name || item.name || '') : (item.name || '')
+const fmt = n => String(Math.round(n * 100) / 100).replace('.', ',')
+export const perTake = item => Math.round(((Number(item.dose) || 0) / doses(item)) * 100) / 100
+const unitLabel = (unit, n) => unit === 'caps' ? (n === 1 ? 'cápsula' : 'cápsulas') : unit === 'dosis' ? (n === 1 ? 'dosis' : 'dosis') : (UNITS.find(u => u.id === unit)?.label || unit || '')
+const scoops = n => { const halves = Math.round(n * 2); const whole = Math.floor(halves / 2); return (whole ? String(whole) : '') + (halves % 2 ? '½' : '') || '0' }
+export function doseLabel(item) {
+  const take = perTake(item)
+  if (doses(item) > 1) return `${doses(item)} tomas · ${fmt(take)} ${unitLabel(item.unit, take)} c/u`
+  if (item.scoopG > 0 && item.unit === 'g') return `${scoops(take / item.scoopG)} scoop · ${fmt(take)} g`
+  return `${fmt(take)} ${unitLabel(item.unit, take)}`
+}
+
+export const groupBySlot = items => SLOTS
+  .map(slot => ({ slot, items: items.filter(i => (i.slot || 'any') === slot.id) }))
+  .filter(g => g.items.length)
+
+export function adultStatus({ edad, adult }) {
+  if (Number(edad) > 0) return Number(edad) >= 18 ? 'adult' : 'minor'
+  if (adult === 1 || adult === true) return 'adult'
+  if (adult === 0 || adult === false) return 'minor'
+  return 'unknown'
+}
