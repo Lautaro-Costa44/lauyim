@@ -60,7 +60,7 @@ export function closureRoutes(d) {
   // Socio: todos los cierres (la racha mira semanas pasadas), solo lo público. Sin módulo de clases también.
   'GET /api/closures': async (req, res) => {
     const user = d.readSession(req);
-    if (!user) return json(res, 401, { error: 'unauthorized' });
+    if (!user) return json(res, 401, { error: 'No has iniciado sesión' });
     json(res, 200, { today: todayNow(), closures: kdb.getClosures().map(c => ({ id: c.id, from: c.from, to: c.to, reason: c.reason })) });
   },
 

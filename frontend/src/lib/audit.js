@@ -131,6 +131,8 @@ const LABELS = {
   'classes.penalty.reset': 'Levantó la penalización de un socio',
   'classes.closure.add': 'Cerró el gimnasio',
   'classes.closure.delete': 'Reabrió el gimnasio',
+  'gym.closure.add': 'Cerró el gimnasio',
+  'gym.closure.delete': 'Reabrió el gimnasio',
   'owner.classes.settings': 'Cambió los ajustes de clases'
 }
 
