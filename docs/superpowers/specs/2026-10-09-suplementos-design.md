@@ -45,7 +45,7 @@ Niveles, con color propio en la guía:
 
 Notas por suplemento (contenido a verificar contra fuente en la tarea de contenido):
 
-- **Creatina monohidrato**: la app sugiere **3–5 g/día**, todos los días (incluidos los de descanso). La fase de carga (≈20 g/día en 4 tomas, 5–7 días) **solo se explica en la guía**. Al agregar creatina por primera vez aparece un cartel: "¿Querés saturar más rápido? Mirá la fase de carga en la guía" (enlace a la sección).
+- **Creatina monohidrato**: la app sugiere **3–5 g/día**, todos los días (incluidos los de descanso). La fase de carga (≈20 g/día en 4 tomas, 5–7 días) **solo se explica en la guía**, y aclara que es **para cuando recién empezás** (o retomás después de semanas sin tomarla) y que es opcional (a las 3–4 semanas el resultado es el mismo). Al agregar creatina por primera vez, el formulario de alta muestra arriba un cartel: "¿Recién empezás? Mirá la fase de carga en la guía" (enlace a la sección).
 - **Cafeína**: rango calculado con el peso, **3–6 mg/kg**, con techo de **400 mg/día** en total. Consejo: empezar por lo bajo; tomas de más de 200 mg superan la referencia de EFSA para una sola toma. Momento: 30–60 min antes. No dentro de las 6 h previas a dormir. Fuentes de cafeína del día (ver "Cafeína del día").
 - **Beta-alanina**: dosis diaria y tamaño máximo de toma según ISSN 2015 (a verificar), varias tomas por día con comida, mínimo 4 semanas para notar efecto; el hormigueo (parestesia) es esperable e inofensivo.
 - **Proteína en polvo**: no tiene dosis propia; la meta es la de Nutrición. Registrar una toma la carga como comida (ver "Proteína").
@@ -61,21 +61,22 @@ Hoja completa con, arriba de todo, un **consejo de agua**:
 
 Se elige el valor según `S.genero`; si no hay dato, se muestran los dos.
 
-Después, la lista por nivel. Cada **ficha** tiene estas secciones, siempre en el mismo orden:
+Después, la lista por nivel, con color por nivel y "✓ la tomás" en los suplementos activos del socio. Cada **ficha** es **una sola página con scroll** (sin pestañas), con lo práctico primero y las precauciones siempre a la vista. Arriba: nombre, etiqueta de nivel ("FUNCIONA · AIS A") y una frase de qué es y qué logra. Después, siempre en este orden:
 
-1. **Qué es** (2–3 líneas).
-2. **Qué dice la evidencia**: nivel + una frase honesta ("mejora fuerza y masa muscular en entrenamiento de fuerza").
-3. **Para quién sirve / para quién no hace falta.**
-4. **Cómo tomarlo**, práctico y concreto:
+1. **Cómo tomarlo**, práctico y concreto (incluye el recuadro de fase de carga en la creatina):
    - Dosis (rango general; con el peso en cafeína; "la que te indicaron" en los de indicación profesional).
    - **Scoops**: "Fijate en la etiqueta cuántos gramos trae tu scoop" + equivalencia aproximada sin scoop (ej. creatina: 1 cucharadita de té al ras ≈ 3–5 g; aproximado, mejor scoop o balanza).
    - **Con qué**: cantidad de líquido y alternativas (agua, jugo, leche, yogur, batido, mezclado en una comida), según el suplemento. Ej. creatina: 1 scoop en 200–300 ml; disolver en el momento (disuelta por días se degrada); tibio se disuelve mejor.
    - **Cuándo**: momento del día o respecto del entreno.
    - **Si te olvidaste**: qué hacer (creatina: seguí al día siguiente, no dupliques).
-5. **Qué podés notar** (efectos esperables: creatina +1–2 kg de agua intramuscular las primeras semanas; beta-alanina hormigueo).
-6. **Precauciones y quién no debería tomarlo** (embarazo, lactancia, riñón, presión, medicación, menores), propias de cada suplemento.
-7. **Comprar con criterio**: sin marcas; buscar sello de control de terceros (Informed Sport / NSF Certified for Sport) y registro ANMAT.
-8. **Fuentes** y fecha de revisión.
+2. **Qué dice la evidencia**: nivel + una frase honesta ("mejora fuerza y masa muscular en entrenamiento de fuerza").
+3. **Para quién sirve / para quién no hace falta.**
+4. **Qué podés notar** (efectos esperables: creatina +1–2 kg de agua intramuscular las primeras semanas; beta-alanina hormigueo).
+5. **Precauciones y quién no debería tomarlo** (embarazo, lactancia, riñón, presión, medicación, menores), propias de cada suplemento.
+6. **Comprar con criterio**: sin marcas; buscar sello de control de terceros (Informed Sport / NSF Certified for Sport) y registro ANMAT.
+7. **Fuentes** y fecha de revisión.
+
+En PC/tablet la guía es un panel centrado con la lista a la izquierda y la ficha a la derecha (la ficha reparte sus secciones en dos columnas).
 
 Botón **"Agregar a mis suplementos"** en las fichas con seguimiento.
 
@@ -88,18 +89,19 @@ Tono: voseo argentino como el resto de la app, frases cortas, amigable. Contenid
 Nueva tarjeta **"Suplementos"** entre **Peso corporal** y **Resumen nutricional de hoy** (`frontend/src/views/Nutricion.jsx`, entre las tarjetas `nutrition-weight` y `nutrition-summary`).
 
 - **Sin suplementos**: estado vacío con llamado a la guía ("¿Tomás suplementos? Mirá qué dice la ciencia") y un acceso "Guía".
-- **Con suplementos**: "Hoy" con una fila por suplemento activo que toca hoy, agrupadas por momento (mañana / antes de entrenar / después de entrenar / noche / cualquier momento).
-  - Cada fila: nombre, dosis en la unidad del usuario ("1 scoop · 5 g"), y un botón por toma (una toma = un check; varias = varios puntos).
+- **Con suplementos** (lista por momento del día, elegida en maquetas): "Hoy" con una fila por suplemento activo que toca hoy, agrupadas por momento (mañana / antes de entrenar / después de entrenar / con las comidas / noche / cualquier momento).
+  - Cada fila: nombre, etiqueta "indicación" si corresponde, dosis en la unidad del usuario ("1 scoop · 5 g"), racha (🔥 12) y un botón por toma (una toma = un check; varias = varios puntos).
   - Progreso del día "2 de 3" y botón **Marcar todos**.
-  - La cafeína muestra el total del día contra el techo ("180 de 400 mg") con barra.
-  - Accesos: **Guía**, **Mis suplementos** (configurar), **＋**.
-- **PC/tablet**: la tarjeta ocupa el mismo lugar; la guía y la configuración abren como panel centrado (`kind: 'panel'`) con lista + ficha en dos columnas.
+  - Sección "Cafeína del día": total contra el techo ("180 de 400 mg · estimado") con barra y los botones rápidos (ver "Cafeína del día"). La barra pasa a rojo al superar el techo, con el aviso de exceso.
+  - Accesos: **Guía**, **Mis suplementos** (configurar), **＋ Agregar**.
+- **Aviso sin aceptar**: la tarjeta muestra solo "🔒 Para ver la guía y registrar suplementos, leé y aceptá el aviso" y el botón **Leer el aviso**. El resto de Nutrición funciona normal.
+- **PC/tablet**: la tarjeta ocupa el mismo lugar y reparte en dos columnas (momentos a la izquierda, cafeína a la derecha); la guía y el alta abren como panel centrado (`kind: 'panel'`): la guía con lista + ficha, el alta en dos columnas.
 
 Toda la vista (tarjeta, guía, seguimiento) existe solo si el socio dio el consentimiento de salud: sin consentimiento, Nutrición ya no se muestra (`App.jsx`, ruta `/nutricion`), y por lo tanto tampoco esto. Se mantiene así.
 
 ## Alta y configuración de un suplemento
 
-Siempre de a uno: desde la ficha ("Agregar a mis suplementos") o desde "＋" (abre la guía para elegir, con "Otro suplemento" al final). Varios a la vez se manejan como una lista de suplementos activos, cada uno con su configuración; la tarjeta los junta.
+**Un solo formulario** (elegido en maquetas) con todo precargado; la mayoría solo revisa el scoop y toca "Agregar". Siempre de a uno: desde la ficha ("Agregar a mis suplementos") o desde "＋" (abre la guía para elegir, con "Otro suplemento" al final). Varios a la vez se manejan como una lista de suplementos activos, cada uno con su configuración; la tarjeta los junta.
 
 Configuración por suplemento:
 
@@ -108,7 +110,7 @@ Configuración por suplemento:
 | Dosis | Número + unidad (g, mg, ml, cápsulas, UI). Precargada con el valor sugerido de la ficha (creatina 5 g, cafeína el piso del rango con el peso); editable dentro del rango, con aviso si sale del rango |
 | **Mi scoop** | "1 scoop de mi marca = X g". Un campo grande y simple, con el texto "Mirá la etiqueta". Opcional; si está, la tarjeta muestra "1 scoop · 5 g" |
 | Tomas por día | 1 a 6. Beta-alanina sugiere varias |
-| Momento | mañana / antes de entrenar / después de entrenar / noche / cualquier momento |
+| Momento | mañana / antes de entrenar / después de entrenar / con las comidas / noche / cualquier momento |
 | Días | todos los días / solo días de entreno. "Día de entreno" = el plan semanal le asigna rutina (`effectiveRoutineId`) **o** ese día hay un workout registrado (sirve para quien no tiene plan) |
 | Recordatorio | apagado / hora (HH:MM) |
 
@@ -130,13 +132,13 @@ Acciones: **Dejar de tomar** (archiva; conserva el historial y la racha pasada) 
 
 ### Cafeína del día
 
-Total de cafeína = suplementos de cafeína y pre-entrenos + **fuentes rápidas**:
+Total de cafeína = suplementos de cafeína y pre-entrenos + **fuentes rápidas**. Se toma varias veces por día, así que **cada toque suma un consumo** (el botón muestra "×3"). Debajo de los botones: **"↶ Eliminar último consumo"** (dice cuál borra) y la lista "Consumos de hoy" con hora, mg y **Eliminar** en cada uno.
 
 | Botón | mg (estimado, a verificar contra fuente) |
 |---|---|
 | Café (taza) | ≈ 80–100 mg |
 | Espresso | ≈ 60–80 mg |
-| Mate (ronda completa) | rango variable según yerba y cebadas; mostrado como "estimado" |
+| Mate (**½ termo** por toque, ≈ 500 ml de agua) | rango variable según yerba y cebadas; mostrado como "estimado". Un termo entero = dos toques |
 | Energizante (lata) | ≈ 80 mg (250 ml) / ≈ 160 mg (500 ml) |
 | Pre-entreno | mg por scoop configurables (de la etiqueta) |
 | Otro | mg a mano |
@@ -144,7 +146,7 @@ Total de cafeína = suplementos de cafeína y pre-entrenos + **fuentes rápidas*
 **Consejos del mate**, amigables y con fuente:
 - El mate cuenta como líquido: en las cantidades habituales la cafeína no deshidrata.
 - Tomar mate antes o durante el entreno está bien; si además usás pre-entreno, sumá la cafeína de los dos.
-- La cafeína del mate varía mucho (cantidad de yerba, cebadas): por eso el número es estimado.
+- La cafeína del mate varía mucho (cantidad de yerba, cebadas): por eso el número es estimado. El valor por ½ termo se fija en la tarea de verificación de fuentes (los estudios miden mg por gramo de yerba; se convierte con una cantidad típica de yerba por termo y se documenta la cuenta).
 - Evitá cafeína (mate incluido) en las 6 h previas a dormir si te cuesta dormir.
 - Si le ponés azúcar, suma calorías (lo cargás en Nutrición si querés).
 
@@ -161,11 +163,11 @@ Registrar una toma de proteína **la carga como comida** en Nutrición (`POST /a
 
 ## Primer uso: aviso legal y chequeos
 
-Al abrir la guía o agregar el primer suplemento:
+Al abrir la guía o agregar el primer suplemento, una hoja **sin "Ahora no"**: el único botón es **"Leí y acepto"** (sin textos aclaratorios debajo). Sin aceptar no se guarda nada y la próxima vez vuelve a aparecer (también si salió de la app en esa vista). El gesto atrás del sistema puede cerrar la hoja (no se traba al usuario), pero nada de suplementos se abre hasta aceptar. Contenido:
 
 1. **Aviso** (una vez por versión del texto):
    > Esta guía es información general basada en IOC, AIS, ISSN, NIH y EFSA. No es consejo médico ni reemplaza a un profesional de la salud. Si tenés una condición de salud o tomás medicación, consultá antes de usar suplementos.
-2. **Lista de chequeo (no se guarda)**: "Si te aplica alguna, consultá a un profesional antes: embarazo o lactancia · enfermedad renal o hepática · presión alta o problemas cardíacos · medicación crónica · trastornos de ansiedad o del sueño (cafeína)". Botón "Leí esto". Solo se guarda que lo leyó y la versión.
+2. **Lista de chequeo (no se guarda)**: "Si te aplica alguna, consultá a un profesional antes: embarazo o lactancia · enfermedad renal o hepática · presión alta o problemas cardíacos · medicación crónica · trastornos de ansiedad o del sueño (cafeína)". Debajo: "No guardamos cuál te aplica: solo que leíste esto." Solo se guarda la aceptación y la versión.
 3. **Edad**: si `S.edad` existe y es < 18, o si no existe y el socio responde "No" a "¿Tenés 18 años o más?" (se pregunta una vez y se guarda solo la respuesta): ve la guía con el aviso "No recomendado para menores de 18 sin supervisión profesional", **sin dosis ni seguimiento**.
 
 ## Interruptor del gimnasio
@@ -185,7 +187,7 @@ CREATE TABLE IF NOT EXISTS supplement_items (
   dose REAL, unit TEXT,         -- g, mg, ml, caps, ui
   scoop_g REAL,                 -- "mi scoop = X g"
   doses_per_day INTEGER NOT NULL DEFAULT 1,
-  slot TEXT NOT NULL DEFAULT 'any',      -- morning | pre | post | night | any
+  slot TEXT NOT NULL DEFAULT 'any',      -- morning | pre | post | meals | night | any
   days TEXT NOT NULL DEFAULT 'daily',    -- daily | training
   reminder_time TEXT,           -- HH:MM o NULL
   meta TEXT,                    -- JSON: macros por scoop (proteína), mg por scoop (pre-entreno)
