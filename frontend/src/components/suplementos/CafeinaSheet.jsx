@@ -34,7 +34,6 @@ function Cafeina() {
     <h3>{t('Cafeína de hoy')}</h3>
     <div className="row"><b className="supp-big">≈ {total} mg</b><span className="small dim grow">{t('de 400 · estimado')}</span></div>
     <div className={'supp-bar' + (over ? ' over' : '')}><i style={{ width: Math.min(100, total / 4) + '%' }} /></div>
-    {over && <div className="supp-warn">{t('Hoy vas {0} mg: más de lo recomendado para un día. Si te cuesta dormir, cortá la cafeína unas 6 h antes.', total)}</div>}
     <div className="small dim">{t('Tocá cada vez que tomás. Se suma solo.')}</div>
     <div className="supp-quick-grid">{CAFFEINE_SOURCES.map(s => {
       const n = todays.filter(l => l.source === s.id).length
@@ -46,12 +45,14 @@ function Cafeina() {
     })}</div>
     {ask && <div className="supp-ask row">
       <span className="small">{ask === 'preentreno' ? t('mg por scoop (de la etiqueta)') : 'mg'}</span>
-      <NumberField name="supp-mg" value={mg} nullable onChange={setMg} className="supp-num" />
+      <NumberField name="supp-mg" value={mg} nullable onChange={setMg} className="input supp-num" />
       <Button size="sm" variant="primary" disabled={!(mg > 0)} onClick={() => { add(ask, mg); setAsk(null) }}>{t('Sumar')}</Button>
     </div>}
     <button type="button" className="supp-undo" disabled={!last} onClick={() => last && removeLog(last.id).catch(toast)}>
       ↶ {t('Eliminar último consumo')}{last && <span className="small dim"> ({labelOf(last)} {hhmm(last.createdAt)})</span>}
     </button>
+    {/* Debajo de los botones: si apareciera arriba, correría los botones en medio de los toques. */}
+    {over && <div className="supp-warn">{t('Hoy vas {0} mg: más de lo recomendado para un día. Si te cuesta dormir, cortá la cafeína unas 6 h antes.', total)}</div>}
     {todays.length > 0 && <>
       <div className="supp-sec">{t('Consumos de hoy')}</div>
       {todays.slice().reverse().map(l => <div key={l.id} className="supp-row">

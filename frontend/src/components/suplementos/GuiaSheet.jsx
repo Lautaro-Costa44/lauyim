@@ -10,6 +10,7 @@ import { lastBW } from '../../lib/history.js'
 import { SUPLEMENTOS, LEVELS, WATER_TIP, fichaById } from '../../lib/suplementos-data.js'
 import { caffeineRange } from '../../lib/suplementos.js'
 import { Button } from '../ui.jsx'
+import Icon from '../Icon.jsx'
 
 const FEM_TAKE = new Set(['creatina', 'cafeina', 'proteina', 'betaalanina', 'vitaminad'])
 const howToTitle = id => FEM_TAKE.has(id) ? 'Cómo tomarla' : 'Cómo tomarlo'
@@ -71,12 +72,13 @@ function Lista({ selected, onPick }) {
   </div>
 }
 
-function Guia({ initial }) {
+function Guia({ initial, close }) {
   const [id, setId] = useState(initial)
   return <div className="supp-guide-cols">
+    <button type="button" className="iconbtn supp-close" onClick={close} aria-label={t('Cerrar')}><Icon name="xmark" /></button>
     <div className={id ? 'supp-hide-phone' : ''}><Lista selected={id} onPick={setId} /></div>
     <div className={id ? '' : 'supp-hide-phone'}>{id ? <Ficha id={id} onBack={() => setId(null)} /> : <div className="dim supp-empty-pc">{t('Elegí un suplemento para ver su ficha.')}</div>}</div>
   </div>
 }
 
-export const openGuide = id => useUI.getState().openSheet(() => <Guia initial={id} />, { fullScreen: true })
+export const openGuide = id => useUI.getState().openSheet(close => <Guia initial={id} close={close} />, { fullScreen: true })

@@ -60,16 +60,16 @@ function Config({ catalogId, itemId, close }) {
       <div>
         {!catalogId && field('Nombre', <TextField name="supp-name" maxLength={40} value={name} onChange={e => setName(e.target.value)} placeholder={t('Ej.: ashwagandha')} />)}
         {field('Dosis por día', <div className="row">
-          <NumberField name="supp-dose" value={dose} nullable onChange={setDose} className="supp-num" />
+          <NumberField name="supp-dose" value={dose} nullable onChange={setDose} className="input supp-num" />
           {fixedUnit ? <span className="dim">{UNITS.find(u => u.id === unit)?.label}</span>
             : <div className="chips">{UNITS.map(u => <button key={u.id} type="button" className={'chip nocap' + (unit === u.id ? ' on' : '')} onClick={() => setUnit(u.id)}>{u.label}</button>)}</div>}
         </div>, f?.level === 'indicacion' ? t('La que te indicó tu profesional') : lo != null ? `${t('sugerido')} ${lo}–${hi} ${UNITS.find(u => u.id === unit)?.label}` : null)}
         {outOfRange && <div className="supp-warn">{t('Está fuera de lo sugerido en la guía.')}</div>}
-        {unit === 'g' && field('Mi scoop', <div className="row"><span className="dim">{t('1 scoop =')}</span><NumberField name="supp-scoop" value={scoopG} nullable onChange={setScoopG} className="supp-num" /><span className="dim">g</span></div>,
+        {unit === 'g' && field('Mi scoop', <div className="row"><span className="dim">{t('1 scoop =')}</span><NumberField name="supp-scoop" value={scoopG} nullable onChange={setScoopG} className="input supp-num" /><span className="dim">g</span></div>,
           '📦 ' + t('Mirá la etiqueta de tu marca: dice cuántos gramos trae el scoop. Sin scoop, dejalo vacío.'))}
         {catalogId === 'proteina' && macros && field('Por scoop (de la etiqueta)', <div className="supp-macros">
           {[['proteina', 'Proteína (g)'], ['calorias', 'Calorías'], ['carbos', 'Carbos (g)'], ['grasas', 'Grasas (g)']].map(([k, l]) =>
-            <label key={k}><span className="small dim">{t(l)}</span><NumberField name={'supp-' + k} value={macros[k]} onChange={v => setMacros(m => ({ ...m, [k]: v }))} /></label>)}
+            <label key={k}><span className="small dim">{t(l)}</span><NumberField name={'supp-' + k} className="input" value={macros[k]} onChange={v => setMacros(m => ({ ...m, [k]: v }))} /></label>)}
         </div>)}
       </div>
       <div>

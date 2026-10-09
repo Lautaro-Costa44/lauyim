@@ -10,6 +10,7 @@ import { todayISO } from '../../lib/format.js'
 import { streakOf, adherence30, dayLevel, takenOn, isDueOn, isTrainingDay, canLogDate, addDays, doseLabel, itemName, perTake } from '../../lib/suplementos.js'
 import { HeatmapGrid } from '../Heatmap.jsx'
 import { Button, Check } from '../ui.jsx'
+import Icon from '../Icon.jsx'
 
 const openConfig = (c, id) => import('./ConfigSuplemento.jsx').then(m => m.openConfig(c, id))
 
@@ -45,7 +46,7 @@ function Detalle({ item, onBack }) {
   </div>
 }
 
-function Mis() {
+function Mis({ close }) {
   const S = useStore(s => s.S)
   const st = useSupplements()
   const [sel, setSel] = useState(null)
@@ -56,6 +57,7 @@ function Mis() {
   const item = st.items.find(i => i.id === sel)
   const toast = e => useUI.getState().toast(errorText(e, t('No se pudo guardar. Probá de nuevo.')))
   return <div className="supp-guide-cols">
+    <button type="button" className="iconbtn supp-close" onClick={close} aria-label={t('Cerrar')}><Icon name="xmark" /></button>
     <div className={item ? 'supp-hide-phone' : ''}>
       <h3>{t('Mis suplementos')}</h3>
       {active.length > 0 && <HeatmapGrid weeks={26} levelOf={combined} titleOf={iso => iso} legend={[t('Menos'), t('Cumplido')]} />}
@@ -76,4 +78,4 @@ function Mis() {
   </div>
 }
 
-export const openMine = () => useUI.getState().openSheet(() => <Mis />, { fullScreen: true })
+export const openMine = () => useUI.getState().openSheet(close => <Mis close={close} />, { fullScreen: true })
