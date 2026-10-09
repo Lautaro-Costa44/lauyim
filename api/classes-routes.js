@@ -5,7 +5,7 @@ import {
   CLASS_DEFAULTS, REMINDER_OPTIONS, classSettingsOf, validateClassSettings, validateClassType, validateSlot,
   addMinutes, addDays, weekdayOf, occurrencesBetween, overlapConflicts, conflictText, bookingState, cancelKind, canPromote, remindersDue, minutesLeft, buildIcs,
   canAsk, resolveAttendance, canTakeAttendance, canRate, afterPushDue, classWorkout, classStats, penaltyOf, capOf,
-  TEACHER_REMINDER_OPTIONS, teacherReminderDue, validateClosure, periodRange, planUsed
+  TEACHER_REMINDER_OPTIONS, teacherReminderDue, periodRange, planUsed
 } from './classes.js';
 import * as cdb from './classes-db.js';
 import { getAllUsers, getUserById, getAdminSetting, setAdminSetting, getDatabase, getMemberBilling, getPlanById } from './database.js';

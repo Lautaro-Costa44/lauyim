@@ -212,19 +212,8 @@ export function occurrencesBetween({ types, slots, sessions = [], from, days, us
   return [...out.values()].sort((a, b) => a.date.localeCompare(b.date) || a.start.localeCompare(b.start) || a.type.name.localeCompare(b.type.name));
 }
 
-// Un cierre del gimnasio: de hoy en adelante, de 1 a 31 días, sin pisar otro y con un motivo corto.
-export const CLOSURE_MAX_DAYS = 31;
-export function validateClosure(body, { today, existing = [] } = {}) {
-  const isDay = v => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) && !Number.isNaN(Date.parse(v + 'T00:00:00Z'));
-  const from = body?.from, to = body?.to || body?.from;
-  if (!isDay(from) || from < today) return { error: 'validation_error', field: 'from', message: 'Elegí una fecha de hoy en adelante' };
-  if (!isDay(to) || to < from) return { error: 'validation_error', field: 'to', message: 'La fecha final tiene que ser igual o posterior' };
-  if (dayNumber(to) - dayNumber(from) + 1 > CLOSURE_MAX_DAYS) return { error: 'validation_error', field: 'to', message: `Un cierre dura hasta ${CLOSURE_MAX_DAYS} días` };
-  const reason = typeof body.reason === 'string' ? body.reason.trim() : '';
-  if (reason.length > 40) return { error: 'validation_error', field: 'reason', message: 'El motivo admite hasta 40 letras' };
-  if (existing.some(c => c.from <= to && from <= c.to)) return { error: 'closure_overlap', message: 'Ya hay un cierre en esos días' };
-  return { value: { from, to, reason } };
-}
+// Los cierres pasaron a closures.js; se re-exportan para quien los importaba de acá.
+export { CLOSURE_MAX_DAYS, validateClosure } from './closures.js';
 
 // ---- superposición ----
 
