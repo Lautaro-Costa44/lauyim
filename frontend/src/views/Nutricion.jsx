@@ -3,6 +3,7 @@ import { useStore } from '../store/useStore.js'
 import { t } from '../lib/i18n.js'
 import Icon from '../components/Icon.jsx'
 import LineChart from '../components/LineChart.jsx'
+import SuplementosCard from '../components/suplementos/SuplementosCard.jsx'
 import { Button, Row, Section, Segmented, SelectRow, usePickerStep, useSheetBack } from '../components/ui.jsx'
 import { bwSheet, goalSheet, confirmSheet } from '../sheets.jsx'
 import { fmtNum } from '../lib/format.js'
@@ -783,6 +784,8 @@ export default function Nutricion() {
       <div className="chart"><LineChart points={bwPts} h={160} unit={S.unit} goal={S.targetW} /></div>
       <CaloricCard S={S} />
     </div>
+
+    <SuplementosCard />
 
     <div className="card" data-tour="nutrition-summary">
       <h2>Resumen nutricional de hoy</h2>
