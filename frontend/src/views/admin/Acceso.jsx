@@ -282,7 +282,35 @@ function ApprovalCard({ billingEnabled }) {
   </div>
 }
 
-// Invitaciones para todos los admins; QR, datos del registro y cuotas solo para el owner.
+// Suplementos (owner): la guía y el seguimiento en Nutrición. Apagarlo no borra datos.
+export function SupplementsToggleCard() {
+  const toast = useUI(s => s.toast)
+  const [enabled, setEnabled] = useState(null)
+  const [busy, setBusy] = useState(false)
+  useEffect(() => { api('/api/owner/supplements').then(d => setEnabled(d.enabled)).catch(() => setEnabled(null)) }, [])
+  const put = value => {
+    setBusy(true)
+    api('/api/owner/supplements', { method: 'PUT', body: JSON.stringify({ enabled: value }) })
+      .then(d => { setEnabled(d.enabled); toast(d.enabled ? t('Suplementos activados') : t('Suplementos desactivados')) })
+      .catch(e => toast(errorText(e, t('Failed to save setting'))))
+      .finally(() => setBusy(false))
+  }
+  const change = v => v ? put(true) : confirmSheet({
+    title: t('¿Desactivar los suplementos?'),
+    message: t('Los socios dejan de ver la guía, la tarjeta y los recordatorios de suplementos. No se borra ningún dato: al volver a activarlo, todo sigue como estaba.'),
+    confirmText: t('Desactivar'), danger: true, onConfirm: () => put(false)
+  })
+  if (enabled === null) return null
+  return <div className="card">
+    <div className="row between" style={{ gap: 12 }}>
+      <div><h3 style={{ margin: 0 }}>{t('Guía y seguimiento de suplementos')}</h3>
+        <div className="small dim">{t('En Nutrición: una guía basada en evidencia y el registro de lo que toma cada socio. Solo lo ve cada socio, no el staff.')}</div></div>
+      <Switch checked={enabled} disabled={busy} onChange={change} label={t('Guía y seguimiento de suplementos')} />
+    </div>
+  </div>
+}
+
+// Invitaciones para todos los admins; QR, datos del registro, cuotas y suplementos solo para el owner.
 export default function Acceso() {
   const user = useStore(s => s.user)
   const { invites, loadInvites, qrAccess, setQrAccess, billingEnabled, setBillingEnabled, loadUsers } = useAdmin()
@@ -295,5 +323,6 @@ export default function Acceso() {
     <ApprovalCard billingEnabled={billingEnabled} />
     <PrivacyCard />
     <BillingToggleCard enabled={billingEnabled} onChanged={v => { setBillingEnabled(v); loadUsers() }} />
+    <SupplementsToggleCard />
   </div>
 }

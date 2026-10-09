@@ -58,11 +58,12 @@ export function PrivacyNotice({ info, onSupport }) {
         <li>{t('Tu entrenamiento: rutinas, programas, series, pesos levantados e historial.')}</li>
         {info.checkinEnabled && <li>{t('Tu asistencia: los ingresos al gimnasio que se registran en la recepción, con fecha y hora.')}</li>}
         {info.classes && <li>{t('Tus clases: reservas, lista de espera, asistencia, cancelaciones y las calificaciones que des.')}</li>}
-        <li>{t('Tus datos de salud, si das tu consentimiento: peso corporal, edad, género, altura, lesiones y nutrición.')}</li>
+        <li>{t('Tus datos de salud, si das tu consentimiento: peso corporal, edad, género, altura, lesiones, nutrición y los suplementos que registres.')}</li>
         <li>{t('Notificaciones: si las activás, la dirección de envío que da tu navegador.')}</li>
         <li>{t('Registros técnicos de seguridad: ingresos y acciones del staff, con fecha y hora.')}</li>
       </ul>
       <p>{t('Peso, edad, género, altura, lesiones y nutrición se tratan como datos sensibles (art. 7 de la Ley 25.326): solo se guardan con tu consentimiento expreso y solo se usan para adaptar tu entrenamiento. Podés retirarlo cuando quieras desde Ajustes → Datos de salud: la app sigue funcionando para entrenar, esas secciones se ocultan y podés borrar lo que ya cargaste.')}</p>
+      <p>{t('Los suplementos que registres son un dato de salud: solo los ves vos (el staff del gimnasio no tiene acceso) y se borran con "Borrar mis datos de salud".')}</p>
     </Sect>
 
     <Sect title={t('Para qué se usan')}>
@@ -145,7 +146,7 @@ export function PrivacyLink({ onClick, children }) {
   return <button type="button" className="linkbtn privacy-link" onClick={e => { e.preventDefault(); e.stopPropagation(); onClick() }}>{children || t('Aviso de privacidad')}</button>
 }
 
-export const HEALTH_DATA_LABEL = 'peso, edad, género, lesiones y nutrición'
+export const HEALTH_DATA_LABEL = 'peso, edad, género, lesiones, nutrición y suplementos'
 
 // Check "Acepto los términos y condiciones y el aviso de privacidad", con los dos textos como
 // links. Los links quedan fuera del <label>: tocarlos abre el texto y nunca marca el check (un

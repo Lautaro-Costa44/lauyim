@@ -24,6 +24,12 @@ beforeEach(async () => { await setLang('es'); globalThis.IS_REACT_ACT_ENVIRONMEN
 afterEach(async () => { await act(async () => { root.unmount() }); container.remove() })
 
 describe('aviso de privacidad', () => {
+  it('menciona los suplementos como dato de salud que el staff no ve', async () => {
+    const text = await render(<PrivacyNotice info={BASE} />)
+    expect(text).toMatch(/los suplementos que registres/)
+    expect(text).toMatch(/el staff del gimnasio no tiene acceso/)
+  })
+
   it('sin ingreso físico ni clases: no los menciona', async () => {
     const text = await render(<PrivacyNotice info={BASE} />)
     expect(text).not.toMatch(/ingresos al gimnasio/)
@@ -78,5 +84,13 @@ describe('términos', () => {
   it('cancelar sin límite (0 horas): hasta que empieza', async () => {
     const text = await render(<TermsNotice info={{ ...BASE, classes: { ...CLASSES, cancelHours: 0 } }} />)
     expect(text).toMatch(/hasta que empieza la clase/)
+  })
+})
+
+describe('términos: guía de suplementos', () => {
+  it('es información general, sin marcas y no reemplaza a un profesional', async () => {
+    const text = await render(<TermsNotice info={BASE} />)
+    expect(text).toMatch(/La Guía de suplementos es información general/)
+    expect(text).toMatch(/no recomienda marcas ni productos/)
   })
 })

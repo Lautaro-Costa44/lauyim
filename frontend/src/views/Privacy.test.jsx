@@ -74,7 +74,7 @@ describe('/privacidad', () => {
     expect(body).toContain('Ley 25.326')
     expect(body).toContain('AGENCIA DE ACCESO A LA INFORMACIÓN PÚBLICA')
     expect(body).toContain('a los 90 días')
-    expect(body).toContain('peso corporal, edad, género, altura, lesiones y nutrición')
+    expect(body).toContain('peso corporal, edad, género, altura, lesiones, nutrición y los suplementos que registres')
     expect(body).toContain('consentimiento expreso')
     expect(body).toContain('servidores fuera de Argentina')
     expect(body).toContain('lauyim provee la app')

@@ -94,7 +94,7 @@ describe('registro sin aprobación', () => {
     const checks = document.querySelectorAll('.privacy-accept')
     expect(checks).toHaveLength(2)
     expect(checks[0].textContent).toContain('términos y condiciones')
-    expect(checks[1].textContent).toContain('datos de salud (peso, edad, género, lesiones y nutrición)')
+    expect(checks[1].textContent).toContain('datos de salud (peso, edad, género, lesiones, nutrición y suplementos)')
     expect(checks[1].textContent).toContain('(opcional)')
     await accept()
     expect(create().disabled).toBe(false)   // la salud no hace falta
