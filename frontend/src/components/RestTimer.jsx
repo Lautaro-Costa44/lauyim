@@ -1,7 +1,12 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useUI } from '../store/useUI.js'
+import { useStore } from '../store/useStore.js'
 import { t } from '../lib/i18n.js'
+import { askInContext, snoozeAsk } from '../lib/notif-ask.js'
 import { Button } from './ui.jsx'
+import Icon from './Icon.jsx'
+import { usePushStatus } from './notif/usePushStatus.js'
+import { activateNotifs } from './notif/activate.js'
 
 const clock = sec => Math.floor(sec / 60) + ':' + String(sec % 60).padStart(2, '0')
 
@@ -14,6 +19,12 @@ export default function RestTimer() {
   const work = useUI(s => s.work)
   const { addRest, stopRest, finishWorkEarly, stopWork } = useUI()
   const on = work || timer
+  // Sin avisos: una línea para activarlos (el aviso de fin del descanso con la app en segundo
+  // plano). No abre ninguna hoja: no corta el entreno. La ✕ cuenta como "Ahora no".
+  const uid = useStore(s => s.user?.id)
+  const status = usePushStatus()
+  const [askHidden, setAskHidden] = useState(false)
+  const askRest = !askHidden && askInContext(uid, status)
   // The bar is fixed above the tab bar and floats over whatever is beneath it — during a
   // rest that was the next set's row. Extra bottom padding lets the page scroll clear.
   useEffect(() => {
@@ -49,6 +60,12 @@ export default function RestTimer() {
         <Button size="sm" icon="plus" onClick={() => addRest(15)}>15s</Button>
         <Button size="sm" variant="primary" className="skip" onClick={stopRest}>{t('Skip')}</Button>
       </div>
+      {askRest && <div className="rest-notif">
+        <Icon name="bell" />
+        <span className="grow">{t('Avisarme cuando termine el descanso')}</span>
+        <button type="button" className="rest-notif-on" onClick={activateNotifs}>{t('Activar')}</button>
+        <button type="button" className="iconbtn" onClick={() => { snoozeAsk(uid); setAskHidden(true) }} aria-label={t('Ocultar aviso')}><Icon name="xmark" /></button>
+      </div>}
     </div>
   )
 }

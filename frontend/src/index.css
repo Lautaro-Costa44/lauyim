@@ -1302,7 +1302,8 @@ input[type="search"]::-webkit-search-cancel-button{display:none;-webkit-appearan
   .center{width:340px}
   #timer{left:50%;right:auto;margin-left:-260px;width:520px;bottom:112px}
   /* 520px fits the clock, the bar and all three controls on one line again */
-  #timer.rest{flex-direction:row;align-items:center;gap:14px}
+  #timer.rest{flex-direction:row;flex-wrap:wrap;align-items:center;gap:14px}
+  #timer.rest .rest-notif{flex-basis:100%}
   #timer.rest .head{flex:1;min-width:0}  .exmedia img{height:380px}
   .exmedia.exmap:not(.compact):not(.mini){height:380px}
   .hm-wrap{display:flex;flex-direction:column;align-items:center}
@@ -1776,6 +1777,23 @@ input[type="search"]::-webkit-search-cancel-button{display:none;-webkit-appearan
 .notif-step-list li{margin:6px 0}
 .notif-step-actions{display:flex;flex-direction:column;gap:10px;width:100%;max-width:320px}
 .notif-step-foot{margin-top:24px;max-width:360px;line-height:1.45}
+/* Volver a ofrecer los avisos: cartel de Inicio (mismo cartel que el del cierre, con el acento),
+   hoja al reservar y línea dentro de la barra del descanso. */
+.closure-banner.notif-banner{align-items:flex-start;background:color-mix(in srgb,var(--acc) 12%,transparent);border-color:color-mix(in srgb,var(--acc) 40%,transparent)}
+.closure-banner.notif-banner>.icn{color:var(--acc);margin-top:2px}
+.closure-banner.notif-banner b{color:var(--label)}
+.closure-banner.notif-banner>.iconbtn{margin:-4px -4px 0 0}
+.notif-banner-acts{display:flex;gap:8px;margin-top:8px}
+.notif-ask{display:flex;flex-direction:column;gap:10px;text-align:center}
+.notif-ask h3{margin:4px 0 0}
+.notif-ask p{margin:0 auto 6px;max-width:360px;line-height:1.5}
+.notif-ask-icon{width:52px;height:52px;border-radius:50%;background:var(--acc-soft);color:var(--acc);display:flex;align-items:center;justify-content:center;margin:0 auto;font-size:24px}
+.notif-ask-foot{margin-top:4px;line-height:1.45}
+.rest-notif{display:flex;align-items:center;gap:8px;padding:6px 4px 0 8px;border-top:var(--hair) solid var(--sep);font-size:13px;color:var(--label-2)}
+.rest-notif>.icn{color:var(--acc);flex:none}
+.rest-notif>.grow{flex:1;min-width:0}
+.rest-notif-on{background:none;border:0;padding:6px 4px;color:var(--acc);font:inherit;font-weight:600;cursor:pointer}
+.rest-notif>.iconbtn{width:30px;height:30px;font-size:13px}
 /* Datos de salud (consentimiento) */
 .health-consent{padding:40px 0 calc(40px + var(--sab));text-align:center}
 .health-consent .notif-step-icon{margin:0 auto 18px}

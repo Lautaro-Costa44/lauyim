@@ -9,14 +9,26 @@ import Icon from '../Icon.jsx'
 const hiddenKey = c => `closure-banner-hidden:${c.id}`
 const isHidden = c => { try { return localStorage.getItem(hiddenKey(c)) === '1' } catch { return false } }
 
+// El cierre que el cartel muestra, o null. Inicio lo usa también para no apilar otro cartel.
+export function closureBannerFor(closures, today) {
+  const c = upcomingClosure(closures, today)
+  if (!c) return null
+  return c.from <= today || !isHidden(c) ? c : null
+}
+
+export function useClosureBannerShown() {
+  const closures = useClosures(s => s.closures)
+  const today = useClosuresToday()
+  return !!closureBannerFor(closures, today)
+}
+
 export default function ClosureBanner() {
   const closures = useClosures(s => s.closures)
   const today = useClosuresToday()
   const [, force] = useState(0)
-  const c = upcomingClosure(closures, today)
+  const c = closureBannerFor(closures, today)
   if (!c) return null
   const now = c.from <= today
-  if (!now && isHidden(c)) return null
   const hide = () => { try { localStorage.setItem(hiddenKey(c), '1') } catch { /* sin storage */ } force(n => n + 1) }
   const label = closureLongLabel(c, today)
   const title = now ? t('Hoy el gimnasio está cerrado')

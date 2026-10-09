@@ -19,7 +19,8 @@ import { classesByDate, classOverlap } from '../lib/classes.js'
 import { isClassWorkout } from '../lib/workout-history.js'
 import { loadOfRoutine, MUSCLE_NAME } from '../lib/muscles.js'
 import { streakSheet } from '../components/StreakSheet.jsx'
-import ClosureBanner from '../components/closures/ClosureBanner.jsx'
+import ClosureBanner, { useClosureBannerShown } from '../components/closures/ClosureBanner.jsx'
+import NotifBanner from '../components/notif/NotifBanner.jsx'
 import { useClosures } from '../store/useClosures.js'
 import { closureOn, weekClosedDays, closureLabel } from '../lib/closures.js'
 
@@ -40,6 +41,7 @@ export default function Home() {
   const myClasses = useMyClasses()
   // Cierres del gimnasio: días rayados con candado, objetivo de la semana y racha.
   const closures = useClosures(s => s.closures)
+  const closureShown = useClosureBannerShown()
 
   useEffect(() => {
     if (user && !S.onboardingCompletado) {
@@ -133,6 +135,8 @@ export default function Home() {
     </div>
 
     <ClosureBanner />
+    {/* Un cartel a la vez: el del cierre gana. */}
+    <NotifBanner busy={closureShown} />
 
     {/* Tu semana: progreso, racha (la llama abre su hoja), los días con sus íconos y Hoy. */}
     <div className="card week-card">
