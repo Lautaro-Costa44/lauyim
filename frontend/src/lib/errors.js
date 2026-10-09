@@ -76,6 +76,10 @@ export const ERROR_TEXTS = {
   health_consent_required: 'Tenés que aceptar el tratamiento de tus datos de salud.',
   legal_required: 'Tenés que aceptar los términos y condiciones y el aviso de privacidad.',
   legal_version_changed: 'Los términos se actualizaron recién. Revisalos y volvé a aceptar.',
+  supplements_off: 'Tu gimnasio desactivó la sección de suplementos.',
+  supplements_ack_required: 'Leé y aceptá el aviso de suplementos para seguir.',
+  supplements_minor: 'El seguimiento de suplementos es solo para mayores de 18.',
+  ack_version_changed: 'El aviso se actualizó recién. Leelo y volvé a aceptar.',
   health_consent_active: 'El consentimiento de datos de salud sigue activo.',
   no_health_consent: 'Sin consentimiento de datos de salud.',
   // staff y usuarios

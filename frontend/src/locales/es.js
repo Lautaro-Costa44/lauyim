@@ -705,6 +705,8 @@ export default {
   'Merged a member record into an account': 'Unió una ficha con una cuenta',
   'Changed member record fields': 'Cambió los campos de las fichas',
   'Turned membership billing on': 'Activó el cobro de cuotas',
+  'Turned the supplements guide on': 'Activó la guía de suplementos',
+  'Turned the supplements guide off': 'Desactivó la guía de suplementos',
   'Turned membership billing off': 'Desactivó el cobro de cuotas',
   'Changed membership notice time': 'Cambió el horario de avisos de cuota',
   'Changed the privacy notice details': 'Cambió los datos del aviso de privacidad',

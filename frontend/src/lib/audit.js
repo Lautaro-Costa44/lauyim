@@ -87,6 +87,8 @@ const LABELS = {
   'owner.member.export': 'Exported members',
   'owner.billing.enabled': 'Turned membership billing on',
   'owner.billing.disabled': 'Turned membership billing off',
+  'owner.supplements.enabled': 'Turned the supplements guide on',
+  'owner.supplements.disabled': 'Turned the supplements guide off',
   'admin.notifications.settings': 'Changed membership notice time',
   'owner.privacy.settings': 'Changed the privacy notice details',
   'owner.approval.settings': 'Changed account approval',
