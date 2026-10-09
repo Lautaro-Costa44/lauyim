@@ -161,7 +161,8 @@ import {
 import { membersCsv } from './member-export.js';
 import { classRoutes, classSettingsNow, classesAvailable } from './classes-routes.js';
 import { closureRoutes, closureNotifyHour, CLOSURE_NOTIFY_HOUR_SETTING } from './closures-routes.js';
-import { getClosures } from './closures-db.js';
+import { getClosures, getExtensions } from './closures-db.js';
+import { extensionDaysSince } from './closures.js';
 import {
   readCheckinSettings, validateCheckinSettings, CHECKIN_SETTINGS, createDevice, findDevice, touchDevice,
   listDevices, revokeDevice, revokeAllDevices, lookup as checkinLookup, confirm as checkinConfirm,
@@ -3745,12 +3746,16 @@ const routes = {
     if (payment.source === 'import') return json(res, 409, { error: 'Un pago importado no se puede anular' });
     if (getLatestActivePayment(userId)?.id !== payment.id) return json(res, 409, { error: 'Solo se puede anular el último pago registrado del socio' });
     const current = getMemberBilling(userId);
-    if (current.dueDate !== payment.periodEnd || current.planId !== payment.planId) {
+    // Cierres que corrieron el vencimiento después de este pago (y no se devolvieron): el pago sigue
+    // siendo el último, solo que su vencimiento quedó corrido esos días.
+    const shifted = extensionDaysSince(getExtensions({ userId }), payment.created || 0);
+    const expectedDue = shifted && payment.periodEnd ? addDays(payment.periodEnd, shifted) : payment.periodEnd;
+    if (current.dueDate !== expectedDue || current.planId !== payment.planId) {
       return json(res, 409, { error: 'El vencimiento cambió después de este pago; no se puede anular' });
     }
-    // Se puede volver a un vencimiento anterior o a la prueba que el pago cerró.
-    const backTo = payment.previousDueDate ?? null;
-    const backToTrial = payment.previousTrialUntil ?? null;
+    // Se puede volver a un vencimiento anterior o a la prueba que el pago cerró, con los días corridos.
+    const backTo = payment.previousDueDate ? addDays(payment.previousDueDate, shifted) : null;
+    const backToTrial = payment.previousTrialUntil ? addDays(payment.previousTrialUntil, shifted) : null;
     if (backTo == null && backToTrial == null) return json(res, 409, { error: 'Este pago no guarda el vencimiento anterior; no se puede anular' });
 
     const reason = body.reason ? body.reason.trim() || null : null;

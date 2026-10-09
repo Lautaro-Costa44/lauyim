@@ -136,3 +136,22 @@ test('hora de avisos de cierre: 08:00 por defecto, se cambia sola sin tocar la d
   assert.equal((await call('owner', 'PUT', '/api/admin/notifications/settings', {})).status, 400);
   assert.equal((await call('owner', 'PUT', '/api/admin/notifications/settings', { closure_notify_hour: '08:00' })).status, 200);
 });
+
+test('anular el último pago después de correr vencimientos: se acepta y vuelve al anterior + los días', async () => {
+  const due = dayAfter(today, 25);
+  assert.equal((await call('owner', 'PUT', '/api/admin/users/beto/billing', { planId: 1, dueDate: due })).status, 200);
+  const pay = await call('owner', 'POST', '/api/admin/users/beto/payments', { planId: 1, amount: 100, method: 'efectivo' });
+  assert.equal(pay.status, 200, JSON.stringify(pay.body));
+  const { id: paymentId, previousDueDate, periodEnd } = pay.body.payment;
+  assert.equal(previousDueDate, due);
+  const from = dayAfter(today, 20);
+  const made = await call('owner', 'POST', '/api/admin/closures', { from, to: dayAfter(from, 1), notifyAll: false, extendDays: 2 });
+  assert.equal(made.status, 200, JSON.stringify(made.body));
+  assert.ok(made.body.extended >= 1);
+  const billing = async () => (await call('owner', 'GET', '/api/admin/users/beto/billing')).body.billing.dueDate;
+  assert.equal(await billing(), dayAfter(periodEnd, 2));
+  const v = await call('owner', 'POST', `/api/admin/users/beto/payments/${paymentId}/void`, { reason: 'error' });
+  assert.equal(v.status, 200, JSON.stringify(v.body));
+  assert.equal(await billing(), dayAfter(due, 2));
+  assert.equal((await call('owner', 'POST', '/api/admin/closures/delete', { id: made.body.closure.id, revert: false })).status, 200);
+});
