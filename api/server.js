@@ -160,6 +160,8 @@ import {
 } from './approval.js';
 import { membersCsv } from './member-export.js';
 import { classRoutes, classSettingsNow, classesAvailable } from './classes-routes.js';
+import { closureRoutes } from './closures-routes.js';
+import { getClosures } from './closures-db.js';
 import {
   readCheckinSettings, validateCheckinSettings, CHECKIN_SETTINGS, createDevice, findDevice, touchDevice,
   listDevices, revokeDevice, revokeAllDevices, lookup as checkinLookup, confirm as checkinConfirm,
@@ -3461,6 +3463,8 @@ const routes = {
       week: S.week || {},
       dayPlan: S.dayPlan || {},
       today: billingToday(billingSettingsNow()),
+      // Cierres de alrededor de hoy: la adherencia no cuenta como esperado un día cerrado.
+      closures: (() => { const today = billingToday(billingSettingsNow()); return getClosures({ from: addDays(today, -7), to: addDays(today, 7) }).map(c => ({ from: c.from, to: c.to, reason: c.reason })); })(),
       names: Object.fromEntries((S.customEx || []).filter(ex => ex && ex.id).map(ex => [ex.id, ex.n || ex.name || ex.id])),
       // Tampoco el peso corporal anotado en cada entreno (bw).
       workouts: (S.workouts || []).slice().reverse().map(w => (hideHealth && w && 'bw' in w ? (({ bw, ...rest }) => rest)(w) : w))
@@ -4427,6 +4431,7 @@ const routes = {
   },
   // Clases grupales (classes-routes.js).
   ...classRoutes({ json, readBody, readSession, requireAdmin, requireOwner, audit, sendPush, can, isMembershipBlocked, isStaff: user => !!user && isStaff(user), isInactiveAccount, gymTz: () => billingSettingsNow().gym_tz }),
+  ...closureRoutes({ json, readBody, readSession, requireAdmin, audit, sendPush, can, isFeeExempt }),
 };
 
 http.createServer(async (req, res) => {

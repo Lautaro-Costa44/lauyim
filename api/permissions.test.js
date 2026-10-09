@@ -67,5 +67,9 @@ test('gym.closures: en el catálogo (Operación), sin dependencias; las rutas vi
   assert.equal(p.area, 'Operación');
   assert.deepEqual(p.requires, []);
   assert.equal(ROUTE_PERMISSIONS['POST /api/admin/classes/closures'], undefined);
+  assert.equal(ROUTE_PERMISSIONS['POST /api/admin/closures'], 'gym.closures');
+  assert.equal(ROUTE_PERMISSIONS['POST /api/admin/closures/delete'], 'gym.closures');
+  assert.equal(ROUTE_PERMISSIONS['GET /api/admin/closures/preview'], 'gym.closures');
+  assert.deepEqual(ROUTE_PERMISSIONS['GET /api/admin/closures'], ['gym.closures', 'stats.view', 'classes.view_all', 'classes.attendance']);
   assert.ok(DEFAULT_ROLES.find(r => r.id === ADMIN_ROLE_ID).permissions.includes('gym.closures'));
 });

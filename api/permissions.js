@@ -136,6 +136,11 @@ export const ROUTE_PERMISSIONS = Object.freeze({
   'GET /api/admin/attendance-heatmap': 'stats.view',
   'POST /api/admin/attendance-week-start': 'stats.view',
   'GET /api/admin/audit': 'audit.view',
+  // Cierres del gimnasio (closures-routes.js). Ver la lista: cualquiera que vea Resumen o Clases.
+  'GET /api/admin/closures': ['gym.closures', 'stats.view', 'classes.view_all', 'classes.attendance'],
+  'GET /api/admin/closures/preview': 'gym.closures',
+  'POST /api/admin/closures': 'gym.closures',
+  'POST /api/admin/closures/delete': 'gym.closures',
   // Clases (classes-routes.js). Una lista: alcanza con cualquiera; el handler controla cuáles
   // clases (las suyas o todas) y si puede cambiar la profe.
   'GET /api/admin/classes/types': ['classes.attendance', 'classes.view_all'],

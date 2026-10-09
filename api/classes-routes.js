@@ -10,7 +10,7 @@ import {
 import * as cdb from './classes-db.js';
 import { getAllUsers, getUserById, getAdminSetting, setAdminSetting, getDatabase, getMemberBilling, getPlanById } from './database.js';
 import { gymClock, getBillingSettings, isBillingEnabled } from './billing.js';
-import { classChangePush, classReminderPush, classAfterPush, classMessagePush, teacherReminderPush, closurePush, penaltyResetPush } from './push-messages.js';
+import { classChangePush, classReminderPush, classAfterPush, classMessagePush, teacherReminderPush, penaltyResetPush } from './push-messages.js';
 
 export const CLASS_SETTINGS_KEY = 'classes';
 const CHECK_WEEKS = 8;          // superposición de un bloque semanal: contra las próximas 8 semanas
@@ -49,6 +49,21 @@ export function loadOccurrences(from, days) {
     sessions: cdb.getClassSessions({ from, to: addDays(from, days) }), from, days, userNames,
     closures: cdb.getClosures({ from, to: addDays(from, days - 1) })
   });
+}
+// Lo que afecta un cierre: las fechas que todavía se dan en esos días y, por persona con reserva
+// activa, sus fechas (la profe que da la clase no cuenta). La usan las rutas de cierres.
+export function closureImpact({ from, to }) {
+  const days = Math.round((Date.parse(to) - Date.parse(from)) / 86400000) + 1;
+  const occs = loadOccurrences(from, days).filter(o => !o.cancelled);
+  const bySession = new Map(occs.filter(o => o.sessionId).map(o => [o.sessionId, o]));
+  const people = new Map();
+  for (const b of cdb.getBookingsForSessions([...bySession.keys()])) {
+    const occ = bySession.get(b.sessionId);
+    if (!['booked', 'waitlist'].includes(b.status) || teachesOcc(occ, b.userId)) continue;
+    if (!people.has(b.userId)) people.set(b.userId, []);
+    people.get(b.userId).push(occ);
+  }
+  return { occs, people };
 }
 const occOfKey = (date, key) => loadOccurrences(date, 1).find(o => o.key === key) || null;
 const occOfSession = session => session ? occOfKey(session.date, session.slotId ? `${session.slotId}:${session.date}` : session.id) : null;
@@ -237,21 +252,6 @@ export function classRoutes(d) {
     }
   };
   const activeUsers = sessionId => cdb.getBookingsForSessions([sessionId]).filter(b => ['booked', 'waitlist'].includes(b.status)).map(b => b.userId);
-  // Lo que afecta un cierre: las fechas que todavía se dan en esos días y, por persona con reserva
-  // activa, sus fechas (la profe que da la clase no cuenta).
-  const closureImpact = ({ from, to }) => {
-    const days = Math.round((Date.parse(to) - Date.parse(from)) / 86400000) + 1;
-    const occs = loadOccurrences(from, days).filter(o => !o.cancelled);
-    const bySession = new Map(occs.filter(o => o.sessionId).map(o => [o.sessionId, o]));
-    const people = new Map();
-    for (const b of cdb.getBookingsForSessions([...bySession.keys()])) {
-      const occ = bySession.get(b.sessionId);
-      if (!['booked', 'waitlist'].includes(b.status) || teachesOcc(occ, b.userId)) continue;
-      if (!people.has(b.userId)) people.set(b.userId, []);
-      people.get(b.userId).push(occ);
-    }
-    return { occs, people };
-  };
   // Permisos de clases (permissions.js): todas (manage), las suyas (own), ver todas (view_all),
   // anotar socios en cualquiera (book_members) y tomar lista en las suyas (attendance).
   const has = (user, ...codes) => codes.some(c => d.can(user, c));
@@ -748,7 +748,7 @@ export function classRoutes(d) {
     }
     json(res, 200, {
       planLimit,
-      enabled: true, today, from, days, closures: cdb.getClosures({ from, to: addDays(from, days - 1) }), tz: d.gymTz(), settings: publicSettings(s), reminderDefaults: memberReminderDefaults(user.id), teacherReminder: cdb.getTeacherReminder(user.id), penalty: penaltyNow(user.id, today), slots,
+      enabled: true, today, from, days, tz: d.gymTz(), settings: publicSettings(s), reminderDefaults: memberReminderDefaults(user.id), teacherReminder: cdb.getTeacherReminder(user.id), penalty: penaltyNow(user.id, today), slots,
       occurrences: occs.map(o => ({ ...memberView(o, counts[o.sessionId], teachesOcc(o, user.id) ? null : mine.get(o.sessionId), fixed.has(o.slotId), bookingState({ occ: o, now: clock, settings: s })), teaching: teachesOcc(o, user.id) }))
     });
   },
