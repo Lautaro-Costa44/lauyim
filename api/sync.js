@@ -1,4 +1,6 @@
 import crypto from 'node:crypto';
+import { applyLog, writeGuard } from './supplements-routes.js';
+import { deleteLog } from './supplements-db.js';
 
 const FRANJAS = new Set(['desayuno', 'almuerzo', 'merienda', 'cena', 'extra']);
 const validIngredients = value => Array.isArray(value) && value.length > 0 && value.every(item => item && String(item.nombre_alimento || '').trim() &&
@@ -114,6 +116,14 @@ function applyRequest(db, userId, request) {
   if (request.kind === 'template-delete') {
     db.prepare('DELETE FROM plantillas_comida WHERE id = ? AND user_id = ?').run(p.id, userId);
     return { deleted: p.id };
+  }
+  if (request.kind === 'supp-log-add' || request.kind === 'supp-log-delete') {
+    const guard = writeGuard({ id: userId });
+    if (guard) throw new Error(guard[1].error);
+    if (request.kind === 'supp-log-delete') { deleteLog(userId, String(p.id || '')); return { deleted: p.id }; }
+    const out = applyLog(userId, p);
+    if (out.error) throw new Error('invalid supplement log');
+    return { log: out.log };
   }
   throw new Error('unsupported sync operation');
 }
