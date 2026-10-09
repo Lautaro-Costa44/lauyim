@@ -568,6 +568,25 @@ export function setUserRole(userId, roleId) {
   getDatabase().prepare('UPDATE users SET role_id = ?, admin = 0 WHERE id = ? AND owner = 0').run(roleId || null, userId);
 }
 
+// Pasar el rol de dueño (ver docs/superpowers/specs/2026-10-09-pasar-dueno-design.md): el dueño
+// actual pasa a Administrador y `toId` a dueño sin rol (tiene todos los permisos). En ese orden por
+// el índice único de un solo dueño, y todo o nada.
+export function transferOwnership(fromId, toId) {
+  const db = getDatabase();
+  db.exec('BEGIN IMMEDIATE');
+  try {
+    if (!db.prepare('SELECT 1 FROM users WHERE id = ? AND owner = 1').get(fromId)) throw new Error('not_owner');
+    if (!db.prepare('SELECT 1 FROM users WHERE id = ?').get(toId)) throw new Error('target_not_found');
+    db.prepare('UPDATE users SET owner = 0, admin = 0, role_id = ? WHERE id = ?').run(ADMIN_ROLE_ID, fromId);
+    db.prepare('UPDATE users SET owner = 1, admin = 1, role_id = NULL WHERE id = ?').run(toId);
+    db.exec('COMMIT');
+    return true;
+  } catch (error) {
+    try { db.exec('ROLLBACK'); } catch {}
+    throw error;
+  }
+}
+
 export function updateUser(id, updates) {
   const fields = [];
   const values = [];

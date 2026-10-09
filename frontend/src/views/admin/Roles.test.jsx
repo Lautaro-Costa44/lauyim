@@ -6,7 +6,8 @@ import { createRoot } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const apiMock = vi.hoisted(() => vi.fn())
-vi.mock('../../lib/api.js', async importOriginal => ({ ...(await importOriginal()), api: apiMock }))
+const passkeyMock = vi.hoisted(() => vi.fn())
+vi.mock('../../lib/api.js', async importOriginal => ({ ...(await importOriginal()), api: apiMock, passkeyAssertion: passkeyMock }))
 
 const { useStore } = await import('../../store/useStore.js')
 const { useUI } = await import('../../store/useUI.js')
@@ -15,7 +16,7 @@ const { setLang } = await import('../../lib/i18n.js')
 const { AdminContext } = await import('./context.js')
 const { default: Roles, togglePermission } = await import('./Roles.jsx')
 const { default: Modals } = await import('../../components/Modals.jsx')
-const { RolePickSheet } = await import('./roles-common.jsx')
+const { RolePickSheet, canReceiveOwnership, ownerTransferDialog } = await import('./roles-common.jsx')
 bindUI(useUI)
 
 const CATALOG = [
@@ -135,5 +136,85 @@ describe('Roles', () => {
     await click(radios()[1])
     expect(JSON.parse(apiMock.mock.calls.find(([u]) => u === '/api/admin/users/role')[1].body)).toEqual({ userId: 'beto', roleId: 'reception' })
     expect(onChanged).toHaveBeenCalled()
+  })
+})
+
+describe('Dueño del gimnasio', () => {
+  const ana = { id: 'ana', name: 'Ana', role: null, hasApp: true, disabled: false, pending: false, owner: false }
+  const wait = async () => { for (let i = 0; i < 3; i++) await act(async () => { await new Promise(res => setTimeout(res, 10)) }) }
+  const renderPick = async member => {
+    const host = document.createElement('div'); document.body.appendChild(host)
+    const r = createRoot(host)
+    await act(async () => { r.render(<RolePickSheet user={member} close={() => {}} onChanged={() => {}} />) })
+    await wait()
+    return { host, done: () => { act(() => r.unmount()); host.remove() } }
+  }
+  const renderLastSheet = async () => {
+    const sheet = useUI.getState().sheets.at(-1)
+    const host = document.createElement('div'); document.body.appendChild(host)
+    const r = createRoot(host)
+    await act(async () => { r.render(sheet.render(() => useUI.getState().closeSheet(sheet.id))) })
+    return { sheet, host, done: () => { act(() => r.unmount()); host.remove() } }
+  }
+  const btnWith = (host, text) => [...host.querySelectorAll('button')].find(b => b.textContent.includes(text))
+  const realVerify = useStore.getState().verifySession
+  beforeEach(() => { passkeyMock.mockReset(); useUI.setState({ sheets: [], toastMsg: '' }) })
+  afterEach(() => { useStore.setState({ verifySession: realVerify, config: null }) })
+
+  it('canReceiveOwnership: con app, activa, aprobada y no dueña', () => {
+    expect(canReceiveOwnership(ana)).toBe(true)
+    for (const extra of [{ hasApp: false }, { disabled: true }, { pending: true }, { owner: true }]) expect(canReceiveOwnership({ ...ana, ...extra })).toBe(false)
+  })
+
+  it('solo el dueño la ve, y solo con el interruptor prendido y alguien que puede recibirlo', async () => {
+    apiMock.mockImplementation(url => url === '/api/admin/roles' ? Promise.resolve({ roles: [] }) : Promise.resolve({}))
+    useStore.setState({ user: { id: 'owner', owner: true }, config: { owner_transfer_enabled: true } })
+    let v = await renderPick(ana)
+    expect(v.host.textContent).toContain('Dueño del gimnasio')
+    expect(v.host.textContent).toContain('Pide tu passkey')
+    expect(v.host.textContent).toContain('Pasarle el rol de dueño a Ana')
+    v.done()
+    v = await renderPick({ ...ana, hasApp: false }); expect(v.host.textContent).not.toContain('Dueño del gimnasio'); v.done()
+    useStore.setState({ config: { owner_transfer_enabled: false } })
+    v = await renderPick(ana); expect(v.host.textContent).not.toContain('Dueño del gimnasio'); v.done()
+    useStore.setState({ user: { id: 'adm', permissions: ['roles.assign', 'members.view'] }, config: { owner_transfer_enabled: true } })
+    v = await renderPick(ana); expect(v.host.textContent).not.toContain('Dueño del gimnasio'); v.done()
+  })
+
+  it('confirmar: options → passkey → verify y refresca la sesión', async () => {
+    const verifySession = vi.fn(() => Promise.resolve())
+    useStore.setState({ user: { id: 'owner', owner: true }, config: { owner_transfer_enabled: true }, verifySession })
+    apiMock.mockImplementation(url => url === '/api/admin/roles' ? Promise.resolve({ roles: [] })
+      : url === '/api/owner/transfer/options' ? Promise.resolve({ cid: 'c1', options: { challenge: 'x' } })
+      : url === '/api/owner/transfer/verify' ? Promise.resolve({ ok: true, owner: { id: 'ana', name: 'Ana' } })
+      : Promise.resolve({}))
+    passkeyMock.mockResolvedValue({ id: 'cred' })
+    const v = await renderPick(ana)
+    await act(async () => { btnWith(v.host, 'Pasarle el rol de dueño').click() })
+    const d = await renderLastSheet()
+    expect(d.sheet.kind).toBe('center')
+    expect(d.host.textContent).toContain('¿Pasarle el rol de dueño a Ana?')
+    expect(d.host.textContent).toContain('Vos pasás a Administrador')
+    await act(async () => { btnWith(d.host, 'Confirmar con mi passkey').click() })
+    await wait()
+    expect(apiMock).toHaveBeenCalledWith('/api/owner/transfer/options', expect.objectContaining({ method: 'POST', body: JSON.stringify({ userId: 'ana' }) }))
+    expect(passkeyMock).toHaveBeenCalledWith({ challenge: 'x' })
+    expect(apiMock).toHaveBeenCalledWith('/api/owner/transfer/verify', expect.objectContaining({ method: 'POST', body: JSON.stringify({ cid: 'c1', credential: { id: 'cred' } }) }))
+    expect(verifySession).toHaveBeenCalled()
+    expect(useUI.getState().toastMsg).toBe('Ana ahora es dueño/a del gimnasio')
+    d.done(); v.done()
+  })
+
+  it('cancelar la passkey no llama a verify', async () => {
+    useStore.setState({ user: { id: 'owner', owner: true }, config: { owner_transfer_enabled: true } })
+    apiMock.mockImplementation(url => url === '/api/owner/transfer/options' ? Promise.resolve({ cid: 'c1', options: {} }) : Promise.resolve({ roles: [] }))
+    passkeyMock.mockRejectedValue(Object.assign(new Error('x'), { name: 'NotAllowedError' }))
+    ownerTransferDialog({ member: ana, onDone: () => {} })
+    const d = await renderLastSheet()
+    await act(async () => { btnWith(d.host, 'Confirmar con mi passkey').click() })
+    await wait()
+    expect(apiMock.mock.calls.some(([u]) => u === '/api/owner/transfer/verify')).toBe(false)
+    expect(useUI.getState().toastMsg).toBe('Se canceló la passkey')
+    d.done()
   })
 })

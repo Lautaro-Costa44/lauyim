@@ -58,6 +58,10 @@ export const ERROR_TEXTS = {
   not_loose: 'Es una clase semanal: suspendé el día o sacala del horario.',
   // passkeys e ingreso
   challenge_expired: 'La solicitud venció. Intentá de nuevo.',
+  owner_transfer_disabled: 'Pasar el rol de dueño está desactivado en esta instancia.',
+  already_owner: 'Esa persona ya es la dueña.',
+  inactive: 'La cuenta está desactivada o pendiente de aprobación.',
+  no_passkey: 'Esa persona todavía no usa la app: no puede ser dueña.',
   passkey_verify_failed: 'No se pudo verificar la passkey. Intentá de nuevo.',
   unknown_passkey: 'No encontramos esa passkey. Creá un perfil primero.',
   credential_exists: 'Esa passkey ya está registrada.',

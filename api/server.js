@@ -118,6 +118,7 @@ import {
   getMemberProfile,
   findMemberByDni,
   countCredentials,
+  transferOwnership,
   getAppUserIds,
   getProfileUserIds,
   countAppUsers,
@@ -222,6 +223,8 @@ function escapeHtml(value) {
 // Motor de encuesta de onboarding y generación de rutinas. Default true; poner SURVEY_ENABLED=false
 // para ocultar completamente la opción en el frontend sin afectar rutinas ya generadas.
 const SURVEY_ENABLED = !/^(0|false|no|off)$/i.test(process.env.SURVEY_ENABLED || 'true');
+// Pasar el rol de dueño (Gestionar roles → "Dueño del gimnasio"). Prendido salvo que el .env lo apague.
+const OWNER_TRANSFER_ENABLED = !/^(0|false|no|off)$/i.test(process.env.OWNER_TRANSFER_ENABLED || 'true');
 // Única variable del módulo de nutrición (metas + sugerencias de comida). Default true.
 // NUTRICION_AUTOMATICO=0 oculta el toggle de cálculo automático en el panel admin: el modo
 // es siempre manual y, sin metas/sugerencias cargadas por el admin, el socio no ve ningún
@@ -802,6 +805,10 @@ const isAccountPending = user => !!user && user.approval_status === 'pending' &&
 // Cuenta no activa: desactivada, o sin aprobar (pendiente; una rechazada es pendiente + desactivada).
 // No se le da rol de admin ni se le administra nutrición, rutinas o lesiones hasta que se active.
 const isInactiveAccount = user => !!user && (!!user.disabled || isAccountPending(user));
+// ¿Puede recibir el rol de dueño? null si sí; si no, el código: not_found, already_owner, inactive o
+// no_passkey (una ficha sin app no puede iniciar sesión para usarlo).
+const ownerTransferBlocker = target => !target ? 'not_found' : isOwner(target) ? 'already_owner'
+  : isInactiveAccount(target) ? 'inactive' : countCredentials(target.id) === 0 ? 'no_passkey' : null;
 const ACCOUNT_NOT_ACTIVE = { error: 'account_not_active', message: 'La cuenta no está activa: activala (o habilitala si está pendiente) antes de darle rol de admin o administrarle nutrición y rutina' };
 // Gate de las mutaciones de admin sobre nutrición/rutinas/lesiones de un socio: como
 // requireActiveTargetUser (existe y no está desactivado) y además aprobado.
@@ -2432,7 +2439,9 @@ const routes = {
       // Clases: módulo prendido (classes_enabled) y con clases cargadas (classes_available, la
       // pestaña del socio).
       classes_enabled: classSettingsNow().enabled,
-      classes_available: classesAvailable()
+      classes_available: classesAvailable(),
+      // Pasar el rol de dueño (OWNER_TRANSFER_ENABLED): el panel muestra la opción solo prendido.
+      owner_transfer_enabled: OWNER_TRANSFER_ENABLED
     });
   },
 
@@ -3542,6 +3551,59 @@ const routes = {
     forgetRoles();
     audit(req, 'owner.role.delete', { user: owner, summary: role.name });
     json(res, 200, { ok: true });
+  },
+
+  // Pasar el rol de dueño: a una cuenta activa con app, confirmando con una passkey del dueño (con
+  // huella, cara o PIN). El dueño pasa a Administrador. Sin push; queda en el registro.
+  'POST /api/owner/transfer/options': async (req, res) => {
+    const owner = requireOwner(req, res); if (!owner) return;
+    if (!OWNER_TRANSFER_ENABLED) return json(res, 403, { error: 'owner_transfer_disabled' });
+    const { userId } = await readBody(req);
+    const target = getUserById(String(userId || ''));
+    const blocker = ownerTransferBlocker(target);
+    if (blocker) return json(res, blocker === 'not_found' ? 404 : 400, { error: blocker });
+    const options = await generateAuthenticationOptions({
+      rpID: RP_ID, userVerification: 'required',
+      allowCredentials: getCredentialsByUserId(owner.id).map(c => {
+        const transports = typeof c.transports === 'string' ? JSON.parse(c.transports || 'null') : c.transports;
+        return transports?.length ? { id: c.id, transports } : { id: c.id };
+      })
+    });
+    const cid = putChallenge({ challenge: options.challenge, ownerTransfer: { ownerId: owner.id, targetId: target.id } });
+    json(res, 200, { cid, options });
+  },
+
+  'POST /api/owner/transfer/verify': async (req, res) => {
+    const owner = requireOwner(req, res); if (!owner) return;
+    if (!OWNER_TRANSFER_ENABLED) return json(res, 403, { error: 'owner_transfer_disabled' });
+    const body = await readBody(req);
+    const c = takeChallenge(body.cid);
+    // Un solo uso (takeChallenge lo borra) y atado al dueño que lo pidió.
+    if (!c?.ownerTransfer || c.ownerTransfer.ownerId !== owner.id) return json(res, 400, { error: 'challenge_expired' });
+    const cred = getCredentialById(body.credential?.id);
+    if (!cred || (cred.user_id || cred.userId) !== owner.id) {
+      audit(req, 'owner.transfer.denied', { ok: false, user: owner, msg: 'passkey que no es del dueño' });
+      return json(res, 403, { error: 'forbidden' });
+    }
+    let verification;
+    try {
+      verification = await verifyAuthenticationResponse({
+        response: body.credential, expectedChallenge: c.challenge, expectedOrigin: ORIGIN, expectedRPID: RP_ID,
+        requireUserVerification: true,
+        credential: { id: cred.id, publicKey: b64uToBuf(cred.public_key || cred.publicKey), counter: cred.counter, transports: typeof cred.transports === 'string' ? JSON.parse(cred.transports) : cred.transports }
+      });
+    } catch {
+      return json(res, 400, { error: 'passkey_verify_failed' });
+    }
+    if (!verification.verified) return json(res, 400, { error: 'passkey_verify_failed' });
+    updateCredentialCounter(cred.id, verification.authenticationInfo.newCounter);
+    // Puede haber cambiado entre el pedido y la confirmación (la desactivaron, se fue la passkey).
+    const target = getUserById(c.ownerTransfer.targetId);
+    const blocker = ownerTransferBlocker(target);
+    if (blocker) return json(res, blocker === 'not_found' ? 404 : 400, { error: blocker });
+    transferOwnership(owner.id, target.id);
+    audit(req, 'owner.transfer', { user: owner, target, summary: `${owner.name} → ${target.name}` });
+    json(res, 200, { ok: true, owner: { id: target.id, name: target.name } });
   },
 
   'POST /api/owner/user/delete': async (req, res) => {

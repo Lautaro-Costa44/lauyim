@@ -106,3 +106,18 @@ test('migración closures_perm_seeded: quien tenía classes.manage recibe gym.cl
   db.initDatabase();
   assert.ok(!db.getRole(custom.id).permissions.includes('gym.closures'));
 });
+
+test('transferOwnership: el dueño pasa a Administrador y el otro a dueño sin rol, todo junto', () => {
+  db.createUser({ id: 'nueva', name: 'Nueva' });
+  db.setUserRole('nueva', 'coach');
+  const owner = db.getDatabase().prepare('SELECT id FROM users WHERE owner = 1').get().id;
+  assert.equal(db.transferOwnership(owner, 'nueva'), true);
+  const before = db.getUserById(owner), after = db.getUserById('nueva');
+  assert.deepEqual([before.owner, before.admin, before.role_id], [0, 0, 'admin']);
+  assert.deepEqual([after.owner, after.admin, after.role_id], [1, 1, null]);
+  assert.equal(db.getDatabase().prepare('SELECT COUNT(*) AS n FROM users WHERE owner = 1').get().n, 1);
+  assert.throws(() => db.transferOwnership(owner, 'nueva'), /not_owner/);
+  assert.throws(() => db.transferOwnership('nueva', 'nadie'), /target_not_found/);
+  assert.equal(db.getUserById('nueva').owner, 1);          // el fallo no tocó nada
+  db.transferOwnership('nueva', owner);                    // deja la base como estaba
+});
