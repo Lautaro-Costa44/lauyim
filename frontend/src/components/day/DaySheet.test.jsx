@@ -98,6 +98,14 @@ describe('hoja del día: registrar', () => {
     await unmount()
   })
 
+  it('"Tocaba" usa la rutina de la semana si la planificada para ese día ya no existe', async () => {
+    setS({ dayPlan: { [PAST]: { fecha: PAST, estado: 'rutina', rutinaId: 'borrada' } } })
+    dayOverrideSheet(PAST)
+    const { host, unmount } = await openLastSheet()
+    expect(host.querySelector('.day-tocaba').textContent).toBe('Tocaba: Piernas')
+    await unmount()
+  })
+
   it('un día que no tenía rutina: no hay nada elegido y no se puede marcar hasta elegir', async () => {
     const sunday = '2026-09-27'
     dayOverrideSheet(sunday)
@@ -252,5 +260,42 @@ describe('hoja del día: gimnasio cerrado', () => {
     const { host, unmount } = await openLastSheet()
     expect(host.querySelector('.day-closed').textContent).toBe('El gimnasio está cerrado · Feriado')
     await unmount()
+  })
+})
+
+describe('hoja del día: el menú de un entreno se cierra solo', () => {
+  async function withMenu() {
+    setS({ workouts: [live('t1', PAST)] })
+    dayOverrideSheet(PAST)
+    const sheet = useUI.getState().sheets.at(-1)
+    let onBack = null
+    const setOnBack = fn => { onBack = fn }
+    const host = document.createElement('div'); document.body.appendChild(host)
+    const r = createRoot(host)
+    await act(async () => { r.render(<MemoryRouter>{sheet.render(() => useUI.getState().closeSheet(sheet.id), { setOnBack })}</MemoryRouter>) })
+    await tick()
+    await act(async () => { host.querySelector('[aria-label^="Opciones de"]').click() })
+    expect(document.querySelector('.day-menu')).toBeTruthy()
+    return { back: () => onBack, unmount: async () => { await act(async () => r.unmount()); host.remove() } }
+  }
+
+  it('"atrás" cierra el menú, no la hoja', async () => {
+    const m = await withMenu()
+    expect(typeof m.back()).toBe('function')
+    await act(async () => { m.back()() })
+    expect(document.querySelector('.day-menu')).toBeNull()
+    expect(useUI.getState().sheets).toHaveLength(1)
+    expect(m.back()).toBeNull()   // sin menú, "atrás" vuelve a cerrar la hoja
+    await m.unmount()
+  })
+
+  it('Escape y girar la pantalla lo cierran', async () => {
+    const m = await withMenu()
+    await act(async () => { window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })) })
+    expect(document.querySelector('.day-menu')).toBeNull()
+    await act(async () => { document.querySelector('[aria-label^="Opciones de"]').click() })
+    await act(async () => { window.dispatchEvent(new Event('resize')) })
+    expect(document.querySelector('.day-menu')).toBeNull()
+    await m.unmount()
   })
 })

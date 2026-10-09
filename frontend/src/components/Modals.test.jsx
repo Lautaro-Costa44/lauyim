@@ -186,6 +186,21 @@ describe('Modals sheet history accounting', () => {
     expect(mocks.state.sheets.map(item => item.id)).toEqual(['editor'])
   })
 
+  it('if the rewind popstate never arrives, deferred pushes still happen after a second', async () => {
+    vi.useFakeTimers()
+    try {
+      await setSheets([sheet('editor'), sheet('picker')])
+      await setSheets([sheet('editor')])
+      await setSheets([sheet('editor'), sheet('confirm')])
+      expect(historyMock.pushState).toHaveBeenCalledTimes(2)
+      await act(async () => { vi.advanceTimersByTime(1000) })
+      expect(historyMock.pushState).toHaveBeenCalledTimes(3)
+      // Y una hoja nueva vuelve a empujar enseguida: nada quedó trabado.
+      await setSheets([sheet('editor'), sheet('confirm'), sheet('more')])
+      expect(historyMock.pushState).toHaveBeenCalledTimes(4)
+    } finally { vi.useRealTimers() }
+  })
+
   it('two rewinds before their popstates arrive do not close the sheet underneath', async () => {
     await setSheets([sheet('one'), sheet('two'), sheet('three')])
     await setSheets([sheet('one'), sheet('two')])
@@ -193,6 +208,31 @@ describe('Modals sheet history accounting', () => {
     await popstate()
     await popstate()
     expect(mocks.state.sheets.map(item => item.id)).toEqual(['one'])
+  })
+
+  // Un onBack que maneja el "atrás" (cerrar un menú, volver un paso) deja la hoja abierta: tiene
+  // que recuperar su entrada, o el próximo "atrás" sale de la app en vez de cerrarla.
+  it('a sheet whose onBack handled back gets its entry back, so the next back closes it', async () => {
+    await setSheets([sheet('day')])
+    let handled = 0
+    mocks.state.setSheetOnBack('day', () => { handled++; mocks.state.setSheetOnBack('day', null) })
+    await popstate()
+    expect(handled).toBe(1)
+    expect(mocks.state.sheets.map(item => item.id)).toEqual(['day'])
+    expect(historyMock.pushState).toHaveBeenCalledTimes(2)   // la entrada recuperada
+
+    await popstate()                                          // segundo "atrás": cierra la hoja
+    expect(mocks.state.sheets).toEqual([])
+    expect(historyMock.go).not.toHaveBeenCalled()
+  })
+
+  it('an onBack that closes its own sheet does not leak the recovered entry', async () => {
+    await setSheets([sheet('day')])
+    mocks.state.setSheetOnBack('day', () => mocks.state.closeSheet('day'))
+    await popstate()
+    expect(mocks.state.sheets).toEqual([])
+    expect(historyMock.pushState).toHaveBeenCalledTimes(2)
+    expect(historyMock.go).toHaveBeenCalledWith(-1)          // y se deshace al cerrarse
   })
 
   it('accounts for a moved-on entry even when popstate has no current sheet', async () => {

@@ -1227,7 +1227,7 @@ function PlanImport({ bundle, close }) {
 
 /* ============================ day override / assign ============================ */
 // La hoja de un día vive en components/day/DaySheet.jsx.
-export const dayOverrideSheet = iso => ui().openSheet(close => <DaySheet iso={iso} close={close} />)
+export const dayOverrideSheet = iso => ui().openSheet((close, { setOnBack } = {}) => <DaySheet iso={iso} close={close} setOnBack={setOnBack} />)
 
 function DayAssign({ day, close }) {
   const st = useStore(s => s.S)

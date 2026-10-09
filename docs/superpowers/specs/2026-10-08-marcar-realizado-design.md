@@ -56,6 +56,7 @@ Planificar (rutina, descanso, volver al plan) solo cambia `dayPlan`: nunca toca 
 - Cada entreno tiene **"⋯"**, que abre un menú flotante: **Editar series** (o **Cargar series** en un marcado sin series) y **Borrar**.
   - El menú se dibuja fuera de la hoja (portal en `body`, posición fija desde el botón): flota sobre lo demás sin correr nada y abre hacia arriba si abajo no entra en la pantalla. Tocar afuera lo cierra.
   - **Borrar** confirma con el diálogo de la app (`confirmSheet`).
+  - Con el menú abierto, "atrás" y Escape cierran el menú y no la hoja; girar la pantalla también lo cierra.
 - **＋ Agregar otro entrenamiento**: abre el paso "Entrené", con **Cancelar** en lugar de "Descansé".
 
 ### Desde el calendario
@@ -79,6 +80,7 @@ Un entreno en curso (el que se está haciendo ahora) no se edita acá.
 - Tabla del ejercicio abierto: "Última vez: …" y una fila por serie. Columnas según `modeOf`:
   - reps: **kg · reps**; peso corporal: **+kg · reps**;
   - tiempo: **seg · kg**; cardio: **min · km/h**.
+  - El peso va en la unidad del perfil (kg o lb).
   - Columna **RIR o RPE** solo si `effortOf(S) !== 'none'` (no en cardio).
 - Filas iniciales: las series que ya tiene el entreno o, en un marcado nuevo, tantas vacías como series tiene la rutina (mínimo una).
 - **"Última vez"** es la sesión anterior a ese día (`w.d < iso`): ni el entreno que se edita ni una posterior. Sus valores se muestran como placeholder y **Igual que la última vez** los copia, con el separador decimal del idioma.
@@ -125,10 +127,11 @@ Un workout común con `marked: true`:
 ### Un entreno ya hecho, corregido (`buildEditedWorkout`)
 
 - El borrador muestra solo las series de trabajo hechas. Cada fila guarda su serie original (`orig`); los calentamientos y las series sin completar quedan en `keep`.
-- Al guardar, cada serie conserva lo que el editor no muestra (drops, rest-pause, notas) y pisa solo los valores mostrados; un valor vaciado se borra de la serie; una fila vacía se borra.
-- Vuelven los calentamientos (adelante) y las series sin completar (al final).
+- Al guardar, cada serie conserva lo que el editor no muestra (drops, notas) y pisa solo los valores mostrados; un valor vaciado se borra de la serie; una fila vacía se borra. En un rest-pause, si cambian las reps, los bloques se rearman con ese total y el mismo descanso.
+- Cada serie queda en su lugar: calentamientos y series sin completar no se mueven; las nuevas van después de la última serie de trabajo.
 - Un ejercicio cambiado o agregado entra sin nada del anterior. Uno que se queda sin series de trabajo sale.
-- El resto del entreno no cambia: hora, duración, nota, récords festejados al terminar, objetivo de la semana. `vol` se recalcula.
+- Los récords (`prs`) se recalculan con la regla de terminar un entreno (serie de trabajo más pesada contra el historial anterior a ese entreno): un peso cargado mal deja de ser récord y un ejercicio quitado pierde el suyo.
+- El resto del entreno no cambia: hora, duración, nota, objetivo de la semana. `vol` se recalcula.
 
 ### Guardar en la lista (`putWorkout`)
 
@@ -160,7 +163,8 @@ Cada hoja abierta agrega una entrada (`pushState`) y cerrarla retrocede (`histor
 
 - Con un retroceso propio pendiente, la hoja nueva espera ese `popstate` para hacer su `pushState`.
 - Una hoja que se abre y se cierra antes de que llegue no toca el historial.
-- Los retrocesos pendientes se cuentan (antes era un solo indicador).
+- Los retrocesos pendientes se cuentan (antes era un solo indicador), con un plan B: si el aviso de un retroceso no llega en un segundo, se da por hecho.
+- Si una hoja maneja el "atrás" con `setOnBack` (cerrar un menú, volver un paso) y sigue abierta, recupera su entrada; antes el siguiente "atrás" salía de la app.
 
 Esto también arregla reemplazar un ejercicio mientras se entrena.
 
@@ -203,3 +207,4 @@ Esto también arregla reemplazar un ejercicio mientras se entrena.
   - "No entrené" pasó a ser "Descansé" y se guarda.
   - Cartel de cierre y texto del calendario.
 - **Ronda 3:** historial del navegador balanceado (la vista de fondo saltaba a Plan/Stats) y encabezado del ejercicio en grilla.
+- **Revisión final:** unidad del perfil en el editor, récords recalculados al corregir, orden de las series, rest-pause, menú que se cierra con atrás/Escape/giro, entrada recuperada tras `setOnBack`, plan B del historial.

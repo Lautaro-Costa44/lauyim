@@ -164,7 +164,7 @@ describe('modeTag', () => {
 describe('editar un entreno ya hecho', () => {
   const warm = { done: true, w: 40, r: 10, warmup: true }
   const drop = { done: true, w: 80, r: 6, type: 'dropset', drops: [{ w: 60, r: 6 }] }
-  const done = { id: 'w1', d: '2026-03-10', start: 100, end: 3700, name: 'Pull', routineId: 'r', note: 'ok', prs: [{ id: '0025' }], weekTarget: 3, vol: 0,
+  const done = { id: 'w1', d: '2026-03-10', start: 100, end: 3700, name: 'Pull', routineId: 'r', note: 'ok', prs: ['0025'], weekTarget: 3, vol: 0,
     entries: [{ id: '0025', note: 'agarre', target: { id: '0025', mode: 'reps' }, sets: [warm, { done: true, w: 80, r: 8, rir: 2 }, drop, { done: false, w: 80, r: 0 }] }] }
 
   it('el borrador muestra solo las series de trabajo hechas; lo demás queda guardado aparte', () => {
@@ -177,7 +177,7 @@ describe('editar un entreno ya hecho', () => {
     const items = markedDraft({ workout: done })
     items[0].rows[0] = { ...items[0].rows[0], w: '85' }
     const w = buildEditedWorkout(done, items, 'rir')
-    expect(w).toMatchObject({ id: 'w1', start: 100, end: 3700, note: 'ok', prs: [{ id: '0025' }], weekTarget: 3, routineId: 'r' })
+    expect(w).toMatchObject({ id: 'w1', start: 100, end: 3700, note: 'ok', prs: ['0025'], weekTarget: 3, routineId: 'r' })
     expect(w.marked).toBeUndefined()
     expect(w.entries[0].note).toBe('agarre')
     expect(w.entries[0].sets).toEqual([warm, { done: true, w: 85, r: 8, rir: 2 }, drop, { done: false, w: 80, r: 0 }])
@@ -197,5 +197,49 @@ describe('editar un entreno ya hecho', () => {
     const w = buildEditedWorkout(done, items, 'none')
     expect(w.entries).toEqual([{ id: '0024', target: { id: '0024', sets: 1 }, sets: [{ done: true, w: 100, r: 5 }] }])
     expect(buildEditedWorkout(done, [{ ...markedDraft({ workout: done })[0], rows: [] }], 'none').entries).toEqual([])
+  })
+})
+
+describe('editar un entreno ya hecho: récords, orden y rest-pause', () => {
+  const t0 = Date.parse('2026-03-10T15:00:00Z')
+  const before = [{ id: 'p', d: '2026-03-03', start: t0 - 7 * 864e5, entries: [{ id: '0025', sets: [{ done: true, w: 100, r: 5 }] }] }]
+
+  it('recalcula los récords contra los entrenos anteriores: un peso corregido deja de ser récord', () => {
+    const w0 = { id: 'w', d: '2026-03-10', start: t0, prs: ['0025'], entries: [{ id: '0025', sets: [{ done: true, w: 800, r: 5 }] }] }
+    const items = markedDraft({ workout: w0 })
+    items[0].rows[0] = { ...items[0].rows[0], w: '80' }
+    expect(buildEditedWorkout(w0, items, 'none', { before }).prs).toEqual([])
+    items[0].rows[0] = { ...items[0].rows[0], w: '105' }
+    expect(buildEditedWorkout(w0, items, 'none', { before }).prs).toEqual(['0025'])
+  })
+
+  it('un récord de un ejercicio que se quitó o cambió desaparece', () => {
+    const w0 = { id: 'w', d: '2026-03-10', start: t0, prs: ['0025'], entries: [{ id: '0025', sets: [{ done: true, w: 120, r: 5 }] }] }
+    const items = [{ ...markedItem('0024', {}), rows: [{ w: '60', r: '5' }] }]
+    expect(buildEditedWorkout(w0, items, 'none', { before }).prs).toEqual(['0024'])
+  })
+
+  it('cada serie queda en su lugar: calentamientos y series sin completar no se mueven', () => {
+    const warm = { done: true, w: 40, r: 10, warmup: true }
+    const undone = { done: false, w: 80, r: 0 }
+    const a = { done: true, w: 80, r: 8 }, b = { done: true, w: 80, r: 6 }
+    const w0 = { id: 'w', d: '2026-03-10', start: t0, entries: [{ id: '0025', sets: [a, undone, warm, b] }] }
+    const items = markedDraft({ workout: w0 })
+    items[0].rows[1] = { ...items[0].rows[1], r: '7' }
+    items[0].rows.push({ w: '70', r: '10' })
+    expect(buildEditedWorkout(w0, items, 'none').entries[0].sets).toEqual([a, undone, warm, { done: true, w: 80, r: 7 }, { done: true, w: 70, r: 10 }])
+  })
+
+  it('rest-pause: si cambian las reps, los bloques se rearman con el mismo descanso', () => {
+    const rp = { done: true, w: 60, r: 12, type: 'restpause', clusters: [{ r: 8, restSec: 20 }, { r: 2, restSec: 20 }, { r: 2, restSec: 20 }] }
+    const w0 = { id: 'w', d: '2026-03-10', start: t0, entries: [{ id: '0025', sets: [rp] }] }
+    const items = markedDraft({ workout: w0 })
+    items[0].rows[0] = { ...items[0].rows[0], r: '10' }
+    const set = buildEditedWorkout(w0, items, 'none').entries[0].sets[0]
+    expect(set.r).toBe(10)
+    expect(set.clusters.reduce((n, c) => n + c.r, 0)).toBe(10)
+    expect(set.clusters.every(c => c.restSec === 20)).toBe(true)
+    items[0].rows[0] = { ...items[0].rows[0], r: '12', w: '65' }
+    expect(buildEditedWorkout(w0, items, 'none').entries[0].sets[0].clusters).toEqual(rp.clusters)   // mismas reps: no se tocan
   })
 })

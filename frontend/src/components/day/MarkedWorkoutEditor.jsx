@@ -3,12 +3,12 @@
 // vez; abrir uno lo sube arriba de todo para que su tabla quede sobre el teclado. Desde 700px: panel
 // centrado con lista + detalle. En un marcado nada es obligatorio: un ejercicio sin series no se
 // guarda, y guardar todo vacío es marcar el día.
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useStore } from '../../store/useStore.js'
 import { useUI } from '../../store/useUI.js'
 import { t, exerciseNameFor } from '../../lib/i18n.js'
 import { exOr } from '../../lib/exercises.js'
-import { fmtDate, uid } from '../../lib/format.js'
+import { fmtDate, uid, workoutTime } from '../../lib/format.js'
 import { dateLocale } from '../../lib/i18n-core.js'
 import { defaultConfig, effortOf, lastEntryFor, isBw, setLabel, EFFORT } from '../../lib/history.js'
 import { buildEditedWorkout, buildMarkedWorkout, columnsFor, emptyRows, itemSummary, markedDraft, markedItem, markedRowOf, modeTag, putWorkout } from '../../lib/marked-workout.js'
@@ -30,7 +30,8 @@ function useWide() {
   return wide
 }
 
-const HEAD = { w: 'kg', r: 'reps', sec: 'seg', min: 'min', speed: 'km/h' }
+// El peso va en la unidad del perfil (kg o lb), como en el entreno.
+const HEAD = { r: 'reps', sec: 'seg', min: 'min', speed: 'km/h' }
 const DECIMAL = new Set(['w', 'speed', 'rir', 'rpe'])
 const nameOf = id => exerciseNameFor(exOr(id))
 const newItem = id => markedItem(id, defaultConfig(id))
@@ -61,7 +62,12 @@ export default function MarkedWorkoutEditor({ iso, routine = null, workout = nul
   // Un entreno ya hecho con la app (no marcado): se corrige lo cargado, sin tocar lo demás.
   const editing = !!workout && !workout.marked
   // "La última vez" es la sesión anterior a ese día: ni este entreno ni una posterior.
-  const history = { ...st, workouts: st.workouts.filter(w => w.d < iso) }
+  const history = useMemo(() => ({ workouts: st.workouts.filter(w => w.d < iso) }), [st.workouts, iso])
+  const unit = st.unit || 'kg'
+  // Un resumen por ejercicio, una vez por render: la fila, las confirmaciones y el botón Guardar.
+  const sums = new Map(items.map(it => [it.key, itemSummary(it, effort)]))
+  // Al quitar o cambiar sin series perdidas: qué no cambia.
+  const untouched = editing ? t('Solo cambia este entreno.') : t('La rutina no cambia.')
 
   const patch = (key, fn) => setItems(list => list.map(it => (it.key === key ? fn(it) : it)))
   const setRows = (key, fn) => patch(key, it => ({ ...it, rows: fn(it.rows) }))
@@ -85,12 +91,12 @@ export default function MarkedWorkoutEditor({ iso, routine = null, workout = nul
   }
   const swap = (key, to) => patch(key, it => ({ ...newItem(to.id), key, rows: emptyRows(it.rows.length) }))
   // Quitar y cambiar se confirman con el diálogo de toda la app; dice cuántas series se pierden.
-  const lostOf = it => itemSummary(it, effort).count
+  const lostOf = it => sums.get(it.key)?.count || 0
   const askRemove = it => {
     const n = lostOf(it)
     confirm({
       title: t('¿Quitar {0}?', nameOf(it.id)),
-      message: [n === 1 ? t('Se pierde la serie que cargaste.') : n > 1 ? t('Se pierden las {0} series que cargaste.', n) : null, editing ? null : t('La rutina no cambia.')].filter(Boolean).join(' ') || t('La rutina no cambia.'),
+      message: [n === 1 ? t('Se pierde la serie que cargaste.') : n > 1 ? t('Se pierden las {0} series que cargaste.', n) : null, untouched].filter(Boolean).join(' '),
       confirmText: t('Quitar'), danger: true, onConfirm: () => remove(it.key),
     })
   }
@@ -99,13 +105,14 @@ export default function MarkedWorkoutEditor({ iso, routine = null, workout = nul
     const n = lostOf(it)
     confirm({
       title: t('¿Cambiar {0} por {1}?', nameOf(it.id), nameOf(ex.id)),
-      message: n === 1 ? t('La serie que cargaste se borra: era de otro ejercicio.') : n > 1 ? t('Las {0} series que cargaste se borran: eran de otro ejercicio.', n) : t('La rutina no cambia.'),
+      message: n === 1 ? t('La serie que cargaste se borra: era de otro ejercicio.') : n > 1 ? t('Las {0} series que cargaste se borran: eran de otro ejercicio.', n) : untouched,
       confirmText: t('Cambiar'), onConfirm: () => swap(it.key, ex),
     })
   })
   const add = () => pickExercise(ex => { const it = newItem(ex.id); setItems(list => [...list, it]); open(it.key) })
   const save = () => {
-    const w = editing ? buildEditedWorkout(workout, items, effort)
+    // Los récords se recalculan contra los entrenos anteriores a este, como al terminarlo.
+    const w = editing ? buildEditedWorkout(workout, items, effort, { before: st.workouts.filter(x => x.id !== workout.id && workoutTime(x) < workoutTime(workout)) })
       : buildMarkedWorkout(iso, { routine, routineId: workout ? workout.routineId ?? null : undefined, name, items, effort },
         { id: workout?.id || uid(), start: workout?.start })
     useStore.getState().update(s => { putWorkout(s.workouts, w) })
@@ -125,7 +132,7 @@ export default function MarkedWorkoutEditor({ iso, routine = null, workout = nul
     const cols = columnsFor(it.cfg, effort)
     const last = lastEntryFor(history, it.id)
     const total = it.rows.length * cols.length
-    const head = f => (f === effort ? effortHd : f === 'w' && cols.includes('r') && isBw(it.cfg) ? '+kg' : HEAD[f])
+    const head = f => (f === effort ? effortHd : f === 'w' ? (cols.includes('r') && isBw(it.cfg) ? '+' + unit : unit) : HEAD[f])
     return <div className="mwe-table" style={{ '--cols': cols.length }}>
       {last && <div className="mwe-last">{t('Última vez: {0}', last.sets.map(s => setLabel(it.id, s, it.cfg)).join(', '))}</div>}
       {it.keep?.length > 0 && <div className="mwe-last">{it.keep.length === 1 ? t('1 serie de calentamiento o sin completar: se conserva.') : t('{0} series de calentamiento o sin completar: se conservan.', it.keep.length)}</div>}
@@ -154,7 +161,7 @@ export default function MarkedWorkoutEditor({ iso, routine = null, workout = nul
   </>
 
   const row = it => {
-    const sum = itemSummary(it, effort)
+    const sum = sums.get(it.key)
     const tag = modeTag(it.cfg)
     const isOpen = openKey === it.key
     return <div key={it.key} data-key={it.key} className={'mwe-item' + (isOpen ? ' open' : '')}>
@@ -199,7 +206,7 @@ export default function MarkedWorkoutEditor({ iso, routine = null, workout = nul
     {!wide && <div className="mwe-spacer" aria-hidden="true" />}
     <div className={'mwe-foot' + (typing && !wide ? ' hidden' : '')}>
       {wide && <Button variant="ghost" className="dim" onClick={close}>{t('Cancelar')}</Button>}
-      <Button variant="primary" disabled={editing && !items.some(it => itemSummary(it, effort).count)} onClick={save}>{editing ? t('Guardar cambios') : t('Guardar entrenamiento')}</Button>
+      <Button variant="primary" disabled={editing && ![...sums.values()].some(sm => sm.count)} onClick={save}>{editing ? t('Guardar cambios') : t('Guardar entrenamiento')}</Button>
     </div>
   </div>
 }

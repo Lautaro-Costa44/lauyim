@@ -6,9 +6,9 @@
 // arrancaba en 0 kg): cuenta para la racha porque es un workout en ese día, y la recuperación usa
 // `muscleLoad`, igual que una clase. El servidor guarda `marked` y `muscleLoad` en `meta`.
 import { localDayStartOf, localNoonOf, workoutTime } from './format.js'
-import { modeOf, isBw, isEmptySet, workoutVolume, setLabel, EFFORT, capEffort } from './history.js'
+import { modeOf, isBw, isEmptySet, workoutVolume, setLabel, EFFORT, capEffort, bestWeightFor } from './history.js'
 import { loadOfRoutine, musclesOf } from './muscles.js'
-import { isWarmupRow } from './workout-model.js'
+import { isWarmupRow, isRestPauseSet, clustersOf, splitBurstReps } from './workout-model.js'
 import { EXIDX } from './exercises.js'
 
 /** 'past' | 'today' | 'future': qué ofrece la hoja de ese día. */
@@ -87,29 +87,64 @@ function primaryMuscles(routine) {
   return out
 }
 
+// Una fila corregida sobre su serie original: pisa solo los valores que el editor muestra, borra los
+// que se vaciaron y conserva lo demás (drops, notas). En un rest-pause, si cambian las reps, los
+// bloques se rearman con ese total y el mismo descanso (si no, dirían otro número de reps).
+function editedSet(row, cfg, effort) {
+  const set = markedSetOf(row, cfg, effort)
+  if (!set || !row.orig) return set
+  const merged = { ...row.orig, ...set }
+  for (const f of FIELDS) if (set[f] == null) delete merged[f]
+  if (isRestPauseSet(row.orig) && merged.r !== row.orig.r) {
+    const restSec = clustersOf(row.orig)[0]?.restSec
+    merged.clusters = splitBurstReps(merged.r).map(r => (restSec != null ? { r, restSec } : { r }))
+  }
+  return merged
+}
+
+// La serie de trabajo más pesada de un ejercicio: la regla de récord de terminar un entreno.
+const topWeight = entry => Math.max(0, ...(entry.sets || []).filter(s => s.done && !isWarmupRow(s)).map(s => s.w || 0))
+
 /**
- * Un entreno ya hecho (con la app), corregido en el editor. Se pisan solo los valores que el editor
- * muestra: una serie conserva lo demás (drops, rest-pause, notas), un valor vaciado se borra, y los
- * calentamientos y las series sin completar vuelven tal cual. Un ejercicio sin series de trabajo
- * sale. El resto del entreno (hora, nota, récords festejados, objetivo de la semana) no cambia.
+ * Un entreno ya hecho (con la app), corregido en el editor. Cada serie queda en su lugar: las
+ * corregidas donde estaban, las borradas salen, los calentamientos y las series sin completar no se
+ * mueven y las nuevas van después de la última serie de trabajo. Un ejercicio sin series de trabajo
+ * sale. Con `before` (los entrenos anteriores) los récords se recalculan con la misma regla que al
+ * terminar; sin él, solo salen los de ejercicios que ya no están. El resto del entreno (hora, nota,
+ * objetivo de la semana) no cambia.
  */
-export function buildEditedWorkout(workout, items, effort = 'none') {
+export function buildEditedWorkout(workout, items, effort = 'none', { before = null } = {}) {
   const entries = []
   for (const it of items) {
-    const edited = (it.rows || []).map(r => {
-      const set = markedSetOf(r, it.cfg, effort)
-      if (!set || !r.orig) return set
-      const merged = { ...r.orig, ...set }
-      for (const f of FIELDS) if (set[f] == null) delete merged[f]
-      return merged
-    }).filter(Boolean)
-    if (!edited.length) continue
-    const keep = it.orig ? it.keep || [] : []
-    const sets = [...keep.filter(isWarmupRow), ...edited, ...keep.filter(s => !isWarmupRow(s))]
-    entries.push(it.orig ? { ...it.orig, sets } : { id: it.id, target: { ...it.cfg, id: it.id }, sets })
+    const edited = new Map()   // serie original → corregida (null: se vació)
+    const fresh = []
+    for (const r of it.rows || []) {
+      const set = editedSet(r, it.cfg, effort)
+      if (r.orig) edited.set(r.orig, set)
+      else if (set) fresh.push(set)
+    }
+    if (![...edited.values()].some(Boolean) && !fresh.length) continue
+    if (!it.orig) { entries.push({ id: it.id, target: { ...it.cfg, id: it.id }, sets: fresh }); continue }
+    const keep = new Set(it.keep || [])
+    const sets = []
+    let last = -1
+    for (const s of it.all || []) {
+      if (edited.has(s)) { if (edited.get(s)) { sets.push(edited.get(s)); last = sets.length - 1 } }
+      else if (keep.has(s)) sets.push(s)
+    }
+    if (last < 0) while (last + 1 < sets.length && isWarmupRow(sets[last + 1])) last++
+    sets.splice(last + 1, 0, ...fresh)
+    entries.push({ ...it.orig, sets })
   }
   const w = { ...workout, entries }
   w.vol = workoutVolume(w)
+  if (before) {
+    const prs = entries.filter(e => { const top = topWeight(e); return top > 0 && top > bestWeightFor({ workouts: before }, e.id) }).map(e => e.id)
+    if (prs.length || workout.prs) w.prs = prs
+  } else if (workout.prs) {
+    const ids = new Set(entries.map(e => e.id))
+    w.prs = workout.prs.filter(id => ids.has(id))
+  }
   return w
 }
 
@@ -123,15 +158,15 @@ export const markedItem = (id, cfg = {}) => ({ key: keyOf(), id, cfg: { ...cfg, 
 /**
  * Borrador del editor: las series de un entreno que ya las tiene, o la rutina con filas vacías.
  * De un entreno se muestran solo las series de trabajo hechas; cada fila guarda su serie original
- * (`orig`) y lo que no se muestra (calentamientos, series sin completar) queda en `keep`, para
- * devolverlo tal cual al guardar.
+ * (`orig`), lo que no se muestra (calentamientos, series sin completar) queda en `keep` y `all`
+ * guarda el orden original, para devolver cada serie a su lugar al guardar.
  */
 export function markedDraft({ routine = null, workout = null } = {}) {
   if (workout?.entries?.length) {
     return workout.entries.map(e => {
       const { sets = [], ...orig } = e
       const shown = s => s?.done && !isWarmupRow(s)
-      return { key: keyOf(), id: e.id, cfg: { ...(e.target || {}), id: e.id }, orig,
+      return { key: keyOf(), id: e.id, cfg: { ...(e.target || {}), id: e.id }, orig, all: sets,
         rows: sets.filter(shown).map(s => ({ ...markedRowOf(s), orig: s })), keep: sets.filter(s => !shown(s)) }
     })
   }

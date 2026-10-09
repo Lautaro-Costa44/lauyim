@@ -2,7 +2,7 @@
 // descansé) y ver lo que hay. Hoy: registrar, y planificar mientras no hayas entrenado. Futuro: solo
 // planificar. Planificar (rutina, descanso, volver al plan) solo cambia dayPlan: nunca borra un
 // entreno. Cada entreno del día tiene su menú (editar, borrar) y borrar siempre confirma.
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useStore } from '../../store/useStore.js'
 import { useUI } from '../../store/useUI.js'
@@ -87,11 +87,12 @@ export function DayPlanSection({ iso, close, heading = null, showWeekly = true }
 const FREE = '__free'
 // Lo que tocaba ese día: la rutina que se planeó para esa fecha, o la de la semana. Un descanso
 // puesto después (o un "completado" viejo, que el marcado escribía en dayPlan) no dice qué tocaba.
+// Si la rutina planificada para ese día ya no existe, vale la de la semana.
 function plannedRoutine(S, iso) {
   const ov = S.dayPlan[iso]
   const own = ov && typeof ov === 'object' ? (ov.estado === 'rutina' ? ov.rutinaId : null) : (typeof ov === 'string' && ov !== 'rest' ? ov : null)
-  const id = own || S.week[new Date(iso + 'T12:00:00').getDay()]
-  return S.routines.find(r => r.id === id) || null
+  const byId = id => (id && S.routines.find(r => r.id === id)) || null
+  return byId(own) || byId(S.week[new Date(iso + 'T12:00:00').getDay()])
 }
 
 // "¿Entrenaste?": marcar el día (sin series) o pasar a cargarlas; "Descansé" lo deja como descanso.
@@ -176,7 +177,7 @@ function DayWorkoutCard({ w, close, menu, setMenu }) {
   </div>
 }
 
-export function DaySheet({ iso, close }) {
+export function DaySheet({ iso, close, setOnBack }) {
   const st = useStore(s => s.S)
   const myClasses = useMyClasses()
   const mode = dayMode(iso, todayISO())
@@ -187,6 +188,21 @@ export function DaySheet({ iso, close }) {
   const rested = isRest(st.dayPlan[iso])
   const [adding, setAdding] = useState(false)
   const [menu, setMenu] = useState(null)   // { id, style }: el entreno con el menú abierto y dónde se dibuja
+  // Con el menú abierto, "atrás" y Escape cierran el menú y no la hoja; girar la pantalla también
+  // lo cierra (quedó dibujado donde estaba el botón).
+  useEffect(() => {
+    if (!menu) return
+    setOnBack?.(() => setMenu(null))
+    const onKey = e => { if (e.key === 'Escape') { e.stopPropagation(); setMenu(null) } }
+    const onResize = () => setMenu(null)
+    window.addEventListener('keydown', onKey, true)
+    window.addEventListener('resize', onResize)
+    return () => {
+      setOnBack?.(null)
+      window.removeEventListener('keydown', onKey, true)
+      window.removeEventListener('resize', onResize)
+    }
+  }, [menu, setOnBack])
   const nothing = !dayWorkouts.length && !dayClasses.length
   // Pasado marcado como descanso y sin nada: se dice, con deshacer y "al final entrené".
   const restCard = mode === 'past' && rested && nothing && !adding
@@ -209,11 +225,9 @@ export function DaySheet({ iso, close }) {
             <Button size="sm" variant="plain" onClick={undoRest}>{t('Deshacer')}</Button></div>
           <Button variant="plain" icon="plus" className="day-add" onClick={() => setAdding(true)}>{t('Al final entrené')}</Button>
         </>
-        : nothing && !adding
-          ? <MarkStep iso={iso} planned={planned} close={close} />
-          : adding
-            ? <MarkStep iso={iso} planned={planned} close={close} onCancel={() => setAdding(false)} />
-            : <Button variant="plain" icon="plus" className="day-add" onClick={() => setAdding(true)}>{t('Agregar otro entrenamiento')}</Button>}
+        : nothing || adding
+          ? <MarkStep iso={iso} planned={planned} close={close} onCancel={adding ? () => setAdding(false) : null} />
+          : <Button variant="plain" icon="plus" className="day-add" onClick={() => setAdding(true)}>{t('Agregar otro entrenamiento')}</Button>}
     </>}
     {mode === 'future' && dayClasses.length > 0 && <>
       <h4 className="sec" style={{ marginTop: 0 }}>{t('Clases de este día')}</h4>

@@ -116,6 +116,20 @@ export default function Modals() {
   // que esperan su pushState (ver el efecto de abajo).
   const suppressPop = useRef(0)
   const pendingPush = useRef(0)
+  const settleTimer = useRef(null)
+  // Plan B: si el popstate de un retroceso propio no llega (el navegador no tenía adónde volver),
+  // no se espera para siempre: después de un segundo se da por hecho y se empujan las pendientes.
+  // Sin esto, ninguna hoja abierta después tendría entrada y "atrás" saldría de la app.
+  const flushPending = useCallback(() => {
+    clearTimeout(settleTimer.current)
+    settleTimer.current = null
+    for (; pendingPush.current > 0; pendingPush.current--) history.pushState({ lauyimSheet: true }, '')
+  }, [])
+  const armSettle = useCallback(() => {
+    clearTimeout(settleTimer.current)
+    settleTimer.current = setTimeout(() => { suppressPop.current = 0; flushPending() }, 1000)
+  }, [flushPending])
+  useEffect(() => () => clearTimeout(settleTimer.current), [])
   const pushedEntries = useRef(0)
   const sheetEntries = useRef([])
   const lockedScrollY = useRef(null)
@@ -158,6 +172,7 @@ export default function Modals() {
         if (rewind > unpushed) {
           suppressPop.current++
           history.go(-(rewind - unpushed))
+          armSettle()
         }
       }
       // Entries skipped because the app moved on remain in pushedEntries as deliberate
@@ -169,7 +184,7 @@ export default function Modals() {
     const onPop = () => {
       if (suppressPop.current > 0) {
         suppressPop.current--
-        if (!suppressPop.current) for (; pendingPush.current > 0; pendingPush.current--) history.pushState({ lauyimSheet: true }, '')
+        if (!suppressPop.current) flushPending()
         return
       }
       if (pushedEntries.current <= 0) return
@@ -177,17 +192,26 @@ export default function Modals() {
       // The browser has already spent one pushed entry. Mark the latest live active
       // sheet entry spent even when the sheet is locked; with no active entry this is a
       // moved-on leak, which is still accounted for by the counter decrement above.
+      let spent = null
       for (let i = sheetEntries.current.length - 1; i >= 0; i--) {
         if (sheetEntries.current[i].live) {
-          sheetEntries.current[i].live = false
+          spent = sheetEntries.current[i]
+          spent.live = false
           break
         }
       }
       const top = sheets[sheets.length - 1]
       if (top) {
         const onBack = useUI.getState().getSheetOnBack(top.id)
-        if (onBack) onBack()
-        else if (!top.locked || top.backGesture) closeSheet(top.id)
+        if (onBack) {
+          // La hoja manejó el "atrás" (cerrar un menú, volver un paso) y sigue abierta: recupera su
+          // entrada, o el próximo "atrás" saldría de la app. Si el onBack la cerró, el efecto de
+          // arriba deshace esta entrada como cualquier otra.
+          history.pushState({ lauyimSheet: true }, '')
+          pushedEntries.current++
+          if (spent) { spent.live = true; spent.openedAt = location.href }
+          onBack()
+        } else if (!top.locked || top.backGesture) closeSheet(top.id)
       }
     }
     window.addEventListener('popstate', onPop)

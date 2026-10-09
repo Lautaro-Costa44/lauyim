@@ -135,6 +135,13 @@ describe('editor de series: celular', () => {
     expect([...host.querySelectorAll('.mwe-th')].map(h => h.textContent)).toEqual(['kg', 'reps', 'RIR'])
   })
 
+  it('la columna de peso va en la unidad del perfil', async () => {
+    setS({ unit: 'lb' })
+    await open()
+    await click(items()[0].querySelector('.mwe-item-main'))
+    expect([...host.querySelectorAll('.mwe-th')].map(h => h.textContent)).toEqual(['lb', 'reps'])
+  })
+
   it('"Igual que la última vez" copia las series de la última vez', async () => {
     setS({ workouts: [{ id: 'p', d: '2026-09-20', start: Date.parse('2026-09-20T15:00:00Z'), end: Date.parse('2026-09-20T16:00:00Z'), name: 'Push A', entries: [{ id: '0025', sets: [{ done: true, w: 62.5, r: 8 }, { done: true, w: 60, r: 7 }] }] }] })
     await open()
@@ -216,6 +223,14 @@ describe('editor de series: corregir un entreno ya hecho', () => {
     expect(w.marked).toBeUndefined()
     expect(w.entries[0].sets).toEqual([warm, { done: true, w: 80, r: 8 }, { done: true, w: 82.5, r: 7 }])
     expect(w.vol).toBe(80 * 8 + 82.5 * 7)
+  })
+
+  it('quitar un ejercicio al corregir dice que solo cambia este entreno', async () => {
+    setS({ workouts: [done] })
+    await open({ workout: done })
+    await click(items()[0].querySelector('[aria-label^="Quitar"]'))
+    await wait(10)
+    expect(picks.confirm.message).toBe('Se pierden las 2 series que cargaste. Solo cambia este entreno.')
   })
 
   it('no deja guardar un entreno sin ninguna serie', async () => {
