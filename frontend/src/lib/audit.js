@@ -133,6 +133,8 @@ const LABELS = {
   'classes.closure.delete': 'Reabrió el gimnasio',
   'gym.closure.add': 'Cerró el gimnasio',
   'gym.closure.delete': 'Reabrió el gimnasio',
+  'owner.transfer': 'Pasó el rol de dueño',
+  'owner.transfer.denied': 'Intentó pasar el rol de dueño con una passkey ajena',
   'owner.classes.settings': 'Cambió los ajustes de clases'
 }
 
