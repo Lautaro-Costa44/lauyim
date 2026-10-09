@@ -8,6 +8,7 @@ import path from 'path';
 import fs from 'fs';
 import crypto from 'node:crypto';
 import { migrateClasses } from './classes-db.js';
+import { migrateSupplements, deleteSupplementData } from './supplements-db.js';
 import { fileURLToPath } from 'node:url';
 import { setRowValues, setFromRow, workoutMeta, validateWorkouts, decodeMeta, encodeMeta } from './row-meta.js';
 import { CUSTOM_EXERCISE_COLUMNS } from './custom-exercise.js';
@@ -265,6 +266,7 @@ export function initDatabase() {
   }
   migrateRoles(db);
   migrateClasses(db);
+  migrateSupplements(db);
   // Clases incluidas en el plan (entrega 4 de clases): null es libre; 'week' o 'month'.
   try { db.exec('ALTER TABLE plans ADD COLUMN class_limit INTEGER;'); } catch {}
   try { db.exec('ALTER TABLE plans ADD COLUMN class_period TEXT;'); } catch {}
@@ -2749,8 +2751,8 @@ export function setHealthConsent(userId, granted) {
 }
 
 // "Borrar mis datos de salud": peso corporal, edad, género, altura, % de grasa, peso objetivo,
-// las respuestas de salud de la encuesta (lesiones incluidas), metas y registros de nutrición y
-// sus plantillas. Todo junto. Las rutinas y los entrenamientos no se tocan.
+// las respuestas de salud de la encuesta (lesiones incluidas), metas y registros de nutrición, sus
+// plantillas y los suplementos. Todo junto. Las rutinas y los entrenamientos no se tocan.
 export function deleteHealthData(userId, surveyKeys) {
   const db = getDatabase();
   db.exec('BEGIN IMMEDIATE');
@@ -2758,6 +2760,7 @@ export function deleteHealthData(userId, surveyKeys) {
     db.prepare('DELETE FROM bodyweight WHERE user_id = ?').run(userId);
     db.prepare('DELETE FROM comidas_registradas WHERE user_id = ?').run(userId);
     db.prepare('DELETE FROM plantillas_comida WHERE user_id = ?').run(userId);
+    deleteSupplementData(db, userId);
     const row = db.prepare('SELECT respuestas_encuesta FROM user_state WHERE user_id = ?').get(userId);
     if (row) {
       const resp = safeJsonParse(row.respuestas_encuesta, null);
