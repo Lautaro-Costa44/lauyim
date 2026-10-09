@@ -238,6 +238,7 @@ export const useStore = create((set, get) => {
     localStorage.removeItem('gym_guest')
     localStorage.removeItem('gym_dirty')
     localStorage.removeItem(KEY)
+    localStorage.removeItem('lauyim_supps')   // suplementos (store/useSupplements.js): dato de salud
     persist(clone(DEF), false)
   }
 
