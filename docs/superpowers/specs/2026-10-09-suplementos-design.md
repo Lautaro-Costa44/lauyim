@@ -262,3 +262,13 @@ CREATE TABLE IF NOT EXISTS supplement_profile (
 - Dosis personalizadas más allá de las cuentas por peso que da la fuente (cafeína).
 - Marca en el gráfico de peso (reemplazada por el heatmap).
 - Traducción del contenido de las fichas.
+
+## Cambios por pedido del usuario (2026-10-09, después de la prueba)
+
+- **Agregar solo desde la guía.** La tarjeta tiene "Ver la guía" y, mientras no haya ningún suplemento, la aclaración "Para agregar un suplemento, elegilo en la guía." Se sacaron "＋ Agregar un suplemento" y "＋ Agregar".
+- **Cafeína.** Ya no se agrega como suplemento (`cafeina`: `trackable: false`, `caffeineBar: true`). La barra "Cafeína del día" de la tarjeta suma con un toque mate (½ termo) y café; "💊 Cápsula" (fuente nueva `capsula`, pide los mg) y "＋ Otra" abren la hoja; "Ver detalle ›" abre la hoja con la lista y "Eliminar último consumo". La ficha de cafeína tiene "Sumar en la cafeína del día".
+- **Volver.** En la guía y en "Mis suplementos", volver es un botón grande ("‹ Guía", "‹ Mis suplementos"), distinto de la ✕ que cierra.
+- **Ficha de uno que ya tomás:** "Dejar de tomar" y "Configurar". Archivado: "Volver a tomar".
+- **Recordatorios: uno por dosis**, cada uno con su hora (columna `reminder_times`, JSON). El de la dosis N sale si ese día hay menos de N marcadas. Texto: "Beta-alanina: dosis 2 de 3".
+- **Mis suplementos:** ⚙️ a la derecha de cada activo (abre su configuración). Archivados: "Volver a tomar" a la derecha y 🗑️ con confirmación que borra el suplemento y su historial.
+- **"Toma" → "dosis".** Campos: "Cantidad por día" y "Separar en dosis" (pista: "En cuántas veces por día la tomás."). Tarjeta: "Hoy: 2 de 5 dosis", "3 dosis · 1,6 g c/u".
