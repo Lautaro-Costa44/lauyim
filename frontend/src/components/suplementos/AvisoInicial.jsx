@@ -6,7 +6,7 @@ import { useUI } from '../../store/useUI.js'
 import { useSupplements, acceptNotice, noticeAccepted, loadSupplements } from '../../store/useSupplements.js'
 import { t } from '../../lib/i18n.js'
 import { errorText } from '../../lib/errors.js'
-import { Button, Segmented } from '../ui.jsx'
+import { Button } from '../ui.jsx'
 
 const CONDITIONS = [['🤰', 'Embarazo o lactancia'], ['🫘', 'Enfermedad renal o hepática'], ['❤️', 'Presión alta o problemas cardíacos'], ['💊', 'Tomás medicación de forma habitual'], ['😵', 'Ansiedad o problemas para dormir (por la cafeína)']]
 
@@ -31,7 +31,11 @@ function Aviso({ close, then }) {
     <div className="small dim">{t('No guardamos cuál te aplica: solo que leíste esto.')}</div>
     {askAge && <div className="supp-age">
       <div className="supp-label">{t('¿Tenés 18 años o más?')}</div>
-      <Segmented options={[{ value: 'si', label: t('Sí') }, { value: 'no', label: t('No') }]} value={adult} onChange={setAdult} />
+      {/* Dos botones y no un Segmented: el Segmented marca la primera opción aunque no haya nada elegido. */}
+      <div className="supp-age-btns" role="radiogroup" aria-label={t('¿Tenés 18 años o más?')}>
+        {[['si', 'Sí'], ['no', 'No']].map(([v, l]) => <button key={v} type="button" role="radio" aria-checked={adult === v}
+          className={'chip nocap' + (adult === v ? ' on' : '')} onClick={() => setAdult(v)}>{t(l)}</button>)}
+      </div>
     </div>}
     <Button variant="primary" disabled={busy || (askAge && !adult)} onClick={accept}>{t('Leí y acepto')}</Button>
   </div>

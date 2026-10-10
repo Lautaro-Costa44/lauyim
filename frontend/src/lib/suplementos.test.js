@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { addDays, canLogDate, caffeineRange, isTrainingDay, isDueOn, takenOn, streakOf, adherence30, dayLevel, caffeineTotal, isOverCaffeine, doseLabel, perTake, groupBySlot, adultStatus, itemName, overDose, sinceOf } from './suplementos.js'
+import { addDays, canLogDate, caffeineRange, isTrainingDay, isDueOn, takenOn, streakOf, adherence30, dayLevel, caffeineTotal, isOverCaffeine, doseLabel, perTake, groupBySlot, adultStatus, itemName, overDose, sinceOf, startDay } from './suplementos.js'
 
 const TODAY = '2026-10-09'
 const crea = { id: 'i1', catalogId: 'creatina', dose: 5, unit: 'g', scoopG: 5, doses: 1, slot: 'morning', days: 'daily', status: 'active', createdAt: '2026-09-01T10:00:00Z' }
@@ -70,6 +70,12 @@ describe('racha, cumplimiento y heatmap', () => {
     expect(dayLevel(tres, [log('i2', TODAY)], TODAY, always)).toBe(1)
     const week = Array.from({ length: 7 }, (_, i) => log('i1', addDays(TODAY, -i)))
     expect(dayLevel(crea, week, TODAY, always)).toBe(4)
+  })
+  it('el alta cuenta en el día local: agregado a la noche (UTC del día siguiente) toca hoy', () => {
+    const tarde = new Date(2026, 9, 9, 22, 30).toISOString()   // 22:30 local del 9
+    expect(startDay(tarde)).toBe('2026-10-09')
+    expect(isDueOn({ ...crea, createdAt: tarde }, '2026-10-09', false)).toBe(true)
+    expect(startDay('2026-10-01')).toBe('2026-10-01')
   })
   it('agregado hoy: las tomas de días anteriores cuentan para la racha', () => {
     const nuevo = { ...crea, createdAt: TODAY + 'T10:00:00Z' }

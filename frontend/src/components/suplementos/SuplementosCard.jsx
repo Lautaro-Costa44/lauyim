@@ -30,8 +30,7 @@ export function CaffeineToday({ items, logs, today }) {
     <div className="chips supp-quick">
       <button type="button" className="chip nocap" onClick={openCaffeine}>🧉 {t('Mate')}</button>
       <button type="button" className="chip nocap" onClick={openCaffeine}>☕ {t('Café')}</button>
-      <button type="button" className="chip nocap" onClick={openCaffeine}>⚡ {t('Pre-entreno')}</button>
-      <button type="button" className="chip nocap" onClick={openCaffeine} aria-label={t('Otra cafeína')}>＋</button>
+      <button type="button" className="chip nocap" onClick={openCaffeine} aria-label={t('Otra cafeína')}>＋ {t('Otra')}</button>
     </div>
   </div>
 }

@@ -139,7 +139,8 @@ export function sendSupplementReminders({ send, nowMs = Date.now() }) {
     let state = null;
     for (const item of items) {
       const taken = logs.filter(l => l.itemId === item.id).length;
-      const due = { item, localDate: local.date, localTime: local.time, lastSent: profile.lastReminderSent[item.id] || null, taken };
+      const createdDate = clock(Date.parse(item.createdAt) || nowMs, u.tz || gymTz()).date;
+      const due = { item, localDate: local.date, localTime: local.time, lastSent: profile.lastReminderSent[item.id] || null, taken, createdDate };
       // Primero lo barato (hora, ya enviado, ya tomado); el estado del socio solo si hace falta saber
       // si hoy entrena.
       if (!reminderDue({ ...due, trainingDay: true })) continue;

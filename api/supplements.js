@@ -67,9 +67,10 @@ export function proteinMeal({ item, amount, date, today, time }) {
 }
 
 const minutes = hhmm => Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3, 5));
-export function reminderDue({ item, localDate, localTime, lastSent, taken, trainingDay }) {
+// createdDate: el día local del alta (created_at se guarda en UTC); sin él, la fecha UTC.
+export function reminderDue({ item, localDate, localTime, lastSent, taken, trainingDay, createdDate }) {
   if (item.status !== 'active' || !item.reminderTime || lastSent === localDate) return false;
-  if (localDate < String(item.createdAt || '').slice(0, 10)) return false;
+  if (localDate < (createdDate || String(item.createdAt || '').slice(0, 10))) return false;
   if (item.days === 'training' && !trainingDay) return false;
   if (taken >= Math.max(1, item.doses || 1)) return false;
   const diff = minutes(localTime) - minutes(item.reminderTime);

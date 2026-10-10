@@ -2,6 +2,7 @@
 // cada día, racha, cumplimiento, niveles del heatmap, cafeína del día y etiquetas de dosis.
 import { fichaById, SLOTS, UNITS } from './suplementos-data.js'
 import { effectiveRoutineId } from './history.js'
+import { isoOf } from './format.js'
 
 const dayNum = iso => Date.UTC(+iso.slice(0, 4), +iso.slice(5, 7) - 1, +iso.slice(8, 10)) / 86400000
 export const addDays = (iso, n) => new Date((dayNum(iso) + n) * 86400000).toISOString().slice(0, 10)
@@ -15,16 +16,24 @@ export function caffeineRange(weightKg) {
 }
 export const isOverCaffeine = total => total > CAFFEINE_DAY_MAX
 
+// Día local del alta. createdAt llega del servidor en UTC ("2026-10-10T00:30:00Z" puede ser el 9 a la
+// noche en Argentina); un día suelto ("2026-10-09") se usa tal cual.
+export const startDay = createdAt => {
+  const s = String(createdAt || '')
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s
+  const ms = Date.parse(s)
+  return Number.isNaN(ms) ? '' : isoOf(new Date(ms))
+}
 export const isTrainingDay = (S, iso) => !!effectiveRoutineId(S, iso) || (S?.workouts || []).some(w => w.d === iso)
 export const isDueOn = (item, iso, trainingDay) => item.status === 'active'
-  && iso >= String(item.createdAt || '').slice(0, 10)
+  && iso >= startDay(item.createdAt)
   && (item.days !== 'training' || !!trainingDay)
 export const takenOn = (logs, itemId, iso) => logs.reduce((n, l) => n + (l.itemId === itemId && l.date === iso ? 1 : 0), 0)
 const doses = item => Math.max(1, item.doses || 1)
 // Desde cuándo cuenta: el alta o la primera toma registrada, la que sea antes (quien agrega hoy lo
 // que ya venía tomando puede marcar los días anteriores y que sumen a la racha).
 export function sinceOf(item, logs) {
-  let since = String(item.createdAt || '').slice(0, 10) || '9999-12-31'
+  let since = startDay(item.createdAt) || '9999-12-31'
   for (const l of logs) if (l.itemId === item.id && l.date < since) since = l.date
   return since
 }

@@ -55,6 +55,9 @@ test('reminderDue: a su hora (5 min), si toca, si falta y una vez por día', () 
   assert.equal(at('09:01', { lastSent: '2026-10-09' }), false);
   assert.equal(at('09:01', { taken: 1 }), false);
   assert.equal(reminderDue({ item: { ...item, days: 'training' }, localDate: '2026-10-09', localTime: '09:00', lastSent: null, taken: 0, trainingDay: false }), false);
+  // Alta a la noche local (UTC del día siguiente): el recordatorio de esa noche sale igual.
+  const tarde = { ...item, reminderTime: '22:00', createdAt: '2026-10-10T00:30:00Z' };
+  assert.equal(reminderDue({ item: tarde, localDate: '2026-10-09', localTime: '22:01', lastSent: null, taken: 0, trainingDay: false, createdDate: '2026-10-09' }), true);
 });
 
 test('supplementsEnabled: prendido salvo "0"', () => {

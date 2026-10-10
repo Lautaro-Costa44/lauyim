@@ -287,7 +287,7 @@ export function SupplementsToggleCard() {
   const toast = useUI(s => s.toast)
   const [enabled, setEnabled] = useState(null)
   const [busy, setBusy] = useState(false)
-  useEffect(() => { api('/api/owner/supplements').then(d => setEnabled(d.enabled)).catch(() => setEnabled(null)) }, [])
+  useEffect(() => { api('/api/owner/supplements').then(d => setEnabled(typeof d?.enabled === 'boolean' ? d.enabled : null)).catch(() => setEnabled(null)) }, [])
   const put = value => {
     setBusy(true)
     api('/api/owner/supplements', { method: 'PUT', body: JSON.stringify({ enabled: value }) })
@@ -302,9 +302,12 @@ export function SupplementsToggleCard() {
   })
   if (enabled === null) return null
   return <div className="card">
-    <div className="row between" style={{ gap: 12 }}>
-      <div><h3 style={{ margin: 0 }}>{t('Guía y seguimiento de suplementos')}</h3>
-        <div className="small dim">{t('En Nutrición: una guía basada en evidencia y el registro de lo que toma cada socio. Solo lo ve cada socio, no el staff.')}</div></div>
+    <h2 style={{ margin: 0 }}>{t('Suplementos')}</h2>
+    <div className="row between" style={{ gap: 12, marginTop: 10 }}>
+      <div className="grow">
+        <div style={{ fontWeight: 600 }}>{t('Guía y seguimiento de suplementos')}</div>
+        <div className="small muted" style={{ marginTop: 2 }}>{t('En Nutrición: una guía basada en evidencia y el registro de lo que toma cada socio. Solo lo ve cada socio, no el staff.')}</div>
+      </div>
       <Switch checked={enabled} disabled={busy} onChange={change} label={t('Guía y seguimiento de suplementos')} />
     </div>
   </div>

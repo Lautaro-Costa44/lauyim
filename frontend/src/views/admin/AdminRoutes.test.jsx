@@ -49,6 +49,7 @@ apiMock.mockImplementation((url, opts) => {
   if (url === '/api/admin/presets') return Promise.resolve({ presets: [] })
   if (url === '/api/admin/attendance-heatmap') return Promise.resolve({ start: 'monday', totalUsers: 1, days: {} })
   if (url === '/api/owner/qr') return Promise.resolve({ token: 'qr-token' })
+  if (url === '/api/owner/supplements') return Promise.resolve({ enabled: true })
   if (url === '/api/admin/approval' || url === '/api/owner/approval') {
     if (opts?.method === 'PUT') approval = { ...approval, ...JSON.parse(opts.body) }
     return Promise.resolve({ ...approval, effectiveMode: billingOn ? approval.mode : 'approve', billingEnabled: billingOn, dniEnabled, pendingCount: approval.pendingCount ?? 0 })
@@ -228,10 +229,10 @@ describe('admin routes', () => {
     expect(called('/api/admin/members/settings')).toBe(false)
   })
 
-  it('the owner gets the six Acceso cards, in order', async () => {
+  it('the owner gets the seven Acceso cards, in order', async () => {
     await mount('#/admin/acceso', OWNER)
     const titles = [...document.querySelectorAll('.admin-cards > .card h2')].map(h => h.textContent)
-    expect(titles).toEqual(['Códigos de invitación', 'Acceso por QR', 'Datos del registro', 'Aprobación de cuentas', 'Aviso de privacidad', 'Cobro de cuotas'])
+    expect(titles).toEqual(['Códigos de invitación', 'Acceso por QR', 'Datos del registro', 'Aprobación de cuentas', 'Aviso de privacidad', 'Cobro de cuotas', 'Suplementos'])
     expect(text()).toContain('qr-token')
     expect(text()).toContain('El nombre de usuario siempre se pide.')
     expect(text()).not.toContain('Sin DNI no se pueden detectar socios duplicados')
