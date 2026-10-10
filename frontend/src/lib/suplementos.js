@@ -85,6 +85,8 @@ const unitLabel = (unit, n) => unit === 'caps' ? (n === 1 ? 'cápsula' : 'cápsu
 const scoops = n => { const halves = Math.round(n * 2); const whole = Math.floor(halves / 2); return (whole ? String(whole) : '') + (halves % 2 ? '½' : '') || '0' }
 export function doseLabel(item) {
   const take = perTake(item)
+  // Sin dosis cargada (indicación profesional o uno propio): solo las tomas.
+  if (!(take > 0)) return doses(item) > 1 ? `${doses(item)} tomas` : 'Dosis indicada'
   if (doses(item) > 1) return `${doses(item)} tomas · ${fmt(take)} ${unitLabel(item.unit, take)} c/u`
   if (item.scoopG > 0 && item.unit === 'g') return `${scoops(take / item.scoopG)} scoop · ${fmt(take)} g`
   return `${fmt(take)} ${unitLabel(item.unit, take)}`

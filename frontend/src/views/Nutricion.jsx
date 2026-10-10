@@ -745,6 +745,8 @@ export default function Nutricion() {
   // Junto con las comidas del día, revalidar las metas que un admin pueda haber cambiado:
   // entrar a esta pantalla no debería mostrar valores viejos hasta el próximo arranque.
   useEffect(() => { loadComidas(true); useStore.getState().refreshNutritionGoals() }, [])
+  // Una toma de proteína en la tarjeta de suplementos crea o borra una comida de hoy.
+  useEffect(() => { const on = () => loadComidas(); window.addEventListener('lauyim:meals-changed', on); return () => window.removeEventListener('lauyim:meals-changed', on) }, [])
   const totals = useMemo(() => comidas.reduce((a, c) => ({ calorias: a.calorias + Number(c.calorias || 0), proteina: a.proteina + Number(c.proteina || 0), carbos: a.carbos + Number(c.carbohidratos || 0), grasas: a.grasas + Number(c.grasas || 0) }), { calorias: 0, proteina: 0, carbos: 0, grasas: 0 }), [comidas])
   const addMeal = franja => useUI.getState().openSheet((close, { setOnBack }) => <FoodPicker franja={franja} close={close} setOnBack={setOnBack} onSaved={loadComidas} />)
   const addComidaCompuesta = () => useUI.getState().openSheet(close => <ComidaCompuestaBuilder close={close} onSaved={loadComidas} />, { locked: true, fullScreen: true })

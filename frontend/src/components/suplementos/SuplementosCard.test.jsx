@@ -75,6 +75,12 @@ describe('tarjeta de suplementos', () => {
     expect(text()).toContain('450 mg')
     expect(text()).toContain('más de lo recomendado para un día')
   })
+  it('un día sin nada que tomar lo dice (y no muestra "0 de 0")', async () => {
+    const elec = { ...crea, id: 'elec0001', catalogId: 'electrolitos', days: 'training' }
+    await mount({ ...base, items: [elec] })
+    expect(text()).toContain('Hoy no toca ningún suplemento')
+    expect(text()).not.toContain('0 de 0')
+  })
   it('menor: solo la guía', async () => {
     await mount({ ...base, adult: 'minor', items: [crea] })
     expect(text()).toContain('no recomendamos suplementos a menores de 18')

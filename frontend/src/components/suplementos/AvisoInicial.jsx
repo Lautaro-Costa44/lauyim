@@ -3,7 +3,7 @@
 // se guarda nada y vuelve a aparecer; el gesto atrás puede cerrarla (no se traba al usuario).
 import { useState } from 'react'
 import { useUI } from '../../store/useUI.js'
-import { useSupplements, acceptNotice, noticeAccepted } from '../../store/useSupplements.js'
+import { useSupplements, acceptNotice, noticeAccepted, loadSupplements } from '../../store/useSupplements.js'
 import { t } from '../../lib/i18n.js'
 import { errorText } from '../../lib/errors.js'
 import { Button, Segmented } from '../ui.jsx'
@@ -17,7 +17,10 @@ function Aviso({ close, then }) {
   const accept = async () => {
     setBusy(true)
     try { await acceptNotice(askAge ? { adult: adult === 'si' } : {}); close(); then && then() }
-    catch (e) { useUI.getState().toast(errorText(e, t('No se pudo guardar. Probá de nuevo.'))) }
+    catch (e) {
+      useUI.getState().toast(errorText(e, t('No se pudo guardar. Probá de nuevo.')))
+      if (e?.data?.error === 'ack_version_changed') loadSupplements()   // el aviso cambió: trae la versión nueva
+    }
     setBusy(false)
   }
   return <div className="supp-notice">

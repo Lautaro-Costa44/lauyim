@@ -46,6 +46,25 @@ describe('useSupplements', () => {
     expect(useSupplements.getState().logs).toEqual([])
     expect(enqueueMock).toHaveBeenLastCalledWith('ana', { kind: 'supp-log-delete', payload: { id: log.id } })
   })
+  it('otra cuenta sin recargar: no muestra los datos de la anterior mientras carga', async () => {
+    useSupplements.setState({ ...server, uid: 'ana', loaded: true, items: [{ id: 'x', catalogId: 'creatina' }] })
+    useStore.setState({ user: { id: 'beto' } })
+    let resolve; apiMock.mockReturnValue(new Promise(r => { resolve = r }))
+    const p = loadSupplements()
+    expect(useSupplements.getState().items).toEqual([])
+    resolve({ ...server, items: [] }); await p
+    expect(useSupplements.getState().uid).toBe('beto')
+  })
+  it('una toma de proteína avisa a Nutrición que cambiaron las comidas', async () => {
+    useSupplements.setState({ ...server, loaded: true, items: [{ id: 'prot0001', catalogId: 'proteina', dose: 30, doses: 1 }] })
+    apiMock.mockImplementation((url, o) => Promise.resolve({ log: { ...JSON.parse(o.body), comidaId: 7 } }))
+    const heard = vi.fn(); window.addEventListener('lauyim:meals-changed', heard)
+    await addLog({ itemId: 'prot0001', date: '2026-10-09', amount: 30 })
+    expect(heard).toHaveBeenCalledTimes(1)
+    await addLog({ source: 'mate', date: '2026-10-09', amount: 130 })
+    expect(heard).toHaveBeenCalledTimes(1)
+    window.removeEventListener('lauyim:meals-changed', heard)
+  })
   it('toma con error definitivo del servidor: se deshace y se avisa', async () => {
     useSupplements.setState({ ...server, loaded: true })
     apiMock.mockRejectedValue(Object.assign(new Error('Solo hoy y hasta 7 días atrás'), { status: 400, data: { error: 'Solo hoy y hasta 7 días atrás' } }))

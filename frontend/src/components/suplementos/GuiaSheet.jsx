@@ -14,7 +14,7 @@ import Icon from '../Icon.jsx'
 
 const FEM_TAKE = new Set(['creatina', 'cafeina', 'proteina', 'betaalanina', 'vitaminad'])
 const howToTitle = id => FEM_TAKE.has(id) ? 'Cómo tomarla' : 'Cómo tomarlo'
-const openConfig = id => import('./ConfigSuplemento.jsx').then(m => m.openConfig(id))
+const openConfig = (id, itemId) => import('./ConfigSuplemento.jsx').then(m => m.openConfig(id, itemId))
 
 function Ficha({ id, onBack }) {
   const f = fichaById(id)
@@ -46,7 +46,7 @@ function Ficha({ id, onBack }) {
     <div className="supp-sec">{t('Fuentes')}</div>
     <div className="small dim">{f.sources.join(' · ')}<br />{t('Revisado: {0}', f.reviewed)}</div>
     {f.trackable && !minor && (mine
-      ? <Button onClick={() => openConfig(id)}>{t('Ya lo tomás · Configurar')}</Button>
+      ? <Button onClick={() => openConfig(id, mine.id)}>{t('Ya lo tomás · Configurar')}</Button>
       : <Button variant="primary" icon="plus" onClick={() => openConfig(id)}>{t('Agregar a mis suplementos')}</Button>)}
   </div>
 }
@@ -54,6 +54,7 @@ function Ficha({ id, onBack }) {
 function Lista({ selected, onPick }) {
   const genero = useStore(s => s.S.genero)
   const items = useSupplements(s => s.items)
+  const minor = useSupplements(s => s.adult === 'minor')
   const has = id => items.some(i => i.catalogId === id && i.status === 'active')
   const water = genero === 'femenino' ? WATER_TIP.mujeres : genero === 'masculino' ? WATER_TIP.hombres : WATER_TIP.ambos
   const levels = Object.entries(LEVELS).sort((a, b) => a[1].order - b[1].order)
@@ -68,7 +69,7 @@ function Lista({ selected, onPick }) {
         {has(f.id) && <span className="supp-mine">✓ {t('la tomás')}</span>}
       </button>)}
     </div>)}
-    <button type="button" className="supp-item supp-other" onClick={() => openConfig(null)}>＋ {t('Otro suplemento (cargalo vos)')}</button>
+    {!minor && <button type="button" className="supp-item supp-other" onClick={() => openConfig(null)}>＋ {t('Otro suplemento (cargalo vos)')}</button>}
   </div>
 }
 

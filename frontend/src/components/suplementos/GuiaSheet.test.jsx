@@ -38,6 +38,15 @@ describe('guía', () => {
     expect(t).toContain('recién empezás'); expect(t).toContain('Precauciones'); expect(t).toContain('Revisado')
     expect(t).toContain('Ya lo tomás')
   })
+  it('"Ya lo tomás · Configurar" edita el que existe (no crea otro)', async () => {
+    const h = await render('creatina')
+    await act(async () => [...h.querySelectorAll('button')].find(b => b.textContent.includes('Ya lo tomás')).click())
+    const n = useUI.getState().sheets.length
+    for (let i = 0; i < 50 && useUI.getState().sheets.length === n; i++) await act(async () => { await new Promise(r => setTimeout(r, 20)) })
+    const top = document.createElement('div'); const r2 = createRoot(top)
+    await act(async () => r2.render(useUI.getState().sheets.at(-1).render(() => {}, { setOnBack: () => {} })))
+    expect(top.textContent).toContain('Editar')
+  })
   it('cafeína: rango con el peso', async () => {
     expect((await render('cafeina')).textContent).toContain('Para tus 80 kg: 240 a 400 mg')
   })
@@ -48,5 +57,6 @@ describe('guía', () => {
     useSupplements.setState({ adult: 'minor', items: [] })
     const t = (await render('creatina')).textContent
     expect(t).toContain('No recomendado para menores de 18'); expect(t).not.toContain('Agregar a mis suplementos')
+    expect((await render(null)).textContent).not.toContain('Otro suplemento')
   })
 })

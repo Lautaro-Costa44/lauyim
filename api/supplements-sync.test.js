@@ -29,3 +29,12 @@ test('sin aviso aceptado el pedido es conflicto; con aviso se aplica una sola ve
   assert.equal(run([op('op000004', { kind: 'supp-log-delete', payload: { id: 'log00001' } })]).conflicts.length, 0);
   assert.equal(sdb.listLogs('ana', today).length, 0);
 });
+
+test('quien retiró el consentimiento de salud no suma tomas por la cola', () => {
+  db.getDatabase().prepare("UPDATE users SET health_consent = 'declined' WHERE id = 'ana'").run();
+  const add = { kind: 'supp-log-add', payload: { id: 'log00009', itemId: 'crea0001', date: today, amount: 5 } };
+  const out = run([op('op000009', add)]);
+  assert.equal(out.conflicts.length, 1);
+  assert.equal(sdb.listLogs('ana', today).length, 0);
+  db.getDatabase().prepare("UPDATE users SET health_consent = 'granted' WHERE id = 'ana'").run();
+});

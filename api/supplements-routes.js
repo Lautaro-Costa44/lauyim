@@ -19,9 +19,12 @@ export function adultOf(userId) {
   const a = sdb.getProfile(userId).adult;
   return a === 1 ? 'adult' : a === 0 ? 'minor' : 'unknown';
 }
-// Escritura permitida: módulo prendido, aviso vigente aceptado y no es menor. → null o [status, body].
+// Escritura permitida: módulo prendido, consentimiento de salud, aviso vigente aceptado y no es menor.
+// → null o [status, body]. Las rutas ya pasan por el gate de salud de server.js; esto cubre además las
+// tomas que llegan por la cola de sync (POST /api/data/sync), que no pasa por ese gate.
 export function writeGuard(user) {
   if (!supplementsOn()) return [404, { error: 'supplements_off' }];
+  if (getDatabase().prepare('SELECT health_consent FROM users WHERE id = ?').get(user.id)?.health_consent === 'declined') return [403, { error: 'health_consent_required' }];
   if (sdb.getProfile(user.id).ackVersion !== SUPP_ACK_VERSION) return [409, { error: 'supplements_ack_required' }];
   if (adultOf(user.id) === 'minor') return [403, { error: 'supplements_minor' }];
   return null;
@@ -136,12 +139,14 @@ export function sendSupplementReminders({ send, nowMs = Date.now() }) {
     let state = null;
     for (const item of items) {
       const taken = logs.filter(l => l.itemId === item.id).length;
-      let trainingDay = false;
+      const due = { item, localDate: local.date, localTime: local.time, lastSent: profile.lastReminderSent[item.id] || null, taken };
+      // Primero lo barato (hora, ya enviado, ya tomado); el estado del socio solo si hace falta saber
+      // si hoy entrena.
+      if (!reminderDue({ ...due, trainingDay: true })) continue;
       if (item.days === 'training') {
         state = state || getUserState(userId) || {};
-        trainingDay = isTrainingDay(state, local.date);
+        if (!isTrainingDay(state, local.date)) continue;
       }
-      if (!reminderDue({ item, localDate: local.date, localTime: local.time, lastSent: profile.lastReminderSent[item.id] || null, taken, trainingDay })) continue;
       sdb.markReminderSent(userId, item.id, local.date);
       send(userId, supplementReminderPush({ name: item.name, catalogId: item.catalogId, dose: item.dose, unit: item.unit, doses: item.doses }));
     }

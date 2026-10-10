@@ -56,7 +56,7 @@ export default function SuplementosCard() {
 
   if (!noticeAccepted(st)) return <div className="card supp-card">
     {header}
-    <div className="supp-lock"><Icon name="lock" /> {t('Para ver la guía y registrar suplementos, leé y aceptá el aviso.')}</div>
+    <div className="supp-lock supp-lock-row"><Icon name="lock" /><span>{t('Para ver la guía y registrar suplementos, leé y aceptá el aviso.')}</span></div>
     <Button variant="primary" onClick={() => openNotice()}>{t('Leer el aviso')}</Button>
   </div>
 
@@ -89,11 +89,12 @@ export default function SuplementosCard() {
 
   return <div className="card supp-card">
     <div className="row between">
-      <div>{header}<div className="small dim">{t('Hoy: {0} de {1} tomas', doneDoses, totalDoses)}</div></div>
+      <div>{header}{totalDoses > 0 && <div className="small dim">{t('Hoy: {0} de {1} tomas', doneDoses, totalDoses)}</div>}</div>
       {doneDoses < totalDoses && <button type="button" className="link" onClick={markAll}>{t('Marcar todos')}</button>}
     </div>
     <div className="supp-card-cols">
       <div>
+        {due.length === 0 && <div className="small dim supp-none">{t('Hoy no toca ningún suplemento.')}</div>}
         {groupBySlot(due).map(g => <div key={g.slot.id}>
           <div className="supp-sec">{t(g.slot.label)}</div>
           {g.items.map(item => {
