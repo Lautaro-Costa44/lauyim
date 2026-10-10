@@ -12,6 +12,10 @@ import { caffeineRange, doseLabel, itemName } from '../../lib/suplementos.js'
 import { Button, NumberField, Segmented, Switch, TextField } from '../ui.jsx'
 
 const openGuide = id => import('./GuiaSheet.jsx').then(m => m.openGuide(id))
+// Horas sugeridas para los recordatorios según en cuántas dosis se separa.
+const DEFAULT_TIMES = { 1: ['09:00'], 2: ['09:00', '20:00'], 3: ['09:00', '14:00', '20:00'], 4: ['08:00', '12:00', '16:00', '20:00'],
+  5: ['08:00', '11:00', '14:00', '17:00', '20:00'], 6: ['08:00', '10:30', '13:00', '15:30', '18:00', '20:30'] }
+const fitTimes = (times, n) => Array.from({ length: n }, (_, i) => times[i] || DEFAULT_TIMES[n][i])
 
 function Config({ catalogId, itemId, close }) {
   const S = useStore(s => s.S)
@@ -28,13 +32,13 @@ function Config({ catalogId, itemId, close }) {
   const [doses, setDoses] = useState(editing?.doses || f?.doses || 1)
   const [slot, setSlot] = useState(editing?.slot || f?.slot || 'any')
   const [days, setDays] = useState(editing?.days || f?.days || 'daily')
-  const [remind, setRemind] = useState(!!editing?.reminderTime)
-  const [time, setTime] = useState(editing?.reminderTime || '09:00')
+  const [remind, setRemind] = useState((editing?.reminderTimes || []).length > 0)
+  const [times, setTimes] = useState(fitTimes(editing?.reminderTimes || [], editing?.doses || f?.doses || 1))
   const [macros, setMacros] = useState(editing?.meta?.macros || f?.macrosPerScoop || null)
   const [busy, setBusy] = useState(false)
   const lo = range ? range.min : f?.dose?.min, hi = range ? range.max : f?.dose?.max
   const outOfRange = dose != null && lo != null && (dose < lo || dose > hi)
-  const draft = { id: editing?.id || 'preview', catalogId, name: catalogId ? null : name.trim(), dose, unit, scoopG: unit === 'g' ? scoopG : null, doses, slot, days, reminderTime: remind ? time : null,
+  const draft = { id: editing?.id || 'preview', catalogId, name: catalogId ? null : name.trim(), dose, unit, scoopG: unit === 'g' ? scoopG : null, doses, slot, days, reminderTimes: remind ? fitTimes(times, doses) : [],
     meta: catalogId === 'proteina' && macros ? { macros: { proteina: macros.proteina, calorias: macros.calorias, carbos: macros.carbos, grasas: macros.grasas } } : null }
   const title = (editing ? t('Editar {0}', itemName(draft)) : t('Agregar {0}', f ? f.name.toLowerCase() : t('un suplemento')))
   const toast = msg => useUI.getState().toast(msg)
@@ -59,7 +63,7 @@ function Config({ catalogId, itemId, close }) {
     <div className="supp-form-cols">
       <div>
         {!catalogId && field('Nombre', <TextField name="supp-name" maxLength={40} value={name} onChange={e => setName(e.target.value)} placeholder={t('Ej.: ashwagandha')} />)}
-        {field('Dosis por día', <div className="row">
+        {field('Cantidad por día', <div className="row">
           <NumberField name="supp-dose" value={dose} nullable onChange={setDose} className="input supp-num" />
           {fixedUnit ? <span className="dim">{UNITS.find(u => u.id === unit)?.label}</span>
             : <div className="chips">{UNITS.map(u => <button key={u.id} type="button" className={'chip nocap' + (unit === u.id ? ' on' : '')} onClick={() => setUnit(u.id)}>{u.label}</button>)}</div>}
@@ -73,11 +77,20 @@ function Config({ catalogId, itemId, close }) {
         </div>)}
       </div>
       <div>
-        {field('Tomas por día', <Segmented options={[1, 2, 3, 4, 5, 6].map(n => ({ value: n, label: String(n) }))} value={doses} onChange={setDoses} />)}
+        {field('Separar en dosis', <Segmented options={[1, 2, 3, 4, 5, 6].map(n => ({ value: n, label: String(n) }))} value={doses} onChange={n => { setDoses(n); setTimes(ts => fitTimes(ts, n)) }} />,
+          t('En cuántas veces por día la tomás.'))}
         {field('Cuándo', <div className="chips">{SLOTS.map(s => <button key={s.id} type="button" className={'chip nocap' + (slot === s.id ? ' on' : '')} onClick={() => setSlot(s.id)}>{t(s.label)}</button>)}</div>)}
         {field('Qué días', <Segmented options={[{ value: 'daily', label: t('Todos los días') }, { value: 'training', label: t('Solo de entreno') }]} value={days} onChange={setDays} />,
           catalogId === 'creatina' ? t('La creatina va todos los días, también los de descanso.') : null)}
-        {field('Recordatorio', <div className="row"><Switch checked={remind} onChange={toggleRemind} label={t('Recordatorio')} />{remind && <input className="input supp-time" type="time" value={time} onChange={e => setTime(e.target.value || '09:00')} />}</div>)}
+        {field(doses > 1 ? 'Recordatorios' : 'Recordatorio', <>
+          <Switch checked={remind} onChange={toggleRemind} label={t('Recordatorio')} />
+          {/* Uno por dosis, cada uno con su hora. */}
+          {remind && <div className="supp-times">{fitTimes(times, doses).map((tm, i) => <label key={i} className="supp-time-row">
+            <span className="small dim">{doses > 1 ? t('Dosis {0}', i + 1) : t('Hora')}</span>
+            <input className="input supp-time" type="time" name={'supp-time-' + i} value={tm}
+              onChange={e => { const v = e.target.value || DEFAULT_TIMES[doses][i]; setTimes(ts => fitTimes(ts, doses).map((x, j) => j === i ? v : x)) }} />
+          </label>)}</div>}
+        </>)}
       </div>
     </div>
     <div className="small dim supp-preview">{t('En la tarjeta vas a ver:')} <b>{doseLabel(draft)}</b></div>

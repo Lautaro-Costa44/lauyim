@@ -54,7 +54,7 @@ after(async () => {
   fs.rmSync(dataDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 });
 
-const creatina = { id: 'crea0001', catalogId: 'creatina', dose: 5, unit: 'g', scoopG: 5, doses: 1, slot: 'morning', days: 'daily', reminderTime: '09:00' };
+const creatina = { id: 'crea0001', catalogId: 'creatina', dose: 5, unit: 'g', scoopG: 5, doses: 1, slot: 'morning', days: 'daily', reminderTimes: ['09:00'] };
 
 test('sin sesión 401; sin consentimiento de salud 403; /api/config lo informa', async () => {
   assert.equal((await call(null, 'GET', '/api/supplements')).status, 401);

@@ -32,6 +32,7 @@ export const CAFFEINE_SOURCES = [
   { id: 'cafe', label: 'Café', emoji: '☕', unitLabel: 'taza', mg: 90 },
   { id: 'espresso', label: 'Espresso', emoji: '☕', unitLabel: 'pocillo', mg: 80 },
   { id: 'energizante', label: 'Energizante', emoji: '⚡', unitLabel: 'lata 250 ml', mg: 80 },
+  { id: 'capsula', label: 'Cápsula', emoji: '💊', unitLabel: 'mg de tu cápsula', mg: null },
   { id: 'preentreno', label: 'Pre-entreno', emoji: '💊', unitLabel: 'tu etiqueta', mg: null },
   { id: 'otro', label: 'Otro', emoji: '＋', unitLabel: 'mg a mano', mg: null },
 ]
@@ -63,7 +64,7 @@ export const SUPLEMENTOS = [
       { icon: '🕐', text: 'A cualquier hora. Lo que importa es tomarla todos los días. Con una comida está bien.' },
       { icon: '🤷', text: '¿Te olvidaste? Seguí al otro día con lo normal. No dupliques.' },
     ],
-    loading: 'Fase de carga, para cuando recién empezás (o retomás después de semanas sin tomarla): unos 20 g por día en 4 tomas de 5 g, durante 5 a 7 días, y después 3 a 5 g. Es opcional: sin carga llegás al mismo punto en 3 a 4 semanas.',
+    loading: 'Fase de carga, para cuando recién empezás (o retomás después de semanas sin tomarla): unos 20 g por día en 4 dosis de 5 g, durante 5 a 7 días, y después 3 a 5 g. Es opcional: sin carga llegás al mismo punto en 3 a 4 semanas.',
     evidence: 'Funciona: mejora la fuerza y la ganancia de masa muscular en entrenamiento de fuerza y en esfuerzos cortos e intensos.',
     forWhom: 'Para quien entrena fuerza o hace esfuerzos cortos e intensos. No hace falta para caminar o hacer cardio suave.',
     notice: 'Podés subir alrededor de medio kilo a un kilo las primeras semanas: es agua dentro del músculo, no grasa.',
@@ -72,7 +73,8 @@ export const SUPLEMENTOS = [
     sources: [IOC, AIS('A'), 'ISSN, Kreider et al. 2017', NIH], reviewed: R,
   },
   {
-    id: 'cafeina', name: 'Cafeína', short: 'Rendimiento y energía', level: 'funciona', ais: 'A', trackable: true,
+    // No se agrega como suplemento: se suma con un toque en la barra "Cafeína del día" (mate, café, cápsula…).
+    id: 'cafeina', name: 'Cafeína', short: 'Rendimiento y energía', level: 'funciona', ais: 'A', trackable: false, caffeineBar: true,
     unit: 'mg', dosePerKg: { min: 3, max: 6 }, dayMax: 400, doses: 1, slot: 'pre', days: 'training',
     intro: 'Mejora el rendimiento en casi todo tipo de ejercicio y baja la sensación de esfuerzo.',
     howTo: [
@@ -97,7 +99,7 @@ export const SUPLEMENTOS = [
       { icon: '🥄', text: '1 scoop (unos 30 g de polvo, entre 20 y 25 g de proteína según la etiqueta).' },
       { icon: '💧', text: 'En 250 a 300 ml de agua o leche, o mezclada con yogur, avena o en un batido con fruta.' },
       { icon: '🕐', text: 'Cuando te quede cómodo: después de entrenar o para completar una comida con poca proteína.' },
-      { icon: '🎯', text: 'Cada toma que marcás suma a tu meta de proteína de Nutrición.' },
+      { icon: '🎯', text: 'Cada dosis que marcás suma a tu meta de proteína de Nutrición.' },
     ],
     evidence: 'Funciona para llegar a la proteína diaria (1,4 a 2 g por kilo si entrenás fuerza). No es mejor que la proteína de la comida: es más práctica.',
     forWhom: 'Para quien no llega a su meta de proteína con la comida. Si ya llegás, no suma.',
@@ -110,13 +112,13 @@ export const SUPLEMENTOS = [
     unit: 'g', dose: { min: 4, max: 6, suggested: 4.8 }, dayMax: 6.4, doses: 3, slot: 'meals', days: 'daily',
     intro: 'Aumenta la carnosina del músculo, que amortigua la acidez en los esfuerzos intensos de 1 a 4 minutos.',
     howTo: [
-      { icon: '⚖️', text: '4 a 6 g por día, repartidos en tomas de 1,6 g (o en versión de liberación lenta).' },
+      { icon: '⚖️', text: '4 a 6 g por día, repartidos en dosis de 1,6 g (o en versión de liberación lenta).' },
       { icon: '🍽️', text: 'Con las comidas, con agua o jugo. Todos los días: el efecto aparece después de 2 a 4 semanas.' },
-      { icon: '🤷', text: '¿Te olvidaste una toma? Seguí con la siguiente, sin juntar.' },
+      { icon: '🤷', text: '¿Te olvidaste una dosis? Seguí con la siguiente, sin juntar.' },
     ],
     evidence: 'Funciona en esfuerzos intensos de 1 a 4 minutos (series largas, circuitos, remo, natación). Para fuerza máxima la evidencia es menor.',
     forWhom: 'Para quien hace series largas o circuitos intensos. Para pesas pesadas de pocas repeticiones aporta poco.',
-    notice: 'Un hormigueo en la piel (cara, manos) un rato después de tomarla: es inofensivo y baja con tomas más chicas.',
+    notice: 'Un hormigueo en la piel (cara, manos) un rato después de tomarla: es inofensivo y baja con dosis más chicas.',
     cautions: ['En personas sanas parece segura en las dosis recomendadas.', MINOR],
     buy: BUY,
     sources: [IOC, AIS('A'), 'ISSN, Trexler et al. 2015'], reviewed: R,

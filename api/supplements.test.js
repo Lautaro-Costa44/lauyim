@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { validateItem, validateLog, logDateOk, proteinMeal, reminderDue, supplementsEnabled } from './supplements.js';
 
-const base = { id: 'a1b2c3d4', catalogId: 'creatina', dose: 5, unit: 'g', scoopG: 5, doses: 1, slot: 'morning', days: 'daily', reminderTime: '09:00' };
+const base = { id: 'a1b2c3d4', catalogId: 'creatina', dose: 5, unit: 'g', scoopG: 5, doses: 1, slot: 'morning', days: 'daily', reminderTimes: ['09:00'] };
 
 test('validateItem: valores conocidos, rangos y nombre en los propios', () => {
   assert.deepEqual(validateItem(base).value, { ...base, name: null, meta: null });
@@ -11,7 +11,9 @@ test('validateItem: valores conocidos, rangos y nombre en los propios', () => {
   assert.ok(validateItem({ ...base, days: 'a veces' }).error);
   assert.ok(validateItem({ ...base, doses: 9 }).error);
   assert.ok(validateItem({ ...base, dose: -1 }).error);
-  assert.ok(validateItem({ ...base, reminderTime: '25:00' }).error);
+  assert.ok(validateItem({ ...base, reminderTimes: ['25:00'] }).error);
+  assert.ok(validateItem({ ...base, reminderTimes: ['09:00', '13:00'] }).error);          // más horas que dosis
+  assert.deepEqual(validateItem({ ...base, doses: 3, reminderTimes: ['20:00', '09:00', '09:00'] }).value.reminderTimes, ['09:00', '20:00']);
   assert.ok(validateItem({ ...base, catalogId: null, name: '' }).error);
   assert.equal(validateItem({ ...base, catalogId: null, name: '  Ashwagandha ' }).value.name, 'Ashwagandha');
   assert.ok(validateItem({ ...base, id: 'x' }).error);
@@ -46,18 +48,22 @@ test('proteinMeal: franja por hora y macros por scoop', () => {
 });
 
 test('reminderDue: a su hora (5 min), si toca, si falta y una vez por día', () => {
-  const item = { id: 'it', reminderTime: '09:00', doses: 1, days: 'daily', status: 'active', createdAt: '2026-09-01T00:00:00Z' };
-  const at = (localTime, extra = {}) => reminderDue({ item, localDate: '2026-10-09', localTime, lastSent: null, taken: 0, trainingDay: false, ...extra });
+  const item = { id: 'it', doses: 1, days: 'daily', status: 'active', createdAt: '2026-09-01T00:00:00Z' };
+  const at = (localTime, extra = {}) => reminderDue({ item, time: '09:00', index: 0, localDate: '2026-10-09', localTime, lastSent: null, taken: 0, trainingDay: false, ...extra });
   assert.equal(at('08:59'), false);
   assert.equal(at('09:00'), true);
   assert.equal(at('09:04'), true);
   assert.equal(at('09:05'), false);
   assert.equal(at('09:01', { lastSent: '2026-10-09' }), false);
   assert.equal(at('09:01', { taken: 1 }), false);
-  assert.equal(reminderDue({ item: { ...item, days: 'training' }, localDate: '2026-10-09', localTime: '09:00', lastSent: null, taken: 0, trainingDay: false }), false);
+  assert.equal(reminderDue({ item: { ...item, days: 'training' }, time: '09:00', localDate: '2026-10-09', localTime: '09:00', lastSent: null, taken: 0, trainingDay: false }), false);
+  // Varias dosis: el de la segunda sale si todavía hay menos de 2 marcadas.
+  const tres = { ...item, doses: 3 };
+  assert.equal(reminderDue({ item: tres, time: '13:00', index: 1, localDate: '2026-10-09', localTime: '13:00', lastSent: null, taken: 1, trainingDay: false }), true);
+  assert.equal(reminderDue({ item: tres, time: '13:00', index: 1, localDate: '2026-10-09', localTime: '13:00', lastSent: null, taken: 2, trainingDay: false }), false);
   // Alta a la noche local (UTC del día siguiente): el recordatorio de esa noche sale igual.
-  const tarde = { ...item, reminderTime: '22:00', createdAt: '2026-10-10T00:30:00Z' };
-  assert.equal(reminderDue({ item: tarde, localDate: '2026-10-09', localTime: '22:01', lastSent: null, taken: 0, trainingDay: false, createdDate: '2026-10-09' }), true);
+  const tarde = { ...item, createdAt: '2026-10-10T00:30:00Z' };
+  assert.equal(reminderDue({ item: tarde, time: '22:00', localDate: '2026-10-09', localTime: '22:01', lastSent: null, taken: 0, trainingDay: false, createdDate: '2026-10-09' }), true);
 });
 
 test('supplementsEnabled: prendido salvo "0"', () => {

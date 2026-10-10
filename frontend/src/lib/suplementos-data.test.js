@@ -19,7 +19,8 @@ describe('catálogo de suplementos', () => {
     }
   })
   it('solo se siguen los de funciona, desarrollo e indicación', () => {
-    for (const f of SUPLEMENTOS) expect(f.trackable, f.id).toBe(['funciona', 'desarrollo', 'indicacion'].includes(f.level))
+    for (const f of SUPLEMENTOS) expect(f.trackable, f.id).toBe(['funciona', 'desarrollo', 'indicacion'].includes(f.level) && f.id !== 'cafeina')
+    expect(fichaById('cafeina').caffeineBar).toBe(true)
   })
   it('los de indicación profesional no sugieren dosis; los demás seguibles sí', () => {
     for (const f of SUPLEMENTOS.filter(x => x.level === 'indicacion')) expect(f.dose, f.id).toBeUndefined()
@@ -42,9 +43,13 @@ describe('catálogo de suplementos', () => {
   it('fuentes de cafeína: el mate es por ½ termo y estimado', () => {
     const mate = CAFFEINE_SOURCES.find(s => s.id === 'mate')
     expect(mate.unitLabel).toBe('½ termo'); expect(mate.mg).toBeGreaterThan(0)
-    expect(CAFFEINE_SOURCES.map(s => s.id)).toEqual(['mate', 'cafe', 'espresso', 'energizante', 'preentreno', 'otro'])
+    expect(CAFFEINE_SOURCES.map(s => s.id)).toEqual(['mate', 'cafe', 'espresso', 'energizante', 'capsula', 'preentreno', 'otro'])
     expect(CAFFEINE_SOURCES.find(s => s.id === 'otro').mg).toBeNull()
     expect(MATE_TIPS.join(' ')).toMatch(/no deshidrata/)
+  })
+  it('la palabra es "dosis", no "toma"', () => {
+    const all = JSON.stringify(SUPLEMENTOS)
+    expect(all).not.toMatch(/\btomas?\b/i)
   })
   it('momentos, unidades, agua y versión del aviso', () => {
     expect(SLOTS.map(s => s.id)).toEqual(['morning', 'pre', 'post', 'meals', 'night', 'any'])

@@ -42,12 +42,15 @@ export function migrateSupplements(db) {
       last_reminder_sent TEXT
     );
   `);
+  // Un recordatorio por dosis: la lista de horas (JSON). reminder_time queda con la primera, para la
+  // consulta de los que tienen recordatorio.
+  try { db.exec('ALTER TABLE supplement_items ADD COLUMN reminder_times TEXT;'); } catch {}
 }
 
 const parse = v => { try { return v ? JSON.parse(v) : null; } catch { return null; } };
 const itemFromRow = r => r && ({
   id: r.id, catalogId: r.catalog_id || null, name: r.name || null, dose: r.dose, unit: r.unit || null, scoopG: r.scoop_g ?? null,
-  doses: r.doses_per_day, slot: r.slot, days: r.days, reminderTime: r.reminder_time || null, meta: parse(r.meta),
+  doses: r.doses_per_day, slot: r.slot, days: r.days, reminderTimes: parse(r.reminder_times) || (r.reminder_time ? [r.reminder_time] : []), meta: parse(r.meta),
   status: r.status, createdAt: r.created_at, updatedAt: r.updated_at
 });
 const logFromRow = r => r && ({ id: r.id, itemId: r.item_id || null, date: r.date, source: r.source || null, amount: r.amount ?? 0, comidaId: r.comida_id ?? null, createdAt: r.created_at });
@@ -59,12 +62,13 @@ export const getItem = (userId, id) => itemFromRow(getDatabase().prepare('SELECT
 export function saveItem(userId, item) {
   const db = getDatabase();
   const at = nowIso();
-  const values = [item.catalogId || null, item.name || null, item.dose ?? null, item.unit || null, item.scoopG ?? null, item.doses || 1, item.slot || 'any', item.days || 'daily', item.reminderTime || null, item.meta ? JSON.stringify(item.meta) : null];
-  const res = db.prepare(`UPDATE supplement_items SET catalog_id = ?, name = ?, dose = ?, unit = ?, scoop_g = ?, doses_per_day = ?, slot = ?, days = ?, reminder_time = ?, meta = ?, updated_at = ?
+  const times = Array.isArray(item.reminderTimes) ? item.reminderTimes : [];
+  const values = [item.catalogId || null, item.name || null, item.dose ?? null, item.unit || null, item.scoopG ?? null, item.doses || 1, item.slot || 'any', item.days || 'daily', times[0] || null, times.length ? JSON.stringify(times) : null, item.meta ? JSON.stringify(item.meta) : null];
+  const res = db.prepare(`UPDATE supplement_items SET catalog_id = ?, name = ?, dose = ?, unit = ?, scoop_g = ?, doses_per_day = ?, slot = ?, days = ?, reminder_time = ?, reminder_times = ?, meta = ?, updated_at = ?
     WHERE id = ? AND user_id = ?`).run(...values, at, item.id, userId);
   if (!res.changes) {
-    db.prepare(`INSERT INTO supplement_items (catalog_id, name, dose, unit, scoop_g, doses_per_day, slot, days, reminder_time, meta, updated_at, id, user_id, status, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?)`).run(...values, at, item.id, userId, at);
+    db.prepare(`INSERT INTO supplement_items (catalog_id, name, dose, unit, scoop_g, doses_per_day, slot, days, reminder_time, reminder_times, meta, updated_at, id, user_id, status, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?)`).run(...values, at, item.id, userId, at);
   }
   return getItem(userId, item.id);
 }

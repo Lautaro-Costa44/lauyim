@@ -30,8 +30,8 @@ function at(hhmm) {
   return now + diffMin * 60000;
 }
 const today = gymClock(Date.now(), tz).date;
-sdb.saveItem('ana', { id: 'crea0001', catalogId: 'creatina', dose: 5, unit: 'g', doses: 1, slot: 'morning', days: 'daily', reminderTime: '09:00' });
-sdb.saveItem('beto', { id: 'crea0002', catalogId: 'creatina', dose: 5, unit: 'g', doses: 1, slot: 'morning', days: 'daily', reminderTime: '09:00' });
+sdb.saveItem('ana', { id: 'crea0001', catalogId: 'creatina', dose: 5, unit: 'g', doses: 1, slot: 'morning', days: 'daily', reminderTimes: ['09:00'] });
+sdb.saveItem('beto', { id: 'crea0002', catalogId: 'creatina', dose: 5, unit: 'g', doses: 1, slot: 'morning', days: 'daily', reminderTimes: ['09:00'] });
 // Las fechas de alta: ayer, así hoy ya toca.
 db.getDatabase().prepare("UPDATE supplement_items SET created_at = '2000-01-01T00:00:00Z'").run();
 sdb.addLog('beto', { id: 'blog0001', itemId: 'crea0002', date: today, amount: 5 });
@@ -49,6 +49,17 @@ test('a su hora, solo a quien le falta, una vez por día', async () => {
   assert.deepEqual(first.map(s => s.userId), ['ana']);
   assert.match(first[0].payload.title, /Creatina: te falta la de hoy/);
   assert.deepEqual(await tick(at('09:02')), []);
+});
+
+test('varias dosis: un recordatorio por hora, solo si falta esa dosis', async () => {
+  sdb.saveItem('beto', { id: 'beta0002', catalogId: 'betaalanina', dose: 4.8, unit: 'g', doses: 3, slot: 'meals', days: 'daily', reminderTimes: ['10:00', '14:00', '20:00'] });
+  db.getDatabase().prepare("UPDATE supplement_items SET created_at = '2000-01-01T00:00:00Z' WHERE id = 'beta0002'").run();
+  const first = await tick(at('10:00'));
+  assert.deepEqual(first.map(s => s.payload.title), ['Beta-alanina: dosis 1 de 3']);
+  sdb.addLog('beto', { id: 'blog0002', itemId: 'beta0002', date: today, amount: 1.6 });
+  sdb.addLog('beto', { id: 'blog0003', itemId: 'beta0002', date: today, amount: 1.6 });
+  assert.deepEqual(await tick(at('14:00')), []);   // ya marcó 2: la segunda no hace falta
+  assert.deepEqual((await tick(at('20:01'))).map(s => s.payload.title), ['Beta-alanina: dosis 3 de 3']);
 });
 
 test('apagado por el owner o sin consentimiento: nada', async () => {

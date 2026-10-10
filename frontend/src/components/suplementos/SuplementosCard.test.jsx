@@ -19,7 +19,7 @@ const base = { enabled: true, ackVersion: '2026-10-09', profile: { ackVersion: '
 let container, root
 const tick = () => act(async () => { await new Promise(r => setTimeout(r, 10)) })
 async function mount(state) {
-  apiMock.mockImplementation(url => url === '/api/supplements' ? Promise.resolve(state) : Promise.resolve({ ok: true, log: { id: 'srv', itemId: 'crea0001', date: TODAY, amount: 5 } }))
+  apiMock.mockImplementation((url, o) => url === '/api/supplements' ? Promise.resolve(state) : Promise.resolve({ ok: true, log: { ...JSON.parse(o?.body || '{}'), createdAt: new Date().toISOString() } }))
   useSupplements.setState({ ...state, loaded: true })
   container = document.createElement('div'); document.body.appendChild(container)
   root = createRoot(container)
@@ -60,16 +60,18 @@ describe('tarjeta de suplementos', () => {
   it('vacío: llamado a la guía', async () => {
     await mount(base)
     expect(text()).toContain('¿Tomás suplementos?')
+    expect(text()).toContain('Para agregar un suplemento, elegilo en la guía')
+    expect(text()).not.toContain('Agregar un suplemento')
   })
   it('con items: agrupa por momento, muestra dosis y marca una toma', async () => {
     await mount({ ...base, items: [crea, beta] })
     expect(text()).toContain('Mañana'); expect(text()).toContain('Con las comidas')
-    expect(text()).toContain('1 scoop · 5 g'); expect(text()).toContain('2 tomas · 1,6 g c/u')
-    expect(text()).toContain('Hoy: 0 de 3 tomas')
+    expect(text()).toContain('1 scoop · 5 g'); expect(text()).toContain('2 dosis · 1,6 g c/u')
+    expect(text()).toContain('Hoy: 0 de 3 dosis')
     await act(async () => container.querySelector('[aria-label="Marcar Creatina monohidrato"]').click())
     await tick()
     expect(apiMock).toHaveBeenCalledWith('/api/supplements/log', expect.objectContaining({ method: 'POST' }))
-    expect(text()).toContain('Hoy: 1 de 3 tomas')
+    expect(text()).toContain('Hoy: 1 de 3 dosis')
   })
   it('cafeína: total del día y aviso al pasarse de 400', async () => {
     const logs = [{ id: 'a', itemId: null, source: 'mate', date: TODAY, amount: 300 }, { id: 'b', itemId: null, source: 'cafe', date: TODAY, amount: 150 }]
@@ -82,6 +84,19 @@ describe('tarjeta de suplementos', () => {
     await mount({ ...base, items: [elec] })
     expect(text()).toContain('Hoy no toca ningún suplemento')
     expect(text()).not.toContain('0 de 0')
+  })
+  it('con suplementos no hay botón de agregar ni la aclaración', async () => {
+    await mount({ ...base, items: [crea] })
+    expect(text()).not.toContain('Agregar')
+    expect(text()).not.toContain('elegilo en la guía')
+  })
+  it('cafeína: el mate suma medio termo con un toque, sin abrir la hoja', async () => {
+    await mount({ ...base, items: [crea] })
+    await act(async () => container.querySelector('[aria-label="Sumar medio termo de mate"]').click())
+    await tick()
+    expect(useUI.getState().sheets).toHaveLength(0)
+    expect(apiMock).toHaveBeenCalledWith('/api/supplements/log', expect.objectContaining({ body: expect.stringContaining('"source":"mate"') }))
+    expect(text()).toContain('×1')
   })
   it('menor: solo la guía', async () => {
     await mount({ ...base, adult: 'minor', items: [crea] })

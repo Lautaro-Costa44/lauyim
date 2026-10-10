@@ -188,7 +188,7 @@ test('closureAnnouncePush y closureReopenPush', () => {
 
 test('supplementReminderPush: nombre del catálogo, dosis por toma y abre Nutrición', () => {
   const p = supplementReminderPush({ catalogId: 'betaalanina', dose: 3.2, unit: 'g', doses: 2 });
-  assert.equal(p.title, 'Beta-alanina: te falta la de hoy');
+  assert.equal(p.title, 'Beta-alanina: dosis 1 de 2');
   assert.equal(p.body, '1,6 g. Tocá para marcarla.');
   assert.equal(p.data.redirectUrl, '/#/nutricion');
   assert.equal(supplementReminderPush({ catalogId: null, name: 'Ashwagandha', dose: null }).title, 'Ashwagandha: te falta la de hoy');

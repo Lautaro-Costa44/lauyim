@@ -96,10 +96,10 @@ describe('etiquetas', () => {
     expect(doseLabel(crea)).toBe('1 scoop · 5 g')
     expect(doseLabel({ ...crea, scoopG: 3, dose: 4.5 })).toBe('1½ scoop · 4,5 g')
     expect(perTake(beta)).toBe(1.6)
-    expect(doseLabel(beta)).toBe('2 tomas · 1,6 g c/u')
+    expect(doseLabel(beta)).toBe('2 dosis · 1,6 g c/u')
     expect(doseLabel({ id: 'x', catalogId: 'omega3', dose: 2, unit: 'caps', doses: 1 })).toBe('2 cápsulas')
     expect(doseLabel({ id: 'x', catalogId: 'vitaminad', dose: null, unit: 'ui', doses: 1 })).toBe('Dosis indicada')
-    expect(doseLabel({ id: 'x', catalogId: 'hierro', dose: null, unit: 'mg', doses: 2 })).toBe('2 tomas')
+    expect(doseLabel({ id: 'x', catalogId: 'hierro', dose: null, unit: 'mg', doses: 2 })).toBe('2 dosis')
   })
   it('nombre: el del catálogo o el propio', () => {
     expect(itemName(crea)).toBe('Creatina monohidrato')

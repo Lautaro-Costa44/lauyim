@@ -140,16 +140,20 @@ export function sendSupplementReminders({ send, nowMs = Date.now() }) {
     for (const item of items) {
       const taken = logs.filter(l => l.itemId === item.id).length;
       const createdDate = clock(Date.parse(item.createdAt) || nowMs, u.tz || gymTz()).date;
-      const due = { item, localDate: local.date, localTime: local.time, lastSent: profile.lastReminderSent[item.id] || null, taken, createdDate };
-      // Primero lo barato (hora, ya enviado, ya tomado); el estado del socio solo si hace falta saber
-      // si hoy entrena.
-      if (!reminderDue({ ...due, trainingDay: true })) continue;
-      if (item.days === 'training') {
-        state = state || getUserState(userId) || {};
-        if (!isTrainingDay(state, local.date)) continue;
-      }
-      sdb.markReminderSent(userId, item.id, local.date);
-      send(userId, supplementReminderPush({ name: item.name, catalogId: item.catalogId, dose: item.dose, unit: item.unit, doses: item.doses }));
+      // Un recordatorio por dosis; cada uno se marca enviado aparte ("itemId@HH:MM").
+      item.reminderTimes.forEach((time, index) => {
+        const key = `${item.id}@${time}`;
+        const due = { item, time, index, localDate: local.date, localTime: local.time, lastSent: profile.lastReminderSent[key] || null, taken, createdDate };
+        // Primero lo barato (hora, ya enviado, ya tomado); el estado del socio solo si hace falta saber
+        // si hoy entrena.
+        if (!reminderDue({ ...due, trainingDay: true })) return;
+        if (item.days === 'training') {
+          state = state || getUserState(userId) || {};
+          if (!isTrainingDay(state, local.date)) return;
+        }
+        sdb.markReminderSent(userId, key, local.date);
+        send(userId, supplementReminderPush({ name: item.name, catalogId: item.catalogId, dose: item.dose, unit: item.unit, doses: item.doses, index }));
+      });
     }
   }
 }

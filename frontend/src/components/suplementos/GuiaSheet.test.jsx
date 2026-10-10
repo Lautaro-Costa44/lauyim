@@ -36,11 +36,11 @@ describe('guía', () => {
     const t = (await render('creatina')).textContent
     expect(t.indexOf('Cómo tomarla')).toBeLessThan(t.indexOf('Qué dice la evidencia'))
     expect(t).toContain('recién empezás'); expect(t).toContain('Precauciones'); expect(t).toContain('Revisado')
-    expect(t).toContain('Ya lo tomás')
+    expect(t).toContain('Ya lo tomás'); expect(t).toContain('Dejar de tomar')
   })
-  it('"Ya lo tomás · Configurar" edita el que existe (no crea otro)', async () => {
+  it('"Configurar" edita el que existe (no crea otro)', async () => {
     const h = await render('creatina')
-    await act(async () => [...h.querySelectorAll('button')].find(b => b.textContent.includes('Ya lo tomás')).click())
+    await act(async () => [...h.querySelectorAll('button')].find(b => b.textContent === 'Configurar').click())
     const n = useUI.getState().sheets.length
     for (let i = 0; i < 50 && useUI.getState().sheets.length === n; i++) await act(async () => { await new Promise(r => setTimeout(r, 20)) })
     const top = document.createElement('div'); const r2 = createRoot(top)

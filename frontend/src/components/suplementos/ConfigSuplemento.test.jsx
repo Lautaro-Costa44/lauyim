@@ -48,8 +48,17 @@ describe('alta de suplemento', () => {
     await act(async () => btn(h, 'Agregar').click())
     expect(apiMock).toHaveBeenCalledWith('/api/supplements/items', expect.objectContaining({ method: 'POST' }))
     const sent = JSON.parse(apiMock.mock.calls[0][1].body)
-    expect(sent).toMatchObject({ catalogId: 'creatina', dose: 5, unit: 'g', doses: 1, days: 'daily' })
+    expect(sent).toMatchObject({ catalogId: 'creatina', dose: 5, unit: 'g', doses: 1, days: 'daily', reminderTimes: [] })
     expect(useSupplements.getState().items).toHaveLength(1)
+  })
+  it('"Cantidad por día", "Separar en dosis" y un recordatorio por dosis', async () => {
+    const h = await render('betaalanina')
+    expect(h.textContent).toContain('Cantidad por día'); expect(h.textContent).toContain('Separar en dosis')
+    expect(h.textContent).not.toMatch(/\btomas?\b/i)
+    await act(async () => h.querySelector('[role="switch"]').click())
+    expect(h.querySelectorAll('input[type="time"]').length).toBe(3)
+    await act(async () => btn(h, 'Agregar').click())
+    expect(JSON.parse(apiMock.mock.calls.at(-1)[1].body).reminderTimes).toEqual(['09:00', '14:00', '20:00'])
   })
   it('suplemento propio: pide nombre', async () => {
     const h = await render(null)

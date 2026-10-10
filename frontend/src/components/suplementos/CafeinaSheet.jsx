@@ -15,7 +15,7 @@ const hhmm = iso => { const d = new Date(iso); return `${String(d.getHours()).pa
 function Cafeina() {
   const st = useSupplements()
   const today = st.today || todayISO()
-  const [ask, setAsk] = useState(null)   // 'preentreno' | 'otro'
+  const [ask, setAsk] = useState(null)   // 'capsula' | 'preentreno' | 'otro': piden los mg
   const [mg, setMg] = useState(null)
   const toast = e => useUI.getState().toast(errorText(e, t('No se pudo guardar. Probá de nuevo.')))
   const caffeineItems = new Set(st.items.filter(i => i.catalogId === 'cafeina').map(i => i.id))
@@ -27,7 +27,8 @@ function Cafeina() {
   const tap = s => {
     if (s.mg != null) return add(s.id, s.mg)
     setAsk(s.id)
-    setMg(s.id === 'preentreno' ? (st.logs.filter(l => l.source === 'preentreno').at(-1)?.amount ?? null) : null)
+    // Cápsula y pre-entreno: los mg de la última vez (suele ser la misma).
+    setMg(s.id === 'otro' ? null : (st.logs.filter(l => l.source === s.id).at(-1)?.amount ?? (s.id === 'capsula' ? 100 : null)))
   }
   const last = todays.at(-1)
   return <div className="supp-caffeine-sheet">
@@ -44,7 +45,7 @@ function Cafeina() {
       </button>
     })}</div>
     {ask && <div className="supp-ask row">
-      <span className="small">{ask === 'preentreno' ? t('mg por scoop (de la etiqueta)') : 'mg'}</span>
+      <span className="small">{ask === 'preentreno' ? t('mg por scoop (de la etiqueta)') : ask === 'capsula' ? t('mg de la cápsula') : 'mg'}</span>
       <NumberField name="supp-mg" value={mg} nullable onChange={setMg} className="input supp-num" />
       <Button size="sm" variant="primary" disabled={!(mg > 0)} onClick={() => { add(ask, mg); setAsk(null) }}>{t('Sumar')}</Button>
     </div>}

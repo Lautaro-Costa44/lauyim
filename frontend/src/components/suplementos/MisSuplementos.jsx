@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { useStore } from '../../store/useStore.js'
 import { useUI } from '../../store/useUI.js'
-import { useSupplements, addLog, removeLog, archiveItem } from '../../store/useSupplements.js'
+import { useSupplements, addLog, removeLog, archiveItem, deleteItem } from '../../store/useSupplements.js'
 import { t } from '../../lib/i18n.js'
 import { errorText } from '../../lib/errors.js'
 import { todayISO } from '../../lib/format.js'
@@ -11,6 +11,7 @@ import { sinceOf, streakOf, adherence30, dayLevel, takenOn, isDueOn, isTrainingD
 import { HeatmapGrid } from '../Heatmap.jsx'
 import { Button, Check } from '../ui.jsx'
 import Icon from '../Icon.jsx'
+import { BackButton } from './GuiaSheet.jsx'
 
 const openConfig = (c, id) => import('./ConfigSuplemento.jsx').then(m => m.openConfig(c, id))
 const DIAS = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb']
@@ -27,7 +28,7 @@ function Detalle({ item, onBack }) {
   const name = itemName(item)
   const days = Array.from({ length: 8 }, (_, i) => addDays(today, -i)).filter(iso => canLogDate(iso, today) && isDueOn({ ...item, status: 'active', createdAt: addDays(today, -7) }, iso, train(iso)))
   return <div className="supp-detail">
-    {onBack && <button type="button" className="link supp-back" onClick={onBack}>‹ {t('Mis suplementos')}</button>}
+    {onBack && <BackButton onClick={onBack} label={t('Mis suplementos')} />}
     <h3>{name}</h3>
     <div className="small dim">{doseLabel(item)}</div>
     <div className="supp-stats"><span>🔥 {t('Racha: {0} días', streak)}</span><span>{adh == null ? t('Sin días todavía') : t('Últimos 30 días: {0} %', adh)}</span></div>
@@ -39,7 +40,7 @@ function Detalle({ item, onBack }) {
         return <div key={iso} className="supp-row">
           <span className="grow">{dayLabel(iso, today)}</span>
           {Array.from({ length: item.doses || 1 }, (_, k) => <Check key={k} checked={k < taken}
-            aria-label={(item.doses || 1) === 1 ? t('Marcar {0} el {1}', name.split(' ')[0].toLowerCase(), iso) : t('Toma {0} de {1} el {2}', k + 1, name, iso)}
+            aria-label={(item.doses || 1) === 1 ? t('Marcar {0} el {1}', name.split(' ')[0].toLowerCase(), iso) : t('Dosis {0} de {1} el {2}', k + 1, name, iso)}
             onChange={v => v ? addLog({ itemId: item.id, date: iso, amount: perTake(item) }).catch(toast)
               : removeLog(st.logs.filter(l => l.itemId === item.id && l.date === iso).at(-1).id).catch(toast)} />)}
         </div>
@@ -59,21 +60,30 @@ function Mis({ close }) {
   const combined = iso => { const due = active.filter(i => isDueOn({ ...i, createdAt: sinceOf(i, st.logs) }, iso, train(iso))); return due.length ? Math.min(...due.map(i => dayLevel(i, st.logs, iso, train))) : 0 }
   const item = st.items.find(i => i.id === sel)
   const toast = e => useUI.getState().toast(errorText(e, t('No se pudo guardar. Probá de nuevo.')))
+  // Borrar un archivado y todo su historial, con la confirmación de la app.
+  const removeAll = item => import('../../sheets.jsx').then(({ confirmSheet }) => confirmSheet({
+    title: t('¿Borrar {0}?', itemName(item)), message: t('Se borra también todo su historial. No se puede deshacer.'), confirmText: t('Borrar'), danger: true,
+    onConfirm: async () => { try { await deleteItem(item.id); if (sel === item.id) setSel(null); useUI.getState().toast(t('Borrado')) } catch (e) { useUI.getState().toast(errorText(e, t('No se pudo borrar'))) } }
+  }))
   return <div className="supp-guide-cols">
     <button type="button" className="iconbtn supp-close" onClick={close} aria-label={t('Cerrar')}><Icon name="xmark" /></button>
     <div className={item ? 'supp-hide-phone' : ''}>
       <h3>{t('Mis suplementos')}</h3>
       {active.length > 0 && <HeatmapGrid weeks={26} levelOf={combined} titleOf={iso => iso} legend={[t('Menos'), t('Cumplido')]} />}
       <div className="supp-sec">{t('Activos')}</div>
-      {active.length ? active.map(i => <button key={i.id} type="button" className={'supp-item' + (sel === i.id ? ' sel' : '')} onClick={() => setSel(i.id)}>
-        <div className="grow"><b>{itemName(i)}</b><div className="small dim">{doseLabel(i)}</div></div>
-        <span className="supp-streak">🔥 {streakOf(i, st.logs, today, train)}</span>
-      </button>) : <div className="small dim">{t('Todavía no agregaste suplementos.')}</div>}
+      {active.length ? active.map(i => <div key={i.id} className={'supp-item' + (sel === i.id ? ' sel' : '')}>
+        <button type="button" className="supp-item-main" onClick={() => setSel(i.id)}>
+          <div className="grow"><b>{itemName(i)}</b><div className="small dim">{doseLabel(i)}</div></div>
+          <span className="supp-streak">🔥 {streakOf(i, st.logs, today, train)}</span>
+        </button>
+        <button type="button" className="iconbtn" onClick={() => openConfig(i.catalogId, i.id)} aria-label={t('Configurar {0}', itemName(i))}><Icon name="gear" /></button>
+      </div>) : <div className="small dim">{t('Todavía no agregaste suplementos.')}</div>}
       {archived.length > 0 && <>
         <div className="supp-sec">{t('Archivados')}</div>
         {archived.map(i => <div key={i.id} className="supp-item">
-          <button type="button" className="grow link" onClick={() => setSel(i.id)}><b>{itemName(i)}</b></button>
+          <button type="button" className="supp-item-main" onClick={() => setSel(i.id)}><b className="grow">{itemName(i)}</b></button>
           <Button size="sm" onClick={() => archiveItem(i.id, false).catch(toast)}>{t('Volver a tomar')}</Button>
+          <button type="button" className="iconbtn danger" onClick={() => removeAll(i)} aria-label={t('Borrar {0} y su historial', itemName(i))}><Icon name="trash" /></button>
         </div>)}
       </>}
     </div>

@@ -13,7 +13,7 @@ db.createUser({ id: 'ana', name: 'ana', created: Date.now() });
 db.createUser({ id: 'beto', name: 'beto', created: Date.now() });
 after(() => { db.closeDatabase(); fs.rmSync(dataDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }); });
 
-const item = { id: 'it1', catalogId: 'creatina', name: null, dose: 5, unit: 'g', scoopG: 5, doses: 1, slot: 'morning', days: 'daily', reminderTime: '09:00', meta: null };
+const item = { id: 'it1', catalogId: 'creatina', name: null, dose: 5, unit: 'g', scoopG: 5, doses: 1, slot: 'morning', days: 'daily', reminderTimes: ['09:00'], meta: null };
 
 test('items: alta, edición, archivo y aislamiento por usuario', () => {
   const saved = sdb.saveItem('ana', item);
@@ -49,7 +49,7 @@ test('perfil: aviso, mayoría de edad y recordatorios enviados', () => {
 });
 
 test('eliminar un item borra sus tomas; borrar datos de salud borra todo', () => {
-  sdb.saveItem('ana', { ...item, id: 'it2', reminderTime: null });
+  sdb.saveItem('ana', { ...item, id: 'it2', reminderTimes: [] });
   sdb.addLog('ana', { id: 'l3', itemId: 'it2', date: '2026-10-09', source: null, amount: 5, comidaId: null });
   assert.equal(sdb.deleteItem('ana', 'it2'), true);
   assert.equal(sdb.getLog('ana', 'l3'), null);
