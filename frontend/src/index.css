@@ -2654,7 +2654,7 @@ button.wh-row{font:inherit;color:inherit;border:0;cursor:pointer}
 :is(.supp-card,.supp-caffeine-sheet,.supp-config,.supp-ficha,.supp-detail,.supp-guide-cols) button.link{color:var(--acc);background:none;border:none;font:inherit;font-size:13.5px;padding:4px 0;cursor:pointer}
 :is(.supp-caffeine-sheet,.supp-detail) button.link.danger{color:var(--red)}
 .supp-lock-row{display:flex;gap:8px;align-items:flex-start}
-.supp-card .supp-quick{flex-wrap:nowrap;overflow-x:auto}
+.supp-card .supp-quick{flex-wrap:wrap;overflow:visible}
 .supp-none{margin:10px 0 4px}
 .supp-age-btns{display:flex;gap:8px}
 .supp-age-btns .chip{flex:1;justify-content:center;padding:9px 0}
