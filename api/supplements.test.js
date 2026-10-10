@@ -39,10 +39,10 @@ test('validateLog: toma de un item o fuente de cafeína', () => {
   assert.ok(validateLog({ id: 'l6abcdef', source: 'otro', date: '2026-10-09', amount: 5000 }, { today: '2026-10-09', item: null }).error);
 });
 
-test('proteinMeal: franja por hora y macros por scoop', () => {
+test('proteinMeal: siempre en "extra" y macros por scoop', () => {
   const item = { catalogId: 'proteina', scoopG: 30, meta: { macros: { proteina: 24, calorias: 120, carbos: 3, grasas: 1.5 } } };
   assert.deepEqual(proteinMeal({ item, amount: 60, date: '2026-10-09', today: '2026-10-09', time: '18:30' }),
-    { fecha: '2026-10-09', franja: 'merienda', nombre_alimento: 'Proteína en polvo', cantidad_gramos: 60, calorias: 240, proteina: 48, carbohidratos: 6, grasas: 3 });
+    { fecha: '2026-10-09', franja: 'extra', nombre_alimento: 'Proteína en polvo', cantidad_gramos: 60, calorias: 240, proteina: 48, carbohidratos: 6, grasas: 3 });
   assert.equal(proteinMeal({ item, amount: 30, date: '2026-10-08', today: '2026-10-09', time: '08:00' }).franja, 'extra');
   assert.equal(proteinMeal({ item: { catalogId: 'proteina', meta: null }, amount: 30, date: '2026-10-09', today: '2026-10-09', time: '07:00' }).proteina, 24);
 });

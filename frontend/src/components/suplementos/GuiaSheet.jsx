@@ -10,7 +10,7 @@ import { errorText } from '../../lib/errors.js'
 import { lastBW } from '../../lib/history.js'
 import { SUPLEMENTOS, LEVELS, WATER_TIP, fichaById } from '../../lib/suplementos-data.js'
 import { caffeineRange } from '../../lib/suplementos.js'
-import { Button } from '../ui.jsx'
+import { Button, useSheetBack } from '../ui.jsx'
 import Icon from '../Icon.jsx'
 
 const FEM_TAKE = new Set(['creatina', 'cafeina', 'proteina', 'betaalanina', 'vitaminad'])
@@ -90,8 +90,11 @@ function Lista({ selected, onPick }) {
   </div>
 }
 
-function Guia({ initial, close }) {
+function Guia({ initial, close, setOnBack }) {
   const [id, setId] = useState(initial)
+  // El gesto o botón atrás del sistema hace lo mismo que "‹ Guía": de la ficha a la lista; desde la
+  // lista, cierra.
+  useSheetBack(setOnBack, () => id ? setId(null) : close())
   return <div className="supp-guide-cols">
     <button type="button" className="iconbtn supp-close" onClick={close} aria-label={t('Cerrar')}><Icon name="xmark" /></button>
     <div className={id ? 'supp-hide-phone' : ''}><Lista selected={id} onPick={setId} /></div>
@@ -99,4 +102,4 @@ function Guia({ initial, close }) {
   </div>
 }
 
-export const openGuide = id => useUI.getState().openSheet(close => <Guia initial={id} close={close} />, { fullScreen: true })
+export const openGuide = id => useUI.getState().openSheet((close, { setOnBack } = {}) => <Guia initial={id} close={close} setOnBack={setOnBack} />, { fullScreen: true })

@@ -60,12 +60,12 @@ export function validateLog(b, { today, item }) {
 
 const DEFAULT_SCOOP = 30, DEFAULT_MACROS = { proteina: 24, calorias: 120, carbos: 3, grasas: 1.5 };
 const r1 = n => Math.round(n * 10) / 10;
-const franjaOf = (date, today, time) => date !== today ? 'extra' : time < '11:00' ? 'desayuno' : time < '15:00' ? 'almuerzo' : time < '19:00' ? 'merienda' : 'cena';
+// La toma de proteína va siempre a "Extra" en Nutrición: es un suplemento, no una comida del día.
 export function proteinMeal({ item, amount, date, today, time }) {
   const scoop = item.scoopG > 0 ? item.scoopG : DEFAULT_SCOOP;
   const m = item.meta?.macros || DEFAULT_MACROS;
   const k = amount / scoop;
-  return { fecha: date, franja: franjaOf(date, today, time), nombre_alimento: 'Proteína en polvo', cantidad_gramos: amount,
+  return { fecha: date, franja: 'extra', nombre_alimento: 'Proteína en polvo', cantidad_gramos: amount,
     calorias: r1(m.calorias * k), proteina: r1(m.proteina * k), carbohidratos: r1(m.carbos * k), grasas: r1(m.grasas * k) };
 }
 

@@ -9,7 +9,7 @@ import { errorText } from '../../lib/errors.js'
 import { todayISO } from '../../lib/format.js'
 import { sinceOf, streakOf, adherence30, dayLevel, takenOn, isDueOn, isTrainingDay, canLogDate, addDays, doseLabel, itemName, perTake } from '../../lib/suplementos.js'
 import { HeatmapGrid } from '../Heatmap.jsx'
-import { Button, Check } from '../ui.jsx'
+import { Button, Check, useSheetBack } from '../ui.jsx'
 import Icon from '../Icon.jsx'
 import { BackButton } from './GuiaSheet.jsx'
 
@@ -50,10 +50,12 @@ function Detalle({ item, onBack }) {
   </div>
 }
 
-function Mis({ close }) {
+function Mis({ close, setOnBack }) {
   const S = useStore(s => s.S)
   const st = useSupplements()
   const [sel, setSel] = useState(null)
+  // Atrás del sistema = "‹ Mis suplementos": del detalle a la lista; desde la lista, cierra.
+  useSheetBack(setOnBack, () => sel ? setSel(null) : close())
   const today = st.today || todayISO()
   const train = iso => isTrainingDay(S, iso)
   const active = st.items.filter(i => i.status === 'active'), archived = st.items.filter(i => i.status === 'archived')
@@ -91,4 +93,4 @@ function Mis({ close }) {
   </div>
 }
 
-export const openMine = () => useUI.getState().openSheet(close => <Mis close={close} />, { fullScreen: true })
+export const openMine = () => useUI.getState().openSheet((close, { setOnBack } = {}) => <Mis close={close} setOnBack={setOnBack} />, { fullScreen: true })

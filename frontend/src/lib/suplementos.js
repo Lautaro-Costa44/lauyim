@@ -101,6 +101,15 @@ export function doseLabel(item) {
   return `${fmt(take)} ${unitLabel(item.unit, take)}`
 }
 
+// Gramos de proteína de una dosis de proteína en polvo (los del scoop de la etiqueta; sin scoop, 30 g):
+// 30 g de polvo no son 30 g de proteína.
+export function proteinPerTake(item) {
+  if (item.catalogId !== 'proteina') return null
+  const m = item.meta?.macros || fichaById('proteina')?.macrosPerScoop
+  if (!m) return null
+  return Math.round(((m.proteina || 0) * perTake(item) / (item.scoopG > 0 ? item.scoopG : 30)) * 10) / 10
+}
+
 export const groupBySlot = items => SLOTS
   .map(slot => ({ slot, items: items.filter(i => (i.slot || 'any') === slot.id) }))
   .filter(g => g.items.length)

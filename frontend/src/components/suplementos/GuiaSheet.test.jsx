@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import React, { act } from 'react'
 import { createRoot } from 'react-dom/client'
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 const { useStore } = await import('../../store/useStore.js')
 const { useUI } = await import('../../store/useUI.js')
 const { useSupplements } = await import('../../store/useSupplements.js')
@@ -58,5 +58,19 @@ describe('guía', () => {
     const t = (await render('creatina')).textContent
     expect(t).toContain('No recomendado para menores de 18'); expect(t).not.toContain('Agregar a mis suplementos')
     expect((await render(null)).textContent).not.toContain('Otro suplemento')
+  })
+  it('el atrás del sistema vuelve de la ficha a la lista; desde la lista, cierra', async () => {
+    let back = null; const closed = vi.fn()
+    openGuide(null)
+    const sheet = useUI.getState().sheets.at(-1)
+    const host = document.createElement('div'); document.body.appendChild(host); const r = createRoot(host)
+    await act(async () => r.render(sheet.render(closed, { setOnBack: fn => { back = fn } })))
+    await act(async () => [...host.querySelectorAll('.supp-item')].find(b => b.textContent.includes('Creatina')).click())
+    expect(host.querySelector('.supp-ficha')).toBeTruthy()
+    await act(async () => back())
+    expect(host.querySelector('.supp-ficha')).toBeNull()
+    expect(closed).not.toHaveBeenCalled()
+    await act(async () => back())
+    expect(closed).toHaveBeenCalled()
   })
 })

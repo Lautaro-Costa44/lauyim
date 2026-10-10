@@ -8,7 +8,7 @@ import { t } from '../../lib/i18n.js'
 import { errorText } from '../../lib/errors.js'
 import { todayISO } from '../../lib/format.js'
 import { fichaById, CAFFEINE_SOURCES } from '../../lib/suplementos-data.js'
-import { isTrainingDay, isDueOn, takenOn, streakOf, groupBySlot, doseLabel, perTake, itemName, caffeineTotal, isOverCaffeine, overDose } from '../../lib/suplementos.js'
+import { isTrainingDay, isDueOn, takenOn, streakOf, groupBySlot, doseLabel, perTake, itemName, caffeineTotal, isOverCaffeine, overDose, proteinPerTake } from '../../lib/suplementos.js'
 import { Button, Check } from '../ui.jsx'
 import Icon from '../Icon.jsx'
 import { openNotice, withNotice } from './AvisoInicial.jsx'
@@ -106,9 +106,10 @@ export default function SuplementosCard() {
             const taken = takenOn(st.logs, item.id, today)
             const streak = streakOf(item, st.logs, today, trainingDayOf)
             return <Fragment key={item.id}><div className="supp-row">
-              <div className="grow"><b>{itemName(item)}</b>{fichaById(item.catalogId)?.level === 'indicacion' && <span className="supp-pill">{t('indicación')}</span>}
-                <div className="small dim">{doseLabel(item)}</div></div>
-              {streak >= 2 && <span className="supp-streak">🔥 {streak}</span>}
+              <div className="grow">
+                <div className="supp-name-row"><b>{itemName(item)}</b><span className="supp-streak" title={t('Racha')}>🔥 {streak}</span>
+                  {fichaById(item.catalogId)?.level === 'indicacion' && <span className="supp-pill">{t('indicación')}</span>}</div>
+                <div className="small dim">{doseLabel(item)}{proteinPerTake(item) != null && ` · ${String(proteinPerTake(item)).replace('.', ',')} g ${t('de proteína')}`}</div></div>
               <TakeButtons item={item} taken={taken} onAdd={() => add(item)} onRemove={() => remove(item)} />
             </div>
             {overDose(item, st.logs, today) != null && <div className="supp-warn">{t('Hoy marcaste {0} {1}: más de lo recomendado para un día.', overDose(item, st.logs, today), item.unit)}</div>}</Fragment>

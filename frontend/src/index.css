@@ -2630,7 +2630,7 @@ button.wh-row{font:inherit;color:inherit;border:0;cursor:pointer}
 .supp-field{margin:10px 0}
 .supp-num{max-width:110px}
 .supp-macros{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-.supp-time{max-width:120px;margin-left:10px}
+.supp-time{width:9.5em;min-width:130px;max-width:none;margin-left:10px}
 .supp-preview{text-align:center;margin:12px 0 4px}
 .supp-config>.btn.primary{width:100%}
 .supp-edit-actions{display:flex;justify-content:space-between;margin-top:10px}
@@ -2672,3 +2672,6 @@ button.wh-row{font:inherit;color:inherit;border:0;cursor:pointer}
 .supp-times{display:flex;flex-direction:column;gap:6px;margin-top:8px}
 .supp-time-row{display:flex;align-items:center;justify-content:space-between;gap:10px}
 .supp-time-row .supp-time{margin-left:0}
+.supp-name-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.supp-row .grow{min-width:0}
+.supp-row>.chk,.supp-row>.supp-dots{margin-left:auto;flex:none}

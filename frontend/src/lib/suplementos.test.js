@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { addDays, canLogDate, caffeineRange, isTrainingDay, isDueOn, takenOn, streakOf, adherence30, dayLevel, caffeineTotal, isOverCaffeine, doseLabel, perTake, groupBySlot, adultStatus, itemName, overDose, sinceOf, startDay } from './suplementos.js'
+import { addDays, canLogDate, caffeineRange, isTrainingDay, isDueOn, takenOn, streakOf, adherence30, dayLevel, caffeineTotal, isOverCaffeine, doseLabel, perTake, groupBySlot, adultStatus, itemName, overDose, sinceOf, startDay, proteinPerTake } from './suplementos.js'
 
 const TODAY = '2026-10-09'
 const crea = { id: 'i1', catalogId: 'creatina', dose: 5, unit: 'g', scoopG: 5, doses: 1, slot: 'morning', days: 'daily', status: 'active', createdAt: '2026-09-01T10:00:00Z' }
@@ -100,6 +100,12 @@ describe('etiquetas', () => {
     expect(doseLabel({ id: 'x', catalogId: 'omega3', dose: 2, unit: 'caps', doses: 1 })).toBe('2 cápsulas')
     expect(doseLabel({ id: 'x', catalogId: 'vitaminad', dose: null, unit: 'ui', doses: 1 })).toBe('Dosis indicada')
     expect(doseLabel({ id: 'x', catalogId: 'hierro', dose: null, unit: 'mg', doses: 2 })).toBe('2 dosis')
+  })
+  it('proteína: los gramos de proteína de una dosis, no los de polvo', () => {
+    const prot = { catalogId: 'proteina', dose: 30, unit: 'g', scoopG: 30, doses: 1, meta: { macros: { proteina: 24, calorias: 120, carbos: 3, grasas: 1.5 } } }
+    expect(proteinPerTake(prot)).toBe(24)
+    expect(proteinPerTake({ ...prot, dose: 60 })).toBe(48)
+    expect(proteinPerTake(crea)).toBeNull()
   })
   it('nombre: el del catálogo o el propio', () => {
     expect(itemName(crea)).toBe('Creatina monohidrato')

@@ -8,7 +8,7 @@ import { t } from '../../lib/i18n.js'
 import { errorText } from '../../lib/errors.js'
 import { lastBW } from '../../lib/history.js'
 import { fichaById, SLOTS, UNITS } from '../../lib/suplementos-data.js'
-import { caffeineRange, doseLabel, itemName } from '../../lib/suplementos.js'
+import { caffeineRange, doseLabel, itemName, proteinPerTake } from '../../lib/suplementos.js'
 import { Button, NumberField, Segmented, Switch, TextField } from '../ui.jsx'
 
 const openGuide = id => import('./GuiaSheet.jsx').then(m => m.openGuide(id))
@@ -93,7 +93,8 @@ function Config({ catalogId, itemId, close }) {
         </>)}
       </div>
     </div>
-    <div className="small dim supp-preview">{t('En la tarjeta vas a ver:')} <b>{doseLabel(draft)}</b></div>
+    <div className="small dim supp-preview">{t('En la tarjeta vas a ver:')} <b>{doseLabel(draft)}{proteinPerTake(draft) != null && ` · ${String(proteinPerTake(draft)).replace('.', ',')} g ${t('de proteína')}`}</b></div>
+    {catalogId === 'proteina' && <div className="small dim supp-preview">{t('Se suma en Nutrición como "Extra" (proteína, calorías, carbos y grasas del scoop).')}</div>}
     <Button variant="primary" disabled={busy || (!catalogId && !name.trim()) || !(dose > 0) && f?.level !== 'indicacion'} onClick={save}>{editing ? t('Guardar') : t('Agregar')}</Button>
     {editing && <div className="supp-edit-actions">
       <Button variant="ghost" onClick={archive}>{t('Dejar de tomar')}</Button>
