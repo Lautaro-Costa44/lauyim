@@ -25,7 +25,10 @@ export function adultOf(userId) {
 export function writeGuard(user) {
   if (!supplementsOn()) return [404, { error: 'supplements_off' }];
   if (getDatabase().prepare('SELECT health_consent FROM users WHERE id = ?').get(user.id)?.health_consent === 'declined') return [403, { error: 'health_consent_required' }];
-  if (sdb.getProfile(user.id).ackVersion !== SUPP_ACK_VERSION) return [409, { error: 'supplements_ack_required' }];
+  const profile = sdb.getProfile(user.id);
+  // Deshabilitado por el staff (etapa 2): gana sobre el aviso; también corta recordatorios y la cola.
+  if (profile.staffDisabled) return [403, { error: 'supplements_disabled' }];
+  if (profile.ackVersion !== SUPP_ACK_VERSION) return [409, { error: 'supplements_ack_required' }];
   if (adultOf(user.id) === 'minor') return [403, { error: 'supplements_minor' }];
   return null;
 }
@@ -67,6 +70,7 @@ export function supplementRoutes(d) {
       const today = clock().date;
       const p = sdb.getProfile(user.id);
       json(res, 200, { enabled: true, ackVersion: SUPP_ACK_VERSION, profile: { ackVersion: p.ackVersion, adult: p.adult }, adult: adultOf(user.id), today,
+        disabled: p.staffDisabled ? { reason: p.staffReason } : null,
         items: sdb.listItems(user.id), logs: sdb.listLogs(user.id, addDays(today, -400)) });
     },
     'POST /api/supplements/ack': async (req, res) => {

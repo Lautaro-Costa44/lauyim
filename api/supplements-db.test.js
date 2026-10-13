@@ -40,7 +40,7 @@ test('tomas: idempotentes por id, por fecha, y borrar devuelve la fila', () => {
 });
 
 test('perfil: aviso, mayoría de edad y recordatorios enviados', () => {
-  assert.deepEqual(sdb.getProfile('ana'), { ackVersion: null, ackAt: null, adult: null, lastReminderSent: {} });
+  assert.deepEqual(sdb.getProfile('ana'), { ackVersion: null, ackAt: null, adult: null, lastReminderSent: {}, staffDisabled: false, staffReason: null, staffBy: null, staffAt: null });
   sdb.setAck('ana', '2026-10-09', 1);
   sdb.markReminderSent('ana', 'it1', '2026-10-09');
   const p = sdb.getProfile('ana');
@@ -57,4 +57,14 @@ test('eliminar un item borra sus tomas; borrar datos de salud borra todo', () =>
   assert.equal(sdb.listItems('ana').length, 0);
   assert.equal(sdb.listLogs('ana', '2000-01-01').length, 0);
   assert.equal(sdb.getProfile('ana').ackVersion, null);
+});
+
+test('acceso del staff: deshabilitar con motivo y habilitar lo borra', () => {
+  sdb.setStaffAccess('beto', { disabled: true, reason: 'Por indicación médica', by: 'nutri' });
+  let p = sdb.getProfile('beto');
+  assert.deepEqual([p.staffDisabled, p.staffReason, p.staffBy], [true, 'Por indicación médica', 'nutri']);
+  assert.ok(p.staffAt);
+  sdb.setStaffAccess('beto', { disabled: false, reason: 'ignorado', by: 'nutri' });
+  p = sdb.getProfile('beto');
+  assert.deepEqual([p.staffDisabled, p.staffReason], [false, null]);
 });

@@ -45,6 +45,10 @@ export function migrateSupplements(db) {
   // Un recordatorio por dosis: la lista de horas (JSON). reminder_time queda con la primera, para la
   // consulta de los que tienen recordatorio.
   try { db.exec('ALTER TABLE supplement_items ADD COLUMN reminder_times TEXT;'); } catch {}
+  // Etapa 2: el staff le deshabilita la sección a un socio (motivo opcional que ve el socio).
+  for (const col of ['staff_disabled INTEGER NOT NULL DEFAULT 0', 'staff_reason TEXT', 'staff_by TEXT', 'staff_at TEXT']) {
+    try { db.exec(`ALTER TABLE supplement_profile ADD COLUMN ${col};`); } catch {}
+  }
 }
 
 const parse = v => { try { return v ? JSON.parse(v) : null; } catch { return null; } };
@@ -111,12 +115,19 @@ export function deleteLog(userId, id) {
 
 export function getProfile(userId) {
   const r = getDatabase().prepare('SELECT * FROM supplement_profile WHERE user_id = ?').get(userId);
-  return { ackVersion: r?.ack_version || null, ackAt: r?.ack_at || null, adult: r?.adult ?? null, lastReminderSent: parse(r?.last_reminder_sent) || {} };
+  return { ackVersion: r?.ack_version || null, ackAt: r?.ack_at || null, adult: r?.adult ?? null, lastReminderSent: parse(r?.last_reminder_sent) || {},
+    staffDisabled: r?.staff_disabled === 1, staffReason: r?.staff_reason || null, staffBy: r?.staff_by || null, staffAt: r?.staff_at || null };
 }
 const ensureProfile = userId => getDatabase().prepare('INSERT OR IGNORE INTO supplement_profile (user_id) VALUES (?)').run(userId);
 export function setAck(userId, version, adult) {
   ensureProfile(userId);
   getDatabase().prepare('UPDATE supplement_profile SET ack_version = ?, ack_at = ?, adult = COALESCE(?, adult) WHERE user_id = ?').run(version, nowIso(), adult ?? null, userId);
+}
+// Deshabilitar (con motivo opcional) o habilitar (borra el motivo). by: quién del staff.
+export function setStaffAccess(userId, { disabled, reason, by }) {
+  ensureProfile(userId);
+  getDatabase().prepare('UPDATE supplement_profile SET staff_disabled = ?, staff_reason = ?, staff_by = ?, staff_at = ? WHERE user_id = ?')
+    .run(disabled ? 1 : 0, disabled ? (reason || null) : null, by || null, nowIso(), userId);
 }
 export function markReminderSent(userId, itemId, date) {
   ensureProfile(userId);

@@ -71,3 +71,16 @@ test('apagado por el owner o sin consentimiento: nada', async () => {
   db.getDatabase().prepare("UPDATE users SET health_consent = 'declined' WHERE id = 'ana'").run();
   assert.deepEqual(await tick(at('09:00')), []);
 });
+
+test('deshabilitado por el staff: sin recordatorios', async () => {
+  db.getDatabase().prepare("UPDATE users SET health_consent = 'granted' WHERE id = 'ana'").run();
+  db.getDatabase().prepare("DELETE FROM supplement_profile WHERE user_id = 'ana'").run();
+  sdb.setAck('ana', SUPP_ACK_VERSION, 1);
+  // Habilitado sale (control); deshabilitado, no.
+  assert.equal((await tick(at('09:00'))).filter(s => s.userId === 'ana').length, 1);
+  db.getDatabase().prepare("DELETE FROM supplement_profile WHERE user_id = 'ana'").run();
+  sdb.setAck('ana', SUPP_ACK_VERSION, 1);
+  sdb.setStaffAccess('ana', { disabled: true, reason: null, by: 'nutri' });
+  assert.deepEqual((await tick(at('09:00'))).filter(s => s.userId === 'ana'), []);
+  sdb.setStaffAccess('ana', { disabled: false, reason: null, by: 'nutri' });
+});
