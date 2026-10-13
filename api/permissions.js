@@ -112,6 +112,8 @@ export const ROUTE_PERMISSIONS = Object.freeze({
   'POST /api/admin/public-exercises/delete': 'exercises.share',
   'POST /api/admin/public-exercises/unshare': 'exercises.share',
   // Nutrición
+  'GET /api/admin/users/:userId/supplements': 'supplements.view',
+  'PUT /api/admin/users/:userId/supplements/access': 'supplements.manage',
   'GET /api/admin/users/:userId/nutrition': 'nutrition.manage',
   'PUT /api/admin/users/:userId/nutrition/goals': 'nutrition.manage',
   'PUT /api/admin/users/:userId/nutrition/suggestions-limit': 'nutrition.manage',

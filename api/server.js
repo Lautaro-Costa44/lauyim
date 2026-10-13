@@ -4510,7 +4510,7 @@ const routes = {
   ...classRoutes({ json, readBody, readSession, requireAdmin, requireOwner, audit, sendPush, can, isMembershipBlocked, isStaff: user => !!user && isStaff(user), isInactiveAccount, gymTz: () => billingSettingsNow().gym_tz }),
   ...closureRoutes({ json, readBody, readSession, requireAdmin, audit, sendPush, can, isFeeExempt }),
   // Suplementos (supplements-routes.js).
-  ...supplementRoutes({ json, readBody, readSession, requireOwner, audit }),
+  ...supplementRoutes({ json, readBody, readSession, requireOwner, requireAdmin, requireManageableTarget, audit }),
 };
 
 http.createServer(async (req, res) => {
@@ -4567,6 +4567,10 @@ http.createServer(async (req, res) => {
       ? 'PUT /api/plantillas/:id'
     : req.method === 'DELETE' && /^\/api\/plantillas\/[^/]+$/.test(url.pathname)
       ? 'DELETE /api/plantillas/:id'
+    : req.method === 'GET' && /^\/api\/admin\/users\/[^/]+\/supplements$/.test(url.pathname)
+      ? 'GET /api/admin/users/:userId/supplements'
+    : req.method === 'PUT' && /^\/api\/admin\/users\/[^/]+\/supplements\/access$/.test(url.pathname)
+      ? 'PUT /api/admin/users/:userId/supplements/access'
     : req.method === 'GET' && /^\/api\/admin\/users\/[^/]+\/nutrition$/.test(url.pathname)
       ? 'GET /api/admin/users/:userId/nutrition'
     : req.method === 'PUT' && /^\/api\/admin\/users\/[^/]+\/nutrition\/goals$/.test(url.pathname)
@@ -4644,7 +4648,7 @@ http.createServer(async (req, res) => {
   }
   // Admin sobre nutrición o lesiones de un socio sin consentimiento: deshabilitado. Solo con una
   // sesión de admin (a los demás les responde el handler, como siempre).
-  if (/ \/api\/admin\/users\/:userId\/(nutrition|injuries)/.test(routeKey)) {
+  if (/ \/api\/admin\/users\/:userId\/(nutrition|injuries|supplements)/.test(routeKey)) {
     const sessionUser = readSession(req);
     if (sessionUser && isStaff(sessionUser) && healthDeclined(getUserById(userIdFromPath(req)))) {
       return json(res, 409, { error: 'no_health_consent', message: 'Sin consentimiento de datos de salud' });

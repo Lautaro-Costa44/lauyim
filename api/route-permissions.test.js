@@ -7,9 +7,10 @@ import { ROUTE_PERMISSIONS, PERMISSION_CODES } from './permissions.js';
 
 // Handlers: desde "  'MÉTODO /api/...': async" hasta el próximo (o el cierre de la tabla de rutas).
 const handlers = [];
-for (const file of ['./server.js', './classes-routes.js', './closures-routes.js']) {
+for (const file of ['./server.js', './classes-routes.js', './closures-routes.js', './supplements-routes.js']) {
   const src = fs.readFileSync(new URL(file, import.meta.url), 'utf8').replace(/\r\n/g, '\n');
-  for (const m of src.matchAll(/^ {2}'((?:GET|POST|PUT|PATCH|DELETE) \/api\/[^']+)': async[\s\S]*?(?=^ {2}'(?:GET|POST|PUT|PATCH|DELETE) \/api\/|^ {0,2}};|^ {2}\/\/ Clases grupales)/gm)) handlers.push([m[1], m[0]]);
+  // Sangría de 2 (tabla de rutas) o 4 (rutas devueltas dentro de una función, como supplements-routes.js).
+  for (const m of src.matchAll(/^ {2}(?: {2})?'((?:GET|POST|PUT|PATCH|DELETE) \/api\/[^']+)': async[\s\S]*?(?=^ {2}(?: {2})?'(?:GET|POST|PUT|PATCH|DELETE) \/api\/|^ {0,2}};|^ {2}\/\/ Clases grupales|^ {4}\/\/ Staff)/gm)) handlers.push([m[1], m[0]]);
 }
 
 test('toda ruta con requireAdmin tiene permiso', () => {

@@ -12,6 +12,7 @@ export const SUPPLEMENTS_SETTING = 'supplements_enabled';
 export const supplementsOn = () => supplementsEnabled(getAdminSetting(SUPPLEMENTS_SETTING));
 const gymTz = () => getBillingSettings(getDatabase()).gym_tz;
 const clock = (ms = Date.now(), tz = gymTz()) => gymClock(ms, tz);
+const userIdFromReq = req => decodeURIComponent(new URL(req.url, 'http://x').pathname.split('/')[4] || '');
 const edadOf = userId => getDatabase().prepare('SELECT edad FROM user_state WHERE user_id = ?').get(userId)?.edad ?? null;
 export function adultOf(userId) {
   const edad = Number(edadOf(userId));
@@ -109,6 +110,46 @@ export function supplementRoutes(d) {
       const body = await readBody(req);
       if (!sdb.deleteLog(user.id, String(body.id || ''))) return json(res, 404, { error: 'not_found' });
       json(res, 200, { ok: true });
+    },
+    // Staff (etapa 2): lo mínimo para el nutricionista. Tomas sin hora ni fuente; cafeína solo el total
+    // de los días que pasaron de 400 mg (últimos 30). El consentimiento lo controla el gate de server.js.
+    'GET /api/admin/users/:userId/supplements': async (req, res) => {
+      const admin = d.requireAdmin(req, res); if (!admin) return;
+      const target = d.requireManageableTarget(res, userIdFromReq(req)); if (!target) return;
+      if (!supplementsOn()) return json(res, 200, { enabled: false });
+      const today = clock().date;
+      const p = sdb.getProfile(target.id);
+      const items = sdb.listItems(target.id);
+      const caffeineItems = new Set(items.filter(i => i.catalogId === 'cafeina').map(i => i.id));
+      const all = sdb.listLogs(target.id, addDays(today, -182));
+      const byDay = new Map();
+      for (const l of all) {
+        if (l.date < addDays(today, -29) || !(l.source || caffeineItems.has(l.itemId))) continue;
+        byDay.set(l.date, (byDay.get(l.date) || 0) + (Number(l.amount) || 0));
+      }
+      const state = getUserState(target.id) || {};
+      json(res, 200, {
+        enabled: true,
+        access: { disabled: p.staffDisabled, reason: p.staffReason, at: p.staffAt },
+        items,
+        logs: all.filter(l => l.itemId && !caffeineItems.has(l.itemId)).map(l => ({ itemId: l.itemId, date: l.date, amount: l.amount })),
+        caffeine: [...byDay].filter(([, mg]) => mg > 400).map(([date, mg]) => ({ date, mg: Math.round(mg) })).sort((a, b) => b.date.localeCompare(a.date)),
+        plan: { week: state.week || {}, dayPlan: state.dayPlan || {}, workoutDates: [...new Set((state.workouts || []).map(w => w.d))] },
+      });
+    },
+    'PUT /api/admin/users/:userId/supplements/access': async (req, res) => {
+      const admin = d.requireAdmin(req, res); if (!admin) return;
+      const target = d.requireManageableTarget(res, userIdFromReq(req)); if (!target) return;
+      const body = await readBody(req);
+      if (typeof body.enabled !== 'boolean') return json(res, 400, { error: 'enabled debe ser true o false' });
+      const reason = typeof body.reason === 'string' ? body.reason.trim() : '';
+      if (reason.length > 120) return json(res, 400, { error: 'El motivo va hasta 120 caracteres' });
+      sdb.setStaffAccess(target.id, { disabled: !body.enabled, reason: reason || null, by: admin.id });
+      const p = sdb.getProfile(target.id);
+      d.audit(req, body.enabled ? 'admin.supplements.enabled' : 'admin.supplements.disabled', {
+        user: admin, target, summary: body.enabled ? 'Suplementos habilitados' : 'Suplementos deshabilitados' + (reason ? `: ${reason}` : '')
+      });
+      json(res, 200, { access: { disabled: p.staffDisabled, reason: p.staffReason, at: p.staffAt } });
     },
     'GET /api/owner/supplements': async (req, res) => {
       const owner = d.requireOwner(req, res); if (!owner) return;
