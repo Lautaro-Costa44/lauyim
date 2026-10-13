@@ -88,6 +88,8 @@ const LABELS = {
   'owner.billing.enabled': 'Turned membership billing on',
   'owner.billing.disabled': 'Turned membership billing off',
   'owner.supplements.enabled': 'Turned the supplements guide on',
+  'admin.supplements.disabled': 'Disabled supplements for a member',
+  'admin.supplements.enabled': 'Enabled supplements for a member',
   'owner.supplements.disabled': 'Turned the supplements guide off',
   'admin.notifications.settings': 'Changed membership notice time',
   'owner.privacy.settings': 'Changed the privacy notice details',

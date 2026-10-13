@@ -354,3 +354,12 @@ describe('Administrar Nutrición/Rutina — pestañas', () => {
     expect(close).not.toHaveBeenCalled()
   })
 })
+
+describe('Administrar → Nutrición con solo "Ver suplementos"', () => {
+  it('no muestra metas ni sugerencias (solo la sección de suplementos)', async () => {
+    expect(text()).toContain('Metas nutricionales')
+    await act(async () => { useStore.setState({ user: { id: 'v', name: 'v', permissions: ['members.view', 'health.view', 'supplements.view'] } }) })
+    await act(async () => {})
+    expect(text()).not.toContain('Metas nutricionales')
+  })
+})

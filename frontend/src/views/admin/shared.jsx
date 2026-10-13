@@ -18,6 +18,7 @@ import WorkoutHistoryList from '../../components/workout/WorkoutHistoryList.jsx'
 import WorkoutDetailView from '../../components/workout/WorkoutDetailView.jsx'
 import ClassWorkoutDetail from '../../components/workout/ClassWorkoutDetail.jsx'
 import ClassesMemberCard from './members/ClassesCard.jsx'
+import AdminSupplementsCard from '../../components/suplementos/AdminSupplementsCard.jsx'
 import { weekAdherence, isClassWorkout } from '../../lib/workout-history.js'
 import { can } from '../../lib/permissions.js'
 import { RoleTag, RolePickSheet } from './roles-common.jsx'
@@ -659,6 +660,9 @@ const manageTitle = tabs => tabs.length > 1 ? t('Administrar Nutrición/Rutina')
 
 export function AdminManageSheet({ userId, userName, healthConsent = null, close, setOnBack, tabs = ['nutrition', 'routine'] }) {
   const [tab, setTab] = useState(tabs[0])
+  // Pestaña Nutrición: metas y sugerencias con "Gestionar nutrición"; suplementos con "Ver suplementos".
+  const me = useStore(s => s.user)
+  const canNutrition = can(me, 'nutrition.manage'), canSupps = can(me, 'supplements.view')
   const [suggestionFlow, setSuggestionFlow] = useState(null)
   const suggestionFlowRef = useRef(suggestionFlow)
   suggestionFlowRef.current = suggestionFlow
@@ -710,7 +714,10 @@ export function AdminManageSheet({ userId, userName, healthConsent = null, close
         {tabs.length > 1 && <Segmented options={[{ value: 'nutrition', label: t('Nutrición') }, { value: 'routine', label: t('Rutina') }]} value={tab} onChange={setTab} />}
         {tab === 'nutrition' && healthConsent === 'declined' ? <div className="card no-health"><div className="empty">{t('Sin consentimiento de datos de salud')}</div>
           <div className="small muted">{t('El socio no dio su consentimiento para el tratamiento de datos de salud: nutrición y lesiones quedan deshabilitadas hasta que lo dé desde Ajustes.')}</div></div>
-        : tab === 'nutrition' ? <AdminNutritionCard userId={userId} openSuggestion={openSuggestion} editSuggestion={editSuggestion} picker={picker.open} /> : <AdminRoutineCard userId={userId} />}
+        : tab === 'nutrition' ? <>
+          {canNutrition && <AdminNutritionCard userId={userId} openSuggestion={openSuggestion} editSuggestion={editSuggestion} picker={picker.open} />}
+          {canSupps && <AdminSupplementsCard userId={userId} userName={userName} />}
+        </> : <AdminRoutineCard userId={userId} />}
         </div>
       </>}
     </div>
@@ -768,7 +775,7 @@ export function UserDetail({ id, billingEnabled = true, users, openUser, onChang
   }
   // Cada bloque de la ficha según el rol de quien mira (el servidor lo vuelve a controlar).
   const allowed = code => can(currentUser, code)
-  const manageTabs = [allowed('nutrition.manage') && 'nutrition', allowed('training.manage') && 'routine'].filter(Boolean)
+  const manageTabs = [(allowed('nutrition.manage') || allowed('supplements.view')) && 'nutrition', allowed('training.manage') && 'routine'].filter(Boolean)
   const manageLabel = manageTitle(manageTabs)
   const seesHealth = d.healthConsent !== 'declined' && allowed('health.view')
   const manageRoles = () => openSheet(c => <RolePickSheet user={u} close={c} onChanged={() => { setReloadKey(k => k + 1); onChanged() }} />)

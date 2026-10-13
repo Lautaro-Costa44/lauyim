@@ -706,6 +706,8 @@ export default {
   'Changed member record fields': 'Cambió los campos de las fichas',
   'Turned membership billing on': 'Activó el cobro de cuotas',
   'Turned the supplements guide on': 'Activó la guía de suplementos',
+  'Disabled supplements for a member': 'Deshabilitó suplementos a un socio',
+  'Enabled supplements for a member': 'Habilitó suplementos a un socio',
   'Turned the supplements guide off': 'Desactivó la guía de suplementos',
   'Turned membership billing off': 'Desactivó el cobro de cuotas',
   'Changed membership notice time': 'Cambió el horario de avisos de cuota',
