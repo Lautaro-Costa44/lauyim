@@ -59,6 +59,14 @@ export default function SuplementosCard() {
   const toast = e => useUI.getState().toast(errorText(e, t('No se pudo guardar. Probá de nuevo.')))
   const header = <h2>{t('Suplementos')}</h2>
 
+  // Deshabilitado por el staff (etapa 2): solo el aviso y el motivo; nada abre la guía ni el seguimiento.
+  if (st.disabled) return <div className="card supp-card">
+    {header}
+    <div className="supp-lock supp-lock-row"><Icon name="lock" /><span>{t('Tu gimnasio deshabilitó la sección de suplementos para tu cuenta.')}
+      {st.disabled.reason && <span className="supp-reason">{t('Motivo: {0}', st.disabled.reason)}</span>}</span></div>
+    <div className="small dim">{t('Si tenés dudas, consultá en recepción.')}</div>
+  </div>
+
   if (!noticeAccepted(st)) return <div className="card supp-card">
     {header}
     <div className="supp-lock supp-lock-row"><Icon name="lock" /><span>{t('Para ver la guía y registrar suplementos, leé y aceptá el aviso.')}</span></div>

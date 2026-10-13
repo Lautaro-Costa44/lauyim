@@ -98,6 +98,12 @@ describe('tarjeta de suplementos', () => {
     expect(apiMock).toHaveBeenCalledWith('/api/supplements/log', expect.objectContaining({ body: expect.stringContaining('"source":"mate"') }))
     expect(text()).toContain('×1')
   })
+  it('deshabilitado por el gimnasio: candado con motivo, sin guía ni seguimiento', async () => {
+    await mount({ ...base, items: [crea], disabled: { reason: 'Por indicación médica' } })
+    expect(text()).toContain('Tu gimnasio deshabilitó la sección de suplementos para tu cuenta')
+    expect(text()).toContain('Por indicación médica')
+    expect(text()).not.toContain('Guía'); expect(text()).not.toContain('Hoy:')
+  })
   it('menor: solo la guía', async () => {
     await mount({ ...base, adult: 'minor', items: [crea] })
     expect(text()).toContain('no recomendamos suplementos a menores de 18')

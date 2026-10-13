@@ -110,6 +110,23 @@ export function proteinPerTake(item) {
   return Math.round(((m.proteina || 0) * perTake(item) / (item.scoopG > 0 ? item.scoopG : 30)) * 10) / 10
 }
 
+// Días con exceso de los últimos 30 (vista del staff): cada ítem contra el máximo diario de su ficha,
+// y la cafeína (total del día, que el servidor ya manda filtrado > 400 mg). Más nuevo primero.
+export function excessDays({ items, logs, caffeine = [], today }) {
+  const from = addDays(today, -29)
+  const rows = []
+  for (const item of items) {
+    const max = fichaById(item.catalogId)?.dayMax
+    if (!max) continue
+    const byDay = new Map()
+    for (const l of logs) if (l.itemId === item.id && l.date >= from && l.date <= today) byDay.set(l.date, (byDay.get(l.date) || 0) + (Number(l.amount) || 0))
+    for (const [date, amount] of byDay) if (amount > max) rows.push({ date, name: itemName(item), amount: Math.round(amount * 10) / 10, max, unit: item.unit })
+  }
+  for (const c of caffeine) if (c.date >= from && c.date <= today && c.mg > 400) rows.push({ date: c.date, name: 'Cafeína', amount: c.mg, max: 400, unit: 'mg' })
+  return rows.sort((a, b) => b.date.localeCompare(a.date) || a.name.localeCompare(b.name))
+}
+export const excessDayCount = rows => new Set(rows.map(r => r.date)).size
+
 export const groupBySlot = items => SLOTS
   .map(slot => ({ slot, items: items.filter(i => (i.slot || 'any') === slot.id) }))
   .filter(g => g.items.length)

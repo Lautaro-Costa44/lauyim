@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { addDays, canLogDate, caffeineRange, isTrainingDay, isDueOn, takenOn, streakOf, adherence30, dayLevel, caffeineTotal, isOverCaffeine, doseLabel, perTake, groupBySlot, adultStatus, itemName, overDose, sinceOf, startDay, proteinPerTake } from './suplementos.js'
+import { addDays, canLogDate, caffeineRange, isTrainingDay, isDueOn, takenOn, streakOf, adherence30, dayLevel, caffeineTotal, isOverCaffeine, doseLabel, perTake, groupBySlot, adultStatus, itemName, overDose, sinceOf, startDay, proteinPerTake, excessDays, excessDayCount } from './suplementos.js'
 
 const TODAY = '2026-10-09'
 const crea = { id: 'i1', catalogId: 'creatina', dose: 5, unit: 'g', scoopG: 5, doses: 1, slot: 'morning', days: 'daily', status: 'active', createdAt: '2026-09-01T10:00:00Z' }
@@ -125,5 +125,17 @@ describe('etiquetas', () => {
     expect(adultStatus({ edad: null, adult: 1 })).toBe('adult')
     expect(adultStatus({ edad: null, adult: 0 })).toBe('minor')
     expect(adultStatus({ edad: null, adult: null })).toBe('unknown')
+  })
+})
+
+describe('excesos (staff)', () => {
+  it('suma del día contra el máximo de la ficha, cafeína incluida, solo 30 días', () => {
+    const logs = [log('i1', addDays(TODAY, -2), { amount: 15 }), log('i1', addDays(TODAY, -2), { amount: 10 }), log('i1', addDays(TODAY, -3), { amount: 5 }), log('i1', addDays(TODAY, -40), { amount: 30 })]
+    const caffeine = [{ date: addDays(TODAY, -2), mg: 520 }, { date: addDays(TODAY, -5), mg: 450 }]
+    const rows = excessDays({ items: [crea], logs, caffeine, today: TODAY })
+    expect(rows.map(r => [r.date, r.name, r.amount, r.max])).toEqual([
+      [addDays(TODAY, -2), 'Cafeína', 520, 400], [addDays(TODAY, -2), 'Creatina monohidrato', 25, 20], [addDays(TODAY, -5), 'Cafeína', 450, 400]])
+    expect(excessDayCount(rows)).toBe(2)
+    expect(excessDays({ items: [{ ...crea, catalogId: null, name: 'Propio' }], logs, caffeine: [], today: TODAY })).toEqual([])
   })
 })

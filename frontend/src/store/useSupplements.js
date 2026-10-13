@@ -7,9 +7,9 @@ import { enqueueRequest, shouldQueueOffline } from '../lib/sync-queue.js'
 import { useStore } from './useStore.js'
 
 const KEY = 'lauyim_supps'
-const EMPTY = { uid: null, loaded: false, enabled: false, ackVersion: null, profile: { ackVersion: null, adult: null }, adult: 'unknown', today: null, items: [], logs: [] }
+const EMPTY = { uid: null, loaded: false, enabled: false, disabled: null, ackVersion: null, profile: { ackVersion: null, adult: null }, adult: 'unknown', today: null, items: [], logs: [] }
 const userId = () => useStore.getState().user?.id || null
-const DATA_KEYS = ['uid', 'enabled', 'ackVersion', 'profile', 'adult', 'today', 'items', 'logs']
+const DATA_KEYS = ['uid', 'enabled', 'disabled', 'ackVersion', 'profile', 'adult', 'today', 'items', 'logs']
 const pick = s => Object.fromEntries(DATA_KEYS.map(k => [k, s[k]]))
 function readCache() {
   try { const c = JSON.parse(localStorage.getItem(KEY) || 'null'); return c && c.userId === userId() ? { ...EMPTY, ...c.data, loaded: true } : EMPTY } catch { return EMPTY }

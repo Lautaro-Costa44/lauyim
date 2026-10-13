@@ -42,4 +42,5 @@ function Aviso({ close, then }) {
 }
 
 export const openNotice = then => useUI.getState().openSheet(close => <Aviso close={close} then={then} />, { locked: true, backGesture: true })
-export const withNotice = fn => noticeAccepted(useSupplements.getState()) ? fn() : openNotice(fn)
+// Deshabilitado por el staff: no abre nada (la tarjeta ya lo explica).
+export const withNotice = fn => useSupplements.getState().disabled ? undefined : noticeAccepted(useSupplements.getState()) ? fn() : openNotice(fn)
