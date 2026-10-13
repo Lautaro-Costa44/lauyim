@@ -52,6 +52,7 @@ describe('tarjeta de suplementos', () => {
     await act(async () => r.render(sheet.render(() => {})))
     expect(host.textContent).toContain('Leí y acepto')
     expect(host.textContent).not.toContain('Ahora no')
+    expect(host.textContent).toContain('El staff del gimnasio con permiso (por ejemplo, nutricionistas) puede ver lo que registrás.')
     expect(host.textContent).toContain('¿Tenés 18 años o más?')
     expect(host.querySelectorAll('[role="radio"][aria-checked="true"]').length).toBe(0)
     expect([...host.querySelectorAll('button')].find(b => b.textContent === 'Leí y acepto').disabled).toBe(true)

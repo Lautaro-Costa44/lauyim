@@ -1,6 +1,6 @@
 // Catálogo de suplementos (docs/superpowers/specs/2026-10-09-suplementos-design.md). Cada cifra está
 // verificada en docs/suplementos-fuentes.md. Contenido en español, sin t(): es texto de la guía.
-export const SUPP_ACK_VERSION = '2026-10-09'
+export const SUPP_ACK_VERSION = '2026-10-13'   // etapa 2: el aviso dice que el staff con permiso lo ve
 export const CATALOG_REVIEWED = '2026-10'
 
 export const LEVELS = {

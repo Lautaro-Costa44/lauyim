@@ -55,6 +55,6 @@ describe('catálogo de suplementos', () => {
     expect(SLOTS.map(s => s.id)).toEqual(['morning', 'pre', 'post', 'meals', 'night', 'any'])
     expect(UNITS.map(u => u.id)).toEqual(['g', 'mg', 'ml', 'caps', 'ui', 'dosis'])
     expect(WATER_TIP.hombres).toMatch(/2,5 L/); expect(WATER_TIP.mujeres).toMatch(/2 L/)
-    expect(SUPP_ACK_VERSION).toBe('2026-10-09')
+    expect(SUPP_ACK_VERSION).toBe('2026-10-13')
   })
 })

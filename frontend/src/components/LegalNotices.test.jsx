@@ -24,10 +24,10 @@ beforeEach(async () => { await setLang('es'); globalThis.IS_REACT_ACT_ENVIRONMEN
 afterEach(async () => { await act(async () => { root.unmount() }); container.remove() })
 
 describe('aviso de privacidad', () => {
-  it('menciona los suplementos como dato de salud que el staff no ve', async () => {
+  it('menciona los suplementos como dato de salud que ve el staff con permiso', async () => {
     const text = await render(<PrivacyNotice info={BASE} />)
     expect(text).toMatch(/los suplementos que registres/)
-    expect(text).toMatch(/el staff del gimnasio no tiene acceso/)
+    expect(text).toMatch(/los ves vos y el staff con permiso/)
   })
 
   it('sin ingreso físico ni clases: no los menciona', async () => {

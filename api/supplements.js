@@ -4,7 +4,7 @@
 // acá solo los ids seguibles.
 import { addDays } from './classes.js';
 
-export const SUPP_ACK_VERSION = '2026-10-09';
+export const SUPP_ACK_VERSION = '2026-10-13';   // etapa 2: el aviso dice que el staff con permiso lo ve
 export const SLOTS = ['morning', 'pre', 'post', 'meals', 'night', 'any'];
 export const DAYS = ['daily', 'training'];
 export const UNITS = ['g', 'mg', 'ml', 'caps', 'ui', 'dosis'];

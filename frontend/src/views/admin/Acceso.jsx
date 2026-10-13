@@ -306,7 +306,7 @@ export function SupplementsToggleCard() {
     <div className="row between" style={{ gap: 12, marginTop: 10 }}>
       <div className="grow">
         <div style={{ fontWeight: 600 }}>{t('Guía y seguimiento de suplementos')}</div>
-        <div className="small muted" style={{ marginTop: 2 }}>{t('En Nutrición: una guía basada en evidencia y el registro de lo que toma cada socio. Solo lo ve cada socio, no el staff.')}</div>
+        <div className="small muted" style={{ marginTop: 2 }}>{t('En Nutrición: una guía basada en evidencia y el registro de lo que toma cada socio. Lo ve cada socio y el staff con permiso de ver suplementos.')}</div>
       </div>
       <Switch checked={enabled} disabled={busy} onChange={change} label={t('Guía y seguimiento de suplementos')} />
     </div>

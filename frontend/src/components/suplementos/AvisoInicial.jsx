@@ -26,6 +26,7 @@ function Aviso({ close, then }) {
   return <div className="supp-notice">
     <h3>{t('Antes de empezar')}</h3>
     <div className="supp-box">{t('Esta guía es información general basada en IOC, AIS, ISSN, NIH y EFSA. No es consejo médico ni reemplaza a un profesional de la salud.')}</div>
+    <div className="supp-box">{t('El staff del gimnasio con permiso (por ejemplo, nutricionistas) puede ver lo que registrás.')}</div>
     <div className="supp-label">{t('Consultá a un profesional antes si te aplica alguna')}</div>
     <ul className="supp-conditions">{CONDITIONS.map(([e, c]) => <li key={c}><span aria-hidden="true">{e}</span> {t(c)}</li>)}</ul>
     <div className="small dim">{t('No guardamos cuál te aplica: solo que leíste esto.')}</div>

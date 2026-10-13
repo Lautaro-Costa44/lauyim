@@ -63,7 +63,7 @@ export function PrivacyNotice({ info, onSupport }) {
         <li>{t('Registros técnicos de seguridad: ingresos y acciones del staff, con fecha y hora.')}</li>
       </ul>
       <p>{t('Peso, edad, género, altura, lesiones y nutrición se tratan como datos sensibles (art. 7 de la Ley 25.326): solo se guardan con tu consentimiento expreso y solo se usan para adaptar tu entrenamiento. Podés retirarlo cuando quieras desde Ajustes → Datos de salud: la app sigue funcionando para entrenar, esas secciones se ocultan y podés borrar lo que ya cargaste.')}</p>
-      <p>{t('Los suplementos que registres son un dato de salud: solo los ves vos (el staff del gimnasio no tiene acceso) y se borran con "Borrar mis datos de salud".')}</p>
+      <p>{t('Los suplementos que registres son un dato de salud: los ves vos y el staff con permiso (por ejemplo, nutricionistas), y se borran con "Borrar mis datos de salud".')}</p>
     </Sect>
 
     <Sect title={t('Para qué se usan')}>
