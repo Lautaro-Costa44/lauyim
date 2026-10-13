@@ -489,6 +489,9 @@ function migrateRoles(db) {
   };
   const add = codes => perms => [...perms, ...codes];
   migrateRolePerms('classes_perms_seeded', { [ADMIN_ROLE_ID]: add(['classes.manage']), coach: add(['classes.own']), reception: add(['classes.book_members']) });
+  // Suplementos (etapa 2): el Nutricionista ve y puede deshabilitar. Una sola vez; si el owner se los
+  // saca, no vuelven.
+  migrateRolePerms('supplements_perms_seeded', { nutrition: add(['supplements.manage']) });
   migrateRolePerms('classes_perms_v2', {
     [ADMIN_ROLE_ID]: add(['classes.manage']),
     coach: perms => perms.includes('classes.manage') ? [...perms.filter(c => !['classes.manage', 'classes.view_all', 'classes.book_members'].includes(c)), 'classes.own'] : perms,
