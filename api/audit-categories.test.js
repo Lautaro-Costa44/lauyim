@@ -37,3 +37,8 @@ test('categorías de ejemplo', () => {
   for (const [ev, cat] of Object.entries(cases)) assert.equal(auditCategory(ev), cat, ev);
   assert.deepEqual(AUDIT_CATEGORIES, ['auth', 'members', 'billing', 'classes', 'training', 'checkin', 'settings']);
 });
+
+test('suplementos del staff: categoría Entrenamiento', () => {
+  assert.equal(auditCategory('admin.supplements.disabled'), 'training');
+  assert.equal(auditCategory('admin.supplements.enabled'), 'training');
+});

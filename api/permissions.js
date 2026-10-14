@@ -19,6 +19,8 @@ export const PERMISSIONS = Object.freeze([
   { code: 'exercises.share', area: 'Entrenamiento', name: 'Ejercicios públicos', help: 'Compartir ejercicios propios con todo el gimnasio.', requires: [] },
   { code: 'nutrition.manage', area: 'Nutrición', name: 'Gestionar nutrición', help: 'Objetivos, sugerencias y plantillas de nutrición de los socios.', requires: ['members.view'] },
   { code: 'health.view', area: 'Salud', name: 'Ver datos de salud', help: 'Peso corporal y lesiones de los socios (datos sensibles).', requires: ['members.view'] },
+  { code: 'supplements.view', area: 'Salud', name: 'Ver suplementos', help: 'Qué suplementos toma cada socio, si los cumple y los días en que se pasó de la dosis (datos sensibles).', requires: ['members.view', 'health.view'] },
+  { code: 'supplements.manage', area: 'Salud', name: 'Deshabilitar suplementos', help: 'Deshabilitarle a un socio la guía y el seguimiento de suplementos (por ejemplo, por indicación médica).', requires: ['supplements.view'] },
   { code: 'checkin.operate', area: 'Operación', name: 'Ingreso físico', help: 'La pantalla de ingreso del mostrador y sus dispositivos.', requires: [] },
   { code: 'notifications.send', area: 'Operación', name: 'Enviar notificaciones', help: 'Avisos a los socios y la configuración de recordatorios.', requires: [] },
   { code: 'stats.view', area: 'Operación', name: 'Resumen y estadísticas', help: 'La asistencia y la actividad del gimnasio.', requires: [] },
@@ -110,6 +112,8 @@ export const ROUTE_PERMISSIONS = Object.freeze({
   'POST /api/admin/public-exercises/delete': 'exercises.share',
   'POST /api/admin/public-exercises/unshare': 'exercises.share',
   // Nutrición
+  'GET /api/admin/users/:userId/supplements': 'supplements.view',
+  'PUT /api/admin/users/:userId/supplements/access': 'supplements.manage',
   'GET /api/admin/users/:userId/nutrition': 'nutrition.manage',
   'PUT /api/admin/users/:userId/nutrition/goals': 'nutrition.manage',
   'PUT /api/admin/users/:userId/nutrition/suggestions-limit': 'nutrition.manage',
@@ -172,9 +176,11 @@ export const ADMIN_ROLE_ID = 'admin';
 
 // Roles que trae cada instancia (se crean una vez; el de fábrica no se borra ni se renombra).
 export const DEFAULT_ROLES = Object.freeze([
-  { id: ADMIN_ROLE_ID, name: 'Administrador', color: '#ff453a', builtin: true, permissions: PERMISSION_CODES.filter(c => c !== 'roles.assign') },
+  // Administrador: todo menos asignar roles y los suplementos de los socios (dato de salud: de fábrica
+  // solo el Nutricionista; el owner puede sumárselos a cualquier rol).
+  { id: ADMIN_ROLE_ID, name: 'Administrador', color: '#ff453a', builtin: true, permissions: PERMISSION_CODES.filter(c => !['roles.assign', 'supplements.view', 'supplements.manage'].includes(c)) },
   { id: 'reception', name: 'Recepción', color: '#0a84ff', builtin: false, permissions: withDependencies(['members.edit', 'members.approve', 'fees.manage', 'checkin.operate', 'classes.book_members']) },
-  { id: 'nutrition', name: 'Nutricionista', color: '#30d158', builtin: false, permissions: withDependencies(['nutrition.manage', 'health.view']) },
+  { id: 'nutrition', name: 'Nutricionista', color: '#30d158', builtin: false, permissions: withDependencies(['nutrition.manage', 'health.view', 'supplements.manage']) },
   { id: 'coach', name: 'Profesor/a', color: '#ff9f0a', builtin: false, permissions: withDependencies(['training.manage', 'health.view', 'classes.own']) }
 ]);
 

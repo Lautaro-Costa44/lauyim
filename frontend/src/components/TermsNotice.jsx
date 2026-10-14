@@ -74,6 +74,7 @@ export function TermsNotice({ info, onSupport }) {
     <Sect title={t('Salud y entrenamiento')}>
       <p>{t('Las rutinas, las cargas sugeridas, las metas y sugerencias de nutrición y los cálculos de la app (calorías, 1RM, fatiga) son orientativos. No reemplazan la consulta con un médico, un nutricionista ni las indicaciones del staff.')}</p>
       <p>{t('Antes de empezar un plan, y ante cualquier dolor, lesión o condición de salud, consultá a un profesional y avisá al staff. Entrenás bajo tu responsabilidad y siguiendo las indicaciones del gimnasio.')}</p>
+      <p>{t('La Guía de suplementos es información general basada en publicaciones científicas (IOC, AIS, ISSN, NIH y EFSA). No es consejo médico, no recomienda marcas ni productos y no reemplaza a un profesional de la salud. Las dosis son rangos generales: si tenés una condición de salud, estás embarazada o en lactancia, o tomás medicación, consultá antes de usar suplementos.')}</p>
     </Sect>
 
     <Sect title={t('Cuota y acceso')}>

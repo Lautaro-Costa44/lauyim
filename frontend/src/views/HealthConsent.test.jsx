@@ -73,7 +73,7 @@ describe('consentimiento de datos de salud', () => {
   it('cuenta de antes: se pregunta una vez; sin consentimiento se ocultan Nutrición y el peso corporal', async () => {
     await mount('#/home', { healthAsk: true, healthConsent: null })
     expect(text()).toContain('Tus datos de salud')
-    expect(text()).toContain('peso, edad, género, lesiones y nutrición')
+    expect(text()).toContain('peso, edad, género, lesiones, nutrición y suplementos')
     expect(text()).toContain('opcional')
     expect(document.querySelector('#tabbar')).toBeNull()
     // Solo falta la salud (los términos ya están aceptados): sin "Salir", se sigue sin darla.

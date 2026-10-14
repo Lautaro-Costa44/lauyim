@@ -11,6 +11,7 @@ import { Button, Segmented, Switch, TextField } from '../../components/ui.jsx'
 import Icon from '../../components/Icon.jsx'
 import BrandingPreview from '../../components/BrandingPreview.jsx'
 import { confirmSheet } from '../../sheets.jsx'
+import ModulesCard from './Modulos.jsx'
 
 // Admin → Personalización (solo el owner): nombre de la app, frase del login, logo y color del gym,
 // con vista previa antes de guardar (api/branding.js, lib/branding.js, lib/branding-image.js).
@@ -214,6 +215,8 @@ export default function Personalizacion() {
       <div className="small dim">{t('Volver a como viene lauyim: sin nombre, frase, logo ni color propios, y con el tema oscuro para todos.')}</div>
       <Button size="sm" variant="ghost" className="dim" disabled={busy} onClick={reset}>{t('Volver a lauyim')}</Button>
     </div>
+
+    <ModulesCard />
 
     <div className="branding-actions">
       <Button icon="sparkles" onClick={() => setPreview(true)}>{t('Vista previa')}</Button>

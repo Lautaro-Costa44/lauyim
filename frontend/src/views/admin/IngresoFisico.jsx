@@ -22,22 +22,12 @@ const dmy = ms => new Date(ms).toLocaleDateString('es-AR', { day: '2-digit', mon
 
 const EXPLAIN = 'Una tablet o notebook en la recepción donde el socio tipea su DNI en un teclado numérico y queda registrado que vino. Ve su nombre y, si querés, el estado de su cuota. Los ingresos suman al gráfico de asistencia. Es distinto del QR de acceso (que sirve para registrarse).'
 
-function EnableCard({ settings, owner, onSave, busy }) {
-  const turnOff = () => confirmSheet({
-    title: t('¿Desactivar Ingreso Físico?'),
-    message: t('Todos los dispositivos dejan de funcionar y quedan desactivados: para volver a usarlos, un admin tiene que activarlos de nuevo. Los ingresos registrados no se borran.'),
-    confirmText: t('Desactivar'), danger: true,
-    onConfirm: () => onSave({ enabled: false }),
-  })
+// Se prende y apaga en Personalización → Módulos (owner); apagado, la sección no aparece.
+function EnableCard({ settings }) {
   return <div className="card">
-    <div className="row between" style={{ gap: 12 }}>
-      <div className="grow">
-        <h2 style={{ margin: 0 }}>{t('Ingreso Físico')}</h2>
-        <div className="small muted" style={{ marginTop: 6, lineHeight: 1.45 }}>{t(EXPLAIN)}</div>
-      </div>
-      {owner && <Switch label={t('Ingreso Físico')} checked={settings.enabled} disabled={busy}
-        onChange={v => v ? onSave({ enabled: true }) : turnOff()} />}
-    </div>
+    <h2 style={{ margin: 0 }}>{t('Ingreso Físico')}</h2>
+    <div className="small muted" style={{ marginTop: 6, lineHeight: 1.45 }}>{t(EXPLAIN)}</div>
+    {!settings.enabled && <div className="access-warn small" role="note" style={{ marginTop: 10 }}>{t('Ingreso Físico está apagado. Se prende en Personalización → Módulos.')}</div>}
   </div>
 }
 
@@ -231,7 +221,7 @@ export default function IngresoFisico() {
 
   const { settings } = data
   return <div className="admin-cards">
-    <EnableCard settings={settings} owner={owner} onSave={save} busy={busy} />
+    <EnableCard settings={settings} />
     {settings.enabled && <>
       <IdentifyCard settings={settings} billingEnabled={data.billingEnabled} owner={owner} onSave={save} busy={busy} />
       <DevicesCard devices={data.devices} onRevoke={revoke} />

@@ -14,7 +14,7 @@ const RULES = [
   ['checkin', /^checkin\./],
   ['checkin', /^(admin|owner)\.checkin\./],
   // Entrenamiento y nutrición que el staff le arma al socio, y los programas del gym.
-  ['training', /^admin\.(routine|preset|program|injury|nutrition)\./],
+  ['training', /^admin\.(routine|preset|program|injury|nutrition|supplements)\./],
   // Socios, cuentas, invitaciones, roles asignados y avisos que el staff les manda.
   ['members', /^admin\.(member|user|invite|push)\./],
   ['members', /^owner\.(member|user)\./],

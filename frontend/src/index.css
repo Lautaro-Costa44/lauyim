@@ -968,8 +968,9 @@ input[type="search"]::-webkit-search-cancel-button{display:none;-webkit-appearan
 #modal-root{position:fixed;inset:0;z-index:100;display:none}
 #modal-root.open{display:block}
 /* Sheets apilados (wizards de varios pasos): solo el tope del stack es visible — los de
-   abajo quedan montados (conservan estado) pero ocultos, y reaparecen al cerrar el de arriba. */
-#modal-root>div:not(:last-child){display:none}
+   abajo quedan montados (conservan estado) pero ocultos, y reaparecen al cerrar el de arriba.
+   Un sheet abierto con overlay deja a la vista el de abajo (Modals.jsx marca los ocultos). */
+#modal-root>div.sheet-under{display:none}
 .mback{
   position:absolute;inset:0;background:rgba(0,0,0,.4);
   -webkit-backdrop-filter:blur(2px);backdrop-filter:blur(2px);
@@ -2587,3 +2588,102 @@ button.wh-row{font:inherit;color:inherit;border:0;cursor:pointer}
 .owner-transfer-icon{font-size:30px}
 .owner-transfer h3{margin:0}
 .owner-transfer-list{text-align:left;margin:4px 0 6px;padding-left:18px;color:var(--label-2);display:flex;flex-direction:column;gap:4px}
+
+/* --- suplementos (components/suplementos) --- */
+.supp-card h2{margin:0}
+.supp-sec{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--label-2);margin:12px 0 4px}
+.supp-row{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--sep)}
+.supp-row:last-child{border-bottom:none}
+.supp-pill{font-size:10.5px;background:var(--surface-3);color:var(--label-2);border-radius:6px;padding:1px 6px;margin-left:6px}
+.supp-streak{font-size:12px;color:var(--orange)}
+.supp-dots{display:flex;gap:6px}
+.supp-dot{width:22px;height:22px;border-radius:50%;border:2px solid var(--surface-3);background:none;padding:0}
+.supp-dot.on{background:var(--acc);border-color:var(--acc)}
+.supp-bar{height:7px;background:var(--surface-3);border-radius:4px;overflow:hidden;margin:6px 0 3px}
+.supp-bar i{display:block;height:100%;background:var(--orange)}
+.supp-bar.over i{background:var(--red)}
+.supp-warn{background:color-mix(in srgb,var(--orange) 14%,transparent);border:1px solid color-mix(in srgb,var(--orange) 50%,transparent);border-radius:10px;padding:7px 9px;font-size:12.5px;margin-top:6px}
+.supp-quick{margin-top:6px}
+.supp-actions{display:flex;justify-content:space-between;margin-top:12px}
+.supp-actions .link,.supp-add{color:var(--acc);background:none;border:none;padding:6px 0;font:inherit}
+.supp-lock{background:color-mix(in srgb,var(--yellow) 12%,transparent);border:1px solid color-mix(in srgb,var(--yellow) 45%,transparent);border-radius:11px;padding:10px;font-size:13px;margin:8px 0}
+.supp-box{background:var(--surface-2);border-radius:11px;padding:10px;font-size:13px;line-height:1.5;margin:8px 0}
+.supp-label{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--label-2);margin:10px 0 4px}
+.supp-conditions{list-style:none;padding:0;margin:0 0 6px}
+.supp-conditions li{margin:5px 0;font-size:13.5px}
+.supp-age{margin:12px 0}
+.supp-notice .btn.primary{width:100%;margin-top:14px}
+@media (min-width:768px){.supp-card-cols{display:grid;grid-template-columns:1fr 1fr;gap:0 22px;align-items:start}}
+.supp-water{background:color-mix(in srgb,var(--blue) 15%,transparent);border:1px solid color-mix(in srgb,var(--blue) 50%,transparent);border-radius:12px;padding:9px 10px;margin:10px 0;font-size:13px}
+.supp-lvl-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;margin:14px 0 6px;color:var(--lvl);display:flex;align-items:center;gap:6px}
+.supp-lvl-title i{width:9px;height:9px;border-radius:3px;background:var(--lvl)}
+.supp-item{display:flex;align-items:center;gap:8px;width:100%;text-align:left;background:var(--surface-2);border:none;border-radius:10px;padding:9px 10px;margin:4px 0;color:inherit;font:inherit}
+.supp-item.sel{outline:1.5px solid var(--acc)}
+.supp-other{background:none;color:var(--acc)}
+.supp-mine{font-size:11.5px;color:var(--acc)}
+.supp-level{display:inline-block;font-size:10.5px;font-weight:700;border-radius:6px;padding:2px 7px;color:var(--lvl);background:color-mix(in srgb,var(--lvl) 18%,transparent)}
+.supp-how{display:grid;grid-template-columns:22px 1fr;gap:6px;margin:5px 0}
+.supp-list{margin:0;padding-left:18px}
+.supp-back{color:var(--acc);background:none;border:none;padding:4px 0;font:inherit}
+.supp-ficha .btn{width:100%;margin-top:14px}
+@media (max-width:767px){.supp-hide-phone{display:none}}
+@media (min-width:768px){.supp-guide-cols{display:grid;grid-template-columns:280px 1fr;gap:18px}.supp-back{display:none}}
+.supp-field{margin:10px 0}
+.supp-num{max-width:110px}
+.supp-macros{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.supp-time{width:9.5em;min-width:130px;max-width:none;margin-left:10px}
+.supp-preview{text-align:center;margin:12px 0 4px}
+.supp-config>.btn.primary{width:100%}
+.supp-edit-actions{display:flex;justify-content:space-between;margin-top:10px}
+@media (min-width:768px){.supp-form-cols{display:grid;grid-template-columns:1fr 1fr;gap:0 20px}}
+.supp-big{font-size:20px}
+.supp-quick-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin:8px 0}
+.supp-q{position:relative;display:flex;flex-direction:column;align-items:center;gap:2px;background:var(--surface-2);border:none;border-radius:11px;padding:9px 4px;color:inherit;font:inherit;font-size:12.5px}
+.supp-q-e{font-size:20px}
+.supp-q-n{position:absolute;top:5px;right:6px;background:var(--orange);color:#000;font-weight:800;font-size:11px;border-radius:9px;padding:0 6px}
+.supp-ask{gap:8px;margin:6px 0}
+.supp-undo{width:100%;border:1px solid var(--surface-3);background:none;border-radius:10px;padding:8px;color:var(--red);font:inherit;margin:6px 0}
+.supp-undo:disabled{opacity:.4}
+.supp-tip{background:color-mix(in srgb,var(--acc) 12%,transparent);border-radius:10px;padding:8px 10px;font-size:12.5px;margin:5px 0}
+.supp-stats{display:flex;gap:14px;margin:8px 0 10px;font-size:13px}
+.supp-empty-pc{padding:40px 10px;text-align:center}
+.supp-guide-cols{position:relative}
+.supp-close{position:absolute;top:0;right:0;z-index:1}
+.supp-guide-cols h3,.supp-ficha h3{padding-right:44px}
+.supp-config .chips,.supp-card .chips{flex-wrap:wrap;overflow:visible}
+.supp-config .row,.supp-caffeine-sheet .row{gap:8px;align-items:center}
+:is(.supp-card,.supp-caffeine-sheet,.supp-config,.supp-ficha,.supp-detail,.supp-guide-cols) button.link{color:var(--acc);background:none;border:none;font:inherit;font-size:13.5px;padding:4px 0;cursor:pointer}
+:is(.supp-caffeine-sheet,.supp-detail) button.link.danger{color:var(--red)}
+.supp-lock-row{display:flex;gap:8px;align-items:flex-start}
+.supp-card .supp-quick{flex-wrap:wrap;overflow:visible}
+.supp-none{margin:10px 0 4px}
+.supp-age-btns{display:flex;gap:8px}
+.supp-age-btns .chip{flex:1;justify-content:center;padding:9px 0}
+/* Volver (lista / historial): botón grande, distinto de la ✕ que cierra */
+.supp-back-btn{display:inline-flex;align-items:center;gap:4px;background:var(--surface-2);border:none;border-radius:999px;padding:8px 16px 8px 10px;margin:0 0 10px;color:var(--acc);font:inherit;font-size:15px;font-weight:600;cursor:pointer}
+.supp-back-btn svg{width:18px;height:18px}
+@media (min-width:768px){.supp-back-btn{display:none}}
+.supp-item-main{display:flex;align-items:center;gap:8px;flex:1;min-width:0;background:none;border:none;padding:0;color:inherit;font:inherit;text-align:left;cursor:pointer}
+.supp-item .iconbtn.danger{color:var(--red)}
+.supp-ficha-actions{display:flex;gap:8px;margin-top:8px}
+.supp-ficha .supp-ficha-actions .btn{flex:1;width:auto;margin-top:0}
+.supp-mine-note{margin-top:14px;color:var(--acc)}
+.supp-hint{margin-top:8px;text-align:center}
+.supp-chip-n{margin-left:5px;font-weight:700;color:var(--orange)}
+.supp-times{display:flex;flex-direction:column;gap:6px;margin-top:8px}
+.supp-time-row{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.supp-time-row .supp-time{margin-left:0}
+.supp-name-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.supp-row .grow{min-width:0}
+.supp-row>.chk,.supp-row>.supp-dots{margin-left:auto;flex:none}
+.supp-reason{display:block;margin-top:6px;font-weight:600}
+/* Suplementos del socio en Administrar → Nutrición (staff) */
+.supp-warnb{display:inline-flex;align-items:center;gap:5px;background:color-mix(in srgb,var(--orange) 16%,transparent);color:var(--orange);border-radius:8px;padding:3px 8px;font-size:12.5px;font-weight:600}
+.supp-foot{padding:8px 14px 10px}
+.supp-disable .btn{width:100%;margin-top:10px}
+.supp-disable .input{width:100%}
+.supp-ficha-sheet{position:relative}
+.supp-ficha-sheet .supp-back-btn{display:inline-flex}
+.supp-admin .supp-ex .lrow-v{color:var(--orange);font-weight:600}
+.supp-admin .lrow-v{font-weight:600}
+.supp-admin-heat{padding:8px 4px}

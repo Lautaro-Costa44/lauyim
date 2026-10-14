@@ -13,6 +13,7 @@ import { activateNotifs } from './activate.js'
 const COPY = {
   class: ['¿Te avisamos antes de la clase?', 'Te llega un aviso antes de que empiece y si cambia el horario o se suspende.'],
   waitlist: ['¿Te avisamos si se libera un lugar?', 'Si alguien cancela y te toca el lugar, te avisamos en el momento.'],
+  supplement: ['¿Te avisamos para tus suplementos?', 'Te llega un aviso a la hora que elegiste, solo si todavía no lo marcaste.'],
 }
 
 function NotifAsk({ context, uid, close }) {
@@ -34,7 +35,8 @@ function NotifAsk({ context, uid, close }) {
   </div>
 }
 
-// context: 'class' (se anotó, también fija o toda la semana) | 'waitlist'. No hace nada si los
+// context: 'class' (se anotó, también fija o toda la semana) | 'waitlist' | 'supplement' (prendió un
+// recordatorio de suplemento). No hace nada si los
 // avisos ya están, están bloqueados, no hay soporte o el socio dijo "Ahora no" hace poco.
 export async function maybeAskNotif(context) {
   const uid = useStore.getState().user?.id

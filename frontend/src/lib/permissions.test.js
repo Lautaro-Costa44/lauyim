@@ -22,16 +22,16 @@ describe('permisos en el cliente', () => {
     expect(paths({ permissions: ['members.view', 'nutrition.manage', 'health.view'] })).toEqual(['usuarios'])
     const owner = paths({ owner: true }, { checkinEnabled: false, auditEnabled: false })
     expect(owner).toContain('personalizacion')
-    expect(owner).toContain('ingreso-fisico')
+    expect(owner).not.toContain('ingreso-fisico')   // se prende en Personalización → Módulos
     expect(owner).toContain('roles')
     expect(owner).not.toContain('logs')
   })
 
-  it('clases: con tomar lista y el módulo prendido; el owner la ve apagada para prenderla', () => {
+  it('clases: con tomar lista y el módulo prendido; apagada no la ve ni el owner', () => {
     const profe = { permissions: ['members.view', 'classes.attendance'] }
     expect(paths(profe, { classesEnabled: true })).toEqual(['usuarios', 'clases'])
     expect(paths(profe, { classesEnabled: false })).toEqual(['usuarios'])
-    expect(paths({ owner: true }, { classesEnabled: false })).toContain('clases')
+    expect(paths({ owner: true }, { classesEnabled: false })).not.toContain('clases')
     expect(paths({ permissions: ['members.view'] }, { classesEnabled: true })).not.toContain('clases')
     // Recepción: ve todas las clases sin tomar lista.
     expect(paths({ permissions: ['classes.view_all'] }, { classesEnabled: true })).toEqual(['clases'])

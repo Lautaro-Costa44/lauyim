@@ -121,3 +121,16 @@ test('transferOwnership: el dueño pasa a Administrador y el otro a dueño sin r
   assert.equal(db.getUserById('nueva').owner, 1);          // el fallo no tocó nada
   db.transferOwnership('nueva', owner);                    // deja la base como estaba
 });
+
+test('suplementos: el Nutricionista los recibe una sola vez al arrancar', () => {
+  const sql = db.getDatabase();
+  sql.prepare("UPDATE roles SET permissions = ? WHERE id = 'nutrition'").run(JSON.stringify(['members.view', 'nutrition.manage', 'health.view']));
+  sql.prepare("DELETE FROM admin_settings WHERE key = 'supplements_perms_seeded'").run();
+  db.closeDatabase(); db.initDatabase();
+  assert.ok(db.getRole('nutrition').permissions.includes('supplements.manage'));
+  assert.ok(db.getRole('nutrition').permissions.includes('supplements.view'));
+  assert.ok(!db.getRole('admin').permissions.includes('supplements.view'));
+  db.getDatabase().prepare("UPDATE roles SET permissions = ? WHERE id = 'nutrition'").run(JSON.stringify(['members.view', 'nutrition.manage', 'health.view']));
+  db.closeDatabase(); db.initDatabase();
+  assert.ok(!db.getRole('nutrition').permissions.includes('supplements.view'));
+});

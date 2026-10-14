@@ -3,7 +3,7 @@ import { useUI } from '../store/useUI.js'
 import Icon from './Icon.jsx'
 
 // One bottom sheet (or centered dialog) with swipe-to-dismiss.
-function Sheet({ sheet }) {
+function Sheet({ sheet, under }) {
   const closeSheet = useUI(s => s.closeSheet)
   const ref = useRef(null)
   const drag = useRef({ startY: null, delta: 0 })
@@ -89,14 +89,14 @@ function Sheet({ sheet }) {
   const setOnBack = useCallback(fn => useUI.getState().setSheetOnBack(sheet.id, fn), [sheet.id])
   if (sheet.kind === 'center') {
     return (
-      <div>
+      <div className={under ? 'sheet-under' : undefined}>
         <div className="mback" onClick={() => { if (!sheet.locked) close() }} />
         <div className="center">{sheet.render(close, { setOnBack })}</div>
       </div>
     )
   }
   return (
-    <div>
+    <div className={under ? 'sheet-under' : undefined}>
       <div className="mback" onClick={() => { if (!sheet.locked) close() }} />
       <div className={'sheet' + (sheet.fullScreen ? ' fullscreen' : '') + (sheet.kind === 'panel' ? ' panel' : '')} ref={ref} onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}
         onMouseDown={onMouseDown} onMouseMove={onMouseMove} onMouseUp={onMouseUp} onMouseLeave={onMouseUp}
@@ -242,7 +242,7 @@ export default function Modals() {
   if (!sheets.length) return null
   return (
     <div id="modal-root" className="open">
-      {sheets.map(s => <Sheet key={s.id} sheet={s} />)}
+      {sheets.map((s, i) => <Sheet key={s.id} sheet={s} under={i < sheets.length - 1 && !(i === sheets.length - 2 && sheets.at(-1).overlay)} />)}
     </div>
   )
 }

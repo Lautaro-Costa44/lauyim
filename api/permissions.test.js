@@ -29,10 +29,10 @@ test('permisos de cada persona: owner y ADMIN_UIDS todo; con rol, los del rol; s
   assert.ok(!isSubset(['fees.manage'], ['fees.view']));
 });
 
-test('roles de fábrica: Administrador con todo menos asignar roles; ejemplos sin el de fábrica', () => {
+test('roles de fábrica: Administrador con todo menos asignar roles y suplementos; ejemplos sin el de fábrica', () => {
   const admin = DEFAULT_ROLES.find(r => r.id === ADMIN_ROLE_ID);
   assert.equal(admin.builtin, true);
-  assert.deepEqual(admin.permissions, PERMISSION_CODES.filter(c => c !== 'roles.assign'));
+  assert.deepEqual(admin.permissions, PERMISSION_CODES.filter(c => !['roles.assign', 'supplements.view', 'supplements.manage'].includes(c)));
   assert.deepEqual(DEFAULT_ROLES.map(r => r.name), ['Administrador', 'Recepción', 'Nutricionista', 'Profesor/a']);
   for (const r of DEFAULT_ROLES) assert.deepEqual(r.permissions, withDependencies(r.permissions), r.name);
   assert.ok(DEFAULT_ROLES.filter(r => r.id !== ADMIN_ROLE_ID).every(r => !r.builtin));
@@ -72,4 +72,11 @@ test('gym.closures: en el catálogo (Operación), sin dependencias; las rutas vi
   assert.equal(ROUTE_PERMISSIONS['GET /api/admin/closures/preview'], 'gym.closures');
   assert.deepEqual(ROUTE_PERMISSIONS['GET /api/admin/closures'], ['gym.closures', 'stats.view', 'classes.view_all', 'classes.attendance']);
   assert.ok(DEFAULT_ROLES.find(r => r.id === ADMIN_ROLE_ID).permissions.includes('gym.closures'));
+});
+
+test('suplementos: ver pide salud; deshabilitar pide ver; de fábrica solo el Nutricionista', () => {
+  assert.deepEqual(withDependencies(['supplements.manage']), ['members.view', 'health.view', 'supplements.view', 'supplements.manage']);
+  assert.deepEqual(withoutDependents(['members.view', 'health.view', 'supplements.view', 'supplements.manage'], 'health.view'), ['members.view']);
+  assert.ok(DEFAULT_ROLES.find(r => r.id === 'nutrition').permissions.includes('supplements.manage'));
+  for (const id of [ADMIN_ROLE_ID, 'reception', 'coach']) assert.ok(!DEFAULT_ROLES.find(r => r.id === id).permissions.includes('supplements.view'), id);
 });

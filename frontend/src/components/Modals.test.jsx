@@ -370,3 +370,13 @@ describe('Modals mouse dragging', () => {
     expect(mocks.state.sheets).toHaveLength(1)
   })
 })
+
+describe('Modals stacking', () => {
+  const under = () => [...container.querySelectorAll('#modal-root > div')].map(d => d.classList.contains('sheet-under'))
+  it('only the top sheet is visible; an overlay sheet keeps the one below in view', async () => {
+    await setSheets([sheet('a'), sheet('b'), sheet('c')])
+    expect(under()).toEqual([true, true, false])
+    await setSheets([sheet('a'), sheet('b'), { ...sheet('c'), overlay: true }])
+    expect(under()).toEqual([true, false, false])
+  })
+})
