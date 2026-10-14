@@ -166,30 +166,63 @@ for (const [patron, def] of Object.entries(PATRONES)) {
 
 /**
  * Plantillas de sesión. Cada slot: [patrón, rango, variante?].
- * - El orden de la lista es el orden en la sesión (compuestos primero).
  * - `rango` decide qué entra cuando el tiempo alcanza para menos ejercicios (1 = imprescindible).
+ *   Está pensado para que los músculos principales del día tengan volumen primero: un Push con
+ *   4 ejercicios lleva 2 de pecho, 1 de hombro y 1 de tríceps; un Torso con 5, 2 de pecho y 2 de
+ *   espalda.
  * - `variante` (por defecto 0) elige el 2º candidato disponible del patrón, para que la sesión B
- *   no repita exactamente el mismo ejercicio que la A.
+ *   (o el segundo ejercicio del mismo patrón) no repita el mismo ejercicio.
+ * El orden en la sesión no sale de esta lista: ver GRUPO_DE_PATRON y ORDEN_GRUPOS.
  */
 export const PLANTILLAS = {
-  fullbody_a: [['sentadilla', 1], ['press_horizontal', 2], ['jalon', 3], ['bisagra', 4], ['press_vertical', 5], ['curl_femoral', 7], ['biceps', 8], ['triceps', 9], ['core', 6]],
-  fullbody_b: [['prensa', 1], ['press_inclinado', 2], ['remo', 3], ['bisagra', 4, 1], ['elevaciones_laterales', 5], ['zancada', 7], ['triceps_overhead', 8], ['martillo', 9], ['core', 6, 1]],
-  torso_a: [['press_horizontal', 1], ['remo', 2], ['jalon', 3], ['press_vertical', 4], ['elevaciones_laterales', 7], ['triceps', 5], ['biceps', 6], ['deltoide_posterior', 8]],
-  torso_b: [['press_inclinado', 1], ['jalon', 2, 1], ['remo', 3, 1], ['elevaciones_laterales', 4], ['aperturas', 7], ['triceps_overhead', 5], ['martillo', 6], ['deltoide_posterior', 8]],
+  fullbody_a: [['sentadilla', 1], ['press_horizontal', 2], ['jalon', 3], ['bisagra', 4], ['press_vertical', 5], ['core', 6], ['curl_femoral', 7], ['biceps', 8], ['triceps', 9]],
+  fullbody_b: [['prensa', 1], ['press_inclinado', 2], ['remo', 3], ['bisagra', 4, 1], ['elevaciones_laterales', 5], ['core', 6, 1], ['zancada', 7], ['triceps_overhead', 8], ['martillo', 9]],
+  torso_a: [['press_horizontal', 1], ['remo', 2], ['jalon', 3], ['press_inclinado', 4], ['press_vertical', 5], ['triceps', 6], ['biceps', 7], ['elevaciones_laterales', 8]],
+  torso_b: [['press_inclinado', 1], ['jalon', 2, 1], ['remo', 3, 1], ['aperturas', 4], ['elevaciones_laterales', 5], ['triceps_overhead', 6], ['martillo', 7], ['deltoide_posterior', 8]],
   pierna_a: [['sentadilla', 1], ['bisagra', 2], ['prensa', 3], ['curl_femoral', 4], ['extension_cuadriceps', 5], ['gemelos', 6], ['core', 7]],
-  pierna_b: [['bisagra', 1], ['zancada', 2], ['hip_thrust', 3], ['curl_femoral', 4], ['extension_cuadriceps', 6], ['gemelos', 5], ['abduccion', 7], ['core', 8]],
-  push: [['press_horizontal', 1], ['press_vertical', 2], ['press_inclinado', 3], ['triceps', 4], ['elevaciones_laterales', 5], ['triceps_overhead', 6], ['aperturas', 7]],
-  pull: [['jalon', 1], ['remo', 2], ['biceps', 3], ['deltoide_posterior', 4], ['remo', 5, 1], ['martillo', 6], ['core', 7]],
+  pierna_b: [['bisagra', 1], ['zancada', 2], ['hip_thrust', 3], ['curl_femoral', 4], ['gemelos', 5], ['extension_cuadriceps', 6], ['abduccion', 7], ['core', 8]],
+  push: [['press_horizontal', 1], ['press_inclinado', 2], ['press_vertical', 3], ['triceps', 4], ['elevaciones_laterales', 5], ['aperturas', 6], ['triceps_overhead', 7]],
+  pull: [['jalon', 1], ['remo', 2], ['biceps', 3], ['remo', 4, 1], ['deltoide_posterior', 5], ['martillo', 6], ['core', 7]],
   legs: [['sentadilla', 1], ['bisagra', 2], ['prensa', 3], ['curl_femoral', 4], ['extension_cuadriceps', 5], ['gemelos', 6], ['core', 7]],
   pierna_quads: [['sentadilla', 1], ['prensa', 2], ['zancada', 3], ['extension_cuadriceps', 4], ['gemelos', 5], ['abduccion', 6], ['core', 7]],
   pierna_isquios_gluteo: [['bisagra', 1], ['hip_thrust', 2], ['curl_femoral', 3], ['abduccion', 4], ['zancada', 5, 1], ['gemelos', 6], ['core', 7]],
   pierna_gluteo: [['hip_thrust', 1], ['zancada', 2], ['prensa', 3], ['curl_femoral', 4], ['abduccion', 5], ['aduccion', 6], ['gemelos', 7]],
 }
 
+// Grupo muscular de cada patrón, para ordenar la sesión.
+export const GRUPO_DE_PATRON = {
+  sentadilla: 'cuadriceps', prensa: 'cuadriceps', zancada: 'cuadriceps', extension_cuadriceps: 'cuadriceps',
+  bisagra: 'isquios', curl_femoral: 'isquios', hip_thrust: 'gluteo', abduccion: 'gluteo', aduccion: 'aductores',
+  gemelos: 'gemelos', press_horizontal: 'pecho', press_inclinado: 'pecho', aperturas: 'pecho',
+  jalon: 'espalda', remo: 'espalda', press_vertical: 'hombros', elevaciones_laterales: 'hombros',
+  deltoide_posterior: 'hombros', triceps: 'triceps', triceps_overhead: 'triceps', biceps: 'biceps',
+  martillo: 'biceps', core: 'core',
+}
+
+/**
+ * Orden de la sesión: primero los compuestos y después el aislamiento; dentro de cada bloque,
+ * agrupados por músculo, del principal del día al más chico. Así un Push queda press de banca →
+ * press inclinado → press de hombros → aperturas → elevaciones → tríceps, y nunca salta de
+ * pecho a hombro y de vuelta a pecho.
+ */
+const PIERNA = ['cuadriceps', 'isquios', 'gluteo', 'aductores', 'gemelos', 'core']
+export const ORDEN_GRUPOS = {
+  push: ['pecho', 'hombros', 'triceps'],
+  pull: ['espalda', 'hombros', 'biceps', 'core'],
+  torso_a: ['pecho', 'espalda', 'hombros', 'triceps', 'biceps'],
+  torso_b: ['pecho', 'espalda', 'hombros', 'triceps', 'biceps'],
+  fullbody_a: ['cuadriceps', 'isquios', 'gluteo', 'pecho', 'espalda', 'hombros', 'triceps', 'biceps', 'core'],
+  fullbody_b: ['cuadriceps', 'isquios', 'gluteo', 'pecho', 'espalda', 'hombros', 'triceps', 'biceps', 'core'],
+  pierna_a: PIERNA, legs: PIERNA, pierna_quads: PIERNA,
+  pierna_b: ['isquios', 'gluteo', 'cuadriceps', 'gemelos', 'core'],
+  pierna_isquios_gluteo: ['isquios', 'gluteo', 'cuadriceps', 'gemelos', 'core'],
+  pierna_gluteo: ['gluteo', 'cuadriceps', 'isquios', 'aductores', 'gemelos'],
+}
+
 // Con el enfoque "Torso y brazos", los días de tren superior suman un slot de brazos (no se saca
 // nada: el día tiene un ejercicio más).
 export const EXTRA_ENFOQUE = {
-  torso_brazos: { dias: ['fullbody_a', 'fullbody_b', 'torso_a', 'torso_b', 'push', 'pull'], slots: { push: 'triceps_overhead', pull: 'martillo', torso_b: 'triceps', fullbody_b: 'triceps', default: 'biceps' } },
+  torso_brazos: { dias: ['fullbody_a', 'fullbody_b', 'torso_a', 'torso_b', 'push', 'pull'], slots: { push: 'triceps_overhead', pull: 'martillo', torso_a: 'triceps_overhead', torso_b: 'biceps', fullbody_b: 'triceps', default: 'biceps' } },
 }
 
 /**

@@ -2687,3 +2687,30 @@ button.wh-row{font:inherit;color:inherit;border:0;cursor:pointer}
 .supp-admin .supp-ex .lrow-v{color:var(--orange);font-weight:600}
 .supp-admin .lrow-v{font-weight:600}
 .supp-admin-heat{padding:8px 4px}
+
+/* ------------------------------------------- survey: resumen del plan --- */
+.plan-resumen .plan-card{margin-bottom:12px}
+.plan-resumen .plan-card h2{margin-bottom:8px}
+.plan-dia{padding:8px 0;border-bottom:var(--hair) solid var(--sep);gap:12px}
+.plan-dia .helpbtn{margin-left:2px}
+.plan-texto{text-align:right;max-width:60%}
+.plan-avisos{flex-direction:row}
+.plan-avisos p{margin:0 0 6px}
+.plan-avisos p:last-child{margin-bottom:0}
+.plan-disclaimer{opacity:.85;font-size:12.5px}
+.plan-vol{display:flex;align-items:center;gap:10px;padding:5px 0}
+.plan-vol-nm{width:84px;font-size:14px;flex:none}
+.plan-vol-bar{flex:1;height:8px;border-radius:4px;background:var(--surface-3);position:relative}
+.plan-vol-bar i{position:absolute;left:0;top:0;bottom:0;border-radius:4px;background:var(--acc)}
+.plan-vol-band{position:absolute;z-index:1;top:-3px;bottom:-3px;border:1px dashed var(--label-3);border-radius:4px}
+.plan-vol-v{width:24px;text-align:right;font-size:13px;color:var(--label-2);font-variant-numeric:tabular-nums}
+.survey-ex-why,.survey-ex-note{margin-top:2px;line-height:1.4}
+#app .survey-wizard .plan-review-dias .list{display:flex;flex-direction:column}
+@media (min-width:1000px){
+  .narrow.survey-review{max-width:1120px}
+  .survey-review .plan-review{display:grid;grid-template-columns:340px minmax(0,1fr);gap:20px;align-items:start}
+  .survey-review .plan-resumen{position:sticky;top:12px}
+  .survey-review .plan-review-dias{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:14px;align-items:start}
+  .survey-review .plan-review-dias .card{margin-bottom:0 !important}
+  .survey-review .survey-footer{max-width:420px;margin-left:auto}
+}

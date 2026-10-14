@@ -5,7 +5,7 @@
 import { describe, it, expect } from 'vitest'
 import { CATALOGUE, EXIDX } from './exercises.js'
 import { generarRutina, rutinaGeneradaToRoutines, calcularCantidadEjercicios, bloqueadoPorLesiones, CARDIO_MIN, ESTIRAMIENTOS_MIN } from './generarRutina.js'
-import { PATRONES, PATRON_DE_ID, ESTIRAMIENTOS, ESTIRAMIENTO_IDS, LESIONES, enListaNegra, nivelIndex } from './rutina-catalogo.js'
+import { PATRONES, PATRON_DE_ID, ESTIRAMIENTOS, ESTIRAMIENTO_IDS, LESIONES, GRUPO_DE_PATRON, ORDEN_GRUPOS, enListaNegra, nivelIndex } from './rutina-catalogo.js'
 
 const DIAS = {
   1: ['lunes'],
@@ -91,19 +91,53 @@ describe('motor v6 — matriz de perfiles', () => {
     }
   })
 
-  it('push y torso traen tríceps; pull y torso traen bíceps; pierna trae gemelos cuando hay lugar', () => {
+  it('reparte el volumen en los músculos principales del día', () => {
+    const cuenta = (d, grupo) => normales(d).filter(e => GRUPO_DE_PATRON[e.patron] === grupo).length
     for (const { p, r } of resultados.filter(x => x.p.equipamiento === 'gimnasio_completo')) {
       for (const d of r.dias) {
-        const pats = patronesDe(d)
         const n = normales(d).length
-        const tri = pats.has('triceps') || pats.has('triceps_overhead')
-        const bi = pats.has('biceps') || pats.has('martillo')
-        if (d.plantilla === 'push' && n >= 5) expect(tri, `push ${p.nivel}`).toBe(true)
-        if (d.plantilla === 'pull' && n >= 4) expect(bi, `pull ${p.nivel}`).toBe(true)
-        if (d.plantilla.startsWith('torso') && n >= 6) expect(tri && bi, `${d.plantilla} n=${n}`).toBe(true)
-        if (['legs', 'pierna_a'].includes(d.plantilla) && n >= 6) expect(pats.has('gemelos')).toBe(true)
+        const ctx = `${d.plantilla} n=${n} ${p.nivel} ${p.objetivo}`
+        if (d.plantilla === 'push' && n >= 3) expect(cuenta(d, 'pecho'), ctx).toBeGreaterThanOrEqual(2)
+        if (d.plantilla === 'push' && n >= 4) expect(cuenta(d, 'triceps'), ctx).toBeGreaterThanOrEqual(1)
+        if (d.plantilla === 'pull' && n >= 3) {
+          expect(cuenta(d, 'espalda'), ctx).toBeGreaterThanOrEqual(2)
+          expect(cuenta(d, 'biceps'), ctx).toBeGreaterThanOrEqual(1)
+        }
+        if (d.plantilla.startsWith('torso') && n >= 5) {
+          expect(cuenta(d, 'pecho'), ctx).toBeGreaterThanOrEqual(2)
+          expect(cuenta(d, 'espalda'), ctx).toBeGreaterThanOrEqual(2)
+        }
+        if (d.plantilla.startsWith('torso') && n >= 7) {
+          expect(cuenta(d, 'triceps'), ctx).toBeGreaterThanOrEqual(1)
+          expect(cuenta(d, 'biceps'), ctx).toBeGreaterThanOrEqual(1)
+        }
+        if (['legs', 'pierna_a'].includes(d.plantilla) && n >= 6) expect(cuenta(d, 'gemelos'), ctx).toBe(1)
       }
     }
+  })
+
+  it('ordena por músculo: los ejercicios del mismo grupo van juntos y en el orden del día', () => {
+    for (const { p, r } of resultados.filter(x => x.p.objetivo !== 'fuerza')) {
+      for (const d of r.dias) {
+        const orden = ORDEN_GRUPOS[d.plantilla]
+        for (const tipo of ['compuesto', 'aislamiento']) {
+          const idx = normales(d).filter(e => e.tipo === tipo).map(e => orden.indexOf(GRUPO_DE_PATRON[e.patron]))
+          expect(idx, `${d.plantilla} ${tipo} ${p.equipamiento}`).toEqual([...idx].sort((a, b) => a - b))
+        }
+      }
+    }
+  })
+
+  it('en fuerza, los 2 básicos van primero, pesados y con calentamiento', () => {
+    const r = gen({ objetivo: 'fuerza', splitPreferido: 'ppl', diasSeleccionados: DIAS[3], tiempoPorSesion: '60-90' })
+    const [push, , legs] = r.dias
+    expect(normales(push).slice(0, 2).map(e => e.patron)).toEqual(['press_horizontal', 'press_vertical'])
+    expect(normales(legs).slice(0, 2).map(e => e.patron)).toEqual(['sentadilla', 'bisagra'])
+    for (const e of normales(push).slice(0, 2)) {
+      expect(e.repeticiones).toBe('3-6')
+      expect(e.warmupSets).toBeGreaterThan(0)
+    }
+    expect(normales(push)[2].repeticiones).toBe('6-10')
   })
 
   it('estiramientos: solo curados, sin asistencia, uno por músculo principal entrenado', () => {

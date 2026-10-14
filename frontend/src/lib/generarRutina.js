@@ -18,7 +18,7 @@ import exerciseNamesEs from '../locales/exercise-names-es.js'
 import { CUSTOM_CARDIO_EXERCISES, SYSTEM_EXERCISES, matchExercise } from './exercises.js'
 import { musclesOf } from './muscles.js'
 import {
-  PATRONES, PATRON_DE_ID, PLANTILLAS, EXTRA_ENFOQUE, ESTIRAMIENTOS, ESTIRAMIENTO_IDS, LESIONES, CARDIO, CARDIO_OPCIONES,
+  PATRONES, PATRON_DE_ID, PLANTILLAS, GRUPO_DE_PATRON, ORDEN_GRUPOS, EXTRA_ENFOQUE, ESTIRAMIENTOS, ESTIRAMIENTO_IDS, LESIONES, CARDIO, CARDIO_OPCIONES,
   nivelIndex, enListaNegra,
 } from './rutina-catalogo.js'
 
@@ -140,6 +140,8 @@ export function buildRoutineNames(split, totalDias) {
   }
   return nombres
 }
+
+const BASICOS_FUERZA = ['sentadilla', 'bisagra', 'press_horizontal', 'press_vertical', 'remo', 'jalon', 'hip_thrust', 'prensa']
 
 const DIAS_PIERNA = new Set(['pierna_a', 'pierna_b', 'legs', 'pierna_quads', 'pierna_isquios_gluteo', 'pierna_gluteo'])
 
@@ -705,16 +707,30 @@ export function generarRutina(respuestas, exerciseDB, dictEs = exerciseNamesEs) 
       elegidos.push({ ...r, slot })
     }
     const tipoDe = r => PATRONES[r.patron]?.tipo || 'compuesto'
-    elegidos.sort((a, b) => (tipoDe(a) === 'compuesto' ? 0 : 1) - (tipoDe(b) === 'compuesto' ? 0 : 1) || a.slot.orden - b.slot.orden)
+    // Los 2 básicos del día son los 2 compuestos de mayor prioridad (se eligieron en ese orden):
+    // llevan el calentamiento y, en fuerza, el trabajo pesado.
+    // En fuerza son los básicos clásicos (banca y press militar en Push, sentadilla y peso muerto
+    // en Legs), aunque el inclinado tenga más prioridad para el volumen de pecho.
+    const compuestos = elegidos.filter(r => tipoDe(r) === 'compuesto')
+    const basicos = objetivo === 'fuerza' ? compuestos.filter(r => BASICOS_FUERZA.includes(r.patron)) : []
+    ;[...new Set([...basicos, ...compuestos])].slice(0, 2).forEach((r, k) => { r.principal = k + 1 })
+    // Compuestos primero; dentro de cada bloque, agrupado por músculo en el orden del día. En
+    // fuerza, los 2 básicos van primero de todo (se levantan pesados, con energía).
+    const grupos = ORDEN_GRUPOS[tipo] || []
+    const grupoIdx = r => {
+      const i = grupos.indexOf(GRUPO_DE_PATRON[r.patron])
+      return i === -1 ? grupos.length : i
+    }
+    const primero = r => (objetivo === 'fuerza' && r.principal ? r.principal : 3)
+    elegidos.sort((a, b) => primero(a) - primero(b)
+      || (tipoDe(a) === 'compuesto' ? 0 : 1) - (tipoDe(b) === 'compuesto' ? 0 : 1)
+      || grupoIdx(a) - grupoIdx(b) || a.slot.orden - b.slot.orden)
 
-    let compuestosConCalentamiento = 0
-    let compuestosVistos = 0
-    const ejerciciosArray = elegidos.map(({ ex, patron }, j) => {
+    const ejerciciosArray = elegidos.map(({ ex, patron, principal }, j) => {
       const tipoEj = tipoDe({ patron })
       // En fuerza, pesado (3–6) solo en los 2 básicos del día; el resto de los compuestos son
       // accesorios en rango de hipertrofia, si no la sesión se vuelve eterna y poco productiva.
-      const accesorio = objetivo === 'fuerza' && tipoEj === 'compuesto' && compuestosVistos >= 2
-      if (tipoEj === 'compuesto') compuestosVistos++
+      const accesorio = objetivo === 'fuerza' && tipoEj === 'compuesto' && !principal
       const [lo, hi, fijo] = accesorio ? ESQUEMAS_REPS.hipertrofia.compuesto : esquema[tipoEj]
       const sets = seriesFijas || (accesorio ? 3 : tipoEj === 'compuesto' ? seriesComp : seriesAisl)
       const pesoCorporal = ex.eq === 'body weight'
@@ -744,10 +760,7 @@ export function generarRutina(respuestas, exerciseDB, dictEs = exerciseNamesEs) 
       } else {
         Object.assign(out, { reps: fijo, repeticiones: `${lo}-${hi}` })
       }
-      if (tipoEj === 'compuesto' && !pesoCorporal && !timed && compuestosConCalentamiento < 2) {
-        out.warmupSets = compuestosConCalentamiento === 0 ? 2 : 1
-        compuestosConCalentamiento++
-      }
+      if (principal && !pesoCorporal && !timed) out.warmupSets = principal === 1 ? 2 : 1
       if (intensificador && tipoEj === 'aislamiento' && !pesoCorporal && !timed) out.intensifier = intensificador
       const notas = []
       if (j === 0) notas.push('Antes de empezar: 5 min de cardio suave para entrar en calor.')
@@ -824,10 +837,10 @@ export function generarRutina(respuestas, exerciseDB, dictEs = exerciseNamesEs) 
       dias: dias.map(d => ({ diaSemana: d.diaSemana, rutinaNombre: d.rutinaNombre, minutos: d.minutos, ejercicios: d.ejercicios.filter(e => e.isNormal).length })),
       series,
       volumenObjetivo: [volMin, volMax],
-      reps: {
-        compuesto: `${esquema.compuesto[0]}–${esquema.compuesto[1]}`,
-        aislamiento: `${esquema.aislamiento[0]}–${esquema.aislamiento[1]}`,
-      },
+      // Con doble progresión se trabaja en un rango; con las demás, a un número fijo de reps.
+      reps: politica === 'double'
+        ? { compuesto: `${esquema.compuesto[0]}–${esquema.compuesto[1]}`, aislamiento: `${esquema.aislamiento[0]}–${esquema.aislamiento[1]}` }
+        : { compuesto: String(esquema.compuesto[2]), aislamiento: String(esquema.aislamiento[2]) },
       descanso: { compuestos: descanso, aislamiento: Math.min(descanso, DESCANSO_AISLAMIENTO_MAX) },
       progresion: { nombre: progNombre, explicacion: progExplicacion },
       esfuerzo: metricaEsfuerzo === 'rpe'

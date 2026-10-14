@@ -13,6 +13,7 @@ import Icon from '../components/Icon.jsx'
 import { Button } from '../components/ui.jsx'
 import { NO_AUTOFILL } from '../lib/input-safety.js'
 import ExerciseReplacementSheet from '../components/ExerciseReplacementSheet.jsx'
+import PlanResumen from '../components/PlanResumen.jsx'
 
 const PASOS = 5
 
@@ -722,14 +723,22 @@ export default function SurveyWizard() {
         if (!planRevision) return null
         return (
           <>
-            <h2 className="survey-step-title">{t('Revisá y ajustá tus ejercicios')}</h2>
+            <h2 className="survey-step-title">{t('Revisá tu plan')}</h2>
             <p className="survey-step-sub muted">
-              {t('Esta es la lista completa de ejercicios generados. Podés reemplazar los que prefieras por alternativas equivalentes.')}
+              {t('Así queda tu semana. Podés reemplazar cualquier ejercicio por una alternativa equivalente antes de confirmar.')}
             </p>
 
+            <div className="plan-review">
+            <PlanResumen resumen={planRevision.rutinaGenerada.resumen} />
+            <div className="plan-review-dias">
             {planRevision.routines.map((r, rIdx) => (
               <div key={r.id} className="card" style={{ marginBottom: 14 }}>
-                <h3 style={{ margin: '0 0 10px', fontSize: 16, fontWeight: 700 }}>{r.name}</h3>
+                <div className="row between" style={{ marginBottom: 10 }}>
+                  <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>
+                    {['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'][planRevision.rutinaGenerada.dias[rIdx]?.diaSemana] || ''} · {r.name}
+                  </h3>
+                  {planRevision.rutinaGenerada.dias[rIdx]?.minutos > 0 && <span className="small muted">~{planRevision.rutinaGenerada.dias[rIdx].minutos} min</span>}
+                </div>
                 <div className="list" style={{ gap: 4 }}>
                   {r.ex.map((ex, exIdx) => {
                     const exObj = EXIDX[ex.id] || ex
@@ -745,7 +754,7 @@ export default function SurveyWizard() {
                           <div className="small muted">
                             {isCardio ? `${ex.min} min` : isStretch ? `${ex.sec} s${ex.note === 'Por lado' ? ' por lado' : ''}`
                               : ex.mode === 'time' ? `${ex.sets} ${t('series')} × ${ex.sec} s`
-                                : `${ex.sets} ${t('series')} × ${gen.repeticiones || ex.reps} ${t('reps')}`}
+                                : `${ex.sets} ${t('series')} × ${ex.repsMin ? `${ex.repsMin}–${ex.reps}` : ex.repsMax ? `${ex.reps}–${ex.repsMax}` : ex.reps} ${t('reps')}`}
                           </div>
                           {isNormal && gen.motivo && <div className="small dim survey-ex-why">{gen.motivo}</div>}
                           {(isCardio || (isNormal && ex.note)) && ex.note && ex.note !== 'Por lado' && <div className="small dim survey-ex-note">{ex.note}</div>}
@@ -775,6 +784,8 @@ export default function SurveyWizard() {
                 </div>
               </div>
             ))}
+            </div>
+            </div>
           </>
         )
 
@@ -793,7 +804,7 @@ export default function SurveyWizard() {
   }
 
   return (
-    <div className="narrow survey-wizard">
+    <div className={'narrow survey-wizard' + (paso > PASOS ? ' survey-review' : '')}>
       <div className="survey-header">
         <button
           className="iconbtn"
