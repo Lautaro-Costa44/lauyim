@@ -2687,3 +2687,5 @@ button.wh-row{font:inherit;color:inherit;border:0;cursor:pointer}
 .supp-disable .btn{width:100%;margin-top:10px}
 .supp-disable .input{width:100%}
 @media (min-width:768px){.supp-admin-cols{display:grid;grid-template-columns:1fr 1fr;gap:0 22px;align-items:start}}
+.supp-ficha-sheet{position:relative}
+.supp-ficha-sheet .supp-back-btn{display:inline-flex}

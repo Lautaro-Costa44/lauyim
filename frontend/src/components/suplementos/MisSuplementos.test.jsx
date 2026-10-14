@@ -73,4 +73,13 @@ describe('mis suplementos', () => {
     expect(host.querySelector('.supp-detail')).toBeNull()
     expect(closed).not.toHaveBeenCalled()
   })
+  it('celular: el detalle es una hoja aparte', async () => {
+    const mm = vi.spyOn(window, 'matchMedia').mockImplementation(q => ({ matches: false, media: q, addEventListener() {}, removeEventListener() {} }))
+    const h = await render()
+    const n = useUI.getState().sheets.length
+    await act(async () => [...h.querySelectorAll('button')].find(b => b.textContent.includes('Creatina')).click())
+    expect(useUI.getState().sheets.length).toBe(n + 1)
+    expect(h.querySelector('.supp-detail')).toBeNull()
+    mm.mockRestore()
+  })
 })

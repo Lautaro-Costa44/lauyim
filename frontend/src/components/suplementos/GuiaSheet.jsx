@@ -90,16 +90,30 @@ function Lista({ selected, onPick }) {
   </div>
 }
 
+// En el celular la ficha es una hoja aparte, encima de la lista: se abre con el toque, así que el gesto
+// atrás del sistema la cierra como cualquier hoja. Volver "dentro" de la misma hoja necesitaba
+// re-empujar una entrada al historial desde el popstate, y Chrome para Android saltea las entradas
+// empujadas sin un toque del usuario: el siguiente atrás se iba más lejos en vez de cerrar la guía.
+// En PC, lista y ficha lado a lado en la misma hoja.
+export const isPhone = () => !(typeof window !== 'undefined' && window.matchMedia?.('(min-width: 768px)').matches)
+const openFicha = id => useUI.getState().openSheet(close => <div className="supp-ficha-sheet">
+  <button type="button" className="iconbtn supp-close" onClick={close} aria-label={t('Cerrar')}><Icon name="xmark" /></button>
+  <Ficha id={id} onBack={close} />
+</div>, { fullScreen: true })
+
 function Guia({ initial, close, setOnBack }) {
-  const [id, setId] = useState(initial)
-  // El gesto o botón atrás del sistema hace lo mismo que "‹ Guía": de la ficha a la lista; desde la
-  // lista, cierra.
+  const [id, setId] = useState(isPhone() ? null : initial)
+  // PC: atrás del sistema = deseleccionar; desde la lista, cerrar. En el celular la ficha es otra hoja.
   useSheetBack(setOnBack, () => id ? setId(null) : close())
+  const pick = fid => isPhone() ? openFicha(fid) : setId(fid)
   return <div className="supp-guide-cols">
     <button type="button" className="iconbtn supp-close" onClick={close} aria-label={t('Cerrar')}><Icon name="xmark" /></button>
-    <div className={id ? 'supp-hide-phone' : ''}><Lista selected={id} onPick={setId} /></div>
-    <div className={id ? '' : 'supp-hide-phone'}>{id ? <Ficha id={id} onBack={() => setId(null)} /> : <div className="dim supp-empty-pc">{t('Elegí un suplemento para ver su ficha.')}</div>}</div>
+    <div><Lista selected={id} onPick={pick} /></div>
+    <div className="supp-hide-phone">{id ? <Ficha id={id} /> : <div className="dim supp-empty-pc">{t('Elegí un suplemento para ver su ficha.')}</div>}</div>
   </div>
 }
 
-export const openGuide = id => useUI.getState().openSheet((close, { setOnBack } = {}) => <Guia initial={id} close={close} setOnBack={setOnBack} />, { fullScreen: true })
+export const openGuide = id => {
+  useUI.getState().openSheet((close, { setOnBack } = {}) => <Guia initial={id} close={close} setOnBack={setOnBack} />, { fullScreen: true })
+  if (id && isPhone()) openFicha(id)
+}

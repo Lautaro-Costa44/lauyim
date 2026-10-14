@@ -11,7 +11,7 @@ import { sinceOf, streakOf, adherence30, dayLevel, takenOn, isDueOn, isTrainingD
 import { HeatmapGrid } from '../Heatmap.jsx'
 import { Button, Check, useSheetBack } from '../ui.jsx'
 import Icon from '../Icon.jsx'
-import { BackButton } from './GuiaSheet.jsx'
+import { BackButton, isPhone } from './GuiaSheet.jsx'
 
 const openConfig = (c, id) => import('./ConfigSuplemento.jsx').then(m => m.openConfig(c, id))
 const DIAS = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb']
@@ -50,12 +50,24 @@ function Detalle({ item, onBack }) {
   </div>
 }
 
+// En el celular el detalle es una hoja aparte (ver GuiaSheet.jsx, openFicha: el atrás del sistema la
+// cierra sin re-empujar historial). En PC, lista y detalle lado a lado.
+const DetalleSheet = ({ id, close }) => {
+  const item = useSupplements(s => s.items.find(i => i.id === id))
+  return <div className="supp-ficha-sheet">
+    <button type="button" className="iconbtn supp-close" onClick={close} aria-label={t('Cerrar')}><Icon name="xmark" /></button>
+    {item ? <Detalle item={item} onBack={close} /> : null}
+  </div>
+}
+const openDetalle = id => useUI.getState().openSheet(close => <DetalleSheet id={id} close={close} />, { fullScreen: true })
+
 function Mis({ close, setOnBack }) {
   const S = useStore(s => s.S)
   const st = useSupplements()
   const [sel, setSel] = useState(null)
-  // Atrás del sistema = "‹ Mis suplementos": del detalle a la lista; desde la lista, cierra.
+  // PC: atrás del sistema = deseleccionar; desde la lista, cerrar.
   useSheetBack(setOnBack, () => sel ? setSel(null) : close())
+  const pick = id => isPhone() ? openDetalle(id) : setSel(id)
   const today = st.today || todayISO()
   const train = iso => isTrainingDay(S, iso)
   const active = st.items.filter(i => i.status === 'active'), archived = st.items.filter(i => i.status === 'archived')
@@ -69,12 +81,12 @@ function Mis({ close, setOnBack }) {
   }))
   return <div className="supp-guide-cols">
     <button type="button" className="iconbtn supp-close" onClick={close} aria-label={t('Cerrar')}><Icon name="xmark" /></button>
-    <div className={item ? 'supp-hide-phone' : ''}>
+    <div>
       <h3>{t('Mis suplementos')}</h3>
       {active.length > 0 && <HeatmapGrid weeks={26} levelOf={combined} titleOf={iso => iso} legend={[t('Menos'), t('Cumplido')]} />}
       <div className="supp-sec">{t('Activos')}</div>
       {active.length ? active.map(i => <div key={i.id} className={'supp-item' + (sel === i.id ? ' sel' : '')}>
-        <button type="button" className="supp-item-main" onClick={() => setSel(i.id)}>
+        <button type="button" className="supp-item-main" onClick={() => pick(i.id)}>
           <div className="grow"><b>{itemName(i)}</b><div className="small dim">{doseLabel(i)}</div></div>
           <span className="supp-streak">🔥 {streakOf(i, st.logs, today, train)}</span>
         </button>
@@ -83,13 +95,13 @@ function Mis({ close, setOnBack }) {
       {archived.length > 0 && <>
         <div className="supp-sec">{t('Archivados')}</div>
         {archived.map(i => <div key={i.id} className="supp-item">
-          <button type="button" className="supp-item-main" onClick={() => setSel(i.id)}><b className="grow">{itemName(i)}</b></button>
+          <button type="button" className="supp-item-main" onClick={() => pick(i.id)}><b className="grow">{itemName(i)}</b></button>
           <Button size="sm" onClick={() => archiveItem(i.id, false).catch(toast)}>{t('Volver a tomar')}</Button>
           <button type="button" className="iconbtn danger" onClick={() => removeAll(i)} aria-label={t('Borrar {0} y su historial', itemName(i))}><Icon name="trash" /></button>
         </div>)}
       </>}
     </div>
-    <div className={item ? '' : 'supp-hide-phone'}>{item ? <Detalle item={item} onBack={() => setSel(null)} /> : <div className="dim supp-empty-pc">{t('Elegí un suplemento para ver su historial.')}</div>}</div>
+    <div className="supp-hide-phone">{item ? <Detalle item={item} /> : <div className="dim supp-empty-pc">{t('Elegí un suplemento para ver su historial.')}</div>}</div>
   </div>
 }
 
