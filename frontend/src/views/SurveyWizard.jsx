@@ -3,7 +3,8 @@ import { useState, useMemo, useEffect } from 'react'
 import { healthOff, useStore } from '../store/useStore.js'
 import { useUI } from '../store/useUI.js'
 import { CATALOGUE, EXIDX } from '../lib/exercises.js'
-import { generarRutina, rutinaGeneradaToRoutines, defaultSplitRecomendado, derivarSplit } from '../lib/generarRutina.js'
+import { generarRutina, rutinaGeneradaToRoutines, defaultSplitRecomendado, derivarSplit, calcularCantidadEjercicios, CARDIO_MIN, ESTIRAMIENTOS_MIN } from '../lib/generarRutina.js'
+import { LESIONES, PATRON_DE_ID, PATRONES } from '../lib/rutina-catalogo.js'
 import { todayISO } from '../lib/format.js'
 import { t, exerciseNameFor } from '../lib/i18n.js'
 import { POLICIES, POLICY_NAME, POLICY_DESC } from '../lib/progression.js'
@@ -33,7 +34,7 @@ const OPT = {
   objetivo: [
     { value: 'hipertrofia',     label: 'Ganar músculo',     sub: 'Volumen + progresión en cargas' },
     { value: 'fuerza',          label: 'Ganar fuerza',       sub: 'Compuestos pesados, pocas reps' },
-    { value: 'perder_grasa',    label: 'Perder grasa',       sub: 'Misma base + más cardio' },
+    { value: 'perder_grasa',    label: 'Perder grasa',       sub: 'Misma base + cardio suave al final (lo podés cambiar)' },
     { value: 'fitness_general', label: 'Fitness general',    sub: 'Rutina completa y equilibrada' },
   ],
   nivel: [
@@ -41,17 +42,18 @@ const OPT = {
     { value: 'intermedio',   label: 'Intermedio',   sub: '1–3 años de entrenamiento' },
     { value: 'avanzado',     label: 'Avanzado',     sub: 'Más de 3 años de entrenamiento' },
   ],
+  // El "≈ N ejercicios" de cada opción se calcula en vivo con calcularCantidadEjercicios.
   tiempoPorSesion: [
-    { value: '30-40', label: '30–40 min', sub: '4 ejercicios por sesión' },
-    { value: '40-60', label: '40–60 min', sub: '5 ejercicios por sesión' },
-    { value: '60-90', label: '60–90 min', sub: '6 ejercicios por sesión' },
-    { value: '90+',   label: '90+ min',   sub: '7 ejercicios por sesión' },
+    { value: '30-40', label: '30–40 min' },
+    { value: '40-60', label: '40–60 min' },
+    { value: '60-90', label: '60–90 min' },
+    { value: '90+',   label: '90+ min' },
   ],
   splitPreferido: [
     { value: 'fullbody',     label: 'Full Body',          sub: 'Todo el cuerpo en cada sesión' },
     { value: 'torso_pierna', label: 'Torso / Pierna',     sub: 'Un día tren superior, un día inferior' },
     { value: 'ppl',          label: 'Push / Pull / Legs', sub: 'Empuje, Tracción y Pierna' },
-    { value: 'pierna_prioridad', label: 'Piernas y Glúteos', sub: 'Énfasis en tren inferior' },
+    { value: 'pierna_prioridad', label: 'Piernas y Glúteos', sub: 'Más días de pierna y glúteo; el torso se mantiene' },
   ],
   equipamiento: [
     { value: 'gimnasio_completo', label: 'Gimnasio completo', sub: 'Máquinas, poleas, barras, mancuernas…' },
@@ -63,10 +65,10 @@ const OPT = {
     { value: 'pesos_libres',    label: 'Pesos libres',       sub: 'Barras y mancuernas' },
     { value: 'sin_preferencia', label: 'Sin preferencia',    sub: 'Mezcla balanceada de todo' },
   ],
+  // "Piernas y glúteos" es un split (Distribución semanal), no un enfoque.
   enfoque: [
     { value: 'balance',         label: 'Cuerpo completo',    sub: 'Distribución equilibrada' },
-    { value: 'piernas_gluteos', label: 'Piernas y glúteos',  sub: '+30% volumen en tren inferior' },
-    { value: 'torso_brazos',    label: 'Torso y brazos',     sub: '+30% volumen en tren superior' },
+    { value: 'torso_brazos',    label: 'Torso y brazos',     sub: 'Un ejercicio más de brazos en los días de tren superior' },
   ],
   descansoSegundos: [
     { value: '60',     label: '60 segundos',   sub: 'Ritmo ágil y dinámico' },
@@ -172,6 +174,15 @@ export function CheckPill({ checked, onChange, children }) {
   )
 }
 
+// Reemplazar un ejercicio conserva el rango de reps, pero la progresión lo lee distinto con carga
+// (`reps` = techo, `repsMin` = piso) y con peso corporal (`reps` = piso, `repsMax` = techo).
+function rangoParaReemplazo(viejo, nuevo) {
+  const lo = viejo.repsMin || (viejo.repsMax ? viejo.reps : null)
+  const hi = viejo.repsMax || (viejo.repsMin ? viejo.reps : null)
+  if (!lo || !hi) return { reps: viejo.reps }
+  return nuevo.eq === 'body weight' ? { reps: lo, repsMax: hi } : { reps: hi, repsMin: lo }
+}
+
 export default function SurveyWizard() {
   const nav = useNavigate()
   const S = useStore(s => s.S)
@@ -179,16 +190,31 @@ export default function SurveyWizard() {
   const noHealth = useStore(healthOff)
   const toast = useUI(s => s.toast)
 
-  const [resp, setResp] = useState(() => ({
-    ...DEF_RESPUESTAS,
-    tipoProgresion: S.progressionType || 'linear',
-    defaultIntensifier: S.defaultIntensifier || { type: 'none' },
-    ...(S.respuestasEncuesta || {}),
-  }))
+  const [resp, setResp] = useState(() => {
+    const r = {
+      ...DEF_RESPUESTAS,
+      tipoProgresion: S.progressionType || 'linear',
+      defaultIntensifier: S.defaultIntensifier || { type: 'none' },
+      ...(S.respuestasEncuesta || {}),
+    }
+    // Encuestas anteriores a v6: "Piernas y glúteos" era un enfoque; ahora es un split.
+    if (r.enfoque === 'piernas_gluteos') return { ...r, enfoque: 'balance', splitPreferido: 'pierna_prioridad' }
+    return r
+  })
   const [paso, setPaso] = useState(1)
   const [generando, setGenerando] = useState(false)
 
   const set = (campo, valor) => setResp(r => ({ ...r, [campo]: valor }))
+
+  // Perder grasa trae cardio suave al final por defecto (si todavía no eligió otro).
+  const elegirObjetivo = v => setResp(r => ({ ...r, objetivo: v, ...(v === 'perder_grasa' && r.cardio === 'sin_cardio' ? { cardio: 'suave_final' } : {}) }))
+
+  // La misma cuenta que usa el generador: el número que se promete es el que sale.
+  const tiempoOpciones = useMemo(() => OPT.tiempoPorSesion.map(op => {
+    const extras = (CARDIO_MIN[resp.cardio] || 0) + (resp.movilidadEstiramientos ? ESTIRAMIENTOS_MIN : 0)
+    const n = calcularCantidadEjercicios(op.value, resp.descansoSegundos, resp.nivel, resp.objetivo, extras)
+    return { ...op, sub: `≈ ${n} ejercicios de fuerza` }
+  }), [resp.cardio, resp.movilidadEstiramientos, resp.descansoSegundos, resp.nivel, resp.objetivo])
 
   // Requerimiento 3 — Restricciones lógicas y coherencia dinámica
   useEffect(() => {
@@ -310,22 +336,30 @@ export default function SurveyWizard() {
           isCardio: true,
           mode: 'cardio',
           min: exViejo.min,
-          speed: exViejo.speed,
-          note: exNuevo.bp === 'cardio' ? exNuevo.st?.[0] || '' : exViejo.note,
+          speed: exNuevo.id === 'cardio_treadmill' ? exViejo.speed || 6 : undefined,
+          note: exViejo.note,
         }),
         // Para estiramientos, preservar duración
         ...(isStretch && {
           isStretch: true,
           mode: 'time',
           sec: exViejo.sec,
-          note: 'Estiramiento recomendado para los músculos de hoy',
+          note: exViejo.note,
         }),
-        // Para ejercicios normales, preservar series y reps
+        // Para ejercicios normales, preservar series y el rango de reps (adaptado si cambia
+        // entre peso corporal y con carga: la progresión lee el rango distinto en cada caso)
         ...(!isCardio && !isStretch && {
           isNormal: true,
           sets: exViejo.sets,
-          reps: exViejo.reps,
+          ...rangoParaReemplazo(exViejo, exNuevo),
         }),
+      }
+      if (!isCardio && !isStretch) {
+        delete newEx[exIdx].repsMin
+        delete newEx[exIdx].repsMax
+        delete newEx[exIdx].warmupSets
+        Object.assign(newEx[exIdx], rangoParaReemplazo(exViejo, exNuevo))
+        if (exViejo.warmupSets && exNuevo.eq !== 'body weight') newEx[exIdx].warmupSets = exViejo.warmupSets
       }
       return { ...r, ex: newEx }
     })
@@ -344,19 +378,21 @@ export default function SurveyWizard() {
           isCardio: true,
           mode: 'cardio',
           min: exViejo.min,
-          speed: exViejo.speed,
-          note: exNuevo.bp === 'cardio' ? exNuevo.st?.[0] || '' : exViejo.note,
+          speed: exNuevo.id === 'cardio_treadmill' ? exViejo.speed || 6 : undefined,
+          note: exViejo.note,
         }),
         ...(isStretch && {
           isStretch: true,
           mode: 'time',
           sec: exViejo.sec,
-          note: 'Estiramiento recomendado para los músculos de hoy',
+          note: exViejo.note,
         }),
         ...(!isCardio && !isStretch && {
           isNormal: true,
           sets: exViejo.sets,
-          reps: exViejo.reps,
+          patron: PATRON_DE_ID[exNuevo.id] || newEjercicios[exIdx].patron,
+          motivo: PATRONES[PATRON_DE_ID[exNuevo.id]]?.motivo || newEjercicios[exIdx].motivo,
+          ...rangoParaReemplazo(exViejo, exNuevo),
         }),
       }
       return { ...d, ejercicios: newEjercicios, ex: newEjercicios }
@@ -461,14 +497,7 @@ export default function SurveyWizard() {
             <OptionGrid
               opciones={OPT.sexoBiologico}
               valor={resp.sexoBiologico}
-              onSelect={v => {
-                set('sexoBiologico', v)
-                const genero = v === 'femenino' ? 'femenino' : 'masculino'
-                update(st => {
-                  st.genero = genero
-                  st.body = genero === 'femenino' ? 'female' : 'male'
-                })
-              }}
+              onSelect={v => set('sexoBiologico', v)}
             />
 
             <div style={{ height: 18 }} />
@@ -526,10 +555,12 @@ export default function SurveyWizard() {
 
             </>}
             <h2 className="survey-step-title">Objetivo principal</h2>
-            <OptionGrid opciones={OPT.objetivo} valor={resp.objetivo} onSelect={v => set('objetivo', v)} />
+            <p className="survey-step-sub muted small">Define reps, series y cuántas calorías te sugerimos.</p>
+            <OptionGrid opciones={OPT.objetivo} valor={resp.objetivo} onSelect={elegirObjetivo} />
 
             <div style={{ height: 24 }} />
             <h2 className="survey-step-title">Nivel de experiencia</h2>
+            <p className="survey-step-sub muted small">Con menos experiencia, ejercicios más guiados (máquinas y mancuernas) y menos volumen.</p>
             <OptionGrid opciones={OPT.nivel} valor={resp.nivel} onSelect={v => set('nivel', v)} />
           </>
         )
@@ -559,7 +590,8 @@ export default function SurveyWizard() {
             </div>
 
             <h2 className="survey-step-title">Tiempo por sesión</h2>
-            <OptionGrid opciones={OPT.tiempoPorSesion} valor={resp.tiempoPorSesion} onSelect={v => set('tiempoPorSesion', v)} />
+            <p className="survey-step-sub muted small">Contando entrada en calor, cardio y estiramientos si los elegís.</p>
+            <OptionGrid opciones={tiempoOpciones} valor={resp.tiempoPorSesion} onSelect={v => set('tiempoPorSesion', v)} />
 
             <div style={{ height: 24 }} />
             <h2 className="survey-step-title">Distribución semanal (Split)</h2>
@@ -589,7 +621,9 @@ export default function SurveyWizard() {
 
             <div style={{ height: 24 }} />
             <h2 className="survey-step-title">Enfoque muscular</h2>
-            <OptionGrid opciones={OPT.enfoque} valor={resp.enfoque} onSelect={v => set('enfoque', v)} />
+            {resp.splitPreferido === 'pierna_prioridad'
+              ? <p className="survey-step-sub muted small">Elegiste el split Piernas y Glúteos: el énfasis ya está en el tren inferior.</p>
+              : <OptionGrid opciones={OPT.enfoque} valor={resp.enfoque} onSelect={v => set('enfoque', v)} />}
           </>
         )
 
@@ -628,7 +662,7 @@ export default function SurveyWizard() {
 
             <div style={{ height: 24 }} />
             <h2 className="survey-step-title">Movilidad y estiramientos</h2>
-            <p className="survey-step-sub muted small">Agrega ejercicios de movilidad al final de cada sesión.</p>
+            <p className="survey-step-sub muted small">Al final de cada sesión, un estiramiento por cada músculo que trabajaste ese día (sin compañero ni elementos).</p>
             <div style={{ display: 'flex', gap: 10 }}>
               <CheckPill
                 checked={resp.movilidadEstiramientos}
@@ -671,9 +705,15 @@ export default function SurveyWizard() {
               ))}
             </div>
             {resp.lesiones.length > 0 && (
-              <p className="muted small" style={{ marginTop: 16, lineHeight: 1.5 }}>
-                ⚠️ La rutina excluirá automáticamente los ejercicios de riesgo para las zonas marcadas. Si sentís dolor agudo, detené la actividad y consultá a un profesional.
-              </p>
+              <div className="survey-injury-notes" style={{ marginTop: 16 }}>
+                <p className="muted small" style={{ marginBottom: 8 }}>Así vamos a adaptar tu rutina:</p>
+                <ul className="small" style={{ margin: 0, paddingLeft: 18, lineHeight: 1.5 }}>
+                  {resp.lesiones.filter(l => LESIONES[l]).map(l => <li key={l} style={{ marginBottom: 6 }}>{LESIONES[l].nota}</li>)}
+                </ul>
+                <p className="muted small" style={{ marginTop: 10, lineHeight: 1.5 }}>
+                  Si sentís dolor agudo, detené la actividad y consultá a un profesional de salud.
+                </p>
+              </div>
             )}
           </>
         )
@@ -697,13 +737,18 @@ export default function SurveyWizard() {
                     const isNormal = ex.isNormal !== false && !ex.isCardio && !ex.isStretch
                     const isCardio = ex.isCardio
                     const isStretch = ex.isStretch
+                    const gen = planRevision.rutinaGenerada.dias[rIdx]?.ejercicios?.[exIdx] || {}
                     return (
                       <div key={exIdx} className="row between" style={{ padding: '8px 4px', borderBottom: exIdx < r.ex.length - 1 ? '1px solid var(--sep)' : 'none' }}>
                         <div style={{ cursor: 'pointer', flex: 1 }} onClick={() => exerciseDetailSheetNoAdd(exObj)}>
                           <div style={{ fontWeight: 600, fontSize: 14 }}>{nombre}</div>
                           <div className="small muted">
-                            {isCardio ? `${ex.min} min` : isStretch ? `${ex.sec} s` : `${ex.sets} ${t('series')} × ${ex.reps} ${t('reps')}`}
+                            {isCardio ? `${ex.min} min` : isStretch ? `${ex.sec} s${ex.note === 'Por lado' ? ' por lado' : ''}`
+                              : ex.mode === 'time' ? `${ex.sets} ${t('series')} × ${ex.sec} s`
+                                : `${ex.sets} ${t('series')} × ${gen.repeticiones || ex.reps} ${t('reps')}`}
                           </div>
+                          {isNormal && gen.motivo && <div className="small dim survey-ex-why">{gen.motivo}</div>}
+                          {(isCardio || (isNormal && ex.note)) && ex.note && ex.note !== 'Por lado' && <div className="small dim survey-ex-note">{ex.note}</div>}
                         </div>
                         {(isNormal || isCardio || isStretch) && (
                           <Button
@@ -713,7 +758,7 @@ export default function SurveyWizard() {
                             onClick={() => useUI.getState().openSheet(close => (
                               <ExerciseReplacementSheet
                                 exActual={ex}
-                                poolSeguro={planRevision.poolSeguro}
+                                poolSeguro={isCardio ? planRevision.rutinaGenerada.poolCardio || [] : isStretch ? planRevision.rutinaGenerada.poolEstiramientos || [] : planRevision.poolSeguro}
                                 usadosEnSemana={planRevision.usadosEnSemana}
                                 onReemplazar={(nueva) => reemplazarEjercicio(rIdx, exIdx, ex, nueva)}
                                 close={close}

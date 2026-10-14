@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react'
-import { EXIDX } from '../lib/exercises.js'
+import { EXIDX, matchExercise } from '../lib/exercises.js'
 import { exerciseNameFor } from '../lib/i18n.js'
 import { exerciseDetailSheetNoAdd } from '../sheets.jsx'
 import Icon from './Icon.jsx'
@@ -48,7 +48,7 @@ function ExerciseReplacementSheet({ exActual, poolSeguro, usadosEnSemana, onReem
     if (tipo === 'cardio') {
       return buscarCardio(query, poolSeguro, usadosEnSemana)
     } else if (tipo === 'stretch') {
-      return buscarEstiramientos(query, poolSeguro, exActualObj.tg, usadosEnSemana)
+      return buscarEstiramientos(query, poolSeguro, usadosEnSemana)
     }
     return buscarEnGrupoMuscular(query, poolSeguro, exActualObj.tg, usadosEnSemana)
   }, [query, poolSeguro, exActualObj.tg, usadosEnSemana, tipo])
@@ -112,97 +112,47 @@ function ExerciseReplacementSheet({ exActual, poolSeguro, usadosEnSemana, onReem
   </>
 }
 
-// Funciones para alternativas de cardio
-function obtenerAlternativasCardio(ejercicioActual, poolSeguro = [], idsUsadosEnLaSemana = new Set(), n = 3) {
-  const idsSet = idsUsadosEnLaSemana instanceof Set ? idsUsadosEnLaSemana : new Set(idsUsadosEnLaSemana || [])
-  const actualId = ejercicioActual.id || ejercicioActual.exerciseId
+// Cardio y estiramientos: el generador pasa su propio pool (poolCardio / poolEstiramientos),
+// ya filtrado por equipamiento y lesiones. El de fuerza no sirve: excluye a ambos.
+const asSet = v => (v instanceof Set ? v : new Set(v || []))
 
-  // Filtrar ejercicios de cardio que no sean el actual y no estén usados
-  let candidatos = poolSeguro.filter(e =>
-    e.bp === 'cardio' &&
-    e.id !== actualId &&
-    !idsSet.has(e.id)
-  )
-
-  return candidatos.slice(0, n)
+function obtenerAlternativasCardio(ejercicioActual, pool = [], idsUsadosEnLaSemana = new Set(), n = 3) {
+  return obtenerMasAlternativasCardio(ejercicioActual, pool, idsUsadosEnLaSemana, new Set(), n)
 }
 
-function obtenerMasAlternativasCardio(ejercicioActual, poolSeguro = [], idsUsadosEnLaSemana = new Set(), yaMostrados = new Set(), n = 5) {
-  const idsSet = idsUsadosEnLaSemana instanceof Set ? idsUsadosEnLaSemana : new Set(idsUsadosEnLaSemana || [])
-  const mostradosSet = yaMostrados instanceof Set ? yaMostrados : new Set(yaMostrados || [])
+function obtenerMasAlternativasCardio(ejercicioActual, pool = [], idsUsadosEnLaSemana = new Set(), yaMostrados = new Set(), n = 5) {
+  const usados = asSet(idsUsadosEnLaSemana), mostrados = asSet(yaMostrados)
   const actualId = ejercicioActual.id || ejercicioActual.exerciseId
+  return pool.filter(e => e.id !== actualId && !usados.has(e.id) && !mostrados.has(e.id)).slice(0, n)
+}
 
-  return poolSeguro
-    .filter(e =>
-      e.bp === 'cardio' &&
-      e.id !== actualId &&
-      !idsSet.has(e.id) &&
-      !mostradosSet.has(e.id)
-    )
+function buscarCardio(query, pool = [], idsUsadosEnLaSemana = new Set()) {
+  if (!query || !query.trim()) return []
+  const usados = asSet(idsUsadosEnLaSemana)
+  return pool.filter(e => !usados.has(e.id) && matchExercise(e, query))
+}
+
+// Estiramientos: primero los del mismo músculo, después el resto.
+function obtenerAlternativasEstiramientos(ejercicioActual, pool = [], idsUsadosEnLaSemana = new Set(), n = 3) {
+  return obtenerMasAlternativasEstiramientos(ejercicioActual, pool, idsUsadosEnLaSemana, new Set(), n)
+}
+
+function obtenerMasAlternativasEstiramientos(ejercicioActual, pool = [], idsUsadosEnLaSemana = new Set(), yaMostrados = new Set(), n = 5) {
+  const usados = asSet(idsUsadosEnLaSemana), mostrados = asSet(yaMostrados)
+  const actualId = ejercicioActual.id || ejercicioActual.exerciseId
+  const tg = ejercicioActual.tg
+  return pool
+    .filter(e => e.id !== actualId && !usados.has(e.id) && !mostrados.has(e.id))
+    .map((e, i) => ({ e, i }))
+    .sort((a, b) => (a.e.tg === tg ? 0 : 1) - (b.e.tg === tg ? 0 : 1) || a.i - b.i)
+    .map(x => x.e)
     .slice(0, n)
 }
 
-function buscarCardio(query, poolSeguro = [], idsUsadosEnLaSemana = new Set()) {
+function buscarEstiramientos(query, pool = [], idsUsadosEnLaSemana = new Set()) {
   if (!query || !query.trim()) return []
-  const idsSet = idsUsadosEnLaSemana instanceof Set ? idsUsadosEnLaSemana : new Set(idsUsadosEnLaSemana || [])
-  const q = query.toLowerCase()
-
-  return poolSeguro.filter(e =>
-    e.bp === 'cardio' &&
-    !idsSet.has(e.id) &&
-    (e.n?.toLowerCase().includes(q) || e.id?.toLowerCase().includes(q))
-  )
-}
-
-// Funciones para alternativas de estiramientos
-function obtenerAlternativasEstiramientos(ejercicioActual, poolSeguro = [], idsUsadosEnLaSemana = new Set(), n = 3) {
-  const idsSet = idsUsadosEnLaSemana instanceof Set ? idsUsadosEnLaSemana : new Set(idsUsadosEnLaSemana || [])
-  const actualId = ejercicioActual.id || ejercicioActual.exerciseId
-  const targetTg = ejercicioActual.tg
-
-  // Filtrar estiramientos del mismo grupo muscular
-  let candidatos = poolSeguro.filter(e => {
-    const n = (e.n || '').toLowerCase()
-    const esSt = n.includes('stretch') || n.includes('stretching') || n.includes('yoga') || n.includes('mobility')
-    return esSt &&
-           e.tg === targetTg &&
-           e.id !== actualId &&
-           !idsSet.has(e.id)
-  })
-
-  return candidatos.slice(0, n)
-}
-
-function obtenerMasAlternativasEstiramientos(ejercicioActual, poolSeguro = [], idsUsadosEnLaSemana = new Set(), yaMostrados = new Set(), n = 5) {
-  const idsSet = idsUsadosEnLaSemana instanceof Set ? idsUsadosEnLaSemana : new Set(idsUsadosEnLaSemana || [])
-  const mostradosSet = yaMostrados instanceof Set ? yaMostrados : new Set(yaMostrados || [])
-  const actualId = ejercicioActual.id || ejercicioActual.exerciseId
-  const targetTg = ejercicioActual.tg
-
-  return poolSeguro.filter(e => {
-    const n = (e.n || '').toLowerCase()
-    const esSt = n.includes('stretch') || n.includes('stretching') || n.includes('yoga') || n.includes('mobility')
-    return esSt &&
-           e.tg === targetTg &&
-           e.id !== actualId &&
-           !idsSet.has(e.id) &&
-           !mostradosSet.has(e.id)
-  }).slice(0, n)
-}
-
-function buscarEstiramientos(query, poolSeguro = [], tg, idsUsadosEnLaSemana = new Set()) {
-  if (!query || !query.trim()) return []
-  const idsSet = idsUsadosEnLaSemana instanceof Set ? idsUsadosEnLaSemana : new Set(idsUsadosEnLaSemana || [])
-  const q = query.toLowerCase()
-
-  return poolSeguro.filter(e => {
-    const n = (e.n || '').toLowerCase()
-    const esSt = n.includes('stretch') || n.includes('stretching') || n.includes('yoga') || n.includes('mobility')
-    return esSt &&
-           e.tg === tg &&
-           !idsSet.has(e.id) &&
-           (n.includes(q) || e.id?.toLowerCase().includes(q))
-  })
+  const usados = asSet(idsUsadosEnLaSemana)
+  return pool.filter(e => !usados.has(e.id) && matchExercise(e, query))
 }
 
 export default ExerciseReplacementSheet

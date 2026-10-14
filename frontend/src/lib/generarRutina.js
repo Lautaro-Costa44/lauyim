@@ -1,14 +1,26 @@
 /**
- * Motor de generación de rutinas personalizadas — lauyim (v5)
- * Implementa los requerimientos actualizados:
- *  1. Ejercicios de cardio inyectados con notas formateadas (tiempo + velocidad/intensidad).
- *  2. Estiramientos estrictamente coherentes con los músculos trabajados en cada sesión específica.
- *  3. Secuenciación visual: Fuerza -> Cardio -> Estiramientos.
- *  4. Exclusión de peso corporal si el usuario prefiere máquinas, poleas o pesos libres.
+ * Motor de generación de rutinas personalizadas — lauyim (v6)
+ *
+ * Cada sesión es una plantilla de slots por patrón de movimiento (rutina-catalogo.js) y cada
+ * patrón elige de una lista curada, según nivel, equipamiento, preferencia y lesiones. El
+ * catálogo completo solo se usa como respaldo y para las alternativas de "Reemplazar".
+ *
+ *  - Mismos básicos en las sesiones del mismo tipo (Push 1 y Push 2 son iguales; Full Body
+ *    alterna A/B) para poder progresar en carga.
+ *  - Compuestos primero, aislamiento después; calentamiento en los primeros compuestos.
+ *  - Reps y series según objetivo y nivel; el rango se guarda como lo lee la progresión.
+ *  - Estiramientos derivados de lo que se entrenó ese día, sin compañero ni elementos.
+ *  - Cardio que respeta lesiones, días de pierna y un máximo de 2 HIIT por semana.
+ *  - Un resumen explicado (series por músculo, duración, avisos) para mostrar antes de guardar.
  */
 
 import exerciseNamesEs from '../locales/exercise-names-es.js'
-import { CUSTOM_CARDIO_EXERCISES, matchExercise } from './exercises.js'
+import { CUSTOM_CARDIO_EXERCISES, SYSTEM_EXERCISES, matchExercise } from './exercises.js'
+import { musclesOf } from './muscles.js'
+import {
+  PATRONES, PATRON_DE_ID, PLANTILLAS, EXTRA_ENFOQUE, ESTIRAMIENTOS, ESTIRAMIENTO_IDS, LESIONES, CARDIO, CARDIO_OPCIONES,
+  nivelIndex, enListaNegra,
+} from './rutina-catalogo.js'
 
 export const DAY_MAP = {
   domingo: 0,
@@ -24,18 +36,11 @@ export const DAY_NAMES_ES = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves
 export const WEEK_ORDER = [1, 2, 3, 4, 5, 6, 0]
 
 /* ============================================================
-   §1 — Derivación del Split
+   §1 — Split
    ============================================================ */
 export function defaultSplitRecomendado(nivel, dias) {
-  if (dias === 1) return 'fullbody'
-  if (nivel === 'principiante') return 'fullbody'
-  if (nivel === 'intermedio') {
-    if (dias <= 3) return 'fullbody'
-    if (dias === 4) return 'torso_pierna'
-    return 'ppl'
-  }
   if (dias <= 3) return 'fullbody'
-  if (dias === 4) return 'torso_pierna'
+  if (nivel === 'principiante' || dias === 4) return 'torso_pierna'
   return 'ppl'
 }
 
@@ -49,6 +54,7 @@ export function derivarSplit(nivel, dias, splitPreferido, enfoque) {
     return { split, splitAjustado: Boolean(avisoFrecuencia), avisoFrecuencia }
   }
 
+  // Respuestas guardadas antes de v6: "Piernas y glúteos" era un enfoque. Hoy es un split.
   if (enfoque === 'piernas_gluteos') {
     return { split: 'pierna_prioridad', splitAjustado: Boolean(splitPreferido && splitPreferido !== 'pierna_prioridad') }
   }
@@ -56,110 +62,164 @@ export function derivarSplit(nivel, dias, splitPreferido, enfoque) {
   const split = splitPreferido || defaultSplitRecomendado(nivel, dias)
   let avisoFrecuencia
 
-  if (split === 'ppl' && dias <= 3) {
+  if (split === 'ppl' && dias === 2) {
+    avisoFrecuencia = 'Con 2 días, Push/Pull/Legs deja las piernas sin entrenar. Te recomendamos Full Body.'
+  } else if (split === 'ppl' && dias === 3) {
     avisoFrecuencia = 'Con 3 días, cada grupo muscular se entrena 1 vez por semana. Si buscás más frecuencia por músculo, te recomendamos Full Body.'
-  } else if (split === 'torso_pierna' && dias < 4) {
-    avisoFrecuencia = `Con ${dias} días, la frecuencia de Torso/Pierna puede quedar desbalanceada. Te sugerimos Full Body para estimular todo el cuerpo por igual.`
+  } else if (split === 'ppl' && dias === 4) {
+    avisoFrecuencia = 'Con 4 días armamos Push, Pull, Legs y un Full Body, así las piernas se entrenan 2 veces por semana.'
+  } else if (split === 'ppl' && dias === 5) {
+    avisoFrecuencia = 'Con 5 días combinamos Push/Pull/Legs con Torso y Pierna, así cada grupo se entrena 2 veces por semana.'
+  } else if (split === 'torso_pierna' && dias === 2) {
+    avisoFrecuencia = 'Con 2 días, Torso/Pierna entrena cada músculo 1 vez por semana. Full Body le da 2 estímulos por semana a cada músculo.'
+  } else if (split === 'torso_pierna' && dias === 3) {
+    avisoFrecuencia = 'Con 3 días, una mitad del cuerpo se entrena 2 veces y la otra 1. Full Body reparte mejor.'
   }
 
   return { split, splitAjustado: Boolean(splitPreferido && splitPreferido !== split), avisoFrecuencia }
 }
 
+export function diasPiernaTorso(totalDias) {
+  const diasPierna = Math.max(1, Math.min(totalDias - 1, Math.round(totalDias * 0.6)))
+  return { diasPierna, diasTorso: totalDias - diasPierna }
+}
+
+/**
+ * Nombre y plantilla de cada día. `tipo` es la clave de PLANTILLAS.
+ */
+export function buildRoutineNames(split, totalDias) {
+  const nombres = []
+  if (split === 'fullbody') {
+    for (let i = 0; i < totalDias; i++) {
+      nombres.push({ rutinaNombre: `Full Body ${i + 1}`, tipo: i % 2 === 0 ? 'fullbody_a' : 'fullbody_b' })
+    }
+  } else if (split === 'pierna_prioridad') {
+    const { diasPierna, diasTorso } = diasPiernaTorso(totalDias)
+    const legSessions = [
+      { rutinaNombre: 'Pierna — Cuádriceps', tipo: 'pierna_quads' },
+      { rutinaNombre: 'Pierna — Isquios y glúteo', tipo: 'pierna_isquios_gluteo' },
+      { rutinaNombre: 'Pierna — Glúteo', tipo: 'pierna_gluteo' },
+    ]
+    let pIdx = 0, tIdx = 0
+    let pRestantes = diasPierna
+    let tRestantes = diasTorso
+    for (let i = 0; i < totalDias; i++) {
+      const preferTorso = tRestantes > 0 && (i % 2 === 1 || pRestantes === 0)
+      if (preferTorso) {
+        const letra = diasTorso > 1 ? ' ' + String.fromCharCode(65 + tIdx) : ''
+        nombres.push({ rutinaNombre: 'Torso' + letra, tipo: tIdx % 2 === 0 ? 'torso_a' : 'torso_b' })
+        tIdx++
+        tRestantes--
+      } else {
+        nombres.push(legSessions[pIdx % legSessions.length])
+        pIdx++
+        pRestantes--
+      }
+    }
+  } else if (split === 'torso_pierna') {
+    for (let i = 0; i < totalDias; i++) {
+      const vuelta = Math.floor(i / 2)
+      const sufijo = String.fromCharCode(65 + vuelta)
+      const esTorso = i % 2 === 0
+      const ab = vuelta % 2 === 0 ? 'a' : 'b'
+      nombres.push({ rutinaNombre: esTorso ? `Torso ${sufijo}` : `Pierna ${sufijo}`, tipo: (esTorso ? 'torso_' : 'pierna_') + ab })
+    }
+  } else {
+    const ciclo = [{ base: 'Push', tipo: 'push' }, { base: 'Pull', tipo: 'pull' }, { base: 'Legs', tipo: 'legs' }]
+    if (totalDias === 4) {
+      return [...ciclo.map(c => ({ rutinaNombre: c.base, tipo: c.tipo })), { rutinaNombre: 'Full Body', tipo: 'fullbody_a' }]
+    }
+    if (totalDias === 5) {
+      return [...ciclo.map(c => ({ rutinaNombre: c.base, tipo: c.tipo })), { rutinaNombre: 'Torso', tipo: 'torso_a' }, { rutinaNombre: 'Pierna', tipo: 'pierna_b' }]
+    }
+    for (let i = 0; i < totalDias; i++) {
+      const c = ciclo[i % 3]
+      const vuelta = Math.floor(i / 3)
+      nombres.push({ rutinaNombre: vuelta === 0 ? c.base : `${c.base} ${vuelta + 1}`, tipo: c.tipo })
+    }
+  }
+  return nombres
+}
+
+const DIAS_PIERNA = new Set(['pierna_a', 'pierna_b', 'legs', 'pierna_quads', 'pierna_isquios_gluteo', 'pierna_gluteo'])
+
 /* ============================================================
-   Lesiones completas mapeadas a anatomía PWA
+   §2 — Tiempo, series y reps
    ============================================================ */
-const LESION_RULES = {
-  hombros: { bpExclude: ['shoulders'], tgExclude: ['delts'], keywords: ['overhead', 'military press', 'behind the neck', 'dip', 'upright row', 'arnold press', 'handstand', 'lateral raise'] },
-  espalda_alta: { bpExclude: [], tgExclude: ['upper back', 'traps', 'lats'], keywords: ['shrug', 'upright row', 'behind the neck'] },
-  espalda_baja: { bpExclude: [], tgExclude: ['spine'], keywords: ['deadlift', 'good morning', 'hyperextension', 'bent over row', 'back squat', 'clean', 'snatch', 'superman', 'sit-up'] },
-  pecho: { bpExclude: ['chest'], tgExclude: ['pectorals'], keywords: ['bench press', 'chest fly', 'chest dip', 'push-up', 'push up'] },
-  biceps: { tgExclude: ['biceps'], keywords: ['biceps curl', 'barbell curl', 'dumbbell curl', 'chin up', 'preacher'] },
-  triceps: { tgExclude: ['triceps'], keywords: ['triceps extension', 'skull crusher', 'french press', 'triceps pushdown', 'dip'] },
-  codos: { bpExclude: [], keywords: ['skull crusher', 'triceps extension', 'french press', 'bench press', 'barbell curl', 'dip', 'pushdown'] },
-  antebrazos_munecas: { bpExclude: ['lower arms'], tgExclude: ['forearms'], keywords: ['push-up', 'push up', 'plank', 'handstand', 'front squat', 'clean', 'wrist curl', 'barbell curl'] },
-  cuello: { bpExclude: ['neck'], keywords: ['shrug', 'behind the neck', 'neck'] },
-  abdominales: { bpExclude: ['waist'], tgExclude: ['abs', 'obliques'], keywords: ['crunch', 'sit-up', 'v-up', 'plank', 'russian twist'] },
-  gluteos: { tgExclude: ['glutes'], keywords: ['hip thrust', 'glute bridge', 'kickback'] },
-  cuadriceps: { tgExclude: ['quads'], keywords: ['squat', 'lunge', 'leg extension', 'sprint', 'jump'] },
-  rodillas: { bpExclude: [], keywords: ['squat', 'lunge', 'leg extension', 'jump', 'box jump', 'step up', 'pistol', 'hack squat'] },
-  isquiotibiales: { tgExclude: ['hamstrings'], keywords: ['deadlift', 'leg curl', 'good morning', 'nordic'] },
-  aductores: { tgExclude: ['adductors'], keywords: ['sumo', 'adductor', 'inner thigh'] },
-  gemelos_tobillos: { bpExclude: ['lower legs'], tgExclude: ['calves'], keywords: ['jump', 'box jump', 'calf raise', 'skip', 'ankle'] },
+export const MINUTOS_POR_TIEMPO = { '30-40': 35, '40-60': 50, '60-90': 75, '90+': 100 }
+export const DESCANSO_SEG = { '60': 60, '90-120': 105, '180+': 180 }
+export const DESCANSO_AISLAMIENTO_MAX = 75
+export const CALENTAMIENTO_SEG = 300
+export const TRABAJO_SERIE_SEG = 40
+export const TRANSICION_SEG = 60
+const TOPE_POR_TIEMPO = { '30-40': 5, '40-60': 6, '60-90': 7, '90+': 8 }
+
+/**
+ * Ejercicios de fuerza por sesión. Es la única fuente: la encuesta muestra este mismo número.
+ * Los compuestos descansan lo elegido y el aislamiento como mucho 75 s.
+ */
+// Minutos que el cardio y los estiramientos le sacan a la fuerza dentro de la sesión.
+export const CARDIO_MIN = { suave_final: 20, caminar_correr: 30, hiit: 15 }
+export const ESTIRAMIENTOS_MIN = 4
+
+export function calcularCantidadEjercicios(tiempoPorSesion, descansoSegundos, nivel, objetivo, extrasMin = 0) {
+  const sesionMin = Math.max(0, (MINUTOS_POR_TIEMPO[tiempoPorSesion] || 50) - (Number(extrasMin) || 0))
+  const descanso = DESCANSO_SEG[descansoSegundos] || 105
+  const descansoMedio = (descanso + Math.min(descanso, DESCANSO_AISLAMIENTO_MAX)) / 2
+  const [comp, aisl] = (SERIES[objetivo] || SERIES.fitness_general)[nivel] || [3, 3]
+  const porEjercicio = ((comp + aisl) / 2) * (TRABAJO_SERIE_SEG + descansoMedio) + TRANSICION_SEG
+  const tope = Math.min(TOPE_POR_TIEMPO[tiempoPorSesion] || 6, nivel === 'principiante' ? 6 : 8)
+  return Math.max(3, Math.min(tope, Math.floor((sesionMin * 60 - CALENTAMIENTO_SEG) / porEjercicio)))
 }
 
-// Fase 7 — panel admin: misma regla que prepararPoolSeguro usa para excluir ejercicios del
-// generador automático, reutilizada acá solo para decidir si mostrar una advertencia en la
-// asignación manual. No toca ni reemplaza la exclusión preventiva de arriba.
-export function ejercicioAfectaLesion(ex, lesion) {
-  const rule = LESION_RULES[lesion]
-  if (!ex || !rule) return false
-  if (rule.bpExclude?.includes(ex.bp)) return true
-  if (rule.tgExclude?.includes(ex.tg)) return true
-  const nLower = (ex.n || '').toLowerCase()
-  return (rule.keywords || []).some(kw => nLower.includes(kw))
+// [mínimo, máximo, fijo] de reps por objetivo y tipo de ejercicio.
+export const ESQUEMAS_REPS = {
+  hipertrofia: { compuesto: [6, 10, 8], aislamiento: [10, 15, 12] },
+  fuerza: { compuesto: [3, 6, 5], aislamiento: [8, 12, 10] },
+  perder_grasa: { compuesto: [8, 12, 10], aislamiento: [12, 15, 12] },
+  fitness_general: { compuesto: [8, 12, 10], aislamiento: [10, 15, 12] },
 }
 
-// Lesiones (de las que tiene el socio) que este ejercicio afecta, según la regla de arriba.
-export function lesionesAfectadasPorEjercicio(ex, lesiones = []) {
-  return (lesiones || []).filter(lesion => ejercicioAfectaLesion(ex, lesion))
+// [series en compuestos, series en aislamiento]
+const SERIES = {
+  hipertrofia: { principiante: [3, 2], intermedio: [3, 3], avanzado: [4, 3] },
+  fuerza: { principiante: [3, 2], intermedio: [4, 3], avanzado: [5, 3] },
+  perder_grasa: { principiante: [3, 2], intermedio: [3, 2], avanzado: [3, 3] },
+  fitness_general: { principiante: [3, 2], intermedio: [3, 2], avanzado: [3, 3] },
 }
 
-const RARE_KEYWORDS = ['male', 'female', 'pyramid', 'wheel', 'bosu', 'single leg cable', 'roller', 'foam', 'stability ball', 'swiss ball', 'towel', 'stick']
+// Series semanales orientativas por músculo grande, según nivel.
+export const VOLUMEN_OBJETIVO = { principiante: [6, 10], intermedio: [10, 16], avanzado: [12, 20] }
 
-function esRaro(n) {
-  const nl = (n || '').toLowerCase()
-  return RARE_KEYWORDS.some(kw => nl.includes(kw))
+export const VALOR_ESFUERZO = {
+  rir: '1-2',
+  rpe: '8-9',
 }
 
-function esEstiramiento(ex) {
-  const n = (ex.n || '').toLowerCase()
-  const bp = (ex.bp || '').toLowerCase()
-  return bp === 'cardio' || n.includes('stretch') || n.includes('stretching') || n.includes('yoga') || n.includes('mobility') || n.includes('warm-up')
+// Valores viejos de la encuesta → política de progression.js.
+export function politicaProgresion(tipo) {
+  const map = { lineal: 'linear', doble_progresion: 'double', ondulante: 'dup' }
+  const p = map[tipo] || tipo
+  return ['off', 'linear', 'greyskull', 'double', 'dup'].includes(p) ? p : 'linear'
 }
 
-function patronDeMovimiento(ex) {
-  const n = (ex.n || '').toLowerCase()
-  const tg = (ex.tg || '').toLowerCase()
-
-  if (n.includes('pull-up') || n.includes('pull up') || n.includes('chin-up') || n.includes('chin up') || n.includes('lat pulldown') || n.includes('pulldown')) return 'vertical_pull'
-  if (n.includes('row') || n.includes('inverted row')) return 'horizontal_pull'
-  if (n.includes('overhead press') || n.includes('military press') || n.includes('shoulder press') || n.includes('arnold press') || n.includes('pike push')) return 'vertical_press'
-  if (n.includes('bench press') || n.includes('chest press') || n.includes('push-up') || n.includes('push up') || n.includes('dip')) return 'horizontal_press'
-  if (n.includes('squat') || n.includes('leg press')) return 'squat_pattern'
-  if (n.includes('deadlift') || n.includes('good morning') || n.includes('hip thrust') || n.includes('glute bridge')) return 'hip_hinge'
-  if (n.includes('biceps curl') || n.includes('barbell curl') || n.includes('dumbbell curl') || n.includes('hammer curl') || n.includes('preacher')) return 'bicep_curl'
-  if (n.includes('triceps extension') || n.includes('skull crusher') || n.includes('pushdown') || n.includes('french press')) return 'tricep_ext'
-  if (n.includes('lateral raise')) return 'lateral_raise'
-  if (n.includes('calf raise')) return 'calf_raise'
-  if (n.includes('crunch') || n.includes('sit-up') || n.includes('leg raise')) return 'abs_flexion'
-
-  return `${tg}_${ex.bp}`
+const NOMBRE_PROGRESION = {
+  linear: ['Progresión lineal', 'Cuando completás todas las series, la próxima vez sube un poco el peso.'],
+  greyskull: ['Greyskull', 'Dos series fijas y la última al máximo de reps: si superás el objetivo, sube el peso.'],
+  double: ['Doble progresión', 'Primero subís reps dentro del rango; cuando llegás arriba en todas las series, sube el peso y volvés abajo.'],
+  dup: ['Ondulante (DUP)', 'Cada día cambia la intensidad: pesado, moderado y liviano.'],
+  off: ['Sin progresión automática', 'Vos decidís cuándo subir el peso.'],
 }
 
-function jerarquiaScore(ex) {
-  const n = (ex.n || '').toLowerCase()
-  const eq = (ex.eq || '').toLowerCase()
-  let score = 5
-  if (['barbell', 'dumbbell', 'leverage machine', 'cable'].includes(eq)) score += 3
-  if (n.includes('squat') || n.includes('bench press') || n.includes('deadlift') || n.includes('overhead press') || n.includes('pull up') || n.includes('row')) score += 5
-  return score
+/* ============================================================
+   §3 — Equipamiento, preferencia y catálogo seguro
+   ============================================================ */
+const EQUIPO_PERMITIDO = {
+  solo_mancuernas: ['dumbbell', 'body weight'],
+  calistenia: ['body weight'],
 }
-
-function filtrarPorEquipamiento(exDB, equipamiento, preferenciaEjercicio) {
-  let pool = exDB
-  if (equipamiento === 'solo_mancuernas') {
-    pool = exDB.filter(e => ['dumbbell', 'body weight'].includes(e.eq))
-  } else if (equipamiento === 'calistenia') {
-    pool = exDB.filter(e => e.eq === 'body weight')
-  }
-
-  // Requerimiento 4: Si prefiere máquinas o pesos libres, EXCLUIR peso corporal
-  if (preferenciaEjercicio === 'maquinas_poleas' || preferenciaEjercicio === 'pesos_libres') {
-    pool = pool.filter(e => e.eq !== 'body weight')
-  }
-
-  return pool
-}
+const EQ_MAQUINAS = ['leverage machine', 'cable', 'smith machine', 'sled machine']
+const EQ_LIBRES = ['barbell', 'dumbbell', 'olympic barbell', 'ez barbell', 'kettlebell', 'trap bar']
 
 export const EQUIPO_POR_PREFERENCIA = {
   maquinas_poleas: ['leverage machine', 'cable', 'smith machine', 'assisted'],
@@ -174,155 +234,671 @@ export function filtrarPorPreferenciaEquipo(pool, preferencia) {
   return filtrado.length >= 5 ? filtrado : pool
 }
 
-function prepararPoolSeguro(exDB, equipamiento, preferenciaEjercicio, lesiones = [], dictEs = exerciseNamesEs) {
-  let pool = filtrarPorEquipamiento(exDB, equipamiento, preferenciaEjercicio)
-  pool = filtrarPorPreferenciaEquipo(pool, preferenciaEjercicio)
-  if (dictEs && Object.keys(dictEs).length > 0) {
-    pool = pool.filter(ex => Boolean(dictEs[ex.id]))
-  }
+const equipoPermitido = (ex, equipamiento) => {
+  const permitidos = EQUIPO_PERMITIDO[equipamiento]
+  return !permitidos || permitidos.includes(ex.eq)
+}
 
-  const bpSet = new Set(), tgSet = new Set(), kwList = []
-  if (lesiones && lesiones.length > 0) {
-    for (const lesion of lesiones) {
+const RARE_KEYWORDS = ['male', 'female', 'pyramid', 'wheel', 'bosu', 'single leg cable', 'roller', 'foam', 'stability ball', 'swiss ball', 'towel', 'stick']
+const esRaro = n => {
+  const nl = (n || '').toLowerCase()
+  return RARE_KEYWORDS.some(kw => nl.includes(kw))
+}
+
+function esEstiramiento(ex) {
+  const n = (ex.n || '').toLowerCase()
+  return ESTIRAMIENTO_IDS.has(ex.id) || n.includes('stretch') || n.includes('yoga') || n.includes('mobility') || n.includes('warm-up')
+}
+const esCardio = ex => (ex.bp || '').toLowerCase() === 'cardio' || ex.tg === 'cardiovascular system'
+
+/* ============================================================
+   §4 — Lesiones
+   ============================================================ */
+// Reglas genéricas por grupo/zona del dataset. Se usan para lo que NO está en el catálogo curado
+// (respaldo del generador, alternativas y advertencias del panel admin sobre cualquier ejercicio).
+const LESION_RULES = {
+  hombros: { bpExclude: ['shoulders'], tgExclude: ['delts'], keywords: ['overhead', 'military press', 'behind the neck', 'dip', 'upright row', 'arnold press', 'handstand', 'lateral raise'] },
+  espalda_alta: { bpExclude: [], tgExclude: ['traps'], keywords: ['shrug', 'upright row', 'behind the neck', 'pull-up', 'chin-up'] },
+  espalda_baja: { bpExclude: [], tgExclude: ['spine'], keywords: ['deadlift', 'good morning', 'hyperextension', 'bent over row', 'back squat', 'clean', 'snatch', 'superman', 'sit-up'] },
+  pecho: { bpExclude: ['chest'], tgExclude: ['pectorals'], keywords: ['bench press', 'chest fly', 'chest dip', 'push-up', 'push up'] },
+  biceps: { tgExclude: ['biceps'], keywords: ['biceps curl', 'barbell curl', 'dumbbell curl', 'chin up', 'chin-up', 'preacher'] },
+  triceps: { tgExclude: ['triceps'], keywords: ['triceps extension', 'skull crusher', 'french press', 'triceps pushdown', 'dip'] },
+  codos: { bpExclude: [], keywords: ['skull crusher', 'triceps extension', 'french press', 'bench press', 'barbell curl', 'dip', 'pushdown'] },
+  antebrazos_munecas: { bpExclude: ['lower arms'], tgExclude: ['forearms'], keywords: ['push-up', 'push up', 'plank', 'handstand', 'front squat', 'clean', 'wrist curl', 'barbell curl'] },
+  cuello: { bpExclude: ['neck'], keywords: ['shrug', 'behind the neck', 'neck'] },
+  abdominales: { bpExclude: ['waist'], tgExclude: ['abs', 'obliques'], keywords: ['crunch', 'sit-up', 'v-up', 'plank', 'russian twist'] },
+  gluteos: { tgExclude: ['glutes'], keywords: ['hip thrust', 'glute bridge', 'kickback'] },
+  cuadriceps: { tgExclude: ['quads'], keywords: ['squat', 'lunge', 'leg extension', 'sprint', 'jump'] },
+  rodillas: { bpExclude: [], keywords: ['squat', 'lunge', 'leg extension', 'jump', 'box jump', 'step up', 'step-up', 'pistol', 'hack squat'] },
+  isquiotibiales: { tgExclude: ['hamstrings'], keywords: ['deadlift', 'leg curl', 'good morning', 'nordic'] },
+  aductores: { tgExclude: ['adductors'], keywords: ['sumo', 'adductor', 'inner thigh'] },
+  gemelos_tobillos: { bpExclude: ['lower legs'], tgExclude: ['calves'], keywords: ['jump', 'box jump', 'calf raise', 'skip', 'ankle'] },
+}
+
+/**
+ * ¿Este ejercicio no se le da a alguien con estas lesiones? `patron` es el slot en el que se
+ * usaría (o el patrón curado del ejercicio). Los curados siguen las reglas finas de
+ * rutina-catalogo.js (patrón, equipo, palabras clave); el resto, además, las genéricas.
+ */
+export function bloqueadoPorLesiones(ex, lesiones = [], patron = PATRON_DE_ID[ex?.id]) {
+  if (!ex || !lesiones || !lesiones.length) return false
+  const nombre = ` ${String(ex.n || '').toLowerCase()} `
+  const curado = Boolean(PATRON_DE_ID[ex.id])
+  for (const lesion of lesiones) {
+    const fina = LESIONES[lesion]
+    if (fina) {
+      if (patron && fina.patrones?.includes(patron)) return true
+      if (patron && fina.equipo?.[patron]?.includes(ex.eq)) return true
+      if ((fina.keywords || []).some(kw => nombre.includes(kw))) return true
+    }
+    if (!curado) {
       const rule = LESION_RULES[lesion]
       if (!rule) continue
-      if (rule.bpExclude) rule.bpExclude.forEach(bp => bpSet.add(bp))
-      if (rule.tgExclude) rule.tgExclude.forEach(tg => tgSet.add(tg))
-      if (rule.keywords) rule.keywords.forEach(kw => kwList.push(kw.toLowerCase()))
+      if (rule.bpExclude?.includes(ex.bp)) return true
+      if (rule.tgExclude?.includes(ex.tg)) return true
+      if ((rule.keywords || []).some(kw => nombre.includes(kw))) return true
     }
   }
+  return false
+}
 
-  pool = pool.filter(ex => {
-    if (esEstiramiento(ex)) return false
-    if (bpSet.has(ex.bp)) return false
-    if (tgSet.has(ex.tg)) return false
-    const nLower = (ex.n || '').toLowerCase()
-    for (const kw of kwList) {
-      if (nLower.includes(kw)) return false
-    }
+// Panel admin (Fase 7): ¿avisar al asignar este ejercicio a un socio con esta lesión?
+export function ejercicioAfectaLesion(ex, lesion) {
+  if (!ex || !LESION_RULES[lesion]) return false
+  return bloqueadoPorLesiones(ex, [lesion])
+}
+
+// Lesiones (de las que tiene el socio) que este ejercicio afecta, según la regla de arriba.
+export function lesionesAfectadasPorEjercicio(ex, lesiones = []) {
+  return (lesiones || []).filter(lesion => ejercicioAfectaLesion(ex, lesion))
+}
+
+/* ============================================================
+   §5 — Pool seguro (respaldo y alternativas)
+   ============================================================ */
+function patronDeMovimiento(ex) {
+  if (PATRON_DE_ID[ex.id]) return PATRON_DE_ID[ex.id]
+  const n = (ex.n || '').toLowerCase()
+  const tg = (ex.tg || '').toLowerCase()
+  if (n.includes('pull-up') || n.includes('pull up') || n.includes('chin-up') || n.includes('chin up') || n.includes('pulldown')) return 'jalon'
+  if (n.includes('row')) return 'remo'
+  if (n.includes('overhead press') || n.includes('military press') || n.includes('shoulder press') || n.includes('arnold press') || n.includes('pike push')) return 'press_vertical'
+  if (n.includes('incline') && (n.includes('press') || n.includes('push'))) return 'press_inclinado'
+  if (n.includes('bench press') || n.includes('chest press') || n.includes('push-up') || n.includes('push up') || n.includes('dip')) return 'press_horizontal'
+  if (n.includes('leg press')) return 'prensa'
+  if (n.includes('squat')) return 'sentadilla'
+  if (n.includes('lunge') || n.includes('step-up') || n.includes('step up')) return 'zancada'
+  if (n.includes('deadlift') || n.includes('good morning')) return 'bisagra'
+  if (n.includes('hip thrust') || n.includes('glute bridge')) return 'hip_thrust'
+  if (n.includes('leg curl')) return 'curl_femoral'
+  if (n.includes('leg extension')) return 'extension_cuadriceps'
+  if (n.includes('hammer curl')) return 'martillo'
+  if (n.includes('curl')) return 'biceps'
+  if (n.includes('triceps extension') || n.includes('skull crusher') || n.includes('french press')) return 'triceps_overhead'
+  if (n.includes('pushdown')) return 'triceps'
+  if (n.includes('lateral raise')) return 'elevaciones_laterales'
+  if (n.includes('reverse fly') || n.includes('rear delt') || n.includes('face pull')) return 'deltoide_posterior'
+  if (n.includes('fly') || n.includes('crossover')) return 'aperturas'
+  if (n.includes('calf raise')) return 'gemelos'
+  if (n.includes('crunch') || n.includes('sit-up') || n.includes('leg raise') || n.includes('plank')) return 'core'
+  return `${tg}_${ex.bp}`
+}
+
+function jerarquiaScore(ex) {
+  const n = (ex.n || '').toLowerCase()
+  const eq = (ex.eq || '').toLowerCase()
+  let score = 5
+  if (['barbell', 'dumbbell', 'leverage machine', 'cable'].includes(eq)) score += 3
+  if (n.includes('squat') || n.includes('bench press') || n.includes('deadlift') || n.includes('overhead press') || n.includes('pull up') || n.includes('row')) score += 5
+  return score
+}
+
+function prepararPoolSeguro(exDB, equipamiento, preferenciaEjercicio, lesiones = [], dictEs = exerciseNamesEs) {
+  const conDict = dictEs && Object.keys(dictEs).length > 0
+  // Con preferencia por máquinas o pesos libres, el respaldo no recae en peso corporal (salvo
+  // en calistenia, donde es todo lo que hay). Los curados lo resuelven con su propio orden.
+  const sinPesoCorporal = equipamiento !== 'calistenia' && (preferenciaEjercicio === 'maquinas_poleas' || preferenciaEjercicio === 'pesos_libres')
+  const pool = exDB.filter(ex => {
+    if (!ex || esEstiramiento(ex) || esCardio(ex)) return false
+    if (!equipoPermitido(ex, equipamiento)) return false
+    if (sinPesoCorporal && ex.eq === 'body weight' && !PATRON_DE_ID[ex.id]) return false
+    if (conDict && !dictEs[ex.id]) return false
+    if (enListaNegra(ex)) return false
+    if (bloqueadoPorLesiones(ex, lesiones)) return false
     return true
   })
-
-  const noRaros = pool.filter(ex => !esRaro(ex.n))
+  const noRaros = pool.filter(ex => PATRON_DE_ID[ex.id] || !esRaro(ex.n))
   return noRaros.length >= 10 ? noRaros : pool
 }
 
-export const SLOTS_POR_TIEMPO = {
-  '30-40': { ejercicios: 4 },
-  '40-60': { ejercicios: 5 },
-  '60-90': { ejercicios: 6 },
-  '90+':   { ejercicios: 7 },
+function prepararPoolCardio(dbCompleta, equipamiento, lesiones) {
+  const bajoImpacto = lesiones.some(l => LESIONES[l]?.bajoImpacto)
+  const casa = equipamiento === 'calistenia' || equipamiento === 'solo_mancuernas'
+  const idx = new Map(dbCompleta.map(e => [e.id, e]))
+  return CARDIO_OPCIONES
+    .filter(o => (!casa || o.casa) && !(bajoImpacto && o.impacto))
+    .map(o => idx.get(o.id))
+    .filter(Boolean)
 }
 
-export const SERIES_POR_TIEMPO   = { '30-40': 3, '40-60': 3, '60-90': 4, '90+': 4 }
-export const MINUTOS_POR_TIEMPO  = { '30-40': 35, '40-60': 50, '60-90': 75, '90+': 100 }
-export const DESCANSO_SEG        = { '60': 60, '90-120': 105, '180+': 180 }
-export const CALENTAMIENTO_SEG = 300
-export const TRABAJO_SERIE_SEG = 40
-export const TRANSICION_SEG    = 60
-
-export function calcularCantidadEjercicios(tiempoPorSesion, descansoSegundos) {
-  const series      = SERIES_POR_TIEMPO[tiempoPorSesion] || 3
-  const sesionMin   = MINUTOS_POR_TIEMPO[tiempoPorSesion] || 50
-  const descanso    = DESCANSO_SEG[descansoSegundos] || 90
-  const disponible  = sesionMin * 60 - CALENTAMIENTO_SEG
-  const porEjercicio = series * (TRABAJO_SERIE_SEG + descanso) + TRANSICION_SEG
-  const maxCap      = tiempoPorSesion === '30-40' ? 4 : tiempoPorSesion === '40-60' ? 6 : tiempoPorSesion === '60-90' ? 7 : 8
-  return Math.max(3, Math.min(maxCap, Math.floor(disponible / porEjercicio)))
+function prepararPoolEstiramientos(dbCompleta, lesiones) {
+  const bloqueados = new Set(Object.values(ESTIRAMIENTOS).flat().filter(e => (e.noCon || []).some(l => lesiones.includes(l))).map(e => e.id))
+  return dbCompleta.filter(ex => {
+    if (bloqueados.has(ex.id)) return false
+    if (ESTIRAMIENTO_IDS.has(ex.id)) return true
+    const n = String(ex.n || '').toLowerCase()
+    return n.includes('stretch') && ex.eq === 'body weight' && !enListaNegra(ex) && !n.includes('assisted')
+  })
 }
 
-export function diasPiernaTorso(totalDias) {
-  const diasPierna = Math.max(1, Math.min(totalDias - 1, Math.round(totalDias * 0.6)))
-  return { diasPierna, diasTorso: totalDias - diasPierna }
+/* ============================================================
+   §6 — Selección por patrón
+   ============================================================ */
+// Nivel mínimo de cada curado (el más bajo si aparece en varios patrones).
+const NIVEL_DE_ID = {}
+for (const def of Object.values(PATRONES)) {
+  for (const [id, nivel] of def.candidatos) {
+    if (NIVEL_DE_ID[id] == null || nivelIndex(nivel) < nivelIndex(NIVEL_DE_ID[id])) NIVEL_DE_ID[id] = nivel
+  }
+}
+const nivelPermite = (id, nivel) => !NIVEL_DE_ID[id] || nivelIndex(NIVEL_DE_ID[id]) <= nivelIndex(nivel)
+
+function ordenCandidatos(def, ctx) {
+  const base = def.candidatos.map(([id]) => id)
+  const preferido = ctx.objetivo === 'fuerza' && ctx.nivel !== 'principiante' && def.fuerza
+    ? def.fuerza
+    : ctx.nivel === 'principiante' && def.principiante ? def.principiante : base
+  const ids = [...new Set([...preferido, ...base])]
+  const nivelMin = Object.fromEntries(def.candidatos)
+  return ids.filter(id => nivelIndex(nivelMin[id] || 'principiante') <= nivelIndex(ctx.nivel))
 }
 
-export function buildRoutineNames(split, totalDias) {
-  const nombres = []
-  if (split === 'fullbody') {
-    for (let i = 0; i < totalDias; i++) {
-      nombres.push({ rutinaNombre: `Full Body ${i + 1}`, tipo: 'fullbody' })
+// Orden estable según la preferencia de la encuesta: lo preferido primero y el peso corporal al
+// final (si hay otra cosa) cuando se eligió máquinas o pesos libres.
+function rankPreferencia(ex, preferencia) {
+  if (preferencia === 'maquinas_poleas') return EQ_MAQUINAS.includes(ex.eq) ? 0 : ex.eq === 'body weight' ? 2 : 1
+  if (preferencia === 'pesos_libres') return EQ_LIBRES.includes(ex.eq) ? 0 : ex.eq === 'body weight' ? 2 : 1
+  return 0
+}
+
+function candidatosCurados(patron, ctx, usadosDia) {
+  const def = PATRONES[patron]
+  if (!def) return []
+  const preferir = ctx.lesiones.flatMap(l => LESIONES[l]?.preferir?.[patron] || [])
+  const ids = ordenCandidatos(def, ctx)
+  const lista = ids
+    .map(id => ctx.idx[id])
+    .filter(ex => ex && !usadosDia.has(ex.id))
+    .filter(ex => equipoPermitido(ex, ctx.equipamiento))
+    .filter(ex => !ctx.conDict || ctx.dictEs[ex.id])
+    .filter(ex => !bloqueadoPorLesiones(ex, ctx.lesiones, patron))
+  const rank = ex => (preferir.includes(ex.id) ? -1 : 0) * 10 + rankPreferencia(ex, ctx.preferencia)
+  return lista
+    .map((ex, i) => ({ ex, i }))
+    .sort((a, b) => rank(a.ex) - rank(b.ex) || a.i - b.i)
+    .map(x => x.ex)
+}
+
+function candidatosRespaldo(patron, ctx, usadosDia, patronesDia) {
+  const def = PATRONES[patron]
+  if (!def) return []
+  const prefEq = ctx.preferencia === 'maquinas_poleas' ? EQ_MAQUINAS : ctx.preferencia === 'pesos_libres' ? EQ_LIBRES : []
+  const lista = ctx.poolSeguro.filter(ex => def.tgs.includes(ex.tg) && !usadosDia.has(ex.id) && nivelPermite(ex.id, ctx.nivel) && !bloqueadoPorLesiones(ex, ctx.lesiones, patron))
+  const sinRepetirPatron = lista.filter(ex => !patronesDia.has(patronDeMovimiento(ex)))
+  return [...(sinRepetirPatron.length ? sinRepetirPatron : lista)].sort((a, b) => {
+    const aUsado = ctx.usadosEnSemana.has(a.id) ? 1 : 0
+    const bUsado = ctx.usadosEnSemana.has(b.id) ? 1 : 0
+    if (aUsado !== bUsado) return aUsado - bUsado
+    const aPref = prefEq.includes(a.eq) ? 1 : 0
+    const bPref = prefEq.includes(b.eq) ? 1 : 0
+    if (aPref !== bPref) return bPref - aPref
+    return jerarquiaScore(b) - jerarquiaScore(a)
+  })
+}
+
+/**
+ * Ejercicio para un slot. Orden: curados del patrón → curados de sus sustitutos → respaldo del
+ * catálogo por grupo muscular. Las sesiones del mismo tipo reusan la elección (`ctx.memo`).
+ */
+function elegirParaSlot(slot, ctx, usadosDia, patronesDia, tipoDia, patronesPlantilla) {
+  const clave = `${tipoDia}|${slot.patron}|${slot.variante}`
+  const memo = ctx.memo.get(clave)
+  if (memo && !usadosDia.has(memo.ex.id)) return memo
+
+  // Un sustituto que ya tiene su propio slot en el día no se usa: sería repetir el patrón
+  // (dos prensas en un día de pierna para alguien con rodillas lesionadas).
+  const sustitutos = (PATRONES[slot.patron]?.sustitutos || []).filter(p => !patronesPlantilla.has(p))
+  const patrones = [slot.patron, ...sustitutos]
+  for (const [i, patron] of patrones.entries()) {
+    const lista = candidatosCurados(patron, ctx, usadosDia)
+    if (lista.length) {
+      // La variante B toma el 2º disponible, salvo que sea el único.
+      const ex = lista[Math.min(i === 0 ? slot.variante : 0, lista.length - 1)]
+      const r = { ex, patron }
+      ctx.memo.set(clave, r)
+      return r
     }
-  } else if (split === 'pierna_prioridad') {
-    const { diasPierna, diasTorso } = diasPiernaTorso(totalDias)
-    const legSessions = [
-      { rutinaNombre: 'Pierna — Cuádriceps', tipo: 'pierna_quads' },
-      { rutinaNombre: 'Pierna — Isquios/Glúteo', tipo: 'pierna_isquios_gluteo' },
-      { rutinaNombre: 'Pierna — Unilateral', tipo: 'pierna_unilateral' },
-    ]
-    let pIdx = 0
-    let pRestantes = diasPierna
-    let tRestantes = diasTorso
+  }
+  const respaldo = candidatosRespaldo(slot.patron, ctx, usadosDia, patronesDia)
+  if (respaldo.length) {
+    const r = { ex: respaldo[0], patron: slot.patron }
+    ctx.memo.set(clave, r)
+    return r
+  }
+  return null
+}
 
-    for (let i = 0; i < totalDias; i++) {
-      const preferTorso = tRestantes > 0 && (i % 2 === 1 || pRestantes === 0)
-      if (preferTorso) {
-        nombres.push({ rutinaNombre: 'Torso', tipo: 'torso' })
-        tRestantes--
-      } else {
-        const leg = legSessions[pIdx % legSessions.length]
-        nombres.push(leg)
-        pIdx++
-        pRestantes--
+function slotsDelDia(tipoDia, enfoque) {
+  const slots = (PLANTILLAS[tipoDia] || PLANTILLAS.fullbody_a).map(([patron, rango, variante = 0], orden) => ({ patron, rango, variante, orden }))
+  const extra = EXTRA_ENFOQUE[enfoque]
+  let extraAplicado = false
+  if (extra && extra.dias.includes(tipoDia)) {
+    const patron = extra.slots[tipoDia] || extra.slots.default
+    // Entra apenas después de los básicos del día, para que no lo saque el tiempo disponible.
+    slots.push({ patron, rango: 3.5, variante: slots.some(s => s.patron === patron) ? 1 : 0, orden: slots.length, extra: true })
+    extraAplicado = true
+  }
+  return { slots, extraAplicado }
+}
+
+/* ============================================================
+   §7 — Cardio y estiramientos
+   ============================================================ */
+const BAJO_IMPACTO = 'Por tu lesión, el cardio es sin impacto: bici, elíptico o caminata, sin trote ni saltos.'
+
+function cardioDelDia({ opcion, equipamiento, lesiones, tipoDia, hiitUsados, idx }) {
+  if (!opcion || opcion === 'sin_cardio') return null
+  const casa = equipamiento === 'calistenia' || equipamiento === 'solo_mancuernas'
+  const bajoImpacto = lesiones.some(l => LESIONES[l]?.bajoImpacto)
+  const sinHiit = lesiones.some(l => LESIONES[l]?.sinHiit)
+  const esPierna = DIAS_PIERNA.has(tipoDia)
+  const disponible = id => (idx[id] ? id : null)
+
+  const suave = (motivo) => {
+    const id = casa ? 'cardio_walk' : (disponible(CARDIO.suave.gym) || 'cardio_treadmill')
+    return { id, min: CARDIO.suave.min, note: CARDIO.suave.nota, ajuste: motivo || null }
+  }
+
+  if (opcion === 'suave_final') return suave()
+
+  if (opcion === 'hiit') {
+    if (esPierna) return suave('Los días de pierna el HIIT pasa a cardio suave: las piernas ya trabajaron mucho.')
+    if (sinHiit) return suave('Por tu lesión, el cardio es suave en vez de HIIT.')
+    if (hiitUsados.n >= 2) return null
+    hiitUsados.n++
+    if (casa) {
+      if (bajoImpacto) return { id: 'cardio_walk', min: 20, note: 'Por tu lesión, caminata a buen ritmo en vez de HIIT con saltos.', ajuste: BAJO_IMPACTO }
+      return { id: 'cardio_bodyweight_hiit', min: CARDIO.hiit.min, note: '15 min: 30 s de jumping jacks, burpees o escaladores y 30 s de pausa.' }
+    }
+    return { id: disponible(CARDIO.hiit.gym) || 'cardio_treadmill', min: CARDIO.hiit.min, note: CARDIO.hiit.nota }
+  }
+
+  if (opcion === 'caminar_correr') {
+    if (bajoImpacto) {
+      if (casa) return { id: 'cardio_walk', min: 30, note: 'Caminata a ritmo constante, sin trote (por tu lesión).', ajuste: BAJO_IMPACTO }
+      const id = disponible(CARDIO.bajoImpacto.alt) || disponible(CARDIO.bajoImpacto.gym) || 'cardio_bike'
+      return { id, min: 30, note: `${CARDIO.bajoImpacto.nota} 30 min a ritmo constante.`, ajuste: BAJO_IMPACTO }
+    }
+    if (casa) return { id: 'cardio_walk', min: CARDIO.caminar.min, note: CARDIO.caminar.nota }
+    return { id: CARDIO.caminar.gym, min: CARDIO.caminar.min, speed: CARDIO.caminar.speed, note: CARDIO.caminar.nota }
+  }
+  return null
+}
+
+/**
+ * Estiramientos del día: 1 por músculo trabajado (de los ejercicios realmente elegidos), los más
+ * trabajados primero. Nunca uno que la lesión desaconseja.
+ */
+function estiramientosDelDia(normales, ctx, maximo) {
+  const carga = {}
+  for (const n of normales) {
+    const m = musclesOf(ctx.idx[n.id] || n)
+    for (const slug in m) carga[slug] = (carga[slug] || 0) + m[slug] * (n.sets || 1)
+  }
+  // Sentadillas, prensas y zancadas acortan el flexor de cadera aunque no lo "trabajen".
+  if (carga.quadriceps) carga['hip-flexors'] = Math.max(carga['hip-flexors'] || 0, carga.quadriceps * 0.5)
+  // Primero el músculo principal de cada ejercicio, en el orden de la sesión; después el resto
+  // de lo trabajado, de más a menos carga.
+  const principales = [...new Set(normales.map(n => PATRONES[n.patron]?.musculo).filter(Boolean))]
+  const resto = Object.keys(carga).filter(slug => carga[slug] >= 2 && !principales.includes(slug)).sort((a, b) => carga[b] - carga[a])
+  const musculos = [...principales, ...resto].filter(slug => ESTIRAMIENTOS[slug])
+  const usados = new Set()
+  const out = []
+  for (const slug of musculos) {
+    if (out.length >= maximo) break
+    const st = ESTIRAMIENTOS[slug].find(e => !usados.has(e.id) && ctx.idxCompleto[e.id] && !(e.noCon || []).some(l => ctx.lesiones.includes(l)))
+    if (!st) continue
+    usados.add(st.id)
+    out.push({
+      id: st.id,
+      sets: 1,
+      sec: st.lados ? 30 : 45,
+      mode: 'time',
+      weight: 0,
+      note: st.lados ? 'Por lado' : undefined,
+      isStretch: true,
+      musculo: slug,
+    })
+  }
+  return out
+}
+
+/* ============================================================
+   §8 — Función principal
+   ============================================================ */
+function minutosDelDia(ejercicios, descanso) {
+  let seg = CALENTAMIENTO_SEG
+  for (const e of ejercicios) {
+    if (e.isCardio) seg += (e.min || 0) * 60
+    else if (e.isStretch) seg += (e.sec || 0) * (e.note === 'Por lado' ? 2 : 1) + 15
+    else {
+      const rest = e.tipo === 'aislamiento' ? Math.min(descanso, DESCANSO_AISLAMIENTO_MAX) : descanso
+      seg += (e.sets || 3) * (TRABAJO_SERIE_SEG + rest) + TRANSICION_SEG + (e.warmupSets || 0) * 60
+    }
+  }
+  return Math.round(seg / 60 / 5) * 5
+}
+
+function seriesPorMusculo(dias, idx) {
+  const total = {}
+  for (const d of dias) {
+    for (const e of d.ejercicios.filter(x => x.isNormal)) {
+      const m = musclesOf(idx[e.id] || e)
+      for (const slug in m) total[slug] = (total[slug] || 0) + m[slug] * (e.sets || 0)
+    }
+  }
+  return Object.fromEntries(Object.entries(total).map(([k, v]) => [k, Math.round(v)]).filter(([, v]) => v > 0))
+}
+
+const GRANDES = ['chest', 'upper-back', 'quadriceps', 'hamstring', 'gluteal', 'deltoids']
+
+function diasSeguidos(indices) {
+  const set = new Set(indices)
+  return indices.some(d => set.has((d + 1) % 7))
+}
+
+export function generarRutina(respuestas, exerciseDB, dictEs = exerciseNamesEs) {
+  const {
+    objetivo: objetivoRaw = 'fitness_general',
+    tieneLesion = false,
+    lesiones: lesionesRaw = [],
+    diasSeleccionados = [],
+    diasPorSemana: rawDias,
+    tiempoPorSesion = '40-60',
+    descansoSegundos = '90-120',
+    nivel: nivelRaw = 'intermedio',
+    equipamiento = 'gimnasio_completo',
+    preferenciaEjercicio = 'sin_preferencia',
+    enfoque = 'balance',
+    cardio = 'sin_cardio',
+    splitPreferido,
+    movilidadEstiramientos = false,
+    incluirMovilidad = false,
+    metricaEsfuerzo,
+    tipoProgresion,
+  } = respuestas
+  const objetivo = ESQUEMAS_REPS[objetivoRaw] ? objetivoRaw : 'fitness_general'
+  const nivel = ['principiante', 'intermedio', 'avanzado'].includes(nivelRaw) ? nivelRaw : 'intermedio'
+  const lesiones = tieneLesion || (lesionesRaw || []).length ? (lesionesRaw || []).filter(l => LESIONES[l] || LESION_RULES[l]) : []
+
+  let diasIndices = []
+  if (Array.isArray(diasSeleccionados) && diasSeleccionados.length > 0) {
+    const indices = diasSeleccionados.map(d => DAY_MAP[String(d).toLowerCase()]).filter(x => x !== undefined)
+    diasIndices = WEEK_ORDER.filter(w => indices.includes(w))
+  }
+  const totalDias = diasIndices.length > 0 ? diasIndices.length : (rawDias || 3)
+
+  const avisos = []
+  const { split, splitAjustado, avisoFrecuencia } = derivarSplit(nivel, totalDias, splitPreferido, enfoque)
+  if (avisoFrecuencia) avisos.push(avisoFrecuencia)
+  const enfoqueEfectivo = enfoque === 'piernas_gluteos' || split === 'pierna_prioridad' ? 'balance' : enfoque
+
+  const dbCompleta = [
+    ...exerciseDB,
+    ...CUSTOM_CARDIO_EXERCISES.filter(c => !exerciseDB.some(e => e.id === c.id)),
+    ...SYSTEM_EXERCISES.filter(c => !exerciseDB.some(e => e.id === c.id)),
+  ]
+  const idxCompleto = Object.fromEntries(dbCompleta.map(e => [e.id, e]))
+  const poolSeguro = prepararPoolSeguro(exerciseDB, equipamiento, preferenciaEjercicio, lesiones, dictEs)
+  const conDict = Boolean(dictEs && Object.keys(dictEs).length > 0)
+  const ctx = {
+    objetivo, nivel, equipamiento, preferencia: preferenciaEjercicio, lesiones, dictEs, conDict,
+    idx: Object.fromEntries(exerciseDB.map(e => [e.id, e])), idxCompleto, poolSeguro,
+    usadosEnSemana: new Set(), memo: new Map(),
+  }
+
+  const tieneMovilidad = movilidadEstiramientos || incluirMovilidad
+  const extrasMin = (CARDIO_MIN[cardio] || 0) + (tieneMovilidad ? ESTIRAMIENTOS_MIN : 0)
+  const nSlotsBase = calcularCantidadEjercicios(tiempoPorSesion, descansoSegundos, nivel, objetivo, extrasMin)
+  const descanso = DESCANSO_SEG[descansoSegundos] || 105
+  const esquema = ESQUEMAS_REPS[objetivo]
+  const [seriesComp, seriesAisl] = SERIES[objetivo][nivel]
+  const seriesFijas = respuestas.defaultSets !== undefined && respuestas.defaultSets !== null ? Number(respuestas.defaultSets) : null
+  const politica = politicaProgresion(tipoProgresion)
+  const defaultIntensifier = respuestas.defaultIntensifier || { type: 'none' }
+  const intensificador = defaultIntensifier?.type && defaultIntensifier.type !== 'none' ? defaultIntensifier : undefined
+  const hiitUsados = { n: 0 }
+  const ajustesCardio = new Set()
+
+  const routineConfigs = buildRoutineNames(split, totalDias)
+  const dias = []
+
+  for (let i = 0; i < routineConfigs.length; i++) {
+    const { rutinaNombre, tipo } = routineConfigs[i]
+    const diaSemanaIdx = diasIndices[i] !== undefined ? diasIndices[i] : WEEK_ORDER[i % 7]
+    const diaSemanaNombre = DAY_NAMES_ES[diaSemanaIdx]
+
+    // 1. Fuerza: los slots de mayor prioridad que entran en el tiempo, en el orden de la plantilla.
+    const { slots, extraAplicado } = slotsDelDia(tipo, enfoqueEfectivo)
+    const nSlots = Math.min(8, nSlotsBase + (extraAplicado ? 1 : 0))
+    const usadosDia = new Set()
+    const patronesDia = new Set()
+    const elegidos = []
+    const patronesPlantilla = new Set(slots.map(s => s.patron))
+    for (const slot of [...slots].sort((a, b) => a.rango - b.rango)) {
+      if (elegidos.length >= nSlots) break
+      const r = elegirParaSlot(slot, ctx, usadosDia, patronesDia, tipo, patronesPlantilla)
+      if (!r) continue
+      usadosDia.add(r.ex.id)
+      patronesDia.add(patronDeMovimiento(r.ex))
+      ctx.usadosEnSemana.add(r.ex.id)
+      elegidos.push({ ...r, slot })
+    }
+    const tipoDe = r => PATRONES[r.patron]?.tipo || 'compuesto'
+    elegidos.sort((a, b) => (tipoDe(a) === 'compuesto' ? 0 : 1) - (tipoDe(b) === 'compuesto' ? 0 : 1) || a.slot.orden - b.slot.orden)
+
+    let compuestosConCalentamiento = 0
+    let compuestosVistos = 0
+    const ejerciciosArray = elegidos.map(({ ex, patron }, j) => {
+      const tipoEj = tipoDe({ patron })
+      // En fuerza, pesado (3–6) solo en los 2 básicos del día; el resto de los compuestos son
+      // accesorios en rango de hipertrofia, si no la sesión se vuelve eterna y poco productiva.
+      const accesorio = objetivo === 'fuerza' && tipoEj === 'compuesto' && compuestosVistos >= 2
+      if (tipoEj === 'compuesto') compuestosVistos++
+      const [lo, hi, fijo] = accesorio ? ESQUEMAS_REPS.hipertrofia.compuesto : esquema[tipoEj]
+      const sets = seriesFijas || (accesorio ? 3 : tipoEj === 'compuesto' ? seriesComp : seriesAisl)
+      const pesoCorporal = ex.eq === 'body weight'
+      const timed = ex.id === 'sys_plank'
+      const out = {
+        id: ex.id,
+        exerciseId: ex.id,
+        sets,
+        series: sets,
+        weight: 0,
+        isNormal: true,
+        patron,
+        tipo: tipoEj,
+        motivo: PATRONES[patron]?.motivo,
+        metrica: metricaEsfuerzo,
+        valorEsfuerzo: VALOR_ESFUERZO[metricaEsfuerzo] || null,
+        progresion: tipoProgresion,
       }
+      if (timed) {
+        Object.assign(out, { mode: 'time', sec: nivel === 'principiante' ? 30 : 45, reps: 0, repeticiones: `${nivel === 'principiante' ? 30 : 45} s` })
+      } else if (pesoCorporal) {
+        // Peso corporal: la progresión sube reps hasta el techo y después suma una serie.
+        Object.assign(out, { reps: lo, repsMax: hi, repeticiones: `${lo}-${hi}` })
+      } else if (politica === 'double') {
+        // Doble progresión: `reps` es el techo del rango y `repsMin` el piso (progression.js).
+        Object.assign(out, { reps: hi, repsMin: lo, repeticiones: `${lo}-${hi}` })
+      } else {
+        Object.assign(out, { reps: fijo, repeticiones: `${lo}-${hi}` })
+      }
+      if (tipoEj === 'compuesto' && !pesoCorporal && !timed && compuestosConCalentamiento < 2) {
+        out.warmupSets = compuestosConCalentamiento === 0 ? 2 : 1
+        compuestosConCalentamiento++
+      }
+      if (intensificador && tipoEj === 'aislamiento' && !pesoCorporal && !timed) out.intensifier = intensificador
+      const notas = []
+      if (j === 0) notas.push('Antes de empezar: 5 min de cardio suave para entrar en calor.')
+      for (const l of lesiones) {
+        const n = LESIONES[l]?.notaEjercicio?.[patron]
+        if (n && !notas.includes(n)) notas.push(n)
+      }
+      if (notas.length) out.note = notas.join(' ')
+      return out
+    })
+
+    // 2. Cardio (si aplica)
+    const ejCardio = cardioDelDia({ opcion: cardio, equipamiento, lesiones, tipoDia: tipo, hiitUsados, idx: idxCompleto })
+    if (ejCardio) {
+      const { ajuste, ...c } = ejCardio
+      if (ajuste) ajustesCardio.add(ajuste)
+      ejerciciosArray.push({ ...c, sets: 1, mode: 'cardio', isCardio: true })
     }
-  } else if (split === 'torso_pierna') {
-    for (let i = 0; i < totalDias; i++) {
-      const vuelta = Math.floor(i / 2)
-      const sufijo = String.fromCharCode(65 + vuelta)
-      const esTorso = i % 2 === 0
-      nombres.push({ rutinaNombre: esTorso ? `Torso ${sufijo}` : `Pierna ${sufijo}`, tipo: esTorso ? 'torso' : 'pierna' })
+
+    // 3. Estiramientos de lo que se entrenó hoy
+    if (tieneMovilidad) {
+      const maximo = nSlots <= 4 ? 4 : 5
+      ejerciciosArray.push(...estiramientosDelDia(ejerciciosArray.filter(e => e.isNormal), ctx, maximo))
     }
-  } else {
-    const ciclo = [{ base: 'Push', tipo: 'push' }, { base: 'Pull', tipo: 'pull' }, { base: 'Legs', tipo: 'legs' }]
-    for (let i = 0; i < totalDias; i++) {
-      const idx = i % 3
-      const vuelta = Math.floor(i / 3)
-      const c = ciclo[idx]
-      nombres.push({ rutinaNombre: vuelta === 0 ? c.base : `${c.base} ${vuelta + 1}`, tipo: c.tipo })
-    }
+
+    dias.push({
+      diaLabel: `${diaSemanaNombre} — ${rutinaNombre}`,
+      rutinaNombre,
+      diaSemana: diaSemanaIdx,
+      plantilla: tipo,
+      minutos: minutosDelDia(ejerciciosArray, descanso),
+      ejercicios: ejerciciosArray,
+      ex: ejerciciosArray,
+    })
   }
-  return nombres
+
+  // Avisos del plan completo.
+  if (cardio === 'hiit' && hiitUsados.n >= 2 && dias.length > 2) {
+    avisos.push('El HIIT quedó en 2 días por semana: más seguido le saca recuperación a la fuerza.')
+  }
+  for (const nota of ajustesCardio) if (!avisos.includes(nota)) avisos.push(nota)
+  if (split === 'fullbody' && totalDias > 1 && diasSeguidos(diasIndices)) {
+    avisos.push('Elegiste días seguidos: con Full Body conviene dejar un día de descanso entre sesiones. Si no podés, bajá el peso el segundo día.')
+  }
+  const tope = { '30-40': 40, '40-60': 60, '60-90': 90, '90+': 120 }[tiempoPorSesion] || 60
+  const maxMin = Math.max(0, ...dias.map(d => d.minutos))
+  if (maxMin > tope + 10) {
+    avisos.push(`Algunas sesiones llegan a ~${maxMin} min, más de lo que elegiste. Si no te alcanza, bajá el descanso o hacé el cardio en otro momento.`)
+  }
+  const series = seriesPorMusculo(dias, idxCompleto)
+  const [volMin, volMax] = VOLUMEN_OBJETIVO[nivel]
+  const grandes = GRANDES.map(m => series[m] || 0).filter(v => v > 0).sort((a, b) => a - b)
+  const mediana = grandes.length ? grandes[Math.floor(grandes.length / 2)] : 0
+  if (grandes.length && mediana < volMin * 0.7) {
+    avisos.push('Con estos días y este tiempo, el volumen semanal queda bajo para tu nivel. Si podés, sumá un día o más tiempo por sesión.')
+  }
+
+  const [progNombre, progExplicacion] = NOMBRE_PROGRESION[politica]
+  const resultado = {
+    version: 6,
+    splitAsignado: split,
+    splitAjustado,
+    poolSeguro,
+    poolCardio: prepararPoolCardio(dbCompleta, equipamiento, lesiones),
+    poolEstiramientos: prepararPoolEstiramientos(dbCompleta, lesiones),
+    usadosEnSemana: ctx.usadosEnSemana,
+    parametrosGlobales: {
+      descansoRecomendado: descansoSegundos === '60' ? '60 segundos entre series' : descansoSegundos === '180+' ? '180+ segundos (fuerza)' : '90-120 segundos entre series',
+      tipoProgresion: progNombre,
+      metricaEsfuerzo: metricaEsfuerzo === 'rpe' ? 'RPE 8-9' : 'RIR 1-2 (dejar 1 a 2 reps en recámara)',
+    },
+    resumen: {
+      split,
+      dias: dias.map(d => ({ diaSemana: d.diaSemana, rutinaNombre: d.rutinaNombre, minutos: d.minutos, ejercicios: d.ejercicios.filter(e => e.isNormal).length })),
+      series,
+      volumenObjetivo: [volMin, volMax],
+      reps: {
+        compuesto: `${esquema.compuesto[0]}–${esquema.compuesto[1]}`,
+        aislamiento: `${esquema.aislamiento[0]}–${esquema.aislamiento[1]}`,
+      },
+      descanso: { compuestos: descanso, aislamiento: Math.min(descanso, DESCANSO_AISLAMIENTO_MAX) },
+      progresion: { nombre: progNombre, explicacion: progExplicacion },
+      esfuerzo: metricaEsfuerzo === 'rpe'
+        ? { nombre: 'RPE 8–9', explicacion: 'En una escala de 1 a 10, cada serie termina en 8 o 9: te quedan 1 o 2 reps antes de no poder más.' }
+        : { nombre: 'RIR 1–2', explicacion: 'Cada serie termina cuando te quedan 1 o 2 reps en reserva antes de no poder más.' },
+      lesiones: lesiones.filter(l => LESIONES[l]).map(l => ({ zona: l, nota: LESIONES[l].nota })),
+      avisos,
+    },
+    dias,
+  }
+
+  if (avisos.length > 0) {
+    resultado.mensajeAjuste = avisos.join(' · ')
+    resultado.avisoFrecuencia = avisoFrecuencia || avisos[0]
+  }
+
+  if (lesiones.length > 0) {
+    resultado.disclaimer = 'Rutina adaptada a tus lesiones. Si sentís dolor agudo durante cualquier ejercicio, detené la actividad y consultá a un profesional de salud antes de continuar.'
+    resultado.resumen.disclaimer = resultado.disclaimer
+  }
+
+  return resultado
 }
 
-function calcularDistribucionMuscular(tipoDia, nSlots, enfoque) {
-  let cuotas = {}
-  if (tipoDia === 'pierna_quads') {
-    cuotas = { quads: Math.round(nSlots * 0.5), glutes: Math.round(nSlots * 0.2), hamstrings: Math.round(nSlots * 0.15), calves: Math.max(1, Math.round(nSlots * 0.15)) }
-  } else if (tipoDia === 'pierna_isquios_gluteo') {
-    cuotas = { hamstrings: Math.round(nSlots * 0.4), glutes: Math.round(nSlots * 0.35), quads: Math.round(nSlots * 0.15), calves: Math.max(1, Math.round(nSlots * 0.1)) }
-  } else if (tipoDia === 'pierna_unilateral') {
-    cuotas = { glutes: Math.round(nSlots * 0.4), quads: Math.round(nSlots * 0.2), hamstrings: Math.round(nSlots * 0.2), abductors: Math.max(1, Math.round(nSlots * 0.1)), adductors: Math.max(1, Math.round(nSlots * 0.1)) }
-  } else if (tipoDia === 'push') {
-    cuotas = { pectorals: Math.round(nSlots * 0.5), delts: Math.round(nSlots * 0.33), triceps: Math.max(1, Math.round(nSlots * 0.17)) }
-  } else if (tipoDia === 'pull') {
-    cuotas = { lats: Math.round(nSlots * 0.35), 'upper back': Math.round(nSlots * 0.25), biceps: Math.round(nSlots * 0.25), traps: Math.max(1, Math.round(nSlots * 0.15)) }
-  } else if (tipoDia === 'legs') {
-    cuotas = { quads: Math.round(nSlots * 0.4), hamstrings: Math.round(nSlots * 0.3), glutes: Math.round(nSlots * 0.15), calves: Math.max(1, Math.round(nSlots * 0.15)) }
-  } else if (tipoDia === 'torso') {
-    cuotas = { pectorals: Math.round(nSlots * 0.3), lats: Math.round(nSlots * 0.3), delts: Math.round(nSlots * 0.2), biceps: Math.round(nSlots * 0.1), triceps: Math.round(nSlots * 0.1) }
-  } else if (tipoDia === 'pierna') {
-    cuotas = { quads: Math.round(nSlots * 0.4), hamstrings: Math.round(nSlots * 0.3), glutes: Math.round(nSlots * 0.15), calves: Math.max(1, Math.round(nSlots * 0.15)) }
-  } else {
-    cuotas = { pectorals: 1, lats: 1, quads: 1, hamstrings: 1, delts: 1, abs: Math.max(0, nSlots - 5) }
+export function rutinaGeneradaToRoutines(rutinaGenerada, respuestas = {}) {
+  const routines = rutinaGenerada.dias.map((dia, i) => {
+    const ejercicios = (dia.ejercicios || dia.ex || []).map(ej => {
+      const out = {
+        id: ej.id || ej.exerciseId,
+        sets: ej.sets || ej.series || 3,
+        reps: ej.reps ?? (ej.repeticiones ? parseInt(ej.repeticiones.split('-')[0], 10) : 10),
+        weight: ej.weight || 0,
+        mode: ej.mode,
+        min: ej.min,
+        sec: ej.sec,
+        speed: ej.speed,
+        note: ej.note,
+        isNormal: ej.isNormal,
+        isCardio: ej.isCardio,
+        isStretch: ej.isStretch,
+      }
+      if (ej.repsMin) out.repsMin = ej.repsMin
+      if (ej.repsMax) out.repsMax = ej.repsMax
+      if (ej.warmupSets) out.warmupSets = ej.warmupSets
+      if (ej.intensifier) out.intensifier = ej.intensifier
+      for (const k of Object.keys(out)) if (out[k] === undefined) delete out[k]
+      return out
+    })
+
+    return {
+      id: 'gen_' + Date.now() + '_' + i,
+      name: dia.rutinaNombre,
+      emoji: dia.rutinaNombre.includes('Legs') || dia.rutinaNombre.includes('Pierna') ? 'legs' : dia.rutinaNombre.includes('Pull') ? 'pullup' : 'dumbbell',
+      ex: ejercicios,
+    }
+  })
+
+  const week = {}
+  for (let i = 0; i < rutinaGenerada.dias.length; i++) {
+    const diaSemana = rutinaGenerada.dias[i].diaSemana
+    if (diaSemana !== undefined && routines[i]) {
+      week[diaSemana] = routines[i].id
+    }
   }
 
-  if (enfoque === 'piernas_gluteos' && !['pierna_quads', 'pierna_isquios_gluteo', 'pierna_unilateral'].includes(tipoDia)) {
-    if (cuotas.quads) cuotas.quads = Math.ceil(cuotas.quads * 1.3)
-    if (cuotas.glutes) cuotas.glutes = Math.ceil(cuotas.glutes * 1.3)
-  } else if (enfoque === 'torso_brazos') {
-    if (cuotas.pectorals) cuotas.pectorals = Math.ceil(cuotas.pectorals * 1.3)
-    if (cuotas.lats) cuotas.lats = Math.ceil(cuotas.lats * 1.3)
-    if (cuotas.biceps) cuotas.biceps = Math.ceil(cuotas.biceps * 1.3)
-    if (cuotas.triceps) cuotas.triceps = Math.ceil(cuotas.triceps * 1.3)
-  }
-
-  const targetGroups = []
-  for (const [tg, count] of Object.entries(cuotas)) {
-    for (let c = 0; c < count; c++) targetGroups.push(tg)
-  }
-  return targetGroups.slice(0, nSlots)
+  return { routines, week }
 }
 
+/* ============================================================
+   §9 — Alternativas para "Reemplazar"
+   ============================================================ */
 export const TG_SUSTITUTO = {
   quads: ['hamstrings', 'glutes', 'calves'],
   hamstrings: ['glutes', 'quads', 'calves'],
@@ -356,356 +932,39 @@ export function candidatosConSustitucion(poolSeguro, tg, usadosEsteDia) {
   return poolSeguro.filter(e => !usadosEsteDia.has(e.id))
 }
 
-function seleccionarEjerciciosNormales(poolSeguro, targetGroups, nSlots, preferenciaEjercicio, usadosEnSemana) {
-  const PREF_EQ = {
-    maquinas_poleas: ['leverage machine', 'cable', 'smith machine'],
-    pesos_libres:    ['barbell', 'dumbbell', 'olympic barbell', 'kettlebell', 'ez barbell'],
-    sin_preferencia: [],
-  }[preferenciaEjercicio] || []
-
-  const seleccionados = []
-  const usadosEsteDia = new Set()
-  const patronesUsadosEsteDia = new Set()
-
-  for (const tg of targetGroups) {
-    if (seleccionados.length >= nSlots) break
-
-    const candidatos = candidatosConSustitucion(poolSeguro, tg, usadosEsteDia)
-
-    const sinPatronDuplicado = candidatos.filter(e => !patronesUsadosEsteDia.has(patronDeMovimiento(e)))
-    const poolFiltrado = sinPatronDuplicado.length > 0 ? sinPatronDuplicado : candidatos
-
-    const ordenado = [...poolFiltrado].sort((a, b) => {
-      const aUsado = usadosEnSemana.has(a.id) ? 1 : 0
-      const bUsado = usadosEnSemana.has(b.id) ? 1 : 0
-      if (aUsado !== bUsado) return aUsado - bUsado
-
-      const aPref = PREF_EQ.includes(a.eq) ? 1 : 0
-      const bPref = PREF_EQ.includes(b.eq) ? 1 : 0
-      if (aPref !== bPref) return bPref - aPref
-
-      return jerarquiaScore(b) - jerarquiaScore(a)
-    })
-
-    if (ordenado.length === 0) continue
-
-    const elegido = ordenado[0]
-    seleccionados.push(elegido)
-    usadosEsteDia.add(elegido.id)
-    patronesUsadosEsteDia.add(patronDeMovimiento(elegido))
-    usadosEnSemana.add(elegido.id)
-  }
-
-  return seleccionados
-}
-
-/* ============================================================
-   Requerimiento 1: Inyección de cardio con nota formateada
-   ============================================================ */
-function seleccionarCardio(cardioOption, equipamiento) {
-  if (!cardioOption || cardioOption === 'sin_cardio') return null
-  const isCalistenia = equipamiento === 'calistenia'
-
-  if (cardioOption === 'suave_final') {
-    return {
-      id: 'cardio_treadmill',
-      sets: 1,
-      min: 20,
-      mode: 'cardio',
-      speed: 6.5,
-      note: isCalistenia ? '15-20 min • Caminata o trote suave en exterior' : '15-20 min • Velocidad sugerida: 6.0 - 7.5 km/h',
-    }
-  }
-
-  if (cardioOption === 'hiit') {
-    if (isCalistenia) {
-      return {
-        id: 'cardio_bodyweight_hiit',
-        sets: 1,
-        min: 15,
-        mode: 'cardio',
-        speed: 8,
-        note: '15 min • Intervalos de peso corporal (30s jumping jacks / burpees / mountain climbers x 30s descanso)',
-      }
-    }
-    return {
-      id: 'cardio_stairmaster',
-      sets: 1,
-      min: 15,
-      mode: 'cardio',
-      speed: 8,
-      note: '15 min • Resistencia moderada (30s trabajo / 30s descanso)',
-    }
-  }
-
-  if (cardioOption === 'caminar_correr') {
-    return {
-      id: 'cardio_treadmill',
-      sets: 1,
-      min: 30,
-      mode: 'cardio',
-      speed: 8,
-      note: isCalistenia ? '30 min • Caminata o trote a ritmo constante' : '30 min • Cinta a ritmo constante y moderado',
-    }
-  }
-
-  return null
-}
-
-/* ============================================================
-   Requerimiento 2: Estiramientos estrictamente coherentes
-   ============================================================ */
-const ESTIRAMIENTOS_POR_GRUPO = {
-  pectorals: ['1716', '1405'],
-  delts: ['1405', '1716'],
-  triceps: ['0018'],
-  lats: ['1405'],
-  'upper back': ['1405'],
-  biceps: ['1405'],
-  quads: ['1512', '1713', '1714'],
-  hamstrings: ['1708', '1709', '1710', '0016'],
-  glutes: ['1709', '1710', '1712'],
-  calves: ['1708', '1368'],
-  adductors: ['1712'],
-}
-
-function seleccionarEstiramientos(movilidadOption, targetGroups, exerciseDB) {
-  if (!movilidadOption) return []
-
-  const idsRecomendados = new Set()
-  for (const tg of targetGroups) {
-    const ids = ESTIRAMIENTOS_POR_GRUPO[tg] || []
-    ids.forEach(id => idsRecomendados.add(id))
-  }
-
-  let candidatos = exerciseDB.filter(e => idsRecomendados.has(e.id))
-
-  if (candidatos.length < 3) {
-    const mapaMusculos = new Set(targetGroups)
-    const porMusculo = exerciseDB.filter(e => {
-      const n = (e.n || '').toLowerCase()
-      const esSt = n.includes('stretch') || n.includes('mobility') || n.includes('yoga')
-      if (!esSt) return false
-      return mapaMusculos.has(e.tg) || mapaMusculos.has(e.bp)
-    })
-    candidatos = [...candidatos, ...porMusculo]
-  }
-
-  const unicos = []
-  const idsUsados = new Set()
-  for (const c of candidatos) {
-    if (!idsUsados.has(c.id)) {
-      unicos.push(c)
-      idsUsados.add(c.id)
-    }
-    if (unicos.length >= 4) break
-  }
-
-  return unicos.slice(0, 4).map(e => ({
-    id: e.id,
-    sets: 1,
-    sec: 45,
-    mode: 'time',
-    weight: 0,
-    note: 'Estiramiento recomendado para los músculos de hoy',
-  }))
-}
-
-export const VALOR_ESFUERZO = {
-  rir: '1-2',
-  rpe: '8-9',
-}
-
-/* ============================================================
-   Función principal — generarRutina (v5)
-   ============================================================ */
-export function generarRutina(respuestas, exerciseDB, dictEs = exerciseNamesEs) {
-  const {
-    objetivo = 'fitness_general',
-    tieneLesion = false,
-    lesiones = [],
-    diasSeleccionados = [],
-    diasPorSemana: rawDias,
-    tiempoPorSesion = '40-60',
-    descansoSegundos = '90-120',
-    nivel = 'intermedio',
-    equipamiento = 'gimnasio_completo',
-    preferenciaEjercicio = 'sin_preferencia',
-    enfoque = 'balance',
-    cardio = 'sin_cardio',
-    splitPreferido,
-    movilidadEstiramientos = false,
-    incluirMovilidad = false,
-    metricaEsfuerzo,
-    tipoProgresion,
-  } = respuestas
-
-  let diasIndices = []
-  if (Array.isArray(diasSeleccionados) && diasSeleccionados.length > 0) {
-    const indices = diasSeleccionados.map(d => DAY_MAP[d.toLowerCase()]).filter(x => x !== undefined)
-    diasIndices = WEEK_ORDER.filter(w => indices.includes(w))
-  }
-  const totalDias = diasIndices.length > 0 ? diasIndices.length : (rawDias || 3)
-
-  const mensajesAjuste = []
-  const { split, splitAjustado, avisoFrecuencia } = derivarSplit(nivel, totalDias, splitPreferido, enfoque)
-  if (avisoFrecuencia) mensajesAjuste.push(avisoFrecuencia)
-
-  const poolSeguro = prepararPoolSeguro(exerciseDB, equipamiento, preferenciaEjercicio, tieneLesion ? lesiones : [], dictEs)
-  const nSlotsNormales = calcularCantidadEjercicios(tiempoPorSesion, descansoSegundos)
-  const nSeries = respuestas.defaultSets !== undefined ? Number(respuestas.defaultSets) : 3
-  const defaultIntensifier = respuestas.defaultIntensifier || { type: 'none' }
-  const reps = objetivo === 'fuerza' ? '3-6' : objetivo === 'perder_grasa' ? '8-15' : '8-12'
-
-  const routineConfigs = buildRoutineNames(split, totalDias)
-  const usadosEnSemana = new Set()
-  const dias = []
-  const tieneMovilidad = movilidadEstiramientos || incluirMovilidad
-
-  const dbCompleta = exerciseDB.some(e => e.id === 'cardio_treadmill')
-    ? exerciseDB
-    : [...exerciseDB, ...CUSTOM_CARDIO_EXERCISES]
-
-  for (let i = 0; i < routineConfigs.length; i++) {
-    const { rutinaNombre, tipo } = routineConfigs[i]
-    const diaSemanaIdx = diasIndices[i] !== undefined ? diasIndices[i] : WEEK_ORDER[i % 7]
-    const diaSemanaNombre = DAY_NAMES_ES[diaSemanaIdx]
-    const diaLabel = `${diaSemanaNombre} — ${rutinaNombre}`
-
-    // 1. Ejercicios de Fuerza/Hipertrofia
-    const targetGroups = calcularDistribucionMuscular(tipo, nSlotsNormales, enfoque)
-    const normales = seleccionarEjerciciosNormales(poolSeguro, targetGroups, nSlotsNormales, preferenciaEjercicio, usadosEnSemana)
-
-    const ejIntensifier = (defaultIntensifier && defaultIntensifier.type && defaultIntensifier.type !== 'none') ? defaultIntensifier : undefined
-    const ejerciciosArray = normales.map(ex => ({
-      id: ex.id,
-      sets: nSeries,
-      reps: parseInt(reps.split('-')[0], 10) || 10,
-      weight: 0,
-      exerciseId: ex.id,
-      series: nSeries,
-      repeticiones: reps,
-      isNormal: true,
-      metrica: metricaEsfuerzo,
-      valorEsfuerzo: VALOR_ESFUERZO[metricaEsfuerzo] || null,
-      progresion: tipoProgresion,
-      ...(ejIntensifier ? { intensifier: ejIntensifier } : {}),
-    }))
-
-    // 2. Cardio (si aplica)
-    const ejCardio = seleccionarCardio(cardio, equipamiento)
-    if (ejCardio) {
-      ejerciciosArray.push({ ...ejCardio, isCardio: true })
-    }
-
-    // 3. Estiramientos (coincidentes con los músculos trabajados)
-    const ejEstiramientos = seleccionarEstiramientos(tieneMovilidad, targetGroups, dbCompleta)
-    if (ejEstiramientos.length > 0) {
-      ejEstiramientos.forEach(st => ejerciciosArray.push({ ...st, isStretch: true }))
-    }
-
-    const dia = {
-      diaLabel,
-      rutinaNombre,
-      diaSemana: diaSemanaIdx,
-      ejercicios: ejerciciosArray,
-      ex: ejerciciosArray,
-    }
-
-    dias.push(dia)
-  }
-
-  const resultado = {
-    splitAsignado: split,
-    splitAjustado,
-    poolSeguro,
-    usadosEnSemana,
-    parametrosGlobales: {
-      descansoRecomendado: descansoSegundos === '60' ? '60 segundos entre series' : descansoSegundos === '180+' ? '180+ segundos (fuerza)' : '90-120 segundos entre series',
-      tipoProgresion: tipoProgresion === 'lineal' ? 'Progresión lineal' : tipoProgresion === 'ondulante' ? 'Progresión ondulante (DUP)' : 'Doble progresión: aumenta reps, luego peso',
-      metricaEsfuerzo: metricaEsfuerzo === 'rpe' ? 'RPE 8-9' : 'RIR 1-2 (dejar 1 a 2 reps en recámara)',
-    },
-    dias,
-  }
-
-  if (mensajesAjuste.length > 0) {
-    resultado.mensajeAjuste = mensajesAjuste.join(' · ')
-    resultado.avisoFrecuencia = mensajesAjuste[0]
-  }
-
-  if (tieneLesion && lesiones.length > 0) {
-    resultado.disclaimer = 'Rutina adaptada a tus condiciones físicas. Si sentís dolor agudo durante cualquier ejercicio, detené la actividad y consultá a un profesional de salud antes de continuar.'
-  }
-
-  return resultado
-}
-
-export function rutinaGeneradaToRoutines(rutinaGenerada, respuestas = {}) {
-  const routines = rutinaGenerada.dias.map((dia, i) => {
-    const ejercicios = (dia.ejercicios || dia.ex || []).map(ej => ({
-      id: ej.id || ej.exerciseId,
-      sets: ej.sets || ej.series || 3,
-      reps: ej.reps || (ej.repeticiones ? parseInt(ej.repeticiones.split('-')[0], 10) : 10),
-      weight: ej.weight || 0,
-      mode: ej.mode,
-      min: ej.min,
-      sec: ej.sec,
-      note: ej.note,
-      isNormal: ej.isNormal,
-      isCardio: ej.isCardio,
-      isStretch: ej.isStretch,
-      ...(ej.intensifier ? { intensifier: ej.intensifier } : {}),
-    }))
-
-    return {
-      id: 'gen_' + Date.now() + '_' + i,
-      name: dia.rutinaNombre,
-      emoji: dia.rutinaNombre.includes('Legs') || dia.rutinaNombre.includes('Pierna') ? 'legs' : dia.rutinaNombre.includes('Pull') ? 'pullup' : 'dumbbell',
-      ex: ejercicios,
-    }
-  })
-
-  const week = {}
-  for (let i = 0; i < rutinaGenerada.dias.length; i++) {
-    const diaSemana = rutinaGenerada.dias[i].diaSemana
-    if (diaSemana !== undefined && routines[i]) {
-      week[diaSemana] = routines[i].id
-    }
-  }
-
-  return { routines, week }
+// Curados del mismo patrón que están en el pool (ya filtrado por equipamiento y lesiones).
+function curadosDelPatron(patron, poolSeguro, excluir) {
+  const def = PATRONES[patron]
+  if (!def) return []
+  const enPool = new Map(poolSeguro.map(e => [e.id, e]))
+  return def.candidatos.map(([id]) => enPool.get(id)).filter(e => e && !excluir.has(e.id))
 }
 
 export function obtenerAlternativas(ejercicioActual, poolSeguro = [], idsUsadosEnLaSemana = new Set(), n = 3) {
   const actualDB = poolSeguro.find(e => e.id === (ejercicioActual.id || ejercicioActual.exerciseId)) || ejercicioActual
   const targetTg = actualDB.tg
   const actualId = actualDB.id || ejercicioActual.id || ejercicioActual.exerciseId
-
   const idsSet = idsUsadosEnLaSemana instanceof Set ? idsUsadosEnLaSemana : new Set(idsUsadosEnLaSemana || [])
+  const excluir = new Set([...idsSet, actualId])
 
-  let candidatos = poolSeguro.filter(e =>
-    e.tg === targetTg &&
-    e.id !== actualId &&
-    !idsSet.has(e.id)
-  )
+  // Primero, las otras opciones curadas del mismo patrón (press por press, remo por remo).
+  const patron = ejercicioActual.patron || PATRON_DE_ID[actualId]
+  const elegidos = curadosDelPatron(patron, poolSeguro, excluir).slice(0, n)
+  if (elegidos.length >= n) return elegidos
 
-  const elegidos = []
-  const patronesVistos = new Set()
+  const candidatos = poolSeguro.filter(e => e.tg === targetTg && !excluir.has(e.id) && !elegidos.includes(e))
+  const patronesVistos = new Set(elegidos.map(patronDeMovimiento))
   for (const c of [...candidatos].sort((a, b) => jerarquiaScore(b) - jerarquiaScore(a))) {
-    const patron = patronDeMovimiento(c)
-    if (patronesVistos.has(patron)) continue
-    patronesVistos.add(patron)
-    elegidos.push(c)
     if (elegidos.length === n) break
+    const p = patronDeMovimiento(c)
+    if (patronesVistos.has(p)) continue
+    patronesVistos.add(p)
+    elegidos.push(c)
   }
-
-  if (elegidos.length < n) {
-    for (const c of candidatos) {
-      if (elegidos.length === n) break
-      if (!elegidos.includes(c)) elegidos.push(c)
-    }
+  for (const c of candidatos) {
+    if (elegidos.length === n) break
+    if (!elegidos.includes(c)) elegidos.push(c)
   }
-
   return elegidos
 }
 
@@ -716,16 +975,14 @@ export function obtenerMasAlternativas(ejercicioActual, poolSeguro = [], idsUsad
 
   const idsSet = idsUsadosEnLaSemana instanceof Set ? idsUsadosEnLaSemana : new Set(idsUsadosEnLaSemana || [])
   const mostradosSet = yaMostrados instanceof Set ? yaMostrados : new Set(yaMostrados || [])
+  const excluir = new Set([...idsSet, ...mostradosSet, actualId])
+  const patron = ejercicioActual.patron || PATRON_DE_ID[actualId]
+  const curados = curadosDelPatron(patron, poolSeguro, excluir)
 
-  return poolSeguro
-    .filter(e =>
-      e.tg === targetTg &&
-      e.id !== actualId &&
-      !idsSet.has(e.id) &&
-      !mostradosSet.has(e.id)
-    )
+  const resto = poolSeguro
+    .filter(e => e.tg === targetTg && !excluir.has(e.id) && !curados.includes(e))
     .sort((a, b) => jerarquiaScore(b) - jerarquiaScore(a))
-    .slice(0, n)
+  return [...curados, ...resto].slice(0, n)
 }
 
 export function buscarEnGrupoMuscular(query, poolSeguro = [], tg, idsUsadosEnLaSemana = new Set()) {

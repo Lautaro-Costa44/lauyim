@@ -28,9 +28,24 @@ export const CUSTOM_CARDIO_EXERCISES = [
   { id: 'cardio_bike', n: 'stationary bike cycling', bp: 'cardio', eq: 'stationary bike', tg: 'cardiovascular system', mg: 'quadriceps', sm: ['hamstrings', 'calves'], st: ['Pedal on the stationary bike at a steady cadence or interval resistance.'] },
   { id: 'cardio_stairmaster', n: 'stairmaster climbing', bp: 'cardio', eq: 'leverage machine', tg: 'cardiovascular system', mg: 'quadriceps', sm: ['glutes', 'calves'], st: ['Step on the stairmaster maintaining an upright posture.'] },
   { id: 'cardio_bodyweight_hiit', n: 'bodyweight hiit (jumping jacks / burpees / mountain climbers)', bp: 'cardio', eq: 'body weight', tg: 'cardiovascular system', mg: 'quadriceps', sm: ['calves', 'hamstrings'], st: ['Intervals of bodyweight exercises like jumping jacks, burpees, and mountain climbers.'] },
+  { id: 'cardio_walk', n: 'brisk walking', bp: 'cardio', eq: 'body weight', tg: 'cardiovascular system', mg: 'quadriceps', sm: ['calves', 'hamstrings'], st: ['Caminá a paso rápido, con un ritmo que te deje hablar pero no cantar.'] },
 ]
 
-export const CATALOGUE = [...EXDB, ...CUSTOM_CARDIO_EXERCISES].map(catalogueExercise)
+// Básicos que el dataset no trae y que el generador de rutinas necesita (plancha, sentadilla
+// sin peso, remo a un brazo…). Sin video: el detalle muestra solo los pasos, en español
+// porque el pack de instrucciones generado no los conoce.
+export const SYSTEM_EXERCISES = [
+  { id: 'sys_bw_squat', n: 'bodyweight squat', bp: 'upper legs', eq: 'body weight', tg: 'quads', mg: 'glutes', sm: ['hamstrings', 'adductors'], st: ['Parate con los pies al ancho de los hombros y las puntas un poco hacia afuera.', 'Bajá llevando la cadera hacia atrás y abajo, con el pecho alto y las rodillas en la línea de los pies.', 'Bajá hasta donde puedas sin redondear la espalda (idealmente, muslos paralelos al piso).', 'Subí empujando el piso con todo el pie.'] },
+  { id: 'sys_db_row', n: 'dumbbell one arm row', bp: 'back', eq: 'dumbbell', tg: 'upper back', mg: 'lats', sm: ['biceps', 'rear deltoids'], st: ['Apoyá una rodilla y la mano del mismo lado en un banco, con la espalda recta.', 'Con la otra mano tomá la mancuerna con el brazo estirado.', 'Llevá el codo hacia atrás y arriba, cerca del cuerpo, hasta que la mancuerna llegue a la cadera.', 'Bajá controlando y repetí. Después cambiá de lado.'] },
+  { id: 'sys_hip_thrust', n: 'barbell hip thrust', bp: 'upper legs', eq: 'barbell', tg: 'glutes', mg: 'hamstrings', sm: ['hamstrings', 'quads'], st: ['Sentate en el piso con la parte alta de la espalda apoyada en un banco y la barra sobre la cadera (con protector).', 'Pies apoyados al ancho de la cadera, rodillas flexionadas.', 'Empujá con los talones y subí la cadera hasta que el torso quede alineado con los muslos, apretando los glúteos.', 'Bajá controlando sin apoyar del todo y repetí.'] },
+  { id: 'sys_plank', n: 'front plank', bp: 'waist', eq: 'body weight', tg: 'abs', mg: 'abs', sm: ['obliques', 'lower back'], st: ['Apoyá los antebrazos en el piso con los codos debajo de los hombros.', 'Estirá las piernas y apoyá las puntas de los pies.', 'Mantené el cuerpo en línea recta, apretando abdomen y glúteos, sin dejar caer la cadera.', 'Respirá normal y sostené el tiempo indicado.'] },
+  { id: 'sys_pike_pushup', n: 'pike push-up', bp: 'shoulders', eq: 'body weight', tg: 'delts', mg: 'triceps', sm: ['triceps', 'upper chest'], st: ['Desde posición de flexión, subí la cadera formando una V invertida.', 'Flexioná los codos llevando la cabeza hacia el piso, entre las manos.', 'Empujá hasta estirar los brazos, manteniendo la cadera alta.'] },
+  { id: 'sys_st_biceps', n: 'wall biceps stretch', bp: 'upper arms', eq: 'body weight', tg: 'biceps', mg: 'biceps', sm: ['chest', 'shoulders'], st: ['Apoyá la palma en una pared a la altura del hombro, con el brazo estirado y el pulgar hacia arriba.', 'Girá el cuerpo despacio hacia el lado contrario hasta sentir el estiramiento en el bíceps.', 'Sostené sin rebotes y cambiá de brazo.'] },
+  { id: 'sys_st_hip_flexor', n: 'kneeling hip flexor stretch', bp: 'upper legs', eq: 'body weight', tg: 'quads', mg: 'hip flexors', sm: ['quads'], st: ['Apoyá una rodilla en el piso (con algo blando abajo) y el otro pie adelante, rodilla a 90°.', 'Apretá el glúteo de la pierna de atrás y llevá la cadera un poco hacia adelante.', 'Sentí el estiramiento en el frente de la cadera, sin arquear la espalda baja.', 'Sostené y cambiá de lado.'] },
+  { id: 'sys_st_abs', n: 'cobra abdominal stretch', bp: 'waist', eq: 'body weight', tg: 'abs', mg: 'abs', sm: ['hip flexors'], st: ['Acostate boca abajo con las manos debajo de los hombros.', 'Empujá suave el piso y levantá el pecho, con la cadera apoyada.', 'Subí solo hasta donde no moleste la espalda baja y sostené.'] },
+]
+
+export const CATALOGUE = [...EXDB, ...CUSTOM_CARDIO_EXERCISES, ...SYSTEM_EXERCISES].map(catalogueExercise)
 
 // The generated dataset already supplies secondary muscles for most exercises. Keep the
 // handful of conservative catalogue additions that are useful to the muscle map here so a
