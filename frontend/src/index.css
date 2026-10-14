@@ -2677,15 +2677,12 @@ button.wh-row{font:inherit;color:inherit;border:0;cursor:pointer}
 .supp-row>.chk,.supp-row>.supp-dots{margin-left:auto;flex:none}
 .supp-reason{display:block;margin-top:6px;font-weight:600}
 /* Suplementos del socio en Administrar → Nutrición (staff) */
-.supp-admin{margin-top:18px;padding-top:14px;border-top:1px solid var(--sep)}
-.supp-admin-head{margin-bottom:6px}
 .supp-warnb{display:inline-flex;align-items:center;gap:5px;background:color-mix(in srgb,var(--orange) 16%,transparent);color:var(--orange);border-radius:8px;padding:3px 8px;font-size:12.5px;font-weight:600}
-.supp-pct{font-size:13px;font-weight:600;color:var(--acc);flex:none}
-.supp-foot{margin-top:6px}
-.supp-ex-row{display:flex;align-items:center;gap:8px;font-size:13px;padding:6px 0;border-bottom:1px solid var(--sep)}
-.supp-ex-row b{color:var(--orange)}
+.supp-foot{padding:8px 14px 10px}
 .supp-disable .btn{width:100%;margin-top:10px}
 .supp-disable .input{width:100%}
-@media (min-width:768px){.supp-admin-cols{display:grid;grid-template-columns:1fr 1fr;gap:0 22px;align-items:start}}
 .supp-ficha-sheet{position:relative}
 .supp-ficha-sheet .supp-back-btn{display:inline-flex}
+.supp-admin .supp-ex .lrow-v{color:var(--orange);font-weight:600}
+.supp-admin .lrow-v{font-weight:600}
+.supp-admin-heat{padding:8px 4px}

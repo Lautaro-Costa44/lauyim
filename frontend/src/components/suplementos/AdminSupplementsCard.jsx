@@ -13,7 +13,7 @@ import { can } from '../../lib/permissions.js'
 import { SLOTS } from '../../lib/suplementos-data.js'
 import { sinceOf, streakOf, adherence30, dayLevel, isDueOn, doseLabel, itemName, proteinPerTake, excessDays, excessDayCount } from '../../lib/suplementos.js'
 import { HeatmapGrid } from '../Heatmap.jsx'
-import { Button, Switch } from '../ui.jsx'
+import { Button, Row, Section, Switch } from '../ui.jsx'
 
 const DIAS = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb']
 const dayShort = iso => `${DIAS[new Date(iso + 'T12:00:00').getDay()]} ${Number(iso.slice(8))}/${Number(iso.slice(5, 7))}`
@@ -71,52 +71,33 @@ export default function AdminSupplementsCard({ userId, userName }) {
   const toggle = v => v ? setAccess(true)
     : useUI.getState().openSheet(close => <DisableSheet userName={userName} close={close} onConfirm={reason => setAccess(false, reason)} />)
 
-  const access = <>
-    <div className="supp-sec">{t('Acceso')}</div>
-    <div className="row" style={{ gap: 10 }}>
-      <div className="grow"><b>{t('Guía y seguimiento')}</b>
-        <div className="small dim">{data.access.disabled
-          ? t('Deshabilitado para este socio') + (data.access.reason ? ' · ' + data.access.reason : '')
-          : t('Habilitado para este socio')}</div></div>
-      {canManage && <Switch checked={!data.access.disabled} onChange={toggle} label={t('Guía y seguimiento')} />}
-    </div>
-  </>
-
+  // Mismo estilo que el resto de Administrar → Nutrición: secciones con título grande y filas. El
+  // interruptor es la primera fila.
+  const big = txt => <span style={{ fontSize: 17, fontWeight: 600, color: 'var(--label)' }}>{txt}</span>
+  const accessSubtitle = data.access.disabled
+    ? t('Deshabilitado para este socio') + (data.access.reason ? ' · ' + data.access.reason : '')
+    : t('Habilitado para este socio')
   return <div className="supp-admin">
-    <div className="row between supp-admin-head">
-      <h3 style={{ margin: 0 }}>{t('Suplementos')}</h3>
-      {nExcess > 0 && <span className="supp-warnb">⚠️ {nExcess === 1 ? t('1 día con exceso') : t('{0} días con exceso', nExcess)}</span>}
-    </div>
-    {data.items.length === 0 ? <><div className="small dim">{t('No registra suplementos.')}</div>{access}</>
-      : <div className="supp-admin-cols">
-        <div>
-          <div className="supp-sec">{t('Activos')}</div>
-          {active.length === 0 && <div className="small dim">{t('Ninguno activo.')}</div>}
-          {active.map(i => {
-            const adh = adherence30(i, data.logs, today, train)
-            const slot = SLOTS.find(s => s.id === (i.slot || 'any'))
-            return <div key={i.id} className="supp-row">
-              <div className="grow">
-                <div className="supp-name-row"><b>{itemName(i)}</b><span className="supp-streak">🔥 {streakOf(i, data.logs, today, train)}</span></div>
-                <div className="small dim">{doseLabel(i)}{proteinPerTake(i) != null && ` · ${num(proteinPerTake(i))} g ${t('de proteína')}`} · {t(slot?.label || '').toLowerCase()}</div>
-              </div>
-              <span className="supp-pct">{adh == null ? '—' : `${adh} %`}</span>
-            </div>
-          })}
-          <div className="small dim supp-foot">{t('% = cumplimiento de los últimos 30 días')}{archived > 0 && ` · ${archived === 1 ? t('1 archivado') : t('{0} archivados', archived)}`}</div>
-          {access}
-        </div>
-        <div>
-          <div className="supp-sec">{t('Últimas 26 semanas')}</div>
-          <HeatmapGrid weeks={26} levelOf={combined} titleOf={iso => iso} legend={[t('Menos'), t('Cumplido')]} />
-          {excess.length > 0 && <>
-            <div className="supp-sec">{t('Días con exceso (últimos 30)')}</div>
-            {excess.map((r, k) => <div key={k} className="supp-ex-row">
-              <span className="dim">{dayShort(r.date)}</span><span className="grow">{r.name}</span>
-              <b>{num(r.amount)} {UNIT[r.unit] || r.unit}</b><span className="dim">/ {num(r.max)}</span>
-            </div>)}
-          </>}
-        </div>
-      </div>}
+    <Section title={big(t('Suplementos'))}>
+      <Row title={t('Guía y seguimiento')} subtitle={accessSubtitle}>
+        {canManage && <Switch checked={!data.access.disabled} onChange={toggle} label={t('Guía y seguimiento')} />}
+      </Row>
+      {nExcess > 0 && <Row title={<span className="supp-warnb">⚠️ {nExcess === 1 ? t('1 día con exceso') : t('{0} días con exceso', nExcess)}</span>} subtitle={t('En los últimos 30 días')} />}
+      {data.items.length === 0 && <Row title={t('No registra suplementos.')} />}
+      {active.map(i => {
+        const adh = adherence30(i, data.logs, today, train)
+        const slot = SLOTS.find(s => s.id === (i.slot || 'any'))
+        return <Row key={i.id} title={<>{itemName(i)} <span className="supp-streak">🔥 {streakOf(i, data.logs, today, train)}</span></>}
+          subtitle={`${doseLabel(i)}${proteinPerTake(i) != null ? ` · ${num(proteinPerTake(i))} g ${t('de proteína')}` : ''} · ${t(slot?.label || '').toLowerCase()}`}
+          value={adh == null ? '—' : `${adh} %`} />
+      })}
+      {data.items.length > 0 && <div className="small dim supp-foot">{t('% = cumplimiento de los últimos 30 días')}{archived > 0 && ` · ${archived === 1 ? t('1 archivado') : t('{0} archivados', archived)}`}</div>}
+    </Section>
+    {data.items.length > 0 && <Section title={big(t('Últimas 26 semanas'))}>
+      <div className="supp-admin-heat"><HeatmapGrid weeks={26} levelOf={combined} titleOf={iso => iso} legend={[t('Menos'), t('Cumplido')]} /></div>
+    </Section>}
+    {excess.length > 0 && <Section title={big(t('Días con exceso (últimos 30)'))}>
+      {excess.map((r, k) => <Row key={k} title={`${dayShort(r.date)} · ${r.name}`} value={`${num(r.amount)} ${UNIT[r.unit] || r.unit} / ${num(r.max)}`} className="supp-ex" />)}
+    </Section>}
   </div>
 }
