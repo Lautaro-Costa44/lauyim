@@ -30,6 +30,7 @@ let anaCreated = '2026-01-01'
 let approval = { required: false, mode: 'approve' }
 let checkin = { enabled: false, mode: 'full', digits: 4, showStatus: true }
 let devices = []
+let mePanel = null   // /api/me con las funciones del gym (solo donde un test lo pide)
 const ANA = { id: 'a', name: 'ana', lastSync: Date.now(), workouts: 1, hasApp: true }
 // A member record without a passkey: listed in Usuarios, never counted in Resumen.
 const FICHA = { id: 'f', name: 'ficha', lastSync: null, workouts: 0, hasApp: false, disabled: true }
@@ -49,7 +50,10 @@ apiMock.mockImplementation((url, opts) => {
   if (url === '/api/admin/presets') return Promise.resolve({ presets: [] })
   if (url === '/api/admin/attendance-heatmap') return Promise.resolve({ start: 'monday', totalUsers: 1, days: {} })
   if (url === '/api/owner/qr') return Promise.resolve({ token: 'qr-token' })
-  if (url === '/api/owner/supplements') return Promise.resolve({ enabled: true })
+  if (url === '/api/me') return Promise.resolve(mePanel ? { panel: mePanel } : {})
+  if (url === '/api/owner/supplements') return Promise.resolve(opts?.method === 'PUT' ? JSON.parse(opts.body) : { enabled: true })
+  if (url === '/api/owner/classes/settings') return Promise.resolve({ settings: { enabled: opts?.method === 'PUT' ? JSON.parse(opts.body).enabled : true } })
+  if (url === '/api/owner/branding') return Promise.resolve({ branding: { appName: 'lauyim', shortName: '', tagline: '', color: null, lockColor: false, theme: 'dark', lockTheme: true } })
   if (url === '/api/admin/approval' || url === '/api/owner/approval') {
     if (opts?.method === 'PUT') approval = { ...approval, ...JSON.parse(opts.body) }
     return Promise.resolve({ ...approval, effectiveMode: billingOn ? approval.mode : 'approve', billingEnabled: billingOn, dniEnabled, pendingCount: approval.pendingCount ?? 0 })
@@ -120,6 +124,7 @@ beforeEach(async () => {
   anaCreated = '2026-01-01'
   approval = { required: false, mode: 'approve' }
   checkin = { enabled: false, mode: 'full', digits: 4, showStatus: true }
+  mePanel = null
   devices = []
   desktop = false
   apiMock.mockClear()
@@ -200,6 +205,7 @@ describe('admin routes', () => {
   })
 
   it('tab order: Resumen, Usuarios, Cuotas, Rutinas, Clases, Notificaciones, Acceso, Roles, Personalización, Ingreso Físico, Logs', async () => {
+    checkin = { ...checkin, enabled: true }
     await mount('#/admin/resumen', OWNER)
     expect(tabs()).toEqual(['Resumen*', 'Usuarios', 'Cuotas', 'Rutinas', 'Clases', 'Notificaciones', 'Acceso', 'Roles', 'Personalización', 'Ingreso Físico', 'Logs', 'Volver a la app'])
   })
@@ -229,10 +235,10 @@ describe('admin routes', () => {
     expect(called('/api/admin/members/settings')).toBe(false)
   })
 
-  it('the owner gets the seven Acceso cards, in order', async () => {
+  it('the owner gets the five Acceso cards, in order (the module switches live in Personalización)', async () => {
     await mount('#/admin/acceso', OWNER)
     const titles = [...document.querySelectorAll('.admin-cards > .card h2')].map(h => h.textContent)
-    expect(titles).toEqual(['Códigos de invitación', 'Acceso por QR', 'Datos del registro', 'Aprobación de cuentas', 'Aviso de privacidad', 'Cobro de cuotas', 'Suplementos'])
+    expect(titles).toEqual(['Códigos de invitación', 'Acceso por QR', 'Datos del registro', 'Aprobación de cuentas', 'Aviso de privacidad'])
     expect(text()).toContain('qr-token')
     expect(text()).toContain('El nombre de usuario siempre se pide.')
     expect(text()).not.toContain('Sin DNI no se pueden detectar socios duplicados')
@@ -336,9 +342,9 @@ describe('admin routes', () => {
     expect(called('/api/admin/billing/plans')).toBe(false)
   })
 
-  it('turning billing off asks first, then hides Cuotas', async () => {
-    await mount('#/admin/acceso', OWNER)
-    await clickSwitch('Habilitar el módulo de cuotas')
+  it('turning billing off (Personalización → Módulos) asks first, then hides Cuotas', async () => {
+    await mount('#/admin/personalizacion', OWNER)
+    await clickSwitch('Cobro de cuotas')
     expect(sheetText()).toContain('No se borra ningún dato')
     expect(sheetText()).toContain('recordatorio manual')
     expect(called('/api/owner/billing/enabled')).toBe(false)
@@ -349,8 +355,8 @@ describe('admin routes', () => {
 
   it('turning billing on shows the enable-preview in the confirmation', async () => {
     billingOn = false
-    await mount('#/admin/acceso', OWNER)
-    await clickSwitch('Habilitar el módulo de cuotas')
+    await mount('#/admin/personalizacion', OWNER)
+    await clickSwitch('Cobro de cuotas')
     expect(called('/api/owner/billing/enable-preview')).toBe(true)
     expect(sheetText()).toContain('Al activar, 2 socios quedan bloqueados y 1 vencido.')
     await clickButton(document.querySelector('#modal-root'), 'Activar')
@@ -414,6 +420,7 @@ describe('admin tabs on a phone: the active one is centered', () => {
   })
 
   it('a direct link to the last tab jumps to it, later taps glide', async () => {
+    checkin = { ...checkin, enabled: true }
     await mount('#/admin/logs', OWNER)        // Logs is tab 10 (the owner also sees Clases, Roles, Personalización and Ingreso Físico)
     expect(scrolls[0]).toEqual({ left: 900, behavior: 'auto' })
     expect(scrolls.every(s => s.behavior === 'auto')).toBe(true)
@@ -582,14 +589,17 @@ describe('Usuarios: member detail', () => {
       expect(window.location.hash).toBe('#/admin/resumen')
     })
 
-    it('apagado: el owner ve la sección solo con el interruptor y la explicación; al encenderlo aparece todo', async () => {
+    it('apagado: el owner tampoco ve la sección; la prende en Personalización → Módulos y aparece todo', async () => {
       await mount('#/admin/ingreso-fisico', OWNER)
-      expect(ingresoTab()).toBe('Ingreso Físico*')
-      expect(text()).toContain('tipea su DNI en un teclado numérico')
-      expect(text()).not.toContain('Dispositivos')
-      expect(text()).not.toContain('kiosco')
+      expect(ingresoTab()).toBeUndefined()
+      expect(window.location.hash).toBe('#/admin/resumen')
+      await go('#/admin/personalizacion')
       await clickSwitch('Ingreso Físico')
       expect(checkin.enabled).toBe(true)
+      expect(ingresoTab()).toBe('Ingreso Físico')
+      await go('#/admin/ingreso-fisico')
+      expect(ingresoTab()).toBe('Ingreso Físico*')
+      expect(text()).toContain('tipea su DNI en un teclado numérico')
       expect(text()).toContain('Identificación')
       expect(text()).toContain('Dispositivos')
       expect(text()).toContain('Abrir Ingreso Físico en este dispositivo')
@@ -634,14 +644,40 @@ describe('Usuarios: member detail', () => {
       expect(text()).toContain('Ningún dispositivo activado.')
     })
 
-    it('apagarlo pide confirmar y avisa que los dispositivos quedan desactivados', async () => {
+    it('apagarlo (Módulos) pide confirmar, avisa que los dispositivos quedan desactivados y esconde la sección', async () => {
       checkin = { ...checkin, enabled: true }
-      await mount('#/admin/ingreso-fisico', OWNER)
+      await mount('#/admin/personalizacion', OWNER)
+      expect(ingresoTab()).toBe('Ingreso Físico')
       await clickSwitch('Ingreso Físico')
       expect(sheetText()).toContain('un admin tiene que activarlos de nuevo')
       expect(checkin.enabled).toBe(true)
       await clickButton(document.querySelector('#modal-root'), 'Desactivar')
       expect(checkin.enabled).toBe(false)
+      expect(ingresoTab()).toBeUndefined()
+    })
+  })
+
+  describe('Personalización → Módulos', () => {
+    it('cuotas, clases, ingreso físico y suplementos, con su estado; apagarlos esconde la sección', async () => {
+      billingOn = true
+      mePanel = { billingEnabled: true, checkinEnabled: false, auditEnabled: true, classesEnabled: true }
+      await mount('#/admin/personalizacion', OWNER)
+      const sw = label => document.querySelector(`.modules-card [role="switch"][aria-label="${label}"]`)?.getAttribute('aria-checked')
+      expect([...document.querySelectorAll('.modules-card [role="switch"]')].map(s => s.getAttribute('aria-label'))).toEqual(['Cobro de cuotas', 'Clases', 'Ingreso Físico', 'Suplementos'])
+      expect([sw('Cobro de cuotas'), sw('Clases'), sw('Ingreso Físico'), sw('Suplementos')]).toEqual(['true', 'true', 'false', 'true'])
+      expect(tabs()).toContain('Cuotas')
+      await clickSwitch('Cobro de cuotas')
+      await clickButton(document.querySelector('#modal-root'), 'Desactivar')
+      expect(billingOn).toBe(false)
+      expect(tabs()).not.toContain('Cuotas')
+      await clickSwitch('Clases')
+      await clickButton(document.querySelector('#modal-root'), 'Desactivar')
+      expect(apiMock).toHaveBeenCalledWith('/api/owner/classes/settings', expect.objectContaining({ method: 'PUT', body: JSON.stringify({ enabled: false }) }))
+      expect(tabs()).not.toContain('Clases')
+      await clickSwitch('Suplementos')
+      await clickButton(document.querySelector('#modal-root'), 'Desactivar')
+      expect(apiMock).toHaveBeenCalledWith('/api/owner/supplements', { method: 'PUT', body: JSON.stringify({ enabled: false }) })
+      expect(sw('Suplementos')).toBe('false')
     })
   })
 })

@@ -229,7 +229,6 @@ function Settings({ onChange, close }) {
   </div>
   return <div>
     <h3>{t('Ajustes de clases')}</h3>
-    <SwitchRow value={s.enabled} label={t('Clases en la app')} help={t('Apagado, los socios no ven la pestaña Clases ni la tarjeta de Inicio.')} onToggle={v => set({ enabled: v })} />
     <div className="member-form" style={{ marginTop: 12 }}>
       {num('bookAheadDays', t('Se puede reservar desde (días antes)'), 1, 30, t('De 1 a 30 días.'))}
       {num('cancelHours', t('Cancelar sin que cuente como tardía (horas antes)'), 0, 48, t('Después cuenta como cancelación tardía.'))}

@@ -49,7 +49,7 @@ export default function AdminLayout() {
   const [auditEnabled, setAuditEnabled] = useState(null)   // null until the server says; false = AUDIT_LOG=0
   const [billingEnabled, setBillingEnabled] = useState(null)   // null until the server says; false = cuotas off (owner switch in Acceso)
   const [checkinEnabled, setCheckinEnabled] = useState(null)   // Ingreso Físico: el owner siempre ve la sección; los demás, solo encendido
-  const [classesEnabled, setClassesEnabled] = useState(null)   // Clases: igual que Ingreso Físico (el owner la prende desde la sección)
+  const [classesEnabled, setClassesEnabled] = useState(null)   // Clases: igual que Ingreso Físico (el owner la prende en Personalización → Módulos)
 
   // audit_enabled and billing_enabled ride along with the users poll: they decide whether the
   // Logs and Cuotas tabs exist.
@@ -90,7 +90,7 @@ export default function AdminLayout() {
   useEffect(() => {
     const frame = requestAnimationFrame(() => { if (centerActiveTab(!firstCenter.current)) firstCenter.current = false })
     return () => cancelAnimationFrame(frame)
-  }, [loc.pathname, user?.owner, auditEnabled, billingEnabled, checkinEnabled])
+  }, [loc.pathname, user?.owner, auditEnabled, billingEnabled, checkinEnabled, classesEnabled])
   // Chip widths change once the web font lands: center again, without animation.
   useEffect(() => {
     let alive = true
@@ -105,7 +105,7 @@ export default function AdminLayout() {
   const home = sections[0]?.[0] || 'resumen'
   // Una sección que esta persona no ve: a la primera que sí (sin cargar el chunk).
   const only = (path, element) => visible.has(path) ? element : <Navigate to={'/admin/' + home} replace />
-  const ctx = { users, inviteOnly, invites, presets, programs, attendance, qrAccess, setQrAccess, tick, auditEnabled, billingEnabled, setBillingEnabled, checkinEnabled, setCheckinEnabled, loadUsers, loadInvites, loadPresets, loadAttendance, refresh }
+  const ctx = { users, inviteOnly, invites, presets, programs, attendance, qrAccess, setQrAccess, tick, auditEnabled, billingEnabled, setBillingEnabled, checkinEnabled, setCheckinEnabled, classesEnabled, setClassesEnabled, loadUsers, loadInvites, loadPresets, loadAttendance, refresh }
 
   return <div className="admin-shell">
     <nav className="admin-nav chips" ref={navRef} aria-label={t('Admin')}>

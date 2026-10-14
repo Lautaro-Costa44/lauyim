@@ -131,55 +131,6 @@ function MemberFieldsCard() {
   </div>
 }
 
-// Interruptor de cuotas (owner). Apagarlo no borra datos: el servidor deja de bloquear, de
-// avisar vencimientos y de aceptar cambios de cuotas hasta que se vuelva a encender.
-function BillingToggleCard({ enabled, onChanged }) {
-  const toast = useUI(s => s.toast)
-  const [busy, setBusy] = useState(false)
-  const put = value => {
-    setBusy(true)
-    api('/api/owner/billing/enabled', { method: 'PUT', body: JSON.stringify({ enabled: value }) })
-      .then(d => { onChanged(d.enabled); toast(d.enabled ? t('Cobro de cuotas activado') : t('Cobro de cuotas desactivado')) })
-      .catch(e => toast(errorText(e, t('Failed to save setting'))))
-      .finally(() => setBusy(false))
-  }
-  const turnOff = () => confirmSheet({
-    title: t('¿Desactivar el cobro de cuotas?'),
-    message: t('Se ocultan la sección Cuotas y los avisos de vencimiento, y nadie queda bloqueado por cuota. No se borra ningún dato: al volver a activarlo, todo sigue como estaba. El recordatorio manual de cuota de cada socio vuelve a funcionar.'),
-    confirmText: t('Desactivar'), danger: true,
-    onConfirm: () => put(false)
-  })
-  // Al encender, primero se muestra a cuántos socios afecta hoy.
-  const turnOn = () => {
-    setBusy(true)
-    api('/api/owner/billing/enable-preview')
-      .then(p => {
-        const blocked = Number(p.bloqueado) || 0, late = Number(p.vencido) || 0
-        confirmSheet({
-          title: t('¿Activar el cobro de cuotas?'),
-          message: blocked
-            ? t(blocked === 1 ? 'Al activar, {0} socio queda bloqueado' : 'Al activar, {0} socios quedan bloqueados', blocked) + ' ' + t(late === 1 ? 'y {0} vencido.' : 'y {0} vencidos.', late)
-            : t('Vuelven la sección Cuotas y los avisos de vencimiento. El bloqueo por cuota vencida vuelve solo si está prendido en los ajustes de Cuotas.'),
-          confirmText: t('Activar'),
-          onConfirm: () => put(true)
-        })
-      })
-      .catch(e => toast(errorText(e, t('Failed to load'))))
-      .finally(() => setBusy(false))
-  }
-  return <div className="card">
-    <h2 style={{ margin: 0 }}>{t('Cobro de cuotas')}</h2>
-    <div className="row between" style={{ gap: 12, marginTop: 10 }}>
-      <div className="grow">
-        <div style={{ fontWeight: 600 }}>{t('Habilitar el módulo de cuotas')}</div>
-        <div className="small muted" style={{ marginTop: 2 }}>{t('Muestra la sección Cuotas y los avisos de vencimiento. El bloqueo por cuota vencida se configura aparte, en los ajustes de Cuotas.')}</div>
-      </div>
-      <Switch label={t('Habilitar el módulo de cuotas')} checked={enabled !== false} disabled={busy || enabled == null}
-        onChange={v => v ? turnOn() : turnOff()} />
-    </div>
-  </div>
-}
-
 // Aviso de privacidad (owner): el gym es el responsable de los datos; su nombre y el contacto
 // para ejercer los derechos aparecen en la página pública /#/privacidad.
 function PrivacyCard() {
@@ -282,41 +233,11 @@ function ApprovalCard({ billingEnabled }) {
   </div>
 }
 
-// Suplementos (owner): la guía y el seguimiento en Nutrición. Apagarlo no borra datos.
-export function SupplementsToggleCard() {
-  const toast = useUI(s => s.toast)
-  const [enabled, setEnabled] = useState(null)
-  const [busy, setBusy] = useState(false)
-  useEffect(() => { api('/api/owner/supplements').then(d => setEnabled(typeof d?.enabled === 'boolean' ? d.enabled : null)).catch(() => setEnabled(null)) }, [])
-  const put = value => {
-    setBusy(true)
-    api('/api/owner/supplements', { method: 'PUT', body: JSON.stringify({ enabled: value }) })
-      .then(d => { setEnabled(d.enabled); toast(d.enabled ? t('Suplementos activados') : t('Suplementos desactivados')) })
-      .catch(e => toast(errorText(e, t('Failed to save setting'))))
-      .finally(() => setBusy(false))
-  }
-  const change = v => v ? put(true) : confirmSheet({
-    title: t('¿Desactivar los suplementos?'),
-    message: t('Los socios dejan de ver la guía, la tarjeta y los recordatorios de suplementos. No se borra ningún dato: al volver a activarlo, todo sigue como estaba.'),
-    confirmText: t('Desactivar'), danger: true, onConfirm: () => put(false)
-  })
-  if (enabled === null) return null
-  return <div className="card">
-    <h2 style={{ margin: 0 }}>{t('Suplementos')}</h2>
-    <div className="row between" style={{ gap: 12, marginTop: 10 }}>
-      <div className="grow">
-        <div style={{ fontWeight: 600 }}>{t('Guía y seguimiento de suplementos')}</div>
-        <div className="small muted" style={{ marginTop: 2 }}>{t('En Nutrición: una guía basada en evidencia y el registro de lo que toma cada socio. Lo ve cada socio y el staff con permiso de ver suplementos.')}</div>
-      </div>
-      <Switch checked={enabled} disabled={busy} onChange={change} label={t('Guía y seguimiento de suplementos')} />
-    </div>
-  </div>
-}
-
-// Invitaciones para todos los admins; QR, datos del registro, cuotas y suplementos solo para el owner.
+// Invitaciones para todos los admins; QR, datos del registro, aprobación y privacidad solo para el owner.
+// Cuotas y suplementos se prenden en Personalización → Módulos.
 export default function Acceso() {
   const user = useStore(s => s.user)
-  const { invites, loadInvites, qrAccess, setQrAccess, billingEnabled, setBillingEnabled, loadUsers } = useAdmin()
+  const { invites, loadInvites, qrAccess, setQrAccess, billingEnabled } = useAdmin()
   const invitesCard = <InvitesCard invites={invites} reload={loadInvites} />
   if (!user?.owner) return <div className="admin-cards">{invitesCard}</div>
   return <div className="admin-cards">
@@ -325,7 +246,5 @@ export default function Acceso() {
     <MemberFieldsCard />
     <ApprovalCard billingEnabled={billingEnabled} />
     <PrivacyCard />
-    <BillingToggleCard enabled={billingEnabled} onChanged={v => { setBillingEnabled(v); loadUsers() }} />
-    <SupplementsToggleCard />
   </div>
 }

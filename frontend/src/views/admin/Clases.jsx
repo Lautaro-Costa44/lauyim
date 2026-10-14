@@ -74,7 +74,7 @@ export default function AdminClases() {
           {user?.owner && <Button size="sm" icon="gear" onClick={() => classSettingsSheet({ onChange: reload })}>{t('Ajustes')}</Button>}
         </div>
       </div>
-      {!data.settings?.enabled && <div className="access-warn small" role="note" style={{ marginTop: 10 }}>{t('Las clases están apagadas: los socios no las ven. Prendelas en Ajustes.')}</div>}
+      {!data.settings?.enabled && <div className="access-warn small" role="note" style={{ marginTop: 10 }}>{t('Las clases están apagadas: los socios no las ven. Se prenden en Personalización → Módulos.')}</div>}
       <div className="class-stats">
         <div><b>{s.classes}</b><span>{t('clases')}</span></div>
         <div><b>{s.occupancy}%</b><span>{t('ocupación')}</span></div>
