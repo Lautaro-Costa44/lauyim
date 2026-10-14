@@ -91,13 +91,25 @@ export const itemName = item => item.catalogId ? (fichaById(item.catalogId)?.nam
 const fmt = n => String(Math.round(n * 100) / 100).replace('.', ',')
 export const perTake = item => Math.round(((Number(item.dose) || 0) / doses(item)) * 100) / 100
 const unitLabel = (unit, n) => unit === 'caps' ? (n === 1 ? 'cápsula' : 'cápsulas') : unit === 'dosis' ? (n === 1 ? 'dosis' : 'dosis') : (UNITS.find(u => u.id === unit)?.label || unit || '')
-const scoops = n => { const halves = Math.round(n * 2); const whole = Math.floor(halves / 2); return (whole ? String(whole) : '') + (halves % 2 ? '½' : '') || '0' }
+// Scoops de una dosis: entero o fracción común (¼, ⅓, ½, ⅔, ¾) si la cuenta da justa (±0,03 de scoop);
+// si no, el valor aproximado con un decimal ("≈0,6"). Antes se redondeaba a medios: 5 g con un scoop de
+// 8 g decía "½".
+const FRACTIONS = [[1 / 4, '¼'], [1 / 3, '⅓'], [1 / 2, '½'], [2 / 3, '⅔'], [3 / 4, '¾']]
+export function scoopsLabel(n) {
+  if (!(n > 0)) return '0'
+  const whole = Math.floor(n + 0.03)
+  const rest = n - whole
+  if (Math.abs(rest) < 0.03) return String(whole)
+  const f = FRACTIONS.find(([v]) => Math.abs(rest - v) < 0.03)
+  if (f) return (whole ? String(whole) : '') + f[1]
+  return '≈' + String(Math.round(n * 10) / 10).replace('.', ',')
+}
 export function doseLabel(item) {
   const take = perTake(item)
   // Sin dosis cargada (indicación profesional o uno propio): solo las tomas.
   if (!(take > 0)) return doses(item) > 1 ? `${doses(item)} dosis` : 'Dosis indicada'
   if (doses(item) > 1) return `${doses(item)} dosis · ${fmt(take)} ${unitLabel(item.unit, take)} c/u`
-  if (item.scoopG > 0 && item.unit === 'g') return `${scoops(take / item.scoopG)} scoop · ${fmt(take)} g`
+  if (item.scoopG > 0 && item.unit === 'g') return `${scoopsLabel(take / item.scoopG)} scoop · ${fmt(take)} g`
   return `${fmt(take)} ${unitLabel(item.unit, take)}`
 }
 

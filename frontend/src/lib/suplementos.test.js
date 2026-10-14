@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { addDays, canLogDate, caffeineRange, isTrainingDay, isDueOn, takenOn, streakOf, adherence30, dayLevel, caffeineTotal, isOverCaffeine, doseLabel, perTake, groupBySlot, adultStatus, itemName, overDose, sinceOf, startDay, proteinPerTake, excessDays, excessDayCount } from './suplementos.js'
+import { addDays, canLogDate, caffeineRange, isTrainingDay, isDueOn, takenOn, streakOf, adherence30, dayLevel, caffeineTotal, isOverCaffeine, doseLabel, perTake, groupBySlot, adultStatus, itemName, overDose, sinceOf, startDay, proteinPerTake, excessDays, excessDayCount, scoopsLabel } from './suplementos.js'
 
 const TODAY = '2026-10-09'
 const crea = { id: 'i1', catalogId: 'creatina', dose: 5, unit: 'g', scoopG: 5, doses: 1, slot: 'morning', days: 'daily', status: 'active', createdAt: '2026-09-01T10:00:00Z' }
@@ -95,6 +95,14 @@ describe('etiquetas', () => {
   it('dosis con scoop, varias tomas y unidades', () => {
     expect(doseLabel(crea)).toBe('1 scoop · 5 g')
     expect(doseLabel({ ...crea, scoopG: 3, dose: 4.5 })).toBe('1½ scoop · 4,5 g')
+    // Scoops que no son de 5 o 10 g: fracción justa o aproximado, nunca "½" por redondeo.
+    expect(doseLabel({ ...crea, scoopG: 8, dose: 5 })).toBe('≈0,6 scoop · 5 g')
+    expect(doseLabel({ ...crea, scoopG: 7.5, dose: 5 })).toBe('⅔ scoop · 5 g')
+    expect(doseLabel({ ...crea, scoopG: 20, dose: 5 })).toBe('¼ scoop · 5 g')
+    expect(doseLabel({ ...crea, scoopG: 3, dose: 5 })).toBe('1⅔ scoop · 5 g')
+    expect(doseLabel({ ...crea, scoopG: 4, dose: 5 })).toBe('1¼ scoop · 5 g')
+    expect(doseLabel({ ...crea, scoopG: 2.5, dose: 5 })).toBe('2 scoop · 5 g')
+    expect(scoopsLabel(1.38)).toBe('≈1,4')
     expect(perTake(beta)).toBe(1.6)
     expect(doseLabel(beta)).toBe('2 dosis · 1,6 g c/u')
     expect(doseLabel({ id: 'x', catalogId: 'omega3', dose: 2, unit: 'caps', doses: 1 })).toBe('2 cápsulas')
