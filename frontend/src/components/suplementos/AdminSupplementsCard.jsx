@@ -69,7 +69,7 @@ export default function AdminSupplementsCard({ userId, userName }) {
     } catch (e) { toast(errorText(e, t('No se pudo guardar. Probá de nuevo.'))) }
   }
   const toggle = v => v ? setAccess(true)
-    : useUI.getState().openSheet(close => <DisableSheet userName={userName} close={close} onConfirm={reason => setAccess(false, reason)} />)
+    : useUI.getState().openSheet(close => <DisableSheet userName={userName} close={close} onConfirm={reason => setAccess(false, reason)} />, { overlay: true })
 
   // Mismo estilo que el resto de Administrar → Nutrición: secciones con título grande y filas. El
   // interruptor es la primera fila.

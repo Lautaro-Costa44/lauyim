@@ -70,6 +70,7 @@ describe('suplementos del socio (staff)', () => {
     await mount(data(), NUTRI)
     await act(async () => container.querySelector('[role="switch"]').click())
     const sheet = useUI.getState().sheets.at(-1)
+    expect(sheet.overlay).toBe(true)   // sobre Administrar, sin taparla
     const host = document.createElement('div'); const r = createRoot(host)
     await act(async () => r.render(sheet.render(() => useUI.getState().closeSheet(sheet.id))))
     expect(host.textContent).toContain('¿Deshabilitar suplementos para Ana?')

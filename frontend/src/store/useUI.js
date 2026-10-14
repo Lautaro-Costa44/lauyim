@@ -55,9 +55,11 @@ export const useUI = create((set, get) => ({
   // backGesture: opt-in para que un sheet locked igual cierre con el gesto nativo de atrás
   // (Android back / iOS swipe) — locked por sí solo sigue bloqueando swipe-to-dismiss,
   // backdrop-click y Escape, que son gestos distintos del back del sistema.
-  openSheet(render, { kind = 'sheet', locked = false, fullScreen = false, backGesture = false } = {}) {
+  // overlay: el sheet de abajo sigue a la vista (oscurecido) en vez de ocultarse, para una
+  // confirmación que se superpone a la vista desde la que se abrió.
+  openSheet(render, { kind = 'sheet', locked = false, fullScreen = false, backGesture = false, overlay = false } = {}) {
     const id = uid()
-    set(s => ({ sheets: [...s.sheets, { id, render, kind, locked, fullScreen, backGesture }] }))
+    set(s => ({ sheets: [...s.sheets, { id, render, kind, locked, fullScreen, backGesture, overlay }] }))
     const close = () => get().closeSheet(id)
     return { id, close, lock: v => set(s => ({ sheets: s.sheets.map(x => x.id === id ? { ...x, locked: v } : x) })) }
   },
