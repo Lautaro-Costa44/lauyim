@@ -167,6 +167,27 @@ describe('routine exercise extras sync between devices', () => {
     expect(computer.routines[0].ex[0].intensifier).toBeUndefined()
     expect(computer.routines[0].ex[0].warmupSets).toBeUndefined()
   })
+
+  it("an exercise's own rest set on the phone is the rest the computer counts down after a pull", async () => {
+    await onDevice('phone', async () => {
+      const store = await openDevice()
+      store.getState().update(s => { s.routines = [clone(ROUTINE)] })
+      await queued()
+      await store.getState().syncPending()
+      editExercise(store, 'r-push', 0, { sets: 3, mode: 'reps', reps: 8, weight: 60, restSec: 150 })
+      await queued()
+      await store.getState().syncPending()
+    })
+    const computer = await onDevice('computer', async () => {
+      const store = await openDevice()
+      await store.getState().pullState()
+      return store.getState().S
+    })
+    expect(computer.routines[0].ex[0].restSec).toBe(150)
+    expect(computer.routines[0].ex[1].restSec).toBeUndefined()
+    const { restFor } = await import('../lib/history.js')
+    expect(restFor({ target: computer.routines[0].ex[0] }, { type: 'normal' }, { restSec: 90 })).toBe(150)
+  })
 })
 
 describe('a new member without any server state yet', () => {

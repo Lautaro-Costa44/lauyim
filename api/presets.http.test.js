@@ -278,3 +278,17 @@ test('visibilidad: sin ningún programa visible, el socio recibe un catálogo va
   assert.equal((await presets()).programs.length, all.length);
   for (const p of all) await call('staff', 'POST', '/api/admin/programs/visibility', { id: p.id, visible: p.visibleToMembers });
 });
+
+test('descanso propio del ejercicio (restSec) sobrevive crear y editar, acotado a 0..600', async () => {
+  const ex = [{ id: '0025', sets: 4, reps: 8, weight: 60, restSec: 120 }, { id: '0047', sets: 3, reps: 10, restSec: 5000 },
+    { id: '0043', sets: 3, reps: 8, restSec: 0 }];
+  const created = await call('staff', 'POST', '/api/admin/presets', { name: 'Descansos', groupName: 'Rest', ex });
+  assert.equal(created.status, 200);
+  const saved = created.body.preset;
+  assert.equal(saved.ex[0].restSec, 120);
+  assert.equal(saved.ex[1].restSec, 600);
+  assert.equal(saved.ex[2].restSec, undefined);
+  const updated = await call('staff', 'PUT', '/api/admin/presets', { ...saved, groupName: saved.group_name, plannedDay: saved.planned_day });
+  assert.equal(updated.status, 200);
+  assert.equal(updated.body.preset.ex[0].restSec, 120);
+});

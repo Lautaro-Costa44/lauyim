@@ -373,6 +373,9 @@ function cleanPresetExtras(item, mode) {
   const note = typeof item.note === 'string' ? item.note.trim().slice(0, 500) : '';
   if (note) out.note = note;
   if (+item.warmupSets > 0) out.warmupSets = clampInt(item.warmupSets, 0, 5);
+  // Descanso propio del ejercicio, en cualquier modo; 0 = el descanso por defecto del socio.
+  const restSec = Math.round(+item.restSec) || 0;
+  if (restSec > 0) out.restSec = Math.min(600, restSec);
   if (typeof item.prog === 'string' && item.prog.trim()) out.prog = item.prog.trim().slice(0, 40);
   if (+item.inc > 0) out.inc = Math.min(1000, +item.inc);
   if (typeof item.sg === 'string' && item.sg.trim()) out.sg = item.sg.trim().slice(0, 40);
