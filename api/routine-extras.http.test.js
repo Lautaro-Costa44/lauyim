@@ -115,3 +115,26 @@ test('endpoints admin de rutinas del socio: ida y vuelta con los extras', async 
   assert.deepEqual(put.body.routines[0].ex[1].intensifier, { type: 'restpause', totalReps: 10, restSec: 20 });
   assert.deepEqual((await routinesOf('ana'))[0].ex[1].intensifier, { type: 'restpause', totalReps: 10, restSec: 20 });
 });
+
+test('descanso propio del ejercicio (restSec): sobrevive sync y PUT, acotado a 0..600', async () => {
+  const withRest = { id: 'r2', name: 'Pierna', emoji: 'barbell', ex: [{ id: '0043', sets: 3, reps: 8, weight: 80, restSec: 150 }, { id: '0047', sets: 3, reps: 10, restSec: 9999 }] };
+  await sync('ana', [{ path: ['routines', 'r2'], op: 'add', value: withRest }]);
+  let r2 = (await routinesOf('ana')).find(r => r.id === 'r2');
+  assert.equal(r2.ex[0].restSec, 150);
+  assert.equal(r2.ex[1].restSec, 600);
+
+  const current = await routinesOf('ana');
+  const next = current.map(r => r.id === 'r2' ? { ...r, ex: r.ex.map((e, i) => i === 0 ? { ...e, restSec: 45 } : { ...e, restSec: -10 }) } : r);
+  await call('ana', 'PUT', '/api/data', { state: { routines: next } });
+  r2 = (await routinesOf('ana')).find(r => r.id === 'r2');
+  assert.equal(r2.ex[0].restSec, 45);
+  assert.equal(r2.ex[1].restSec, undefined);                // 0 o negativo = "mi descanso por defecto"
+});
+
+test('cliente viejo (sin header) que no conoce restSec no lo borra', async () => {
+  const lossy = { id: 'r2', name: 'Pierna', emoji: 'barbell', ex: [{ id: '0043', sets: 4, reps: 8, weight: 85 }, { id: '0047', sets: 3, reps: 10 }] };
+  await sync('ana', [{ path: ['routines', 'r2'], op: 'replace', value: lossy }], {});
+  const r2 = (await routinesOf('ana')).find(r => r.id === 'r2');
+  assert.equal(r2.ex[0].sets, 4);
+  assert.equal(r2.ex[0].restSec, 45);
+});

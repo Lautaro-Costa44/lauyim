@@ -746,7 +746,7 @@ export function deleteInvite(code) {
 
 // Campos del ejercicio de un preset que no tienen columna propia: viajan juntos en
 // preset_exercises.extra (JSON). cleanPreset (server.js) ya los validó.
-const PRESET_EXTRA_KEYS = ['intensifier', 'repsMin', 'repsMax', 'warmupSets', 'note', 'prog', 'inc', 'sg'];
+const PRESET_EXTRA_KEYS = ['intensifier', 'repsMin', 'repsMax', 'warmupSets', 'note', 'prog', 'inc', 'sg', 'restSec'];
 
 function presetExtraOf(ex) {
   const extra = {};
@@ -1547,13 +1547,20 @@ export function getRoutinesByUserId(userId) {
 // Campos de un ejercicio de rutina sin columna propia (lo que agrega el editor de ejercicio:
 // intensificador, reps objetivo, calentamiento, progresión doble). Viajan en
 // routine_exercises.extra como JSON, igual que preset_exercises.extra. nota y superset ya tienen
-// columna (note, sg).
-const ROUTINE_EXTRA_KEYS = ['intensifier', 'repsMin', 'repsMax', 'warmupSets', 'prog', 'inc'];
+// columna (note, sg). restSec: descanso propio del ejercicio (0 o ausente = el descanso por defecto
+// del socio), acotado como MAX_REST_SEC en frontend/src/lib/history.js.
+const ROUTINE_EXTRA_KEYS = ['intensifier', 'repsMin', 'repsMax', 'warmupSets', 'prog', 'inc', 'restSec'];
 const ROUTINE_EXTRA_MAX_BYTES = 4096;
+const MAX_REST_SEC = 600;
 
 function routineExtraOf(ex) {
   const extra = {};
   for (const key of ROUTINE_EXTRA_KEYS) if (ex[key] !== undefined && ex[key] !== null) extra[key] = ex[key];
+  if ('restSec' in extra) {
+    const restSec = Math.round(Number(extra.restSec)) || 0;
+    if (restSec > 0) extra.restSec = Math.min(MAX_REST_SEC, restSec);
+    else delete extra.restSec;
+  }
   // bodyweight tiene columna pero solo guarda true; un false explícito (desmarcado en un ejercicio
   // que el catálogo marca como peso corporal) va acá.
   if (ex.bodyweight === false) extra.bodyweight = false;
